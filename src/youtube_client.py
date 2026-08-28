@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import httplib2
 from googleapiclient.discovery import Resource, build
 from googleapiclient.errors import HttpError
 
@@ -45,7 +46,7 @@ def _fetch_batch(youtube: Resource, batch: list[str]) -> list[dict]:
         raise YouTubeAPIError(
             f"YouTube API request failed (status {exc.status_code}): {exc.reason}"
         ) from exc
-    except (ConnectionError, TimeoutError) as exc:
+    except (ConnectionError, TimeoutError, httplib2.HttpLib2Error) as exc:
         raise YouTubeAPIError(f"Network error while calling YouTube API: {exc}") from exc
 
     items = response.get("items")
