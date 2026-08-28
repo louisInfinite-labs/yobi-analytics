@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(**/.env)",
+      "Edit(./.env)",
+      "Edit(**/.env)",
+      "Write(./.env)",
+      "Write(**/.env)",
+      "Read(**/*.pem)",
+      "Edit(**/*.pem)",
+      "Write(**/*.pem)",
+      "Read(**/*.key)",
+      "Edit(**/*.key)",
+      "Write(**/*.key)",
+      "Read(**/credentials.json)",
+      "Edit(**/credentials.json)",
+      "Write(**/credentials.json)",
+      "Read(**/*serviceAccount*.json)",
+      "Edit(**/*serviceAccount*.json)",
+      "Write(**/*serviceAccount*.json)"
+    ]
+  }
+}

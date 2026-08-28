@@ -1,0 +1,13 @@
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Claude Code local overrides
+.claude/settings.local.json
