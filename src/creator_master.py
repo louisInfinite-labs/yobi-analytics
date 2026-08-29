@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
+
+from json_store import JsonStoreError, load_json_list
 
 DEFAULT_CREATORS_PATH = Path(__file__).parent / "creators.json"
 
 
-class CreatorMasterError(ValueError):
+class CreatorMasterError(JsonStoreError):
     """Raised when a Creator Master JSON record is malformed."""
 
 
@@ -26,8 +27,7 @@ class Creator:
 
 def load_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
     """Load all creators from the Creator Master JSON file."""
-    with open(path, encoding="utf-8") as f:
-        raw_creators = json.load(f)
+    raw_creators = load_json_list(path, store_name="Creator Master", error_class=CreatorMasterError)
     return [_parse_creator(raw) for raw in raw_creators]
 
 
@@ -38,15 +38,18 @@ def get_active_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
 
 def _parse_creator(raw: dict) -> Creator:
     """Convert a raw Creator Master JSON record into a Creator instance."""
-    active = raw["active"]
-    if not isinstance(active, bool):
-        raise CreatorMasterError(
-            f"Creator {raw.get('creatorId')!r} has non-boolean 'active': {active!r}"
+    try:
+        active = raw["active"]
+        if not isinstance(active, bool):
+            raise CreatorMasterError(
+                f"Creator {raw.get('creatorId')!r} has non-boolean 'active': {active!r}"
+            )
+        return Creator(
+            creator_id=raw["creatorId"],
+            display_name=raw["displayName"],
+            organization=raw["organization"],
+            youtube_channel_id=raw["youtubeChannelId"],
+            active=active,
         )
-    return Creator(
-        creator_id=raw["creatorId"],
-        display_name=raw["displayName"],
-        organization=raw["organization"],
-        youtube_channel_id=raw["youtubeChannelId"],
-        active=active,
-    )
+    except (KeyError, TypeError) as exc:
+        raise CreatorMasterError(f"Malformed Creator Master record, missing/invalid field: {exc}") from exc

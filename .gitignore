@@ -11,3 +11,7 @@ venv/
 
 # Claude Code local overrides
 .claude/settings.local.json
+
+# Locally collected data (regenerated from the YouTube API / rebuilt by discovery)
+src/video_master.json
+src/snapshots/
