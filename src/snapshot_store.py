@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from json_store import JsonStoreError, write_json_list
+from json_store import JsonStoreError, write_json_list_exclusive
 
 DEFAULT_SNAPSHOTS_DIR = Path(__file__).parent / "snapshots"
 
@@ -32,13 +32,17 @@ def snapshot_path_for(snapshot_date: date, directory: Path = DEFAULT_SNAPSHOTS_D
 def save_daily_snapshot(
     snapshots: list[Snapshot], snapshot_date: date, directory: Path = DEFAULT_SNAPSHOTS_DIR
 ) -> Path:
-    """Write a day's raw snapshots to their own dated file, refusing to overwrite an existing one."""
-    path = snapshot_path_for(snapshot_date, directory)
-    if path.exists():
-        raise FileExistsError(f"Snapshot for {snapshot_date.isoformat()} already exists at {path}")
+    """Write a day's raw snapshots to their own dated file, refusing to overwrite an existing one.
 
+    Creation is atomic (temp file + os.link) so a concurrent run can never
+    race the exists-check and clobber an already-written snapshot.
+    """
+    path = snapshot_path_for(snapshot_date, directory)
     payload = [_to_raw(snapshot) for snapshot in snapshots]
-    write_json_list(path, payload, store_name="Snapshot", error_class=SnapshotStoreError)
+    try:
+        write_json_list_exclusive(path, payload, store_name="Snapshot", error_class=SnapshotStoreError)
+    except FileExistsError:
+        raise FileExistsError(f"Snapshot for {snapshot_date.isoformat()} already exists at {path}") from None
     return path
 
 

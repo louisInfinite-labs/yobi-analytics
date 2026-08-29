@@ -91,10 +91,14 @@ def _parse_playlist_item(item: dict) -> dict:
     """Extract videoId/title/publishedAt from a single playlistItems.list entry."""
     try:
         snippet = item["snippet"]
-        return {
-            "videoId": snippet["resourceId"]["videoId"],
-            "title": snippet["title"],
-            "publishedAt": snippet["publishedAt"],
-        }
+        video_id = snippet["resourceId"]["videoId"]
+        title = snippet["title"]
+        published_at = snippet["publishedAt"]
     except (KeyError, TypeError) as exc:
         raise YouTubeAPIError(f"Malformed playlist item, missing field: {exc}") from exc
+
+    for field_name, value in (("videoId", video_id), ("title", title), ("publishedAt", published_at)):
+        if not isinstance(value, str):
+            raise YouTubeAPIError(f"Malformed playlist item, non-string {field_name!r}: {value!r}")
+
+    return {"videoId": video_id, "title": title, "publishedAt": published_at}

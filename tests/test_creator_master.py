@@ -101,6 +101,24 @@ def test_string_discovery_enabled_value_is_rejected(tmp_path):
         load_creators(path)
 
 
+@pytest.mark.parametrize("field", ["creatorId", "displayName", "organization", "youtubeChannelId"])
+def test_non_string_required_field_is_rejected(tmp_path, field):
+    """A non-string (e.g. null or a number) required field is rejected, not silently accepted."""
+    record = {
+        "creatorId": "bad_record",
+        "displayName": "Bad Record",
+        "organization": "vspo",
+        "youtubeChannelId": "UC_TEST_CHANNEL_6",
+        "active": True,
+    }
+    record[field] = 42
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([record]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
 def test_string_active_value_is_rejected(tmp_path):
     """A string like "false" for 'active' is rejected instead of being treated as truthy."""
     bad_creators_path = tmp_path / "creators.json"

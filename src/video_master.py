@@ -57,13 +57,21 @@ def _parse_video(raw: dict) -> Video:
     """Convert a raw Video Master JSON record into a Video instance."""
     try:
         return Video(
-            video_id=raw["videoId"],
-            creator_id=raw["creatorId"],
-            title=raw["title"],
-            published_at=raw["publishedAt"],
+            video_id=_require_str(raw, "videoId"),
+            creator_id=_require_str(raw, "creatorId"),
+            title=_require_str(raw, "title"),
+            published_at=_require_str(raw, "publishedAt"),
         )
     except (KeyError, TypeError) as exc:
         raise VideoMasterError(f"Malformed Video Master record, missing/invalid field: {exc}") from exc
+
+
+def _require_str(raw: dict, field: str) -> str:
+    """Return raw[field] as a non-empty string, or raise VideoMasterError."""
+    value = raw.get(field)
+    if not isinstance(value, str) or not value:
+        raise VideoMasterError(f"Video Master record has invalid {field!r}: {value!r}")
+    return value
 
 
 def _to_raw(video: Video) -> dict:

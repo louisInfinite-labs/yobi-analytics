@@ -98,3 +98,15 @@ def test_load_videos_raises_on_record_missing_field(tmp_path):
 
     with pytest.raises(VideoMasterError):
         load_videos(path)
+
+
+def test_load_videos_raises_on_non_string_field(tmp_path):
+    """A record with a non-string value (e.g. a number) for a required field is rejected."""
+    path = tmp_path / "video_master.json"
+    path.write_text(
+        '[{"videoId": "v1", "creatorId": "aizawa_ema", "title": 42, "publishedAt": "2026-08-20T00:00:00Z"}]',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VideoMasterError):
+        load_videos(path)

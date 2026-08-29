@@ -91,3 +91,27 @@ def test_one_malformed_item_does_not_discard_the_rest_of_the_page(capsys):
 
     assert [v["videoId"] for v in videos] == ["vid1", "vid2"]
     assert "could not parse" in capsys.readouterr().out
+
+
+def test_non_string_field_is_skipped_not_crashed(capsys):
+    """A playlist item whose title/videoId/publishedAt is a non-string (e.g. None)
+    is skipped with a warning instead of raising TypeError downstream."""
+    youtube = MagicMock()
+    page_1 = {
+        "items": [
+            {
+                "snippet": {
+                    "resourceId": {"videoId": "vid1"},
+                    "title": None,  # non-string
+                    "publishedAt": "2026-08-20T00:00:00Z",
+                }
+            },
+            _make_playlist_item("vid2", "Video 2", "2026-08-10T00:00:00Z"),
+        ]
+    }
+    youtube.playlistItems.return_value.list.return_value.execute.side_effect = [page_1]
+
+    videos = discover_all_videos(youtube, "UU_TEST_UPLOADS")
+
+    assert [v["videoId"] for v in videos] == ["vid2"]
+    assert "non-string" in capsys.readouterr().out
