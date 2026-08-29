@@ -1,0 +1,16 @@
+[
+  {
+    "creatorId": "aizawa_ema",
+    "displayName": "藍沢エマ",
+    "organization": "vspo",
+    "youtubeChannelId": "UC_TEST_CHANNEL",
+    "active": true
+  },
+  {
+    "creatorId": "inactive_example",
+    "displayName": "Inactive Example",
+    "organization": "hololive",
+    "youtubeChannelId": "UC_TEST_CHANNEL_2",
+    "active": false
+  }
+]
