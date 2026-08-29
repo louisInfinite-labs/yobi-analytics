@@ -214,7 +214,8 @@
     "displayName": "夜空メル",
     "organization": "hololive",
     "youtubeChannelId": "UCD8HOxPs4Xvsm8H0ZxXGiBw",
-    "active": true
+    "active": true,
+    "discoveryEnabled": false
   },
   {
     "creatorId": "aki_rosenthal",
@@ -312,7 +313,8 @@
     "displayName": "潤羽るしあ",
     "organization": "hololive",
     "youtubeChannelId": "UCl_gCybOJRIgOXw6Qb4qJzQ",
-    "active": true
+    "active": true,
+    "discoveryEnabled": false
   },
   {
     "creatorId": "shiranui_flare",
@@ -403,7 +405,8 @@
     "displayName": "魔乃アロエ",
     "organization": "hololive",
     "youtubeChannelId": "UCgZuwn-O7Szh9cAgHqJ6vjw",
-    "active": true
+    "active": true,
+    "discoveryEnabled": false
   },
   {
     "creatorId": "laplus_darkness",

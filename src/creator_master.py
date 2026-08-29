@@ -23,6 +23,10 @@ class Creator:
     organization: str
     youtube_channel_id: str
     active: bool
+    # False for a creator whose upload history is known to be closed (e.g. a
+    # graduated talent). Their already-known videos still get statistics/
+    # snapshots via active; Discovery just stops looking for new uploads.
+    discovery_enabled: bool = True
 
 
 def load_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
@@ -44,12 +48,18 @@ def _parse_creator(raw: dict) -> Creator:
             raise CreatorMasterError(
                 f"Creator {raw.get('creatorId')!r} has non-boolean 'active': {active!r}"
             )
+        discovery_enabled = raw.get("discoveryEnabled", True)
+        if not isinstance(discovery_enabled, bool):
+            raise CreatorMasterError(
+                f"Creator {raw.get('creatorId')!r} has non-boolean 'discoveryEnabled': {discovery_enabled!r}"
+            )
         return Creator(
             creator_id=raw["creatorId"],
             display_name=raw["displayName"],
             organization=raw["organization"],
             youtube_channel_id=raw["youtubeChannelId"],
             active=active,
+            discovery_enabled=discovery_enabled,
         )
     except (KeyError, TypeError) as exc:
         raise CreatorMasterError(f"Malformed Creator Master record, missing/invalid field: {exc}") from exc

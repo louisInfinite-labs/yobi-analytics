@@ -47,6 +47,15 @@ def main() -> int:
         newly_discovered: list[Video] = []
         for creator in active_creators:
             known_ids = load_video_ids_for_creator(creator.creator_id, videos=known_videos)
+
+            if not creator.discovery_enabled:
+                print(
+                    f"{creator.display_name} ({creator.organization}): "
+                    f"discovery disabled, tracking {len(known_ids)} known video(s)"
+                )
+                tracking_universe.extend(known_ids)
+                continue
+
             try:
                 new_video_ids, new_videos = _discover_creator(youtube, creator, known_ids)
                 print(
