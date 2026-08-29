@@ -1,6 +1,9 @@
+import json
 from pathlib import Path
 
-from creator_master import Creator, get_active_creators, load_creators
+import pytest
+
+from creator_master import Creator, CreatorMasterError, get_active_creators, load_creators
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "creators.json"
 
@@ -40,3 +43,25 @@ def test_japanese_display_name_is_preserved():
     creators = load_creators(FIXTURE_PATH)
 
     assert creators[0].display_name == "藍沢エマ"
+
+
+def test_string_active_value_is_rejected(tmp_path):
+    """A string like "false" for 'active' is rejected instead of being treated as truthy."""
+    bad_creators_path = tmp_path / "creators.json"
+    bad_creators_path.write_text(
+        json.dumps(
+            [
+                {
+                    "creatorId": "bad_record",
+                    "displayName": "Bad Record",
+                    "organization": "vspo",
+                    "youtubeChannelId": "UC_TEST_CHANNEL_3",
+                    "active": "false",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(bad_creators_path)

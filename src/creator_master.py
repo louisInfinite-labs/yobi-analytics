@@ -9,6 +9,10 @@ from pathlib import Path
 DEFAULT_CREATORS_PATH = Path(__file__).parent / "creators.json"
 
 
+class CreatorMasterError(ValueError):
+    """Raised when a Creator Master JSON record is malformed."""
+
+
 @dataclass(frozen=True)
 class Creator:
     """A single creator's provider-neutral metadata."""
@@ -34,10 +38,15 @@ def get_active_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
 
 def _parse_creator(raw: dict) -> Creator:
     """Convert a raw Creator Master JSON record into a Creator instance."""
+    active = raw["active"]
+    if not isinstance(active, bool):
+        raise CreatorMasterError(
+            f"Creator {raw.get('creatorId')!r} has non-boolean 'active': {active!r}"
+        )
     return Creator(
         creator_id=raw["creatorId"],
         display_name=raw["displayName"],
         organization=raw["organization"],
         youtube_channel_id=raw["youtubeChannelId"],
-        active=raw["active"],
+        active=active,
     )
