@@ -5,12 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from json_store import DATA_DIR, JsonStoreError, load_json_list
+from json_store import JsonStoreError, load_json_list
 
-# DATA_DIR defaults to this package's own directory locally, but is overridden
-# to /tmp on Lambda, where the deployment package itself is read-only (see
-# Roadmap 2.2 "Known Constraint").
-DEFAULT_CREATORS_PATH = DATA_DIR / "creators.json"
+# Unlike video_master.json/snapshots (which the collector writes to, and so
+# must live in a writable DATA_DIR — /tmp on Lambda), creators.json is a
+# read-only reference dataset nothing ever writes at runtime. It stays on the
+# package path deliberately: Lambda's deployment package is read-only but
+# still readable, and nothing copies it into /tmp on cold start — pointing
+# this at DATA_DIR would make load_json_list() see a missing file, silently
+# return [], and make main() exit 0 having collected nothing.
+DEFAULT_CREATORS_PATH = Path(__file__).parent / "creators.json"
 
 
 class CreatorMasterError(JsonStoreError):

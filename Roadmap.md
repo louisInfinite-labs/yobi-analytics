@@ -525,9 +525,11 @@ Do not log secrets.
 
 #### Known Constraint: Lambda's Deployment Package Is Read-Only
 
-The local JSON stores (`creators.json`, `video_master.json`, `snapshots/`) default to writing next to the source code (`Path(__file__).parent`). Lambda's deployment package directory is read-only at runtime — a write there raises `PermissionError`, not just "doesn't persist." A `YOBI_DATA_DIR` environment variable (read once, at import time, by `json_store.DATA_DIR`) overrides that base directory; local development is unaffected (unset by default), while the Lambda deployment sets it to `/tmp`, the only writable path in the Lambda execution environment.
+The local JSON stores the collector *writes* (`video_master.json`, `snapshots/`) default to writing next to the source code (`Path(__file__).parent`). Lambda's deployment package directory is read-only at runtime — a write there raises `PermissionError`, not just "doesn't persist." A `YOBI_DATA_DIR` environment variable (read once, at import time, by `json_store.DATA_DIR`) overrides that base directory for those two; local development is unaffected (unset by default), while the Lambda deployment sets it to `/tmp`, the only writable path in the Lambda execution environment.
 
-This does not make snapshot data durable — `/tmp` is wiped on cold start and isn't shared across invocations. It only lets the real collection job run on Lambda without crashing, so 2.2 can prove out deployment/invocation/logging mechanics. Durable storage is Roadmap 2.3's job (moving to DynamoDB), not this section's.
+This does not make video/snapshot data durable — `/tmp` is wiped on cold start and isn't shared across invocations. It only lets the real collection job run on Lambda without crashing, so 2.2 can prove out deployment/invocation/logging mechanics. Durable storage is Roadmap 2.3's job (moving to DynamoDB), not this section's.
+
+`creators.json` is deliberately excluded from this override. Nothing ever writes it at runtime — it's a fixed reference dataset — so it stays on the package path (`Path(__file__).parent`, unaffected by `YOBI_DATA_DIR`) in both environments. Lambda's package directory is read-only but still readable, so this works without any bootstrap/copy step. Redirecting it to `/tmp` too was tried and found to be a real bug: nothing copies the packaged file there on cold start, so it would silently load as empty and `main()` would exit 0 having collected nothing, with no error to indicate why.
 
 #### Definition of Done
 
