@@ -219,45 +219,97 @@ Creator data should not be hard-coded directly inside collection logic.
 
 #### Goal
 
-Automatically discover videos from a creator's YouTube Channel ID.
+Build and maintain the set of videos that should be tracked for a creator — the **Tracking Universe** (Video Master). This is not the same as "the creator's most recent videos" or "the videos with the most views right now".
 
-#### Scope
+#### Why This Matters
 
-Replace manually entered Video IDs with automatic discovery.
+A video's current `viewCount` alone does not tell us whether it is trending. A video that was quiet for months can suddenly gain a large number of views in a single day because YouTube's recommendation algorithm starts pushing it. To catch that kind of sudden growth, the system must keep tracking a creator's videos regardless of how old they are or how few views they currently have — not just their newest or currently-most-viewed uploads.
 
-Flow:
+YouTube's API only ever reports the current cumulative `viewCount`; it does not expose historical daily values. All historical change is derived by this project from its own stored raw snapshots — a video only starts building history from whichever day it was first added to the Tracking Universe, and view counts from before that day cannot be backfilled.
+
+#### 1.4.1 Uploads Playlist Resolution
+
+- Resolve Channel ID → Uploads Playlist ID using `channels.list`.
+- Avoid using the expensive Search API (`search.list`) as the primary discovery method.
+
+#### 1.4.2 Initial Historical Discovery
+
+- Use `playlistItems.list` to page through a creator's uploads.
+- Support `nextPageToken` pagination.
+- On first-time setup, scan through the creator's available upload history.
+- Collect every reachable Video ID.
+- Store/upsert the collected IDs into Video Master to build the Tracking Universe.
+- Insert/upsert must be safely repeatable without creating duplicates.
+
+`playlistItems.list` returns at most 50 items per page. That is a limit on a single API request/page — it is not a limit on how many videos the system tracks overall.
+
+#### 1.4.3 Incremental Discovery
+
+- After Initial Discovery has completed, only scan the newest uploads each day.
+- Compare scanned Video IDs against what is already known in the database.
+- New videos are inserted/upserted into Video Master and added to the Tracking Universe.
+- Videos that already exist are not recreated.
+- Once a known video is reached, pagination toward older pages can stop.
+
+#### 1.4.4 Statistics Collection
+
+- Use `videos.list` against the Tracking Universe.
+- Batch Video IDs rather than requesting one at a time.
+- Retrieve current public statistics via `part=snippet,statistics`.
+- Store the current `viewCount`.
+
+Discovery and Statistics Collection are separate responsibilities: Discovery decides *which videos to track*; Statistics Collection finds out *their current public state*.
+
+#### 1.4.5 Daily Raw Snapshot
+
+- Save a snapshot of each tracked video's public statistics every day.
+- Store `videoId`.
+- Store the snapshot time/date.
+- Store `viewCount`.
+- Snapshots must accumulate history — never overwrite the previous day's snapshot.
+- This raw data is what later 24h / 7d / 30d growth analytics is built from.
+
+#### Scope Boundary
 
 ```text
-Creator Master
-→ YouTube Channel ID
-→ Discover recent videos
-→ Collect Video IDs
-→ Retrieve public statistics
+Discovery
+→ decide which Video IDs should be tracked
+
+Tracking / Collection
+→ fetch how many views those videos have right now
+
+Snapshot
+→ store this moment's raw state
+
+Analytics
+→ compare snapshots across time to find which video suddenly spiked
 ```
 
-Before implementation, research the lowest-quota practical YouTube API method.
+Discovery, Snapshot, and Analytics must not be merged into a single function/responsibility.
 
-Prefer lower-cost approaches such as uploads/channel playlist discovery where possible.
+#### Tracking Lifecycle — Open Question
 
-Avoid repeated expensive `search.list` calls unless they are genuinely required.
+Once a video enters the Tracking Universe, how long should it keep being tracked daily? **This is not decided yet** and must not be implemented or assumed during 1.4. It is recorded here as an open design question for a future decision.
 
-Apply a reasonable limit, for example:
+Possible directions include:
 
 ```text
-Recent N videos
-or
-Videos published within a defined date window
+Track every video daily, forever
+Track new videos daily, reduce snapshot frequency for older videos
+Adjust snapshot frequency based on video age / recent activity
 ```
 
-Do not download unlimited channel history.
+Do not implement or pick one of these during 1.4.
 
 #### Definition of Done
 
-- Channel ID is enough to discover target videos.
+- A Channel ID can be resolved to its Uploads Playlist ID.
+- Initial Discovery can page through and collect a creator's historical uploads via `playlistItems.list` + `nextPageToken`.
+- Incremental Discovery detects new uploads without rescanning full history, and stops once it reaches an already-known video.
+- Video Master insert/upsert is idempotent — rerunning discovery does not create duplicate records.
+- Statistics Collection is implemented separately from Discovery and retrieves `viewCount` via batched `videos.list` calls.
+- A daily raw snapshot is stored per tracked video without overwriting prior days' data.
 - Manual Video ID entry is no longer required.
-- Discovery has a clear limit/date window.
-- API quota usage is understood and documented.
-- Statistics retrieval remains batch-oriented where practical.
 
 #### Out of Scope
 
@@ -266,6 +318,7 @@ Do not download unlimited channel history.
 - User subscriptions
 - Live notification logic
 - AI recommendations
+- Deciding the tracking lifecycle / retention frequency for older videos (see "Tracking Lifecycle — Open Question" above)
 
 ---
 
@@ -324,6 +377,15 @@ Raw snapshots must be preserved.
 
 Do not only store calculated rankings.
 
+#### Known Issue: Partial Snapshots Are Not Distinguishable From Complete Ones
+
+Since 1.4, when Statistics Collection cannot parse a video's data (e.g. a members-only video with hidden statistics), that video is skipped with a printed warning only — the saved snapshot contains no record that anything was skipped. A partial snapshot currently looks identical to a complete one once saved, which can silently distort later growth calculations (a video missing from one day's snapshot looks the same as "no change" rather than "we don't actually know").
+
+This should be resolved as part of formalizing the snapshot model in 1.5, not before. Two options to choose between:
+
+1. **Log-only summary**: print an end-of-run summary (e.g. "collected 96,200 / 96,262 videos, 62 skipped") without changing the saved snapshot format.
+2. **Snapshot-level metadata**: store completeness information alongside the snapshot data itself (e.g. requested count / skipped video IDs), so incompleteness is visible from the data, not just the run log.
+
 #### Definition of Done
 
 - Snapshot model is defined.
@@ -331,6 +393,7 @@ Do not only store calculated rankings.
 - Retry/idempotency strategy is defined.
 - Data is migration-friendly.
 - Attributes remain explicit and readable.
+- A decision has been made (and implemented) on how partial/incomplete snapshots are represented (see "Known Issue" above).
 
 #### Out of Scope
 

@@ -84,9 +84,102 @@ By collecting daily snapshots continuously, the project can later calculate:
 - Hololive trending
 - VSPO trending
 
+YouTube's API only ever reports the current cumulative `viewCount` — it does not expose how many views a video had on any past date. That history only exists because this project keeps its own daily raw snapshots. A video only starts building history from whichever day it was first added to the Tracking Universe; view counts from before that day cannot be backfilled.
+
+A key motivation for tracking every known video — not just recent or currently-popular ones — is catching videos that were quiet for a long time and then suddenly gain a large number of views in a single day because YouTube's recommendation algorithm starts pushing them.
+
 Raw historical snapshots must be preserved.
 
 The project should not store only calculated rankings.
+
+---
+
+## Video Discovery
+
+Video Discovery is responsible for building and maintaining the set of videos that should be tracked for a creator — the **Tracking Universe** (Video Master). This is a different responsibility from Statistics Collection, and from deciding which videos currently look "trending".
+
+### Initial Discovery / Bootstrap
+
+```text
+Creator Master
+→ YouTube Channel ID
+→ channels.list
+→ Uploads Playlist ID
+→ playlistItems.list
+→ Paginate through the creator's available upload history
+→ Collect Video IDs
+→ Store / upsert into Video Master
+→ Build the Tracking Universe
+```
+
+`playlistItems.list` returns at most 50 items per request. That is a limit on a single API call/page — it is not a limit on how many videos the system tracks overall. The first-time bootstrap keeps paging through `nextPageToken` until the creator's available upload history has been scanned.
+
+### Incremental Discovery
+
+Once Initial Discovery has completed for a creator, there is no need to rescan their entire history every day. Daily discovery only needs to:
+
+```text
+Creator
+→ Uploads Playlist
+→ Scan the newest uploads
+→ Compare against Video IDs already known to Video Master
+→ Insert/upsert any new Video ID
+→ Add it to the Tracking Universe
+```
+
+Once a previously-seen video is reached, pagination toward older pages can stop.
+
+### Statistics Collection
+
+Discovery and Statistics Collection are deliberately separate:
+
+- **Discovery** answers: *which videos should we track?*
+- **Statistics Collection** answers: *what is the current public state of those videos?*
+
+For every video already in the Tracking Universe:
+
+```text
+videos.list
+→ batched Video IDs
+→ part=snippet,statistics
+→ current public statistics, especially viewCount
+```
+
+Video IDs should be batched rather than requested one at a time.
+
+### Scope Boundary
+
+```text
+Discovery
+→ decide which Video IDs should be tracked
+
+Tracking / Collection
+→ fetch how many views those videos have right now
+
+Snapshot
+→ store this moment's raw state
+
+Analytics
+→ compare snapshots across time to find which video suddenly spiked
+```
+
+Discovery, Snapshot, and Analytics must not be merged into a single function/responsibility.
+
+---
+
+## Tracking Lifecycle (Open Question)
+
+Once a video enters the Tracking Universe, how long should it keep being tracked daily? **This is not decided yet.**
+
+Possible directions include:
+
+```text
+Track every video daily, forever
+Track new videos daily, and reduce snapshot frequency for older videos
+Adjust snapshot frequency based on video age / recent activity
+```
+
+None of these has been chosen. This is recorded here as an open design question for a future decision, not something the current implementation should assume or hard-code.
 
 ---
 
