@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Callable, TypeVar
 
 import httplib2
@@ -9,6 +10,8 @@ from googleapiclient.discovery import Resource, build
 from googleapiclient.errors import HttpError
 
 MAX_IDS_PER_REQUEST = 50
+MAX_RETRIES = 3
+RETRY_BACKOFF_SECONDS = 1.0
 
 T = TypeVar("T")
 
@@ -27,16 +30,32 @@ def build_youtube_client(api_key: str) -> Resource:
 def call_youtube_api(request_executor: Callable[[], T]) -> T:
     """Run a googleapiclient request, translating transport/API errors into YouTubeAPIError.
 
+    Any transient network failure — connection reset, timeout, DNS resolution
+    failure, TLS/SSL error, or an httplib2 transport error, whether caused by
+    the API side or the local machine's own network — is retried up to
+    MAX_RETRIES times with a short backoff. HTTP-level errors (4xx/5xx) are
+    not retried — the request itself was invalid or rejected, so retrying
+    just wastes quota.
+
     Usage: call_youtube_api(lambda: youtube.videos().list(...).execute())
     """
-    try:
-        return request_executor()
-    except HttpError as exc:
-        raise YouTubeAPIError(
-            f"YouTube API request failed (status {exc.status_code}): {exc.reason}"
-        ) from exc
-    except (ConnectionError, TimeoutError, httplib2.HttpLib2Error) as exc:
-        raise YouTubeAPIError(f"Network error while calling YouTube API: {exc}") from exc
+    last_exc: Exception | None = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            return request_executor()
+        except HttpError as exc:
+            raise YouTubeAPIError(
+                f"YouTube API request failed (status {exc.status_code}): {exc.reason}"
+            ) from exc
+        except (OSError, httplib2.HttpLib2Error) as exc:
+            last_exc = exc
+            if attempt < MAX_RETRIES:
+                print(f"Warning: network error on attempt {attempt}/{MAX_RETRIES}, retrying: {exc}")
+                time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+
+    raise YouTubeAPIError(
+        f"Network error while calling YouTube API after {MAX_RETRIES} attempts: {last_exc}"
+    ) from last_exc
 
 
 def get_video_statistics(youtube: Resource, video_ids: list[str]) -> list[dict]:
