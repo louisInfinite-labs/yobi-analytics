@@ -167,19 +167,19 @@ Discovery, Snapshot, and Analytics must not be merged into a single function/res
 
 ---
 
-## Tracking Lifecycle (Open Question)
+## Tracking Frequency
 
-Once a video enters the Tracking Universe, how long should it keep being tracked daily? **This is not decided yet.**
-
-Possible directions include:
+Once a video enters the Tracking Universe, it is not checked daily forever. Every tracked video is assigned to an age tier based on `publishedAt`:
 
 ```text
-Track every video daily, forever
-Track new videos daily, and reduce snapshot frequency for older videos
-Adjust snapshot frequency based on video age / recent activity
+Recent (0-30 days old)   -> checked every day
+Medium (31-180 days old) -> checked once every 7 days
+Old (181+ days old)      -> checked once every 30 days
 ```
 
-None of these has been chosen. This is recorded here as an open design question for a future decision, not something the current implementation should assume or hard-code.
+Videos rotate through their tier's cycle using a stable ID-based rotation key rather than a calendar-based trigger, so the daily statistics-collection workload stays roughly even as the Tracking Universe grows. A video is always checked again on the day it crosses from the medium tier into the old tier, so the two tiers' independently-rotating cycles can never combine into an unusually long gap.
+
+See [`Roadmap.md`](./Roadmap.md) section 1.5 for the full design rationale.
 
 ---
 
@@ -201,7 +201,7 @@ The collector will run once per day, initially at:
 Timezone: Asia/Tokyo
 ```
 
-The Mac development machine does not need to remain powered on after the collector is deployed to AWS Lambda.
+The Windows development machine does not need to remain powered on after the collector is deployed to AWS Lambda.
 
 ---
 
@@ -234,17 +234,26 @@ Later phases will replace manually entered Video IDs with automatic video discov
 
 The project should use a fixed Python version that is compatible with:
 
-- macOS local development
-- AWS Lambda
+- Windows 10 local development and testing
+- AWS Lambda's Amazon Linux-based execution environment in production
 - required Python libraries
+
+Windows-built native dependencies are not guaranteed to run in Lambda's Amazon Linux runtime — package for Lambda accordingly when Phase 2 deployment is implemented.
 
 Project dependencies should be isolated using a local virtual environment.
 
-Example:
+Example (Git Bash):
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python -m venv .venv
+source .venv/Scripts/activate
+```
+
+Example (PowerShell):
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 ```
 
 Do not install project dependencies globally unless there is a specific reason.
@@ -271,9 +280,12 @@ Example structure:
   "displayName": "藍沢エマ",
   "organization": "vspo",
   "youtubeChannelId": "UC...",
-  "active": true
+  "active": true,
+  "discoveryEnabled": true
 }
 ```
+
+`active` controls whether a creator is tracked at all. `discoveryEnabled` is separate: it controls whether Discovery keeps searching for new uploads, independent of whether the creator's already-known videos keep being tracked for statistics. This lets a graduated/retired creator's existing videos keep collecting snapshots without wasting quota scanning for uploads that will never come.
 
 Initial supported organizations:
 
@@ -560,7 +572,7 @@ The project should follow these rules:
 Recommended development workflow:
 
 ```text
-Implement one ROADMAP.md section
+Implement one Roadmap.md section
 → Test locally
 → Commit
 → Pull Request
@@ -585,12 +597,12 @@ This keeps each change small, reviewable, and easier to debug.
 
 ## Current Status
 
-The project is currently at the documentation/setup stage.
+Phase 1 (Local Data Collection Foundation) is implemented and running locally against the real YouTube API: Creator Master, Video Discovery, Tiered Tracking Frequency, and the Daily Raw Snapshot Model.
 
 The immediate priority is:
 
 ```text
-Start collecting historical raw data as early as possible.
+Move collection onto AWS (Phase 2) so it runs on a daily schedule without a local machine staying on.
 ```
 
 Initial creator groups:
@@ -600,4 +612,4 @@ Hololive
 VSPO
 ```
 
-See [`ROADMAP.md`](./ROADMAP.md) for the implementation plan.
+See [`Roadmap.md`](./Roadmap.md) for the implementation plan.

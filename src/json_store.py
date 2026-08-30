@@ -54,6 +54,20 @@ def write_json_list_exclusive(
     path: Path, data: list, *, store_name: str, error_class: type[Exception] = JsonStoreError
 ) -> None:
     """Atomically create path with a JSON array, refusing to overwrite an existing file."""
+    _write_json_exclusive(path, data, store_name=store_name, error_class=error_class)
+
+
+def write_json_object_exclusive(
+    path: Path, data: dict, *, store_name: str, error_class: type[Exception] = JsonStoreError
+) -> None:
+    """Atomically create path with a JSON object, refusing to overwrite an existing file."""
+    _write_json_exclusive(path, data, store_name=store_name, error_class=error_class)
+
+
+def _write_json_exclusive(
+    path: Path, data: list | dict, *, store_name: str, error_class: type[Exception]
+) -> None:
+    """Shared atomic create-only write used by both the list and object variants above."""
     if path.exists():
         raise FileExistsError(f"{store_name} file already exists at {path}")
     try:
@@ -72,7 +86,7 @@ def write_json_list_exclusive(
         tmp_path.unlink(missing_ok=True)
 
 
-def _write_temp_json(path: Path, data: list) -> Path:
+def _write_temp_json(path: Path, data: list | dict) -> Path:
     """Write data as JSON to a new temp file next to path, returning the temp file's path."""
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:

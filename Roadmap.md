@@ -28,7 +28,7 @@ yobi-analytics/
 ├── .gitignore
 ├── requirements.txt
 ├── README.md
-└── ROADMAP.md
+└── Roadmap.md
 ```
 
 The exact folder structure should remain minimal during Phase 1 and should only expand when required.
@@ -176,7 +176,10 @@ displayName
 organization
 youtubeChannelId
 active
+discoveryEnabled
 ```
+
+`active` controls whether a creator is tracked at all. `discoveryEnabled` is separate: it controls whether Discovery keeps searching for new uploads, independent of whether the creator's already-known videos keep being tracked for statistics — used for graduated/retired creators whose existing videos should keep collecting snapshots without wasting quota scanning for uploads that will never come.
 
 Initial organizations:
 
@@ -193,7 +196,8 @@ Example:
   "displayName": "藍沢エマ",
   "organization": "vspo",
   "youtubeChannelId": "UC...",
-  "active": true
+  "active": true,
+  "discoveryEnabled": true
 }
 ```
 
@@ -267,6 +271,7 @@ Discovery and Statistics Collection are separate responsibilities: Discovery dec
 - Store the snapshot time/date.
 - Store `viewCount`.
 - Snapshots must accumulate history — never overwrite the previous day's snapshot.
+- See 1.6 Raw Daily Snapshot Model for the full field list actually stored (`creatorId`, `title`, `publishedAt`, and `organization` in addition to the above).
 - This raw data is what later 24h / 7d / 30d growth analytics is built from.
 
 #### Scope Boundary
@@ -405,10 +410,14 @@ Do not only store calculated rankings.
 
 Since 1.4, when Statistics Collection cannot parse a video's data (e.g. a members-only video with hidden statistics), that video is skipped with a printed warning only — the saved snapshot contains no record that anything was skipped. A partial snapshot currently looks identical to a complete one once saved, which can silently distort later growth calculations (a video missing from one day's snapshot looks the same as "no change" rather than "we don't actually know").
 
-This should be resolved as part of formalizing the snapshot model in 1.6, not before. Two options to choose between:
+This should be resolved as part of formalizing the snapshot model in 1.6, not before. Two options were weighed:
 
 1. **Log-only summary**: print an end-of-run summary (e.g. "collected 96,200 / 96,262 videos, 62 skipped") without changing the saved snapshot format.
 2. **Snapshot-level metadata**: store completeness information alongside the snapshot data itself (e.g. requested count / skipped video IDs), so incompleteness is visible from the data, not just the run log.
+
+**Decision: Option 2 (snapshot-level metadata).** A log line alone isn't queryable by future analytics — a video missing from a day's snapshot would still be indistinguishable from a video that simply wasn't due that day. `main.py` now persists a `SnapshotRunSummary` (`snapshot_store.py`) alongside each day's snapshot file: `requestedCount`, `collectedCount`, and a `skipped` list are written to a companion `{date}.summary.json` file every run, not only when something was skipped — including the worst case where every batch fails and zero videos are collected, since that's the case future analytics needs the record for most. Each skipped video also carries its `reason` (e.g. a YouTube API/network failure vs. a malformed or missing item), not just its ID, so a run's completeness can be checked later without digging through console logs. The console warning line remains for immediate visibility, but the durable record now lives in stored data.
+
+The snapshot file and its run-summary file are written as one recoverable pair (`save_daily_collection`): if the summary write fails after the snapshot write succeeds, the snapshot is rolled back rather than left orphaned, so a retry isn't permanently blocked by a stray file that exclusive-create would otherwise refuse to touch again.
 
 #### Definition of Done
 
@@ -417,7 +426,7 @@ This should be resolved as part of formalizing the snapshot model in 1.6, not be
 - Retry/idempotency strategy is defined.
 - Data is migration-friendly.
 - Attributes remain explicit and readable.
-- A decision has been made (and implemented) on how partial/incomplete snapshots are represented (see "Known Issue" above).
+- A decision has been made (and implemented) on how partial/incomplete snapshots are represented: snapshot-level metadata, persisted via a per-day run summary (see "Known Issue" above).
 
 #### Out of Scope
 
@@ -488,7 +497,7 @@ $5 stronger warning
 
 #### Goal
 
-Run the collector without requiring the Mac to remain powered on.
+Run the collector without requiring the Windows dev machine to remain powered on.
 
 #### Scope
 
@@ -674,7 +683,7 @@ No server stays running between executions.
 #### Definition of Done
 
 - Collector runs automatically every day.
-- Mac can be powered off.
+- Windows dev machine can be powered off.
 - Execution appears in CloudWatch.
 - Failures are observable.
 
@@ -1429,9 +1438,11 @@ DynamoDB data should remain migration-friendly from the beginning.
 
 ## Current Priority
 
+Phase 1 (Local Data Collection Foundation, sections 1.1–1.6) is implemented and running locally against the real YouTube API.
+
 The immediate priority is:
 
-> Start collecting historical raw data as early as possible.
+> Move collection onto AWS (Phase 2) so it runs on a daily schedule without a local machine staying on.
 
 Initial target creator groups:
 
