@@ -1,3 +1,4 @@
+import itertools
 from datetime import date, timedelta
 
 from tracking_schedule import MEDIUM_CYCLE_DAYS, OLD_CYCLE_DAYS, is_due_today
@@ -110,7 +111,7 @@ def test_no_gap_exceeds_thirty_days_across_medium_to_old_transition():
     today = date(2026, 8, 30)
     # Simulate each video from age 150 to age 220, spanning the day-181 transition.
     published_at = _published_days_ago(150, today)
-    max_offset = 70  # covers ages 150..220
+    max_offset = 71  # range(71) is offsets 0..70, i.e. ages 150..220 inclusive
 
     for video_id in (f"video_{i}" for i in range(30)):
         due_offsets = [
@@ -118,7 +119,7 @@ def test_no_gap_exceeds_thirty_days_across_medium_to_old_transition():
             for offset in range(max_offset)
             if is_due_today(video_id, published_at, today + timedelta(days=offset))
         ]
-        gaps = [b - a for a, b in zip(due_offsets, due_offsets[1:])]
+        gaps = [b - a for a, b in itertools.pairwise(due_offsets)]
         assert all(gap <= OLD_CYCLE_DAYS for gap in gaps), f"{video_id} had a gap > {OLD_CYCLE_DAYS}: {gaps}"
 
 

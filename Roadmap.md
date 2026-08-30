@@ -262,7 +262,7 @@ Discovery and Statistics Collection are separate responsibilities: Discovery dec
 
 #### 1.4.5 Daily Raw Snapshot
 
-- Save a snapshot of a tracked video's public statistics whenever it is due for collection (see 1.5 Tiered Tracking Frequency — not every video is due every day).
+- Save a snapshot of a tracked video's public statistics whenever it is due for collection: daily for recent videos, every 7 days for medium-age videos, every 30 days for old videos (see 1.5 Tiered Tracking Frequency for the exact tier boundaries and rotation).
 - Store `videoId`.
 - Store the snapshot time/date.
 - Store `viewCount`.
