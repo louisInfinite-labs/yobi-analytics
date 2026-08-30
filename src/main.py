@@ -42,10 +42,13 @@ def main() -> int:
     try:
         youtube = build_youtube_client(api_key)
 
+        creator_by_id = {creator.creator_id: creator for creator in active_creators}
+
         # Load Video Master once for the whole run rather than once per creator,
         # and write the accumulated new videos back once at the end.
         known_videos = load_videos()
         published_at_by_id = {video.video_id: video.published_at for video in known_videos}
+        creator_id_by_video_id = {video.video_id: video.creator_id for video in known_videos}
 
         tracking_universe: list[str] = []
         newly_discovered: list[Video] = []
@@ -68,6 +71,7 @@ def main() -> int:
                 )
                 newly_discovered.extend(new_videos)
                 published_at_by_id.update({video.video_id: video.published_at for video in new_videos})
+                creator_id_by_video_id.update({video.video_id: video.creator_id for video in new_videos})
                 tracking_universe.extend(known_ids | set(new_video_ids))
             except YouTubeAPIError as exc:
                 print(f"Warning: discovery failed for {creator.display_name} ({creator.organization}): {exc}")
@@ -101,8 +105,27 @@ def main() -> int:
         print("No video data returned.")
         return 0
 
+    # Roadmap 1.6 "Known Issue": due_today videos that didn't come back with
+    # usable statistics (a failed batch, a member-only video, etc.) are
+    # simply absent from `videos` — this log line is the only record of that,
+    # so a partial snapshot can be told apart from a complete one after the fact.
+    skipped_count = len(due_today) - len(videos)
+    if skipped_count:
+        print(f"Warning: collected {len(videos)}/{len(due_today)} due video(s); {skipped_count} skipped\n")
+
+    observed_at = collection_time.isoformat()
+    snapshot_date = collection_time.date().isoformat()
     snapshots = [
-        Snapshot(video_id=video["videoId"], observed_at=collection_time.isoformat(), view_count=video["viewCount"])
+        Snapshot(
+            snapshot_date=snapshot_date,
+            observed_at=observed_at,
+            creator_id=creator_id_by_video_id[video["videoId"]],
+            video_id=video["videoId"],
+            title=video["title"],
+            published_at=video["publishedAt"],
+            view_count=video["viewCount"],
+            organization=creator_by_id[creator_id_by_video_id[video["videoId"]]].organization,
+        )
         for video in videos
     ]
 

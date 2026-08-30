@@ -17,11 +17,22 @@ class SnapshotStoreError(JsonStoreError):
 
 @dataclass(frozen=True)
 class Snapshot:
-    """A single video's raw public-statistics snapshot for one point in time."""
+    """A single video's raw public-statistics snapshot for one point in time.
 
-    video_id: str
+    Carries creatorId/organization/title/publishedAt alongside the raw
+    viewCount so each record is self-contained (Roadmap 1.6) — readable and
+    migration-friendly without needing to cross-reference Video/Creator
+    Master to make sense of a snapshot file on its own.
+    """
+
+    snapshot_date: str
     observed_at: str
+    creator_id: str
+    video_id: str
+    title: str
+    published_at: str
     view_count: int
+    organization: str
 
 
 def snapshot_path_for(snapshot_date: date, directory: Path = DEFAULT_SNAPSHOTS_DIR) -> Path:
@@ -49,7 +60,12 @@ def save_daily_snapshot(
 def _to_raw(snapshot: Snapshot) -> dict:
     """Convert a Snapshot instance into its JSON-serializable form."""
     return {
-        "videoId": snapshot.video_id,
+        "snapshotDate": snapshot.snapshot_date,
         "observedAt": snapshot.observed_at,
+        "creatorId": snapshot.creator_id,
+        "videoId": snapshot.video_id,
+        "title": snapshot.title,
+        "publishedAt": snapshot.published_at,
         "viewCount": snapshot.view_count,
+        "organization": snapshot.organization,
     }
