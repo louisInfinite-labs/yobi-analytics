@@ -287,20 +287,6 @@ Analytics
 
 Discovery, Snapshot, and Analytics must not be merged into a single function/responsibility.
 
-#### Tracking Lifecycle — Open Question
-
-Once a video enters the Tracking Universe, how long should it keep being tracked daily? **This is not decided yet** and must not be implemented or assumed during 1.4. It is recorded here as an open design question for a future decision.
-
-Possible directions include:
-
-```text
-Track every video daily, forever
-Track new videos daily, reduce snapshot frequency for older videos
-Adjust snapshot frequency based on video age / recent activity
-```
-
-Do not implement or pick one of these during 1.4.
-
 #### Definition of Done
 
 - A Channel ID can be resolved to its Uploads Playlist ID.
@@ -318,11 +304,46 @@ Do not implement or pick one of these during 1.4.
 - User subscriptions
 - Live notification logic
 - AI recommendations
-- Deciding the tracking lifecycle / retention frequency for older videos (see "Tracking Lifecycle — Open Question" above)
+- Deciding the tracking frequency for older videos (see 1.5, next)
 
 ---
 
-### 1.5 Raw Daily Snapshot Model
+### 1.5 Tiered Tracking Frequency
+
+#### Goal
+
+Once a video enters the Tracking Universe, how often should it keep being checked? Keep same-day precision on videos that are actually likely to move day-to-day, while cutting daily quota usage enough to comfortably support scaling to more organizations (Hololive EN/ID, and beyond) without approaching the 10,000-unit daily cap.
+
+#### Scope
+
+Assign every tracked video to an age tier based on `publishedAt` at check time:
+
+```text
+Recent  (0–30 days old)   → checked every day
+Medium  (31–180 days old) → checked once every 7 days
+Old     (180+ days old)   → checked once every 30 days
+```
+
+Videos rotate through their tier's cycle using a **stable ID-based rotation key** (e.g. a hash of `videoId`, or its position modulo the cycle length) — **not** a calendar-based trigger such as "every Sunday" or "on the last day of the month". Calendar-based triggers can collide (e.g. a month-end that falls on the weekly trigger day), spiking that day's workload; an ID-based rotation splits each tier's pool into equal slices ahead of time, so every day's workload is roughly the same regardless of the date.
+
+Discovery (1.4.2/1.4.3) is unaffected by this — it keeps running daily for every active creator, since it is already cheap (roughly 1–2 units/creator/day) and is a separate concern from how often a video's *statistics* get refreshed.
+
+#### Definition of Done
+
+- Every tracked video is assigned to exactly one age tier (recent/medium/old) based on `publishedAt`, using an ID-based rotation key rather than a calendar-based trigger.
+- Recent videos (0–30 days) get a fresh snapshot every day; medium and old videos get one at least once per their tier's cycle (7 / 30 days).
+- No single day's statistics-collection workload spikes meaningfully above the daily average, even in a worst-case tier alignment.
+- Daily quota usage stays well within the 10,000-unit budget at current + planned scale (VSPO + Hololive JP/EN/ID).
+
+#### Out of Scope
+
+- Per-organization/region scheduling (e.g. staggering by JP/EN) — superseded by the age-based tiering above
+- Dynamically promoting an old video back to a faster tier based on renewed activity — tier is purely a function of video age for now
+- Requesting a YouTube API quota increase from Google — this project's use case (bulk statistics harvesting for analytics) falls into a category Google frequently denies; tiering is the reliable lever, not a quota request
+
+---
+
+### 1.6 Raw Daily Snapshot Model
 
 #### Goal
 
@@ -381,7 +402,7 @@ Do not only store calculated rankings.
 
 Since 1.4, when Statistics Collection cannot parse a video's data (e.g. a members-only video with hidden statistics), that video is skipped with a printed warning only — the saved snapshot contains no record that anything was skipped. A partial snapshot currently looks identical to a complete one once saved, which can silently distort later growth calculations (a video missing from one day's snapshot looks the same as "no change" rather than "we don't actually know").
 
-This should be resolved as part of formalizing the snapshot model in 1.5, not before. Two options to choose between:
+This should be resolved as part of formalizing the snapshot model in 1.6, not before. Two options to choose between:
 
 1. **Log-only summary**: print an end-of-run summary (e.g. "collected 96,200 / 96,262 videos, 62 skipped") without changing the saved snapshot format.
 2. **Snapshot-level metadata**: store completeness information alongside the snapshot data itself (e.g. requested count / skipped video IDs), so incompleteness is visible from the data, not just the run log.

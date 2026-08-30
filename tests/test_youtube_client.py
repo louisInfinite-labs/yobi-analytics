@@ -2,13 +2,64 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from youtube_client import YouTubeAPIError, _fetch_batch, get_video_statistics
+from youtube_client import MAX_RETRIES, YouTubeAPIError, _fetch_batch, call_youtube_api, get_video_statistics
 
 
 def _make_youtube_client(response):
     youtube = MagicMock()
     youtube.videos.return_value.list.return_value.execute.return_value = response
     return youtube
+
+
+def test_call_youtube_api_retries_transient_errors_then_succeeds(monkeypatch):
+    """A connection error on the first attempt is retried and succeeds on the second."""
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    executor = MagicMock(side_effect=[ConnectionError("blip"), "ok"])
+
+    result = call_youtube_api(executor)
+
+    assert result == "ok"
+    assert executor.call_count == 2
+
+
+def test_call_youtube_api_gives_up_after_max_retries(monkeypatch):
+    """After MAX_RETRIES consecutive transient failures, it raises instead of retrying forever."""
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    executor = MagicMock(side_effect=ConnectionError("persistent blip"))
+
+    with pytest.raises(YouTubeAPIError, match="after 3 attempts"):
+        call_youtube_api(executor)
+
+    assert executor.call_count == MAX_RETRIES
+
+
+def test_call_youtube_api_retries_dns_and_ssl_failures(monkeypatch):
+    """DNS resolution and SSL/TLS failures (both OSError subclasses, e.g. from a
+    flaky local network, not just the API's own ConnectionError/TimeoutError)
+    are retried the same way."""
+    import socket
+    import ssl
+
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+
+    for local_network_error in (socket.gaierror("DNS lookup failed"), ssl.SSLError("handshake failed")):
+        executor = MagicMock(side_effect=[local_network_error, "ok"])
+        result = call_youtube_api(executor)
+        assert result == "ok"
+
+
+def test_call_youtube_api_does_not_retry_http_errors(monkeypatch):
+    """An HTTP-level error (e.g. 403/404) fails immediately without retrying."""
+    from googleapiclient.errors import HttpError
+
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    response = MagicMock(status=404, reason="Not Found")
+    executor = MagicMock(side_effect=HttpError(response, b"not found"))
+
+    with pytest.raises(YouTubeAPIError):
+        call_youtube_api(executor)
+
+    assert executor.call_count == 1
 
 
 def test_returns_structured_data_for_valid_video():
@@ -126,8 +177,9 @@ def test_malformed_video_item_is_skipped_with_a_warning(capsys):
     assert "abc123" in capsys.readouterr().out
 
 
-def test_one_failing_batch_does_not_abort_the_others(capsys):
-    """If one batch's API call fails, other batches still get processed and returned."""
+def test_one_failing_batch_does_not_abort_the_others(monkeypatch, capsys):
+    """If one batch exhausts its retries, other batches still get processed and returned."""
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
     youtube = MagicMock()
     good_response = {
         "items": [
@@ -140,7 +192,9 @@ def test_one_failing_batch_does_not_abort_the_others(capsys):
         ]
     }
     youtube.videos.return_value.list.return_value.execute.side_effect = [
-        ConnectionError("network blip"),  # first batch call fails
+        ConnectionError("network blip"),  # first batch: fails all 3 attempts
+        ConnectionError("network blip"),
+        ConnectionError("network blip"),
         good_response,  # second batch succeeds
     ]
     video_ids = [f"id{i}" for i in range(60)]

@@ -14,6 +14,7 @@ from config import MissingAPIKeyError, get_api_key
 from creator_master import Creator, get_active_creators
 from googleapiclient.discovery import Resource
 from snapshot_store import Snapshot, SnapshotStoreError, save_daily_snapshot
+from tracking_schedule import is_due_today
 from video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
 from video_master import Video, VideoMasterError, load_video_ids_for_creator, load_videos, upsert_videos
 from youtube_client import YouTubeAPIError, build_youtube_client, get_video_statistics
@@ -36,12 +37,15 @@ def main() -> int:
         print("No active creators.")
         return 0
 
+    collection_time = datetime.now(COLLECTION_TIMEZONE)
+
     try:
         youtube = build_youtube_client(api_key)
 
         # Load Video Master once for the whole run rather than once per creator,
         # and write the accumulated new videos back once at the end.
         known_videos = load_videos()
+        published_at_by_id = {video.video_id: video.published_at for video in known_videos}
 
         tracking_universe: list[str] = []
         newly_discovered: list[Video] = []
@@ -63,6 +67,7 @@ def main() -> int:
                     f"{len(new_video_ids)} new video(s) discovered"
                 )
                 newly_discovered.extend(new_videos)
+                published_at_by_id.update({video.video_id: video.published_at for video in new_videos})
                 tracking_universe.extend(known_ids | set(new_video_ids))
             except YouTubeAPIError as exc:
                 print(f"Warning: discovery failed for {creator.display_name} ({creator.organization}): {exc}")
@@ -71,19 +76,31 @@ def main() -> int:
         if newly_discovered:
             upsert_videos(newly_discovered)
 
-        videos = get_video_statistics(youtube, tracking_universe)
+        # Tiered Tracking Frequency (Roadmap 1.5): recent videos are checked
+        # every day; older videos rotate through a longer cycle, so the daily
+        # statistics-collection workload stays low as the Tracking Universe
+        # grows. A newly discovered video always gets its first check today.
+        newly_discovered_ids = {video.video_id for video in newly_discovered}
+        today = collection_time.date()
+        due_today = [
+            video_id
+            for video_id in tracking_universe
+            if video_id in newly_discovered_ids or is_due_today(video_id, published_at_by_id[video_id], today)
+        ]
+        print(f"Tracking universe: {len(tracking_universe)} video(s), {len(due_today)} due for a check today\n")
+
+        videos = get_video_statistics(youtube, due_today)
     except (YouTubeAPIError, VideoMasterError) as exc:
         print(f"Error: {exc}")
         return 1
 
     if not videos:
-        if tracking_universe:
-            print(f"Error: {len(tracking_universe)} video(s) were tracked, but none returned usable statistics.")
+        if due_today:
+            print(f"Error: {len(due_today)} video(s) were due for a check, but none returned usable statistics.")
             return 1
         print("No video data returned.")
         return 0
 
-    collection_time = datetime.now(COLLECTION_TIMEZONE)
     snapshots = [
         Snapshot(video_id=video["videoId"], observed_at=collection_time.isoformat(), view_count=video["viewCount"])
         for video in videos
