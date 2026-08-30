@@ -5,9 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from json_store import JsonStoreError, load_json_list, write_json_list
+from json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list
 
-DEFAULT_VIDEO_MASTER_PATH = Path(__file__).parent / "video_master.json"
+# DATA_DIR defaults to this package's own directory locally, but is overridden
+# to /tmp on Lambda, where the deployment package itself is read-only (see
+# Roadmap 2.2 "Known Constraint").
+DEFAULT_VIDEO_MASTER_PATH = DATA_DIR / "video_master.json"
 
 
 class VideoMasterError(JsonStoreError):

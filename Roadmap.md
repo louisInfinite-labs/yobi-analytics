@@ -523,6 +523,12 @@ Lambda should:
 
 Do not log secrets.
 
+#### Known Constraint: Lambda's Deployment Package Is Read-Only
+
+The local JSON stores (`creators.json`, `video_master.json`, `snapshots/`) default to writing next to the source code (`Path(__file__).parent`). Lambda's deployment package directory is read-only at runtime — a write there raises `PermissionError`, not just "doesn't persist." A `YOBI_DATA_DIR` environment variable (read once, at import time, by `json_store.DATA_DIR`) overrides that base directory; local development is unaffected (unset by default), while the Lambda deployment sets it to `/tmp`, the only writable path in the Lambda execution environment.
+
+This does not make snapshot data durable — `/tmp` is wiped on cold start and isn't shared across invocations. It only lets the real collection job run on Lambda without crashing, so 2.2 can prove out deployment/invocation/logging mechanics. Durable storage is Roadmap 2.3's job (moving to DynamoDB), not this section's.
+
 #### Definition of Done
 
 - Python code can be packaged.

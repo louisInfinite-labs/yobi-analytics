@@ -5,9 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from json_store import JsonStoreError, load_json_list
+from json_store import DATA_DIR, JsonStoreError, load_json_list
 
-DEFAULT_CREATORS_PATH = Path(__file__).parent / "creators.json"
+# DATA_DIR defaults to this package's own directory locally, but is overridden
+# to /tmp on Lambda, where the deployment package itself is read-only (see
+# Roadmap 2.2 "Known Constraint").
+DEFAULT_CREATORS_PATH = DATA_DIR / "creators.json"
 
 
 class CreatorMasterError(JsonStoreError):
