@@ -92,6 +92,36 @@ def test_full_cycle_covers_every_medium_tier_video_exactly_once():
     assert all(count == 1 for count in due_counts.values())
 
 
+def test_medium_to_old_transition_always_triggers_a_check():
+    """A video is always due the day it turns 181 (MEDIUM_MAX_AGE_DAYS + 1) days
+    old, regardless of its rotation slot, so the transition itself can't be missed."""
+    today = date(2026, 8, 30)
+
+    for video_id in ("video_a", "video_b", "video_c", "video_d", "video_e"):
+        published_at = _published_days_ago(181, today)
+        assert is_due_today(video_id, published_at, today) is True
+
+
+def test_no_gap_exceeds_thirty_days_across_medium_to_old_transition():
+    """The medium (7-day) and old (30-day) cycles use independent rotation phases;
+    without a forced check at the transition, a video could go ~35 days without
+    one (e.g. last due at age 175, not due again until age 210). Verify the
+    largest gap between consecutive due-days, for many video IDs, stays <= 30."""
+    today = date(2026, 8, 30)
+    # Simulate each video from age 150 to age 220, spanning the day-181 transition.
+    published_at = _published_days_ago(150, today)
+    max_offset = 70  # covers ages 150..220
+
+    for video_id in (f"video_{i}" for i in range(30)):
+        due_offsets = [
+            offset
+            for offset in range(max_offset)
+            if is_due_today(video_id, published_at, today + timedelta(days=offset))
+        ]
+        gaps = [b - a for a, b in zip(due_offsets, due_offsets[1:])]
+        assert all(gap <= OLD_CYCLE_DAYS for gap in gaps), f"{video_id} had a gap > {OLD_CYCLE_DAYS}: {gaps}"
+
+
 def test_full_cycle_covers_every_old_tier_video_exactly_once():
     """Across OLD_CYCLE_DAYS consecutive days, each old-tier video is due exactly once."""
     today = date(2026, 8, 30)

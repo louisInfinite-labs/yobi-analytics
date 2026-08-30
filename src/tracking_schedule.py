@@ -31,6 +31,12 @@ def is_due_today(video_id: str, published_at: str, as_of: date) -> bool:
 
     if age_days <= RECENT_MAX_AGE_DAYS:
         return True
+    if age_days == MEDIUM_MAX_AGE_DAYS + 1:
+        # The medium (7-day) and old (30-day) cycles use independent rotation
+        # keys, so their phases are unrelated. Without forcing a check right
+        # at this transition, a video could go up to ~35 days without one
+        # (e.g. last checked at age 175, not due again until age 210).
+        return True
 
     cycle_days = MEDIUM_CYCLE_DAYS if age_days <= MEDIUM_MAX_AGE_DAYS else OLD_CYCLE_DAYS
     return _rotation_slot(video_id, cycle_days) == as_of.toordinal() % cycle_days
