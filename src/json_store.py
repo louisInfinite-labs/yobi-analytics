@@ -7,6 +7,16 @@ import os
 import tempfile
 from pathlib import Path
 
+# Defaults to this package's own directory for local development. AWS Lambda's
+# deployment package directory is read-only at runtime, so the Lambda handler
+# sets YOBI_DATA_DIR to /tmp (the only writable path there) before this module
+# is imported — that data does not persist across cold starts; Roadmap 2.3
+# moves durable storage to DynamoDB.
+# `or` (not `.get(key, default)`) so an accidentally-blank YOBI_DATA_DIR falls
+# back to the default too, instead of silently resolving to "." (the current
+# working directory — /var/task, Lambda's own read-only deployment dir).
+DATA_DIR = Path(os.environ.get("YOBI_DATA_DIR") or str(Path(__file__).parent))
+
 
 class JsonStoreError(RuntimeError):
     """Raised when a JSON-file-backed store is malformed, unreadable, or unwritable."""

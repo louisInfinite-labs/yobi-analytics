@@ -6,9 +6,13 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from json_store import JsonStoreError, write_json_list_exclusive, write_json_object_exclusive
+from json_store import DATA_DIR, JsonStoreError, write_json_list_exclusive, write_json_object_exclusive
 
-DEFAULT_SNAPSHOTS_DIR = Path(__file__).parent / "snapshots"
+# DATA_DIR defaults to this package's own directory locally, but is overridden
+# to /tmp on Lambda, where the deployment package itself is read-only (see
+# Roadmap 2.2 "Known Constraint"). /tmp is wiped on cold start, so this is not
+# durable storage — that's Roadmap 2.3 (DynamoDB), not this module's job.
+DEFAULT_SNAPSHOTS_DIR = DATA_DIR / "snapshots"
 
 
 class SnapshotStoreError(JsonStoreError):
