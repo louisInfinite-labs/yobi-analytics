@@ -415,7 +415,7 @@ This should be resolved as part of formalizing the snapshot model in 1.6, not be
 1. **Log-only summary**: print an end-of-run summary (e.g. "collected 96,200 / 96,262 videos, 62 skipped") without changing the saved snapshot format.
 2. **Snapshot-level metadata**: store completeness information alongside the snapshot data itself (e.g. requested count / skipped video IDs), so incompleteness is visible from the data, not just the run log.
 
-**Decision: Option 1 (log-only summary).** `main.py` prints a warning line (`collected X/Y due video(s); Z skipped`) whenever a run doesn't collect statistics for every video that was due, right before the snapshot is saved. The saved snapshot format itself is unchanged — completeness is a run-log concern, not a data-model concern.
+**Decision: Option 2 (snapshot-level metadata).** A log line alone isn't queryable by future analytics — a video missing from a day's snapshot would still be indistinguishable from a video that simply wasn't due that day. `main.py` now persists a `SnapshotRunSummary` (`snapshot_store.py`) alongside each day's snapshot file: `requestedCount`, `collectedCount`, and `skippedVideoIds` are written to a companion `{date}.summary.json` file every run, not only when something was skipped. The console warning line remains for immediate visibility, but the durable record now lives in stored data.
 
 #### Definition of Done
 
@@ -424,7 +424,7 @@ This should be resolved as part of formalizing the snapshot model in 1.6, not be
 - Retry/idempotency strategy is defined.
 - Data is migration-friendly.
 - Attributes remain explicit and readable.
-- A decision has been made (and implemented) on how partial/incomplete snapshots are represented: log-only summary (see "Known Issue" above).
+- A decision has been made (and implemented) on how partial/incomplete snapshots are represented: snapshot-level metadata, persisted via a per-day run summary (see "Known Issue" above).
 
 #### Out of Scope
 

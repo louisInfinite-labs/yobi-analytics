@@ -234,17 +234,26 @@ Later phases will replace manually entered Video IDs with automatic video discov
 
 The project should use a fixed Python version that is compatible with:
 
-- Windows local development (dev, testing, and production all run on Windows 10)
-- AWS Lambda
+- Windows 10 local development and testing
+- AWS Lambda's Amazon Linux-based execution environment in production
 - required Python libraries
+
+Windows-built native dependencies are not guaranteed to run in Lambda's Amazon Linux runtime — package for Lambda accordingly when Phase 2 deployment is implemented.
 
 Project dependencies should be isolated using a local virtual environment.
 
-Example:
+Example (Git Bash):
 
 ```bash
 python -m venv .venv
 source .venv/Scripts/activate
+```
+
+Example (PowerShell):
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 ```
 
 Do not install project dependencies globally unless there is a specific reason.

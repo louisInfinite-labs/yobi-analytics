@@ -13,7 +13,7 @@ if hasattr(sys.stdout, "reconfigure"):
 from config import MissingAPIKeyError, get_api_key
 from creator_master import Creator, get_active_creators
 from googleapiclient.discovery import Resource
-from snapshot_store import Snapshot, SnapshotStoreError, save_daily_snapshot
+from snapshot_store import Snapshot, SnapshotRunSummary, SnapshotStoreError, save_daily_snapshot, save_run_summary
 from tracking_schedule import is_due_today
 from video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
 from video_master import Video, VideoMasterError, load_video_ids_for_creator, load_videos, upsert_videos
@@ -107,11 +107,13 @@ def main() -> int:
 
     # Roadmap 1.6 "Known Issue": due_today videos that didn't come back with
     # usable statistics (a failed batch, a member-only video, etc.) are
-    # simply absent from `videos` — this log line is the only record of that,
-    # so a partial snapshot can be told apart from a complete one after the fact.
-    skipped_count = len(due_today) - len(videos)
-    if skipped_count:
-        print(f"Warning: collected {len(videos)}/{len(due_today)} due video(s); {skipped_count} skipped\n")
+    # simply absent from `videos`. That's recorded in a persisted run summary
+    # (not just this log line) so a partial snapshot can be told apart from a
+    # complete one later, from stored data rather than from console output.
+    collected_ids = {video["videoId"] for video in videos}
+    skipped_video_ids = [video_id for video_id in due_today if video_id not in collected_ids]
+    if skipped_video_ids:
+        print(f"Warning: collected {len(videos)}/{len(due_today)} due video(s); {len(skipped_video_ids)} skipped\n")
 
     observed_at = collection_time.isoformat()
     snapshot_date = collection_time.date().isoformat()
@@ -129,13 +131,22 @@ def main() -> int:
         for video in videos
     ]
 
+    run_summary = SnapshotRunSummary(
+        snapshot_date=snapshot_date,
+        requested_count=len(due_today),
+        collected_count=len(videos),
+        skipped_video_ids=skipped_video_ids,
+    )
+
     try:
         snapshot_path = save_daily_snapshot(snapshots, collection_time.date())
+        summary_path = save_run_summary(run_summary, collection_time.date())
     except (FileExistsError, SnapshotStoreError) as exc:
         print(f"Error: {exc}")
         return 1
 
-    print(f"Saved {len(snapshots)} snapshot(s) to {snapshot_path}\n")
+    print(f"Saved {len(snapshots)} snapshot(s) to {snapshot_path}")
+    print(f"Saved run summary to {summary_path}\n")
 
     for video in videos:
         print(
