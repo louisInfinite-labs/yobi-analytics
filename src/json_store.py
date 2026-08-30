@@ -26,6 +26,11 @@ def load_json_list(path: Path, *, store_name: str, error_class: type[Exception] 
 
     if not isinstance(data, list):
         raise error_class(f"{store_name} file {path} must contain a JSON array, got {type(data).__name__}")
+    for index, record in enumerate(data):
+        if not isinstance(record, dict):
+            raise error_class(
+                f"{store_name} file {path} has a non-object record at index {index}: {type(record).__name__}"
+            )
     return data
 
 

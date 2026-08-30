@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from video_master import Video, VideoMasterError, load_video_ids_for_creator, load_videos, upsert_videos
@@ -95,6 +97,17 @@ def test_load_videos_raises_on_record_missing_field(tmp_path):
     """A record missing a required field raises VideoMasterError, not a raw KeyError."""
     path = tmp_path / "video_master.json"
     path.write_text('[{"videoId": "v1"}]', encoding="utf-8")
+
+    with pytest.raises(VideoMasterError):
+        load_videos(path)
+
+
+@pytest.mark.parametrize("bad_record", [None, ["not", "an", "object"], "a string", 42])
+def test_load_videos_raises_on_non_object_record(tmp_path, bad_record):
+    """A list element that isn't a JSON object (null, array, string, number) is
+    rejected before it reaches field-parsing, instead of crashing with AttributeError."""
+    path = tmp_path / "video_master.json"
+    path.write_text(json.dumps([bad_record]), encoding="utf-8")
 
     with pytest.raises(VideoMasterError):
         load_videos(path)
