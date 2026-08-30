@@ -15,3 +15,6 @@ venv/
 # Locally collected data (regenerated from the YouTube API / rebuilt by discovery)
 src/video_master.json
 src/snapshots/
+
+# Lambda deployment package (rebuilt by scripts/package_lambda.py)
+build/
