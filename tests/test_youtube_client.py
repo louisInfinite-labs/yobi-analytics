@@ -77,7 +77,7 @@ def test_returns_structured_data_for_valid_video():
     }
     youtube = _make_youtube_client(response)
 
-    result = get_video_statistics(youtube, ["abc123"])
+    result, skip_reasons = get_video_statistics(youtube, ["abc123"])
 
     assert result == [
         {
@@ -87,24 +87,27 @@ def test_returns_structured_data_for_valid_video():
             "viewCount": 125000,
         }
     ]
+    assert skip_reasons == {}
 
 
 def test_empty_video_ids_returns_empty_list_without_calling_api():
     youtube = MagicMock()
 
-    result = get_video_statistics(youtube, [])
+    result, skip_reasons = get_video_statistics(youtube, [])
 
     assert result == []
+    assert skip_reasons == {}
     youtube.videos.assert_not_called()
 
 
 def test_invalid_video_id_is_skipped_with_a_warning(capsys):
     youtube = _make_youtube_client({"items": []})
 
-    result = get_video_statistics(youtube, ["does_not_exist"])
+    result, skip_reasons = get_video_statistics(youtube, ["does_not_exist"])
 
     assert result == []
     assert "does_not_exist" in capsys.readouterr().out
+    assert "does_not_exist" in skip_reasons
 
 
 def test_fetch_batch_raises_on_missing_items():
@@ -128,10 +131,11 @@ def test_get_video_statistics_skips_a_batch_that_fails_outright(capsys):
     not raised, so it doesn't abort statistics collection for other batches."""
     youtube = _make_youtube_client({})
 
-    result = get_video_statistics(youtube, ["abc123"])
+    result, skip_reasons = get_video_statistics(youtube, ["abc123"])
 
     assert result == []
     assert "abc123" not in capsys.readouterr().out  # no per-video warning, just a batch-level one
+    assert "YouTube API error" in skip_reasons["abc123"]
 
 
 def test_hidden_view_count_is_skipped_with_a_warning(capsys):
@@ -149,10 +153,11 @@ def test_hidden_view_count_is_skipped_with_a_warning(capsys):
         }
     )
 
-    result = get_video_statistics(youtube, ["hidden1"])
+    result, skip_reasons = get_video_statistics(youtube, ["hidden1"])
 
     assert result == []
     assert "hidden1" in capsys.readouterr().out
+    assert "hidden1" in skip_reasons
 
 
 def test_malformed_video_item_is_skipped_with_a_warning(capsys):
@@ -171,10 +176,11 @@ def test_malformed_video_item_is_skipped_with_a_warning(capsys):
         }
     )
 
-    result = get_video_statistics(youtube, ["abc123", "def456"])
+    result, skip_reasons = get_video_statistics(youtube, ["abc123", "def456"])
 
     assert [video["videoId"] for video in result] == ["def456"]
     assert "abc123" in capsys.readouterr().out
+    assert "abc123" in skip_reasons
 
 
 def test_one_failing_batch_does_not_abort_the_others(monkeypatch, capsys):
@@ -184,25 +190,27 @@ def test_one_failing_batch_does_not_abort_the_others(monkeypatch, capsys):
     good_response = {
         "items": [
             {
-                "id": f"id{i}",
-                "snippet": {"title": f"Video {i}", "publishedAt": "2026-08-25T12:00:00Z"},
+                "id": f"id{50 + i}",
+                "snippet": {"title": f"Video {50 + i}", "publishedAt": "2026-08-25T12:00:00Z"},
                 "statistics": {"viewCount": "1"},
             }
-            for i in range(50)
+            for i in range(10)
         ]
     }
     youtube.videos.return_value.list.return_value.execute.side_effect = [
-        ConnectionError("network blip"),  # first batch: fails all 3 attempts
+        ConnectionError("network blip"),  # first batch (ids 0-49): fails all 3 attempts
         ConnectionError("network blip"),
         ConnectionError("network blip"),
-        good_response,  # second batch succeeds
+        good_response,  # second batch (ids 50-59) succeeds
     ]
     video_ids = [f"id{i}" for i in range(60)]
 
-    result = get_video_statistics(youtube, video_ids)
+    result, skip_reasons = get_video_statistics(youtube, video_ids)
 
-    assert len(result) == 50
+    assert len(result) == 10
     assert "network blip" in capsys.readouterr().out
+    assert len(skip_reasons) == 50
+    assert "YouTube API error" in skip_reasons["id0"]
 
 
 def test_requests_are_batched_at_fifty_ids():

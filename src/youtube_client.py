@@ -58,27 +58,37 @@ def call_youtube_api(request_executor: Callable[[], T]) -> T:
     ) from last_exc
 
 
-def get_video_statistics(youtube: Resource, video_ids: list[str]) -> list[dict]:
+def get_video_statistics(youtube: Resource, video_ids: list[str]) -> tuple[list[dict], dict[str, str]]:
     """Fetch videoId/title/publishedAt/viewCount for the given video IDs.
 
     Requests are batched (up to MAX_IDS_PER_REQUEST ids per call) to keep
     quota usage low. A batch that fails outright is skipped with a warning
     so one bad batch doesn't abort statistics collection for the rest.
+
+    Returns (results, skip_reasons) — skip_reasons maps every video ID that
+    could not be recorded to why (a YouTube API/network failure, a missing
+    video, or a malformed item), so a persisted run summary can show more
+    than a bare count of what went missing.
     """
     if not video_ids:
-        return []
+        return [], {}
 
     results: list[dict] = []
+    skip_reasons: dict[str, str] = {}
     for start in range(0, len(video_ids), MAX_IDS_PER_REQUEST):
         batch = video_ids[start : start + MAX_IDS_PER_REQUEST]
         try:
-            results.extend(_fetch_batch(youtube, batch))
+            batch_results, batch_skip_reasons = _fetch_batch(youtube, batch)
+            results.extend(batch_results)
+            skip_reasons.update(batch_skip_reasons)
         except YouTubeAPIError as exc:
             print(f"Warning: skipping a batch of {len(batch)} video ID(s) due to an API error: {exc}")
-    return results
+            for video_id in batch:
+                skip_reasons[video_id] = f"YouTube API error: {exc}"
+    return results, skip_reasons
 
 
-def _fetch_batch(youtube: Resource, batch: list[str]) -> list[dict]:
+def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[str, str]]:
     response = call_youtube_api(
         lambda: youtube.videos().list(part="snippet,statistics", id=",".join(batch)).execute()
     )
@@ -89,18 +99,23 @@ def _fetch_batch(youtube: Resource, batch: list[str]) -> list[dict]:
     if not all(isinstance(item, dict) for item in items):
         raise YouTubeAPIError("Malformed response from YouTube API: 'items' contains a non-object entry")
 
+    skip_reasons: dict[str, str] = {}
     found_ids = {item.get("id") for item in items}
     missing_ids = [video_id for video_id in batch if video_id not in found_ids]
     if missing_ids:
         print(f"Warning: no data returned for video ID(s): {', '.join(missing_ids)}")
+        for video_id in missing_ids:
+            skip_reasons[video_id] = "No data returned by YouTube API (video may be deleted or private)"
 
     parsed_items: list[dict] = []
     for item in items:
         try:
             parsed_items.append(_parse_video_item(item))
         except YouTubeAPIError as exc:
-            print(f"Warning: skipping video {item.get('id', '<unknown>')}, could not read statistics: {exc}")
-    return parsed_items
+            video_id = item.get("id", "<unknown>")
+            print(f"Warning: skipping video {video_id}, could not read statistics: {exc}")
+            skip_reasons[video_id] = str(exc)
+    return parsed_items, skip_reasons
 
 
 def _parse_video_item(item: dict) -> dict:
