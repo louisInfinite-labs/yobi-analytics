@@ -1,8 +1,29 @@
 import json
+import os
 
 import pytest
 
 from video_master import Video, VideoMasterError, load_video_ids_for_creator, load_videos, upsert_videos
+
+
+def test_upsert_removes_temp_file_when_replace_fails(tmp_path, monkeypatch):
+    """If os.replace fails during a write, the leftover temp file is cleaned up
+    instead of accumulating stale .tmp files in the store directory."""
+    path = tmp_path / "video_master.json"
+
+    def _failing_replace(*_args, **_kwargs):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr("json_store.os.replace", _failing_replace)
+
+    with pytest.raises(VideoMasterError):
+        upsert_videos(
+            [Video(video_id="v1", creator_id="aizawa_ema", title="A", published_at="2026-08-20T00:00:00Z")],
+            path,
+        )
+
+    leftover_tmp_files = [f for f in os.listdir(tmp_path) if f.endswith(".tmp")]
+    assert leftover_tmp_files == []
 
 
 def test_upsert_creates_new_records(tmp_path):

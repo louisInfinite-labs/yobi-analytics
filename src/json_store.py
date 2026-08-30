@@ -39,9 +39,15 @@ def write_json_list(path: Path, data: list, *, store_name: str, error_class: typ
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = _write_temp_json(path, data)
+    except OSError as exc:
+        raise error_class(f"Failed to write {store_name} file {path}: {exc}") from exc
+
+    try:
         os.replace(tmp_path, path)
     except OSError as exc:
         raise error_class(f"Failed to write {store_name} file {path}: {exc}") from exc
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def write_json_list_exclusive(

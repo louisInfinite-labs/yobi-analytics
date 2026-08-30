@@ -250,14 +250,16 @@
     "displayName": "湊あくあ",
     "organization": "hololive",
     "youtubeChannelId": "UC1opHUrw8rvnsadT-iGp7Cg",
-    "active": true
+    "active": true,
+    "discoveryEnabled": false
   },
   {
     "creatorId": "murasaki_shion",
     "displayName": "紫咲シオン",
     "organization": "hololive",
     "youtubeChannelId": "UCXTpFs_3PqI41qX2d9tL2Rw",
-    "active": true
+    "active": true,
+    "discoveryEnabled": false
   },
   {
     "creatorId": "nakiri_ayame",
@@ -342,14 +344,16 @@
     "displayName": "天音かなた",
     "organization": "hololive",
     "youtubeChannelId": "UCZlDXzGoo7d44bwdNObFacg",
-    "active": true
+    "active": true,
+    "discoveryEnabled": false
   },
   {
     "creatorId": "kiryu_coco",
     "displayName": "桐生ココ",
     "organization": "hololive",
     "youtubeChannelId": "UCS9uQI-jC3DE0L4IpXyvr6w",
-    "active": true
+    "active": true,
+    "discoveryEnabled": false
   },
   {
     "creatorId": "tsunomaki_watame",
@@ -448,7 +452,8 @@
     "displayName": "火威青",
     "organization": "hololive",
     "youtubeChannelId": "UCMGfV7TVTmHhEErVJg1oHBQ",
-    "active": true
+    "active": true,
+    "discoveryEnabled": false
   },
   {
     "creatorId": "otonose_kanade",

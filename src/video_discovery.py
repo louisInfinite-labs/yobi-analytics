@@ -98,7 +98,7 @@ def _parse_playlist_item(item: dict) -> dict:
         raise YouTubeAPIError(f"Malformed playlist item, missing field: {exc}") from exc
 
     for field_name, value in (("videoId", video_id), ("title", title), ("publishedAt", published_at)):
-        if not isinstance(value, str):
-            raise YouTubeAPIError(f"Malformed playlist item, non-string {field_name!r}: {value!r}")
+        if not isinstance(value, str) or not value:
+            raise YouTubeAPIError(f"Malformed playlist item, invalid {field_name!r}: {value!r}")
 
     return {"videoId": video_id, "title": title, "publishedAt": published_at}

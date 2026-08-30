@@ -114,4 +114,29 @@ def test_non_string_field_is_skipped_not_crashed(capsys):
     videos = discover_all_videos(youtube, "UU_TEST_UPLOADS")
 
     assert [v["videoId"] for v in videos] == ["vid2"]
-    assert "non-string" in capsys.readouterr().out
+    assert "invalid" in capsys.readouterr().out
+
+
+def test_empty_string_field_is_skipped_not_crashed(capsys):
+    """A playlist item whose videoId is an empty string is skipped instead of being
+    persisted — video_master.py rejects empty strings on the next load, so letting
+    one through here would leave Video Master unreadable on a later run."""
+    youtube = MagicMock()
+    page_1 = {
+        "items": [
+            {
+                "snippet": {
+                    "resourceId": {"videoId": ""},  # empty string, still technically a str
+                    "title": "Some Title",
+                    "publishedAt": "2026-08-20T00:00:00Z",
+                }
+            },
+            _make_playlist_item("vid2", "Video 2", "2026-08-10T00:00:00Z"),
+        ]
+    }
+    youtube.playlistItems.return_value.list.return_value.execute.side_effect = [page_1]
+
+    videos = discover_all_videos(youtube, "UU_TEST_UPLOADS")
+
+    assert [v["videoId"] for v in videos] == ["vid2"]
+    assert "invalid" in capsys.readouterr().out
