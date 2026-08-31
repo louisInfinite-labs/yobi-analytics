@@ -174,12 +174,35 @@ Minimum fields:
 creatorId
 displayName
 organization
+branch
+tags
+channelType
+lifecycleStage
 youtubeChannelId
 active
 discoveryEnabled
+graduatedAt
 ```
 
 `active` controls whether a creator is tracked at all. `discoveryEnabled` is separate: it controls whether Discovery keeps searching for new uploads, independent of whether the creator's already-known videos keep being tracked for statistics — used for graduated/retired creators whose existing videos should keep collecting snapshots without wasting quota scanning for uploads that will never come.
+
+`graduatedAt` is an optional ISO 8601 date, only meaningful when `lifecycleStage` is `graduated`. It is **sparse by design**: a creator who hasn't graduated omits the key entirely rather than storing a placeholder like `"0000"`. This is deliberately chosen to carry over cleanly to DynamoDB later (2.3) — DynamoDB items don't require a fixed set of attributes, and a Global Secondary Index on a sparse attribute like `graduatedAt` only includes items that actually have it set, so "list graduated creators" naturally excludes everyone else without extra filtering logic. `lifecycleStage` always reflects the creator's **current** status, looked up live — there is no historical tracking of "was this creator active as of some earlier date"; once graduated, all of a creator's data (past and present) is treated as belonging to a graduated creator from that point on.
+
+`organization` is the top-level product label (`hololive` or `vspo`). `branch` is region/language only — `holo_jp`, `holo_en`, `holo_id`, `vspo_jp`, `vspo_en` (the latter two not populated yet) — it deliberately does not encode sub-labels like DEV_IS, mekPark, or staff; that belongs in `tags`. `tags` is a **list**, not a single value, because a creator can belong to more than one grouping at once — e.g. Shirakami Fubuki is both `"1期生"` and `"ゲーマーズ"` (Hololive Gamers), and a search for either tag must find her. A creator with no applicable grouping (all current `vspo` creators) uses the placeholder `["NO"]` rather than an empty list, so the field is never null/missing.
+
+`channelType` is `member` (an individual talent's own channel), `group` (an official channel for a unit/generation, not one person), or `staff` (an official non-talent channel, e.g. an announcer/PR channel). `lifecycleStage` is `active`, `pre_debut`, `graduated`, or `retired`, and is independent of the collection toggle `active`: a pre-debut unit can be `lifecycleStage: "pre_debut"` while also having `active: true` (it's still tracked, just hasn't formally debuted). These must be stored fields rather than values inferred from display names. APIs, rankings, and the Dashboard must support hierarchical filtering so group/staff/pre-debut channels are not mistaken for active member rankings.
+
+The following shared/group channels are in `creators.json` (verified via the YouTube Data API), all under `organization: "hololive"` — mekPark's pre-debut units are not a separate organization:
+
+| `creatorId` | Actual YouTube channel name | `branch` | `tags` | `channelType` | `lifecycleStage` | YouTube Channel ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| `hololive_dev_is_regloss` | `hololive DEV_IS ReGLOSS` | `holo_jp` | `["ReGLOSS"]` | `group` | `active` | `UC10wVt6hoQiwySRhz7RdOUA` |
+| `hololive_dev_is_flow_glow` | `hololive DEV_IS FLOW GLOW` | `holo_jp` | `["FLOWGLOW"]` | `group` | `active` | `UCu2n3qHuOuQIygREMnWeQWg` |
+| `achrora` | `ACHRORA - mekPark` | `holo_jp` | `["mekpark"]` | `group` | `pre_debut` | `UChpRPsAeSZn5DistGacR3iA` |
+| `unit_b_pre_debut` | `UNIT B (Pre-Debut) - mekPark` | `holo_jp` | `["mekpark"]` | `group` | `pre_debut` | `UC3OH5FKQ3qtl4uRme_vZTgA` |
+| `holoan_room` | `holoAN room (ホロアナ)` | `holo_jp` | `["aNnounce"]` | `staff` | `active` | `UCozx5csNhCx1wsVq3SZVkBQ` |
+
+ReGLOSS and FLOW GLOW are two distinct hololive DEV_IS channels with different Channel IDs, not the same channel under two names. `holoAN room`'s `aNnounce` tag comes from the channel's own naming (**AN**nounce + **AN**chor), and it posts as hololive Production's shared official announcer persona rather than one individual talent.
 
 Initial organizations:
 
@@ -188,16 +211,38 @@ hololive
 vspo
 ```
 
-Example:
+Example (active creator, `graduatedAt` omitted):
 
 ```json
 {
   "creatorId": "aizawa_ema",
   "displayName": "藍沢エマ",
   "organization": "vspo",
+  "branch": "vspo_jp",
+  "tags": ["NO"],
+  "channelType": "member",
+  "lifecycleStage": "active",
   "youtubeChannelId": "UC...",
   "active": true,
   "discoveryEnabled": true
+}
+```
+
+Example (graduated creator):
+
+```json
+{
+  "creatorId": "gawr_gura",
+  "displayName": "Gawr Gura",
+  "organization": "hololive",
+  "branch": "holo_en",
+  "tags": ["Myth"],
+  "channelType": "member",
+  "lifecycleStage": "graduated",
+  "graduatedAt": "2025-05-01",
+  "youtubeChannelId": "UC...",
+  "active": true,
+  "discoveryEnabled": false
 }
 ```
 
@@ -209,6 +254,10 @@ Creator data should not be hard-coded directly inside collection logic.
 - Collector can load active creators.
 - New creators can be added without changing the collection core.
 - Japanese creator names remain intact.
+- `graduatedAt` is present only for `graduated` creators (sparse — omitted, not a placeholder, for everyone else) and is a valid ISO 8601 date.
+- Every Creator Master entry explicitly stores `organization`, `branch`, `tags`, `channelType`, and `lifecycleStage`; neither backend nor Dashboard may infer classification from names.
+- The real `creators.json` includes all five shared/group channels from the table above with their verified Channel IDs and classification fields.
+- Channel ID uniqueness is maintained — `holoan_room` is one shared staff channel, not duplicated per persona.
 
 #### Out of Scope
 
@@ -234,7 +283,7 @@ YouTube's API only ever reports the current cumulative `viewCount`; it does not 
 #### 1.4.1 Uploads Playlist Resolution
 
 - Resolve Channel ID → Uploads Playlist ID using `channels.list`.
-- Avoid using the expensive Search API (`search.list`) as the primary discovery method.
+- Do not use `search.list` as the primary discovery method. Under the current YouTube quota model it has a separate default daily call bucket, while the cached uploads-playlist path is complete for this use case and costs only 1 general quota unit per `playlistItems.list` call.
 
 #### 1.4.2 Initial Historical Discovery
 
@@ -255,6 +304,21 @@ YouTube's API only ever reports the current cumulative `viewCount`; it does not 
 - Videos that already exist are not recreated.
 - Once a known video is reached, pagination toward older pages can stop.
 
+##### Daily New-Upload Quota Contract
+
+Cache each channel's uploads playlist ID after resolution. During local development, incremental discovery runs in two configurable JST windows: `08:00` and `18:00` in `Asia/Tokyo`. The morning run is the single additional check alongside the existing `18:00` collection run. Each reconciliation reads the first uploads-playlist page with `maxResults=50` and only follows `nextPageToken` while every returned Video ID is still unknown; it stops as soon as an already-known ID proves that the scan has rejoined local history. YouTube does not impose a special "new-video day" timezone on this poll: these are application-owned schedule settings chosen for convenient Japanese development and testing.
+
+```text
+discoveryUnits = sum(playlist pages read for discovery-enabled channels)
+newVideoDetailUnits = ceil(newVideoIdsNotAlreadyInStatisticsRun / 50)
+```
+
+Under the current YouTube quota table, `playlistItems.list`, `channels.list`, and `videos.list` each cost 1 general quota unit per call. With the current roster file's 65 discovery-enabled channels, one normal one-page scan costs about **65 units (0.65% of a 10,000-unit daily quota)**; two scans cost about **130 units/day (1.3%)** before any separate new-video detail batches. If 1–50 new IDs in a window need a separate batched `videos.list`, add 1 unit; preferably merge the `18:00` discoveries into the same day's statistics batch so no duplicate detail request is made. Two playlist pages for every enabled channel in one window would cost 130 units, but that should be exceptional after a missed run rather than the steady state. Resolving uploads playlist IDs with batched `channels.list` is onboarding/roster-change work and must not be repeated every day.
+
+All discovery calls and retries use the same Pacific-day quota ledger and hard caps as statistics collection. Persist pages read, new IDs found, estimated/actual units, and the last successful discovery time per channel. A failed channel scan must be retryable independently and must not cause successful channels or known-video statistics batches to run again.
+
+These two reconciliation windows discover uploads cheaply and repair missed push events; they are not a minute-level live notification mechanism. If near-real-time new-upload notification is added later, prefer YouTube PubSubHubbub/WebSub push callbacks and retain the scheduled playlist scans as reconciliation rather than polling every channel every few minutes.
+
 #### 1.4.4 Statistics Collection
 
 - Use `videos.list` against the Tracking Universe.
@@ -266,13 +330,13 @@ Discovery and Statistics Collection are separate responsibilities: Discovery dec
 
 #### 1.4.5 Daily Raw Snapshot
 
-- Save a snapshot of a tracked video's public statistics whenever it is due for collection: daily for recent videos, every 7 days for medium-age videos, every 30 days for old videos (see 1.5 Tiered Tracking Frequency for the exact tier boundaries and rotation).
+- Save a snapshot whenever a tracked video is due under the adaptive schedule: daily for recent/Hot videos, every 2 days for Unknown, every 3 days for Warm, and every 15 days for Cold, plus explicit admin overrides (see 1.5).
 - Store `videoId`.
 - Store the snapshot time/date.
 - Store `viewCount`.
 - Snapshots must accumulate history — never overwrite the previous day's snapshot.
 - See 1.6 Raw Daily Snapshot Model for the full field list actually stored (`creatorId`, `title`, `publishedAt`, and `organization` in addition to the above).
-- This raw data is what later 24h / 7d / 30d growth analytics is built from.
+- This raw data is what later daily / 7-day / 30-day growth analytics is built from.
 
 #### Scope Boundary
 
@@ -313,40 +377,101 @@ Discovery, Snapshot, and Analytics must not be merged into a single function/res
 
 ---
 
-### 1.5 Tiered Tracking Frequency
+### 1.5 Adaptive Tracking Frequency
 
 #### Goal
 
-Once a video enters the Tracking Universe, how often should it keep being checked? Keep same-day precision on videos that are actually likely to move day-to-day, while cutting daily quota usage enough to comfortably support scaling to more organizations (Hololive EN/ID, and beyond) without approaching the 10,000-unit daily cap.
+Once a video enters the Tracking Universe, decide how often it should be checked from both upload age and observed growth. Preserve useful precision, prevent newly imported old videos from disappearing into a slow tier before their velocity is known, and keep Hololive JP + VSPO JP normal collection within a target of 20% of the default daily quota so capacity remains for additional organizations and clip/translation/Shorts channels.
 
 #### Scope
 
-Assign every tracked video to an age tier based on `publishedAt` at check time:
+Age and activity are separate dimensions. Upload age protects every video for its first 30 days; activity determines the schedule afterward:
 
 ```text
-Recent  (0–30 days old)        → checked every day
-Medium  (31–180 days old)      → checked once every 7 days
-Old     (181+ days old)        → checked once every 30 days
+Recent  (0–30 days old) → every day, regardless of current views
+Hot                     → every day
+Unknown                 → every 2 days
+Warm                    → every 3 days
+Cold                    → every 15 days
+Admin override          → explicitly selected run, subject to the hard quota cap
 ```
 
-Videos rotate through their tier's cycle using a **stable ID-based rotation key** (e.g. a hash of `videoId`, or its position modulo the cycle length) — **not** a calendar-based trigger such as "every Sunday" or "on the last day of the month". Calendar-based triggers can collide (e.g. a month-end that falls on the weekly trigger day), spiking that day's workload; an ID-based rotation splits each tier's pool into equal slices ahead of time, so every day's workload is roughly the same regardless of the date.
+A video's total `viewCount` does not define activity. Five million lifetime views with +10/day may be Cold, while 5,000 lifetime views with +1,000/day may be Hot. Initial tuning thresholds are:
+
+```text
+Hot  → average +1,000 views/day, OR >=2%/day with >=100 absolute views/day
+Warm → average +100 views/day, OR >=0.5%/day
+Cold → below Hot/Warm thresholds for the required consecutive observations
+```
+
+Thresholds are runtime configuration, not permanent constants. Store the measurements and classification reason so they can be tuned without rewriting snapshot history.
+
+#### Bootstrap and State Transitions
+
+- A first cumulative `viewCount` is only a baseline. Every first-time import is `Unknown`, even when it is old and has few total views.
+- `Unknown` is checked every 2 days and requires at least three snapshots (two valid comparison intervals) before it may become `Cold`.
+- A strong first interval may promote `Unknown` to provisional `Hot` immediately and schedule it the next day; `Warm` is rechecked on its 3-day schedule.
+- Promotion to a faster class may happen immediately. Demotion requires 2–3 consecutive quiet observations to prevent Hot/Warm/Cold oscillation.
+- A video older than 30 days that becomes active again is promoted to Hot or Warm; age never prevents reactivation.
+- Missing/incomplete snapshots do not count as quiet observations and cannot demote a video.
+
+#### Stable Daily Rotation
+
+Use independent, stable ID-based rotation keys rather than weekday/month-end triggers:
+
+```text
+Unknown → stable_hash(videoId) % 2
+Warm    → stable_hash(videoId) % 3
+Cold    → stable_hash(videoId) % 15
+```
+
+Each day processes the due slice from every pool, so there are no days that collect only recent videos. A Cold video is guaranteed at least one observation in each 15-day circle. Stable rotation spreads work evenly and remains deterministic across restarts.
 
 Discovery (1.4.2/1.4.3) is unaffected by this — it keeps running daily for every active creator, since it is already cheap (roughly 1–2 units/creator/day) and is a separate concern from how often a video's *statistics* get refreshed.
 
-The medium and old tiers use independent rotation keys (`hash(videoId) % 7` vs. `hash(videoId) % 30`), so their phases are unrelated — a video could otherwise go up to ~35 days without a check right at the tier boundary (e.g. last checked at age 175, then not due again until age 210). A video is therefore always checked the day it turns `181` days old (the medium→old transition), which bounds the gap around the boundary to what each tier's own cycle already guarantees.
+#### Daily Quota Budget and Priority
+
+For a default 10,000-unit daily allowance, keep 2,000 units/day (20%) as the preferred normal-operation target for Hololive JP + VSPO JP. The original scheduled collection and at most two immediate retries for failed batches share a 3,000-unit (30%) immediate-phase cap; eligible deferred retries after all three total immediate attempts may use additional headroom, while the absolute daily hard cap across the entire workflow is 4,000 units (40%). Begin with a planning envelope of roughly 1,700 units for ordinary batched statistics, 100 for discovery/metadata, and dynamically reserve the remaining headroom for a full pass and retries. Treat all values as configurable budgets and verify actual API-console accounting.
+
+Build one deduplicated due set in this priority order:
+
+```text
+Recent → Hot → Unknown → Admin override → Warm → due Cold
+→ if budget remains, least-recently-checked eligible videos
+```
+
+The hard cap always wins. Overflow is carried forward by `nextCheckAt`/`lastCheckedAt`; it must not produce duplicate same-day snapshots.
+
+#### Admin Collection Overrides
+
+Support bounded selectors for one creator or organization: newest N, oldest N, an oldest-first rank range such as 101–500, an inclusive JST publication-date range, or explicit Video IDs. Resolve these selectors against Video Master, using deterministic `(publishedAt, videoId)` ordering, then batch the resulting IDs through `videos.list`. Union them with the normal due set and deduplicate by `videoId`.
+
+Do not implement routine admin selection with `search.list`. The uploads playlist can be completely paginated into Video Master, after which newest/oldest/range selection is local and complete. `playlistItems.list` has pagination but no native oldest/latest-count or publication-date-range filter; `search.list` exposes date bounds but channel results can be limited/incomplete. Provide a dry-run that reports selected count, batches, estimated quota, and videos excluded by validation before making API calls.
+
+#### Implementation Note / Verification Checkpoint
+
+The collector source code is not currently present in this repository checkout, so the following requirements must be verified against the implementation when the source is available. They are requirements, not claims about the current code:
+
+- Calculate `ageDays` once per video per run as a calendar-date difference in `Asia/Tokyo`: convert `publishedAt` to its JST calendar date, then subtract it from the run's JST `snapshotDate`. Do not classify by partially elapsed 24-hour periods. Treat a negative result as invalid data that must be reported.
+- Keep age and activity fields separate. `ageDays <= 30` forces daily Recent treatment; older videos use exactly one of Unknown/Hot/Warm/Cold for normal scheduling.
+- Scheduling plus admin selectors must produce one final `isDue` decision per video per run.
+- Deduplicate the collection input by `videoId`, and allow at most one statistics request result and one snapshot record for the same `(videoId, snapshotDate)`. A same-day retry must be idempotent rather than create another snapshot.
+- Add tests for ages `30`/`31`, bootstrap Unknown handling, 2/3/15-day rotations, promotion/demotion hysteresis, incomplete intervals, quota overflow, selector bounds/date inclusivity, duplicate Video IDs, and same-day retries.
 
 #### Definition of Done
 
-- Every tracked video is assigned to exactly one age tier (recent/medium/old) based on `publishedAt`, using an ID-based rotation key rather than a calendar-based trigger.
-- Recent videos (0–30 days) get a fresh snapshot every day; medium and old videos get one at least once per their tier's cycle (7 / 30 days).
-- The medium→old transition (day 181) always triggers a check, so the two tiers' independent rotation phases can't compound into a gap longer than either cycle's own guarantee.
+- Every newly imported video starts as Unknown; no baseline-only video can become Cold.
+- Recent and Hot videos are due daily, Unknown every 2 days, Warm every 3 days, and Cold at least once per 15-day circle.
+- Activity thresholds and consecutive-observation rules are configurable and explainable from stored measurements.
+- Admin selectors for latest/oldest/rank range/date range are deterministic, bounded, dry-runnable, merged with normal work, and deduplicated.
+- The implementation checkpoint above has been verified in source and covered by automated boundary/idempotency tests.
 - No single day's statistics-collection workload spikes meaningfully above the daily average, even in a worst-case tier alignment.
-- Daily quota usage stays well within the 10,000-unit budget at current + planned scale (VSPO + Hololive JP/EN/ID).
+- Hololive JP + VSPO JP aims for 2,000 units/20% in normal operation; the original collection and two immediate retries share a 3,000-unit/30% immediate-phase cap, while eligible deferred recovery may use additional headroom up to the 4,000-unit/40% absolute daily hard cap.
 
 #### Out of Scope
 
-- Per-organization/region scheduling (e.g. staggering by JP/EN) — superseded by the age-based tiering above
-- Dynamically promoting an old video back to a faster tier based on renewed activity — tier is purely a function of video age for now
+- Automatic threshold tuning or ML-based activity classification
+- End-user-triggered unrestricted collection; overrides are admin-only and quota-bounded
 - Requesting a YouTube API quota increase from Google — this project's use case (bulk statistics harvesting for analytics) falls into a category Google frequently denies; tiering is the reliable lever, not a quota request
 
 ---
@@ -379,7 +504,7 @@ Example:
 ```json
 {
   "snapshotDate": "2026-08-28",
-  "observedAt": "2026-08-28T00:00:05+09:00",
+  "observedAt": "2026-08-28T18:00:05+09:00",
   "creatorId": "aizawa_ema",
   "videoId": "abc123",
   "title": "Example Video",
@@ -392,14 +517,14 @@ Example:
 Future calculations:
 
 ```text
-24h growth
-= current snapshot - previous-day snapshot
+daily growth
+= current local report-date snapshot - previous local calendar-date snapshot
 
 7d growth
-= current snapshot - snapshot from 7 days earlier
+= current local report-date snapshot - local report-date snapshot from 7 calendar days earlier
 
 30d growth
-= current snapshot - snapshot from 30 days earlier
+= current local report-date snapshot - local report-date snapshot from 30 calendar days earlier
 ```
 
 Raw snapshots must be preserved.
@@ -418,6 +543,21 @@ This should be resolved as part of formalizing the snapshot model in 1.6, not be
 **Decision: Option 2 (snapshot-level metadata).** A log line alone isn't queryable by future analytics — a video missing from a day's snapshot would still be indistinguishable from a video that simply wasn't due that day. `main.py` now persists a `SnapshotRunSummary` (`snapshot_store.py`) alongside each day's snapshot file: `requestedCount`, `collectedCount`, and a `skipped` list are written to a companion `{date}.summary.json` file every run, not only when something was skipped — including the worst case where every batch fails and zero videos are collected, since that's the case future analytics needs the record for most. Each skipped video also carries its `reason` (e.g. a YouTube API/network failure vs. a malformed or missing item), not just its ID, so a run's completeness can be checked later without digging through console logs. The console warning line remains for immediate visibility, but the durable record now lives in stored data.
 
 The snapshot file and its run-summary file are written as one recoverable pair (`save_daily_collection`): if the summary write fails after the snapshot write succeeds, the snapshot is rolled back rather than left orphaned, so a retry isn't permanently blocked by a stray file that exclusive-create would otherwise refuse to touch again.
+
+#### Design Note: Snapshot Deliberately Does Not Carry `branch`/`tags`/`channelType`/`lifecycleStage`
+
+1.3 later added `branch`, `tags`, `channelType`, and `lifecycleStage` to Creator Master. `Snapshot` still only carries `organization`, not these four — this is deliberate, not an oversight:
+
+```json
+// Kept lean (current):
+{"snapshotDate": "2026-08-31", "creatorId": "shirakami_fubuki", "videoId": "abc123", "viewCount": 125000, "organization": "hololive"}
+// vs. denormalized (rejected for now):
+{"...": "...", "branch": "holo_jp", "tags": ["1期生", "ゲーマーズ"], "channelType": "member", "lifecycleStage": "active"}
+```
+
+`branch`, `tags`, and `channelType` are effectively permanent facts about a creator — duplicating them into every snapshot record, for every video, every day, forever, is pure repeated storage with no analytical benefit; a `creatorId` lookup against Creator Master is enough. `lifecycleStage` is the one field that genuinely changes over time (`active` → `graduated`), which raised a real question: should a report about a past date reflect the creator's status *as of that date*, or their *current* status looked up live?
+
+**Decision: always use the creator's current `lifecycleStage`, looked up live — no historical tracking.** Once a creator graduates, every report treats all of their data (past and present) as belonging to a `graduated` creator from that point on; nothing preserves "was `active` as of some earlier date." This keeps the model simple and matches how the project actually wants graduation reflected — retroactively, not date-scoped. Do not denormalize any of these four fields into `Snapshot`; all four are resolved via a live `creatorId` lookup against Creator Master, including at query time in 3.4 (Read API).
 
 #### Definition of Done
 
@@ -579,6 +719,8 @@ DynamoDB is chosen initially because:
   - video + date
   - daily snapshots
   - small scheduled batch writes
+  - creator/organization + `publishedAt` for bounded newest/oldest/date-range admin selection
+  - activity state + `nextCheckAt` for the adaptive due queue
 
 Architecture:
 
@@ -648,11 +790,45 @@ publishedAt
 
 Do not encode all meaningful data only inside opaque composite strings.
 
+Phase 2.3 must also persist scheduler state in Video Master (not duplicate it into every raw snapshot): `activityState`, `lastCheckedAt`, `nextCheckAt`, consecutive quiet-observation count, recent velocity measurements, and the last classification reason. Design the table keys/indexes for the two access patterns above; do not rely on a full-table scan for each daily run or admin command.
+
+#### 2.3.1 Local JSON to DynamoDB Migration and Cutover
+
+Historical snapshots accumulated during local development are production seed data and must not be discarded when DynamoDB becomes authoritative. Build a one-time migration command/script as part of Phase 2.3; copying files into Lambda `/tmp` is not migration because `/tmp` is ephemeral and invocation-local.
+
+Migration inputs:
+
+```text
+video_master.json
+snapshots/*
+snapshot run-summary files
+explicit source schema/version and JST cutover date
+```
+
+Required flow:
+
+1. Freeze local writes after a known successful JST `snapshotDate` and make a read-only backup of the input files.
+2. Validate every input before writing: schema/version, required IDs and timestamps, non-negative counts, unique `(videoId, snapshotDate)` keys, snapshot/summary pairing, and referential consistency with Video Master.
+3. Provide `--dry-run` that reports valid/invalid records, destination conflicts, per-table write counts, estimated DynamoDB writes, the earliest/latest snapshot dates, and the proposed next collection date.
+4. Import/upsert Video Master, immutable snapshots, and run summaries in bounded batches with retry/backoff and a durable migration run ID/checkpoint, so an interrupted import can resume safely.
+5. Make replay idempotent: an identical destination record is skipped; a record with the same key but different content is a hard conflict that stops cutover and is never silently overwritten.
+6. Rebuild scheduler state deterministically from imported snapshots (or verify imported state against that reconstruction), including `activityState`, `lastCheckedAt`, `nextCheckAt`, recent velocity, and quiet-observation count. Imported videos with insufficient valid intervals remain `Unknown`; they do not reset arbitrarily or become Cold from age/total views.
+7. Reconcile source and destination using total and per-date/per-creator counts, skipped/error counts from run summaries, earliest/latest `snapshotDate`, and deterministic checksums or equivalent content verification. Sampling alone is insufficient for final approval.
+8. Run the AWS collector in no-write/dry-run mode for the proposed next JST date. Confirm it selects the expected due set, creates no already-imported date, respects the quota cap, and does not rebuild the Tracking Universe as new baselines.
+9. Enable EventBridge only after reconciliation passes. The first live AWS write uses the next uncollected JST `snapshotDate`; if there is a genuine date gap, record it as missing/incomplete rather than fabricating a snapshot.
+10. Keep the local backup and importer report until at least one successful AWS collection and read-back verification complete. Rollback means disabling EventBridge and retaining DynamoDB/import evidence; never delete or overwrite local history during rollback.
+
+Only one system may be the authoritative writer during cutover. Do not leave the local scheduler and EventBridge writing the same date concurrently. Store a cutover manifest containing migration run ID, source schema/version, source record counts/checksums, last local snapshot date, first intended AWS snapshot date, destination table names/region, and verification result; it must contain no API keys or secrets.
+
 #### Definition of Done
 
 - Lambda can write snapshots to DynamoDB.
 - Historical data can be queried back.
 - Duplicate daily retries do not corrupt data.
+- The local-to-DynamoDB importer supports validation, dry-run, resumable/idempotent replay, conflict detection, and a cutover manifest.
+- All local Video Master records, snapshots, and run summaries reconcile against DynamoDB before EventBridge is enabled.
+- Scheduler state is reconstructed/verified from imported history, and the first live AWS run continues at the next uncollected JST date without resetting baselines.
+- Local rollback data is retained until a successful AWS write and read-back verification complete.
 - Snapshot data remains migration-friendly.
 - Storage cost/usage is understood.
 
@@ -664,18 +840,28 @@ Do not encode all meaningful data only inside opaque composite strings.
 
 ---
 
-### 2.4 EventBridge Daily Schedule
+### 2.4 EventBridge Snapshot and Discovery Schedules
 
 #### Goal
 
-Automatically collect snapshots every day.
+Automatically collect one view snapshot run every day and reconcile new uploads twice per day.
 
 #### Schedule
 
 ```text
-Every day at 00:00
+Every day at 18:00
 Timezone: Asia/Tokyo
+
+Incremental new-upload discovery at 08:00 and 18:00
+Timezone: Asia/Tokyo during development
 ```
+
+`18:00 Asia/Tokyo` is the initial configurable production schedule. It intentionally waits about one hour beyond the currently observed 16:30–17:00 JST public-view-count settling window, so no developer needs to trigger collection manually. The YouTube Data API documents `statistics.viewCount` as the current cumulative count but does not guarantee this observed window as a fixed daily refresh SLA. Therefore:
+
+- Store the schedule as configuration (for example `COLLECTION_TIME_ZONE=Asia/Tokyo`, `COLLECTION_LOCAL_TIME=18:00`), not as hidden business logic.
+- Record `scheduledFor`, actual `startedAt`/`completedAt`, and freshness diagnostics for every run.
+- Alert when the returned data appears stale or the run starts outside its tolerance window; adjust the configured time only after measured evidence.
+- A schedule change affects only when raw data is acquired. It must not rewrite historical `snapshotDate` values or change analytics date boundaries.
 
 Flow:
 
@@ -688,9 +874,14 @@ EventBridge Scheduler
 
 No server stays running between executions.
 
+Phase 2.4 is where the Phase 1.4.3 incremental-discovery and Phase 1.5 scheduling specifications become operational. The `08:00` and `18:00` discovery invocations scan newest uploads and idempotently upsert new Video IDs. The `18:00` invocation additionally builds the Recent/Hot/Unknown/Warm/Cold statistics due set, includes newly discovered videos for their initial baseline, merges admin overrides, deduplicates all work, enforces the shared quota ledger/hard cap, and carries overflow forward. A discovered-video event stores at least `videoId`, `creatorId`, `publishedAt`, `discoveredAt`, discovery source, and notification eligibility; duplicate scans must not create duplicate events. The planned README admin commands belong to this implementation checkpoint; they must support `--dry-run` before live collection.
+
 #### Definition of Done
 
-- Collector runs automatically every day.
+- The statistics collector runs automatically once every day, while incremental discovery runs at the two configured JST windows.
+- Daily incremental discovery scans enabled channels, records its estimated/actual quota usage, and inserts newly published videos without rescanning full channel history.
+- The adaptive 1/2/3/15-day schedule and bounded admin selectors are implemented as specified in 1.5.
+- Per-run quota estimates and actual usage are recorded, and the configured hard cap is enforced.
 - Windows dev machine can be powered off.
 - Execution appears in CloudWatch.
 - Failures are observable.
@@ -726,11 +917,96 @@ Use CloudWatch logs.
 
 Do not log secrets.
 
+#### 2.5.1 Bounded Immediate and Deferred Retry Policy
+
+Retries are per failed creator batch/Video ID set, not a full rerun of successful work. Every attempt consumes quota, including invalid requests, so all attempts reserve from one Pacific-day quota ledger. The original scheduled request and two immediate retries share a 3,000-unit/30% immediate-phase cap; eligible deferred recovery may subsequently use additional headroom, while the entire workflow shares a 4,000-unit/40% absolute daily hard cap. The 2,000-unit/20% value is a planning target, not a stop boundary.
+
+Classify failures before scheduling a retry:
+
+```text
+Retryable immediately/deferred:
+network interruption, timeout, HTTP 429/rateLimitExceeded,
+HTTP 500/502/503/504 and equivalent transient server failures
+
+Stop all YouTube requests until reset:
+quotaExceeded, dailyLimitExceeded, 40% absolute daily hard cap reached
+
+Non-retryable until data/config changes:
+invalid request/parameter, invalid credentials/permission,
+confirmed unavailable/deleted Video ID, malformed local input
+```
+
+For a retryable failure:
+
+1. Keep all successful batches and their individual `observedAt` values.
+2. A batch gets **three total immediate attempts**, not one initial attempt plus three retries: attempt 1 is the original scheduled request; attempts 2 and 3 are immediate retry 1 and retry 2 using capped exponential backoff with jitter. Persist attempt number and error category. These attempts may exceed the 20% target but may never push immediate-phase projected usage beyond the 30% cap.
+3. If total attempt 3 fails, calculate and enqueue a durable quota-adaptive deferred retry (attempt 4+, with a recorded `nextRetryAt`, not a sleeping Lambda invocation). Deferred recovery may use additional headroom beyond the 30% immediate-phase cap, but projected usage across the entire workflow may never exceed the 40% absolute daily hard cap. If the immediate phase actually used less than 30%, deferred recovery starts from that actual usage; the ledger must not be artificially raised to 30%.
+4. Before every deferred retry, load the latest retry record and Pacific-day quota ledger from the active durable store: local `retry_state.json`/quota JSON during local development, or DynamoDB in production. Recompute the remaining failed set, projected quota usage, interval, and cutoff eligibility; never rely only on values embedded in an old queue message.
+5. Compute `quotaResetAt` as the next midnight in IANA `America/Los_Angeles`, including daylight-saving transitions. It is not UTC midnight: Pacific midnight corresponds to approximately 17:00 JST during PST (UTC−8) and 16:00 JST during PDT (UTC−7).
+6. Define `retryCutoffAt = quotaResetAt - RETRY_CUTOFF_BUFFER` (initial buffer: 15 minutes). If the dynamically selected 1/2/3-hour interval cannot start and finish before `retryCutoffAt`, do not replace it with a shorter, more quota-aggressive interval; stop the run and wait for the next normal schedule.
+7. On `quotaExceeded`, `dailyLimitExceeded`, or the 40% absolute daily hard cap, cancel all remaining pre-reset YouTube calls immediately. Crossing the 20% preferred target does not by itself block the original run. The immediate phase is bounded by 30%; the deferred phase adapts its interval to projected usage and is bounded by 40%.
+8. At final stop, mark the creator/run `partial` or `incomplete`, persist missing IDs/batches and reasons, attempt history, quota used/remaining estimate, `quotaResetAt`, and `stopReason` (`non_retryable`, `quota_exhausted`, `daily_hard_cap`, or `retry_window_closed`). Alert through CloudWatch.
+9. The next regular 18:00 JST run starts a new `snapshotDate` and processes the normal due set again. It must not fabricate or retrospectively label the new cumulative count as the missing prior-day count; analytics for that missing date remains unavailable/incomplete.
+
+Use a durable scheduler such as EventBridge Scheduler/SQS-based delayed work for deferred retries. Do not keep a Lambda invocation alive for 1–3 hours. Retry creation and consumption must be idempotent, keyed by at least `(snapshotDate, creatorId, failedBatchId, attemptNumber)`, and stale retry messages from a closed run must be ignored.
+
+#### Quota-Adaptive Interval Decision
+
+Before each deferred attempt, calculate projected usage against the configured YouTube daily quota/bucket limit. With the initial 10,000-unit configuration, 20% is the preferred target, 30% is the immediate-phase cap, and 40% is the absolute daily hard cap shared by the entire workflow:
+
+```text
+projectedUnits = usedUnits + reservedUnits + estimatedRetryUnits
+projectedQuotaRatio = projectedUnits / quotaLimitUnits
+
+projectedQuotaRatio < 0.30        → retry in 60 minutes
+0.30 <= ratio < 0.35              → retry in 120 minutes
+0.35 <= ratio < 0.40              → retry in 180 minutes
+ratio >= 0.40                     → stop; absolute daily hard cap reached
+```
+
+These are initial configurable thresholds (`NORMAL_QUOTA_TARGET_RATIO=0.20`, `DAILY_HARD_CAP_RATIO=0.30`, retry intervals, and the 0.25 middle boundary), not permanent code constants. Also stop if `estimatedRetryUnits` does not fit under the hard cap, even when ratio rounding would otherwise permit a retry. If the API uses multiple granular quota buckets, apply the most restrictive relevant remaining bucket as well as the project hard cap.
+
+Persist at least the following state after every attempt and every scheduling decision:
+
+```json
+{
+  "quotaDatePacific": "2026-09-01",
+  "quotaResetAt": "2026-09-02T00:00:00-07:00",
+  "quotaLimitUnits": 10000,
+  "normalTargetUnits": 2000,
+  "immediatePhaseCapUnits": 3000,
+  "dailyHardCapUnits": 4000,
+  "usedUnits": 2200,
+  "reservedUnits": 100,
+  "estimatedRetryUnits": 80,
+  "projectedUnits": 2380,
+  "projectedQuotaRatio": 0.238,
+  "creatorId": "aizawa_ema",
+  "snapshotDate": "2026-09-01",
+  "failedBatchIds": ["batch-07"],
+  "attemptNumber": 4,
+  "lastAttemptAt": "2026-09-01T20:05:00+09:00",
+  "retryIntervalMinutes": 120,
+  "nextRetryAt": "2026-09-01T22:05:00+09:00",
+  "decisionReason": "recovery_middle_band",
+  "status": "scheduled",
+  "version": 8
+}
+```
+
+Immediately before calling YouTube, read this record again and use an atomic conditional update/version check to reserve `estimatedRetryUnits`. If another worker changed the quota ledger, recompute instead of proceeding with stale values. If the current Pacific date differs from `quotaDatePacific` or `now >= quotaResetAt`, expire the old retry without an API call and wait for the regular 18:00 JST run. After a valid response, atomically convert the reservation into actual usage and persist the next decision. This prevents concurrent creator retries from each believing the same quota is available.
+
 #### Definition of Done
 
 - Failures are visible.
 - Failed jobs do not silently corrupt data.
-- Retries are safe.
+- Retries are safe, durable, batch-scoped, idempotent, and never implemented as a sleeping Lambda.
+- There are three total immediate attempts (original + two retries) bounded by the 30% immediate-phase cap; eligible deferred recovery may use additional headroom, while the entire workflow is bounded by the 40% absolute daily hard cap and 20% remains the preferred operating target.
+- Deferred intervals adapt to total projected quota usage (initially 1/2/3 hours below 30%, at 30–35%, and at 35–40%) and stop at the Pacific reset cutoff or 40% ceiling.
+- Retry/quota state is persisted in local JSON or DynamoDB and reloaded immediately before every attempt; atomic reservation/version checks prevent concurrent overspend.
+- Pacific quota reset calculations use `America/Los_Angeles` with DST tests, not UTC or a fixed offset.
+- Quota-exhaustion errors stop further pre-reset requests immediately.
+- An incomplete day remains explicitly incomplete; the next day's cumulative count is never used to invent the missing daily snapshot.
 - Duplicate snapshots are prevented.
 - Partial failures can be diagnosed.
 
@@ -744,6 +1020,8 @@ Do not log secrets.
 
 ## Phase 3 — Analytics and Internal Dashboard
 
+Time-zone delivery is split across this phase: section 3.1 defines local-calendar analytics semantics and test coverage; 3.4 implements IANA validation, daylight-saving conversion, and canonical snapshot mapping in the Read API; 3.5 implements device detection, the searchable selector, and request fields in React; 3.6 isolates cached results by time zone, report date, and period.
+
 ### 3.1 View Growth Analytics
 
 #### Goal
@@ -756,18 +1034,31 @@ Support:
 
 ```text
 Latest view count
-24-hour growth
+Daily growth
 7-day growth
 30-day growth
 ```
 
 Raw snapshots remain the source of truth.
 
+These metrics use the requesting user's **local calendar dates**, not rolling elapsed-hour windows. Accept any valid IANA time zone supported by the deployed time-zone database; do not hardcode an offset or a Tokyo/Hong Kong-only allowlist. For a report date `D`, compare `D` with `D-1`, `D-7`, or `D-30` in that same time zone. The Read Lambda maps those local report dates to the canonical JST collection snapshots internally. The collector still has one schedule and one set of age tiers; a user's reporting time zone never changes collection eligibility or creates another tier.
+
+The collector's configured 18:00 JST execution time and the user's local date boundary are independent contracts. Japan, Hong Kong, London, or any other supported zone continues to roll over at its own local midnight. If the canonical snapshot required for a local `reportDate` has not completed yet, return `pending`/`unavailable` plus the latest completed `lastUpdatedAt`; never shift the user's date boundary, fabricate zero growth, or label an older snapshot as the requested date.
+
+For example, at the same instant it may be September 1 at 00:30 in Tokyo but August 31 at 23:30 in Hong Kong. Tokyo's requested report date is September 1 and its September 1 canonical snapshot remains `pending` until that day's scheduled collection completes; Hong Kong continues to request August 31 and compares it with August 30. Do not force both users onto the same displayed date merely because the latest completed underlying snapshot is currently the same. If a required comparison-date snapshot is missing or incomplete, return an unavailable/incomplete result rather than treating the value as zero.
+
+A separate, more common case: a creator can simply not exist yet in an older, otherwise-complete snapshot — e.g. hololive EN/ID and VSPO EN were only onboarded into Creator/Video Master on 2026-08-31, so their records are absent from every snapshot dated before that (2026-08-29, 2026-08-30, etc.), even though those days' snapshot files themselves are complete and correct for whichever creators existed at the time. This is not a missing/pending day — it is a creator with no history before their onboarding date. A lookup for that creator/date combination must return a clean "no data for this creator on this date" result, not raise a `KeyError`/crash from assuming every currently-known creator has a record in every historical file. Growth calculations spanning a creator's onboarding date must treat the pre-onboarding side as unavailable, not as zero.
+
+A third, distinct case: a `reportDate` before the project's own collection start date (2026-08-29 — no snapshot file exists for any earlier date, for any creator, because nothing was being collected yet) must also return a clean "no data" result — but this is semantically different from `pending`. `pending` means the canonical snapshot for that date will exist once today's/a near-future scheduled collection completes; a pre-collection-start date will never have data, no matter how long the caller waits. Do not conflate the two — surface them as distinct states (e.g. `not_available` vs `pending`) so a client doesn't poll forever for something that will never arrive.
+
 #### Definition of Done
 
 - Metrics are reproducible from raw snapshots.
 - Results are deterministic.
+- Daily / 7-day / 30-day comparison dates are correct across representative positive-offset, negative-offset, UTC, and daylight-saving IANA zones, including `Asia/Tokyo`, `Asia/Hong_Kong`, and `Europe/London`.
 - Historical raw data is never destroyed.
+- A creator absent from an older (pre-onboarding) snapshot returns a clean "no data" result rather than crashing, and is not confused with a missing/pending day.
+- A `reportDate` before the project's collection start date returns a clean, distinctly-labeled "not available" result (never `pending`, since it will never resolve).
 
 #### Out of Scope
 
@@ -789,7 +1080,7 @@ Examples:
 ```text
 Most Viewed
 Fastest Growing
-24h Trending
+Daily Trending
 7d Trending
 30d Trending
 ```
@@ -865,11 +1156,30 @@ The Read Lambda should only read/transform data.
 
 It should not trigger full YouTube collection jobs.
 
+Analytics requests must include:
+
+```text
+timeZone=<valid IANA zone, e.g. Europe/London>
+reportDate=YYYY-MM-DD
+period=1d | 7d | 30d
+```
+
+`timeZone` must be an IANA zone name, not a raw numeric UTC offset. The API validates it through Python `zoneinfo.ZoneInfo` against the deployed time-zone database, treats `reportDate` as a calendar date in that zone, maps it to the canonical JST snapshot keys, and performs the comparison without exposing the internal collection schedule to normal users. Pin/package current `tzdata` when the Lambda runtime cannot guarantee the required database. Invalid zones return a clear client error rather than silently falling back to another date.
+
+The normalized response should include `timeZone`, `reportDate`, `comparisonDate`, `period`, `lastUpdatedAt`, completeness status, and the analytics result. Every creator/channel/video result must also carry `organization`, `branch`, `tags`, `channelType`, and `lifecycleStage` directly, and the API accepts the same fields as optional filters; the frontend must not infer them from names. `lastUpdatedAt` remains an absolute timestamp so the client can display it in the requested zone.
+
+**Every query parameter is untrusted input from a public URL and must be validated before it touches any parsing/lookup logic** — this is a request handler, not a trusted internal call. `reportDate`, `timeZone`, `period`, and any creator/organization/branch filter values must all be validated up front (format, length, character set, and — for `reportDate` — that it parses to a real calendar date) before anything downstream tries to use them. A value that fails validation returns a clean 4xx-style client error with a generic message; it must never propagate into a date-parsing call, a dict/file lookup keyed by the raw string, or any other place that could raise an unhandled exception and crash the Lambda or leak an internal stack trace. This applies regardless of *why* the value is unusual — a genuine typo, an automated scanner probing the endpoint, or a deliberate attempt to break the parser must all be handled by the same validation path, not treated as different code paths.
+
 #### Definition of Done
 
 - Dashboard can retrieve analytics data.
 - DynamoDB implementation details are hidden.
 - Response format is normalized.
+- Invalid IANA time zones and malformed report dates are rejected safely; daylight-saving transitions use the zone database rather than fixed offsets.
+- Local report-date mapping and missing/incomplete comparison snapshots are handled explicitly.
+- A request for a creator/date combination older than that creator's onboarding date (e.g. querying an EN/ID/VSPO-EN creator against a JP-only date before they were added to Creator/Video Master) returns a clean "no data" result, not a server error — see 3.1's note on this same distinction (missing creator vs. missing/pending day).
+- A request for any `reportDate` before the project's collection start date returns a clean, distinctly-labeled "not available" result — never `pending` — since 3.1 draws that same distinction.
+- Every query parameter is validated before use; no malformed, oversized, or adversarial input (wrong format, non-date strings, injection-style payloads, extreme values) can reach parsing/lookup code unvalidated. Tests cover this with deliberately malicious/garbage `reportDate`/`timeZone` values, not just well-formed edge cases, and confirm the API returns a clean client error rather than a 500 or a stack trace.
 
 #### Out of Scope
 
@@ -887,11 +1197,19 @@ Create a personal/admin dashboard for viewing Yobi Analytics data.
 
 #### Scope
 
+Use **React with TypeScript** for the dashboard frontend. React is the UI library, while TypeScript is the frontend programming language. The dashboard must consume normalized JSON from the Python Read Lambda through API Gateway; it must not import or depend directly on Python collection code.
+
+The complete UI specification for this section is maintained separately in [`dashboard_ui_direction_en.md`](./dashboard_ui_direction_en.md).
+
+For every analytics request, the dashboard detects the device IANA time zone with `Intl.DateTimeFormat().resolvedOptions().timeZone`, provides a searchable IANA time-zone selector, and sends the selected `timeZone`, its local `reportDate`, and `period` to the Read API. Do not model supported zones as a hardcoded TypeScript union. If detection is unavailable, visibly fall back to `UTC` and let the user choose; do not silently assume Tokyo. The UI displays only the localized report/comparison dates and localized last-updated time; the canonical JST snapshot date and collector schedule remain internal.
+
+Classification filters follow `organization → branch → tags → channelType → lifecycleStage`. Hololive is the top-level label, with nested JP generations 0–6/Gamers/holoX, DEV_IS/ReGLOSS/FLOW GLOW, mekPark/ACHRORA/UNIT B, and staff/aNnounce options carried as `tags`. VSPO uses the same contract and may add nested tags later. ACHRORA and UNIT B retain `organization: "hololive"` and are distinguished by branch/tags/status rather than a separate top-level label.
+
 Possible dashboard sections:
 
 ```text
 Latest Snapshot
-24h Growth
+Daily Growth
 7d Growth
 30d Growth
 Creator Trending
@@ -902,12 +1220,13 @@ Collection Status
 Errors
 ```
 
-Possible architecture:
+Planned architecture:
 
 ```text
-CloudFront / Static Frontend
+React + TypeScript Static Frontend
+→ S3 / CloudFront
 → API Gateway
-→ Read Lambda
+→ Python Read Lambda
 → DynamoDB
 ```
 
@@ -920,6 +1239,10 @@ AWS-provided URLs are acceptable for development.
 - Dashboard can display current stored data.
 - Dashboard can display latest update time.
 - Dashboard can query analytics without direct DB credentials.
+- Dashboard is implemented with React and TypeScript and can be built as static deployment assets.
+- Dashboard requests always include a validated IANA `timeZone`, local `reportDate`, and `period`, and changing the selected zone refreshes the date labels and analytics result.
+- The selector and request model support valid IANA zones beyond Japan and Hong Kong, including daylight-saving zones such as `Europe/London`.
+- The Dashboard, charts, tables, and rankings share one classification filter state and correctly distinguish member/group/staff plus active/pre-debut/graduated/retired; pre-debut channels never enter active-member rankings by mistake.
 
 #### Out of Scope
 
@@ -950,11 +1273,15 @@ Open Dashboard / Yobi
 Cache should store at least:
 
 ```text
-snapshotDate
+timeZone
+reportDate
+comparisonDate
 fetchedAt
 period
 results
 ```
+
+Cache identity must include at least `(timeZone, reportDate, period)` so Tokyo and Hong Kong calendar-date results cannot overwrite or masquerade as each other.
 
 If the server still only has yesterday's snapshot, the UI should not falsely label it as today's data.
 
@@ -988,7 +1315,7 @@ Possible future endpoints:
 
 ```text
 GET /creators/{creatorId}/trending?period=7d
-GET /organizations/vspo/trending?period=24h
+GET /organizations/vspo/trending?period=1d
 GET /organizations/hololive/trending?period=30d
 ```
 
@@ -1013,7 +1340,7 @@ Possible UI data:
 
 ```text
 Creator Trending
-24h Growth
+Daily Growth
 7d Growth
 30d Growth
 Organization Ranking
@@ -1185,12 +1512,22 @@ enabled
 notificationLevel
 temporaryMute
 creatorOverride
+notificationTimeZone
+deliveryWindows
+quietHours
 ```
+
+During Japanese development, the default notification timezone is `Asia/Tokyo` and the default local delivery windows are `08:00` and `18:00`, corresponding to morning and after-work checks. Before production release, the Dashboard must let each user select any valid IANA timezone and configure these local wall-clock windows.
+
+The selected timezone controls notification grouping and delivery, not upstream YouTube collection ownership. New-video events are collected once into the shared Creator Pool and stored once; the notification dispatcher maps each user's local windows to UTC and sends only events not previously delivered to that client. It must not repeat `playlistItems.list` or `videos.list` per user, because adding users must not multiply YouTube quota consumption. Near-real-time WebSub events may be held for the next selected delivery window unless the user explicitly enables immediate notifications.
 
 #### Definition of Done
 
 - Remote settings can target one anonymous client ID.
 - One client's settings do not affect others unintentionally.
+- Local delivery windows remain correct across UTC offsets and daylight-saving transitions by using IANA timezone rules.
+- A stored new-video event is delivered at most once per client/window unless an explicit repeat-reminder policy says otherwise.
+- Adding users does not create duplicate upstream YouTube API collection requests.
 
 ---
 
