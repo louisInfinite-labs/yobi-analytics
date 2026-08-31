@@ -4,13 +4,21 @@
     "displayName": "藍沢エマ",
     "organization": "vspo",
     "youtubeChannelId": "UC_TEST_CHANNEL",
-    "active": true
+    "active": true,
+    "branch": "vspo_jp",
+    "tags": ["NO"],
+    "channelType": "member",
+    "lifecycleStage": "active"
   },
   {
     "creatorId": "inactive_example",
     "displayName": "Inactive Example",
     "organization": "hololive",
     "youtubeChannelId": "UC_TEST_CHANNEL_2",
-    "active": false
+    "active": false,
+    "branch": "holo_jp",
+    "tags": ["2期生"],
+    "channelType": "member",
+    "lifecycleStage": "active"
   }
 ]
