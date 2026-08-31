@@ -427,7 +427,7 @@ Cold    → stable_hash(videoId) % 15
 
 Each day processes the due slice from every pool, so there are no days that collect only recent videos. A Cold video is guaranteed at least one observation in each 15-day circle. Stable rotation spreads work evenly and remains deterministic across restarts.
 
-Discovery (1.4.2/1.4.3) is unaffected by this — it keeps running daily for every active creator, since it is already cheap (roughly 1–2 units/creator/day) and is a separate concern from how often a video's *statistics* get refreshed.
+Discovery (1.4.2/1.4.3) is unaffected by this — it keeps running daily for every discovery-enabled creator, since it is already cheap (roughly 1–2 units/creator/day) and is a separate concern from how often a video's *statistics* get refreshed.
 
 #### Daily Quota Budget and Priority
 
@@ -964,7 +964,7 @@ projectedQuotaRatio < 0.30        → retry in 60 minutes
 ratio >= 0.40                     → stop; absolute daily hard cap reached
 ```
 
-These are initial configurable thresholds (`NORMAL_QUOTA_TARGET_RATIO=0.20`, `DAILY_HARD_CAP_RATIO=0.30`, retry intervals, and the 0.25 middle boundary), not permanent code constants. Also stop if `estimatedRetryUnits` does not fit under the hard cap, even when ratio rounding would otherwise permit a retry. If the API uses multiple granular quota buckets, apply the most restrictive relevant remaining bucket as well as the project hard cap.
+These are initial configurable thresholds (`NORMAL_QUOTA_TARGET_RATIO=0.20`, `IMMEDIATE_PHASE_CAP_RATIO=0.30`, `DAILY_HARD_CAP_RATIO=0.40`, and retry intervals), not permanent code constants. Also stop if `estimatedRetryUnits` does not fit under the hard cap, even when ratio rounding would otherwise permit a retry. If the API uses multiple granular quota buckets, apply the most restrictive relevant remaining bucket as well as the project hard cap.
 
 Persist at least the following state after every attempt and every scheduling decision:
 

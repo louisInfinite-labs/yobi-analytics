@@ -215,8 +215,9 @@ def test_unknown_channel_type_is_rejected(tmp_path):
 @pytest.mark.parametrize("stage", ["active", "pre_debut", "graduated", "retired"])
 def test_valid_lifecycle_stages_are_accepted(tmp_path, stage):
     """Each of the four defined lifecycleStage values is accepted."""
+    overrides = {"graduatedAt": "2025-05-01"} if stage == "graduated" else {}
     path = tmp_path / "creators.json"
-    path.write_text(json.dumps([_base_record(lifecycleStage=stage)]), encoding="utf-8")
+    path.write_text(json.dumps([_base_record(lifecycleStage=stage, **overrides)]), encoding="utf-8")
 
     creators = load_creators(path)
 
@@ -295,6 +296,28 @@ def test_non_canonical_iso_date_forms_are_rejected(tmp_path, value):
     even if Python's own parser would otherwise accept it."""
     path = tmp_path / "creators.json"
     path.write_text(json.dumps([_base_record(graduatedAt=value)]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
+def test_graduated_without_graduated_at_is_rejected(tmp_path):
+    """lifecycleStage='graduated' with no 'graduatedAt' key violates the invariant
+    that a graduated creator must record when they graduated."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(lifecycleStage="graduated")]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
+def test_non_graduated_with_graduated_at_is_rejected(tmp_path):
+    """A non-graduated lifecycleStage with a 'graduatedAt' present violates the
+    invariant that only a graduated creator may carry a graduation date."""
+    path = tmp_path / "creators.json"
+    path.write_text(
+        json.dumps([_base_record(lifecycleStage="active", graduatedAt="2025-05-01")]), encoding="utf-8"
+    )
 
     with pytest.raises(CreatorMasterError):
         load_creators(path)

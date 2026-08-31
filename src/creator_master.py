@@ -57,9 +57,8 @@ class Creator:
     # snapshots via active; Discovery just stops looking for new uploads.
     discovery_enabled: bool = True
     # ISO 8601 date a graduated creator's activities ended, or None if they
-    # haven't (sparse — see Roadmap 1.3). Only meaningful when
-    # lifecycle_stage == "graduated"; not required to be consistent for any
-    # other stage today.
+    # haven't (sparse — see Roadmap 1.3). Set if and only if
+    # lifecycle_stage == "graduated" — enforced in _parse_creator.
     graduated_at: str | None = None
 
 
@@ -107,6 +106,12 @@ def _parse_creator(raw: dict) -> Creator:
             )
 
         graduated_at = _optional_iso_date(raw, "graduatedAt", creator_id)
+        if (lifecycle_stage == "graduated") != (graduated_at is not None):
+            raise CreatorMasterError(
+                f"Creator {creator_id!r} has lifecycleStage {lifecycle_stage!r} "
+                f"inconsistent with graduatedAt {graduated_at!r}: "
+                "graduated requires graduatedAt, and only graduated may set it"
+            )
 
         return Creator(
             creator_id=creator_id,
