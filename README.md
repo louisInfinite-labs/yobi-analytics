@@ -129,7 +129,7 @@ Creator
 
 Once a previously-seen video is reached, pagination toward older pages can stop.
 
-During Japanese local development, this check runs at `08:00` and `18:00` in `Asia/Tokyo`; the morning run is the only additional check alongside the existing evening collection. With the current 65 discovery-enabled channels and one uploads-playlist page per channel, that is about 65 general quota units per window or 130 units/day (1.3% of the default 10,000-unit daily quota), plus at most one batched `videos.list` unit per 1–50 newly discovered IDs when that detail request cannot be merged into an existing statistics batch.
+During Japanese local development, this check runs at `08:00` and `18:00` in `Asia/Tokyo`; the morning run is the only additional check alongside the existing evening collection. With the current 99 discovery-enabled channels and one uploads-playlist page per channel, that is about 99 general quota units per window or 198 units/day (1.98% of the default 10,000-unit daily quota), plus at most one batched `videos.list` unit per 1–50 newly discovered IDs when that detail request cannot be merged into an existing statistics batch.
 
 These times are application configuration, not a YouTube-defined timezone. Production notification preferences use each user's selected IANA timezone and local delivery windows, but the shared backend still collects each creator once. It stores and deduplicates new-video events, then delivers them to eligible users at their local windows; it never repeats YouTube API requests per user. Near-real-time delivery should use YouTube WebSub push notifications, with these scheduled scans retained as reconciliation.
 
@@ -317,7 +317,7 @@ Example structure:
   "displayName": "藍沢エマ",
   "organization": "vspo",
   "branch": "vspo_jp",
-  "tags": ["NO"],
+  "groupKey": ["NO"],
   "channelType": "member",
   "lifecycleStage": "active",
   "youtubeChannelId": "UC...",
@@ -330,11 +330,11 @@ Example structure:
 
 A graduated creator also carries `graduatedAt` (an ISO 8601 date), e.g. `"lifecycleStage": "graduated", "graduatedAt": "2025-05-01"`. This field is **sparse by design** — omitted entirely for anyone who hasn't graduated, rather than a placeholder like `"0000"`. `lifecycleStage` always reflects a creator's *current* status via a live lookup; there is no historical tracking of what it was on some earlier date.
 
-Classification must not rely only on `organization` or display names. Creator Master explicitly stores `branch`, `tags`, `channelType`, and `lifecycleStage`: `branch` is region/language only (`holo_jp`/`holo_en`/`holo_id`/`vspo_jp`/`vspo_en`) — it does not encode sub-labels like DEV_IS/mekPark/staff. `tags` is a **list** rather than a single value, because a creator can belong to more than one grouping at once (e.g. Shirakami Fubuki is both `"1期生"` and `"ゲーマーズ"`); a creator with no applicable grouping uses the placeholder `["NO"]`. `channelType` is `member`/`group`/`staff`; `lifecycleStage` is `active`/`pre_debut`/`graduated`/`retired` and is independent of the API collection toggle `active`.
+Classification must not rely only on `organization` or display names. Creator Master explicitly stores `branch`, `groupKey`, `channelType`, and `lifecycleStage`: `branch` is region/language only (`holo_jp`/`holo_en`/`holo_id`/`vspo_jp`/`vspo_en`) — it does not encode sub-labels like DEV_IS/mekPark/staff. `groupKey` is a **list** rather than a single value, because a creator can belong to more than one grouping at once (e.g. Shirakami Fubuki is both `"1期生"` and `"ゲーマーズ"`); a creator with no applicable grouping uses the placeholder `["NO"]`. `channelType` is `member`/`group`/`staff`; `lifecycleStage` is `active`/`pre_debut`/`graduated`/`retired` and is independent of the API collection toggle `active`.
 
 ReGLOSS and FLOW GLOW are two distinct hololive DEV_IS group channels with different Channel IDs. Although mekPark's ACHRORA and UNIT B remain pre-debut, this project's product taxonomy keeps `organization: "hololive"` instead of introducing a separate organization.
 
-| `creatorId` | Actual YouTube channel name | `branch` | `tags` | `channelType`/`lifecycleStage` | YouTube Channel ID |
+| `creatorId` | Actual YouTube channel name | `branch` | `groupKey` | `channelType`/`lifecycleStage` | YouTube Channel ID |
 | --- | --- | --- | --- | --- | --- |
 | `hololive_dev_is_regloss` | `hololive DEV_IS ReGLOSS` | `holo_jp` | `["ReGLOSS"]` | `group`/`active` | `UC10wVt6hoQiwySRhz7RdOUA` |
 | `hololive_dev_is_flow_glow` | `hololive DEV_IS FLOW GLOW` | `holo_jp` | `["FLOWGLOW"]` | `group`/`active` | `UCu2n3qHuOuQIygREMnWeQWg` |
@@ -342,7 +342,7 @@ ReGLOSS and FLOW GLOW are two distinct hololive DEV_IS group channels with diffe
 | `unit_b_pre_debut` | `UNIT B (Pre-Debut) - mekPark` | `holo_jp` | `["mekpark"]` | `group`/`pre_debut` | `UC3OH5FKQ3qtl4uRme_vZTgA` |
 | `holoan_room` | `holoAN room (ホロアナ)` | `holo_jp` | `["aNnounce"]` | `staff`/`active` | `UCozx5csNhCx1wsVq3SZVkBQ` |
 
-`holoAN room`'s `aNnounce` tag comes from the channel's own naming (**AN**nounce + **AN**chor); it posts as hololive Production's shared official announcer persona rather than one individual talent.
+`holoAN room`'s `aNnounce` group key comes from the channel's own naming (**AN**nounce + **AN**chor); it posts as hololive Production's shared official announcer persona rather than one individual talent.
 
 Initial supported organizations:
 

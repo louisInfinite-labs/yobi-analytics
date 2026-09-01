@@ -144,3 +144,87 @@ def test_load_videos_raises_on_non_string_field(tmp_path):
 
     with pytest.raises(VideoMasterError):
         load_videos(path)
+
+
+def test_pre_scheduler_state_record_parses_with_bootstrap_defaults(tmp_path):
+    """A record written before Roadmap 1.5's scheduler-state fields existed still
+    parses, as if it had never yet been classified."""
+    path = tmp_path / "video_master.json"
+    path.write_text(
+        '[{"videoId": "v1", "creatorId": "aizawa_ema", "title": "A", "publishedAt": "2026-08-20T00:00:00Z"}]',
+        encoding="utf-8",
+    )
+
+    videos = load_videos(path)
+
+    assert videos[0].activity_state == "Unknown"
+    assert videos[0].last_checked_at is None
+    assert videos[0].last_view_count is None
+    assert videos[0].snapshot_count == 0
+    assert videos[0].quiet_streak == 0
+    assert videos[0].last_classification_reason is None
+
+
+def test_scheduler_state_fields_round_trip(tmp_path):
+    """A video's full scheduler state survives a write/read round trip."""
+    path = tmp_path / "video_master.json"
+    video = Video(
+        video_id="v1",
+        creator_id="aizawa_ema",
+        title="A",
+        published_at="2026-08-20T00:00:00Z",
+        activity_state="Hot",
+        last_checked_at="2026-08-30T18:00:00+09:00",
+        last_view_count=12345,
+        snapshot_count=4,
+        quiet_streak=1,
+        last_classification_reason="strong_growth",
+    )
+
+    upsert_videos([video], path)
+
+    assert load_videos(path) == [video]
+
+
+def test_unknown_activity_state_is_rejected(tmp_path):
+    """An activityState outside the defined set (Hot/Unknown/Warm/Cold) is rejected."""
+    path = tmp_path / "video_master.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "videoId": "v1",
+                    "creatorId": "aizawa_ema",
+                    "title": "A",
+                    "publishedAt": "2026-08-20T00:00:00Z",
+                    "activityState": "Lukewarm",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VideoMasterError):
+        load_videos(path)
+
+
+def test_non_integer_snapshot_count_is_rejected(tmp_path):
+    """A non-integer 'snapshotCount' is rejected instead of silently accepted."""
+    path = tmp_path / "video_master.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "videoId": "v1",
+                    "creatorId": "aizawa_ema",
+                    "title": "A",
+                    "publishedAt": "2026-08-20T00:00:00Z",
+                    "snapshotCount": "3",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VideoMasterError):
+        load_videos(path)

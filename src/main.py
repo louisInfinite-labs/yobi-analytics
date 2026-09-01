@@ -21,12 +21,12 @@ from snapshot_store import (
     save_daily_collection,
     save_run_summary,
 )
-from tracking_schedule import is_due_today
+from tracking_schedule import classify_after_observation, is_due_today
 from video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
 from video_master import Video, VideoMasterError, load_video_ids_for_creator, load_videos, upsert_videos
 from youtube_client import YouTubeAPIError, build_youtube_client, get_video_statistics
 
-# The production schedule (Roadmap.md 2.4) runs the collector at 00:00 Asia/Tokyo.
+# The production schedule (Roadmap.md 2.4) runs the collector at 18:00 Asia/Tokyo.
 # Snapshot dates must be derived from JST, not the server's local/UTC clock.
 COLLECTION_TIMEZONE = ZoneInfo("Asia/Tokyo")
 
@@ -54,8 +54,10 @@ def main() -> int:
         # Load Video Master once for the whole run rather than once per creator,
         # and write the accumulated new videos back once at the end.
         known_videos = load_videos()
+        known_video_by_id = {video.video_id: video for video in known_videos}
         published_at_by_id = {video.video_id: video.published_at for video in known_videos}
         creator_id_by_video_id = {video.video_id: video.creator_id for video in known_videos}
+        activity_state_by_id = {video.video_id: video.activity_state for video in known_videos}
 
         tracking_universe: list[str] = []
         newly_discovered: list[Video] = []
@@ -87,16 +89,19 @@ def main() -> int:
         if newly_discovered:
             upsert_videos(newly_discovered)
 
-        # Tiered Tracking Frequency (Roadmap 1.5): recent videos are checked
-        # every day; older videos rotate through a longer cycle, so the daily
-        # statistics-collection workload stays low as the Tracking Universe
-        # grows. A newly discovered video always gets its first check today.
+        # Adaptive Tracking Frequency (Roadmap 1.5): every video is checked
+        # daily for its first 30 days regardless of activity_state; afterward
+        # Hot/Unknown/Warm/Cold governs the schedule. A newly discovered
+        # video always gets its first check today.
         newly_discovered_ids = {video.video_id for video in newly_discovered}
         today = collection_time.date()
         due_today = [
             video_id
             for video_id in tracking_universe
-            if video_id in newly_discovered_ids or is_due_today(video_id, published_at_by_id[video_id], today)
+            if video_id in newly_discovered_ids
+            or is_due_today(
+                video_id, published_at_by_id[video_id], activity_state_by_id.get(video_id, "Unknown"), today
+            )
         ]
         print(f"Tracking universe: {len(tracking_universe)} video(s), {len(due_today)} due for a check today\n")
 
@@ -172,6 +177,48 @@ def main() -> int:
 
     print(f"Saved {len(snapshots)} snapshot(s) to {snapshot_path}")
     print(f"Saved run summary to {summary_path}\n")
+
+    # Update each successfully-checked video's Adaptive Tracking Frequency
+    # state (Roadmap 1.5) only after the snapshot itself is durably saved —
+    # save_daily_collection's exclusive-create rejects a duplicate same-day
+    # re-run, and scheduler state must not advance (snapshot_count, velocity,
+    # activity_state) for a snapshot that was never actually persisted.
+    # Videos that were due but skipped are deliberately left untouched here —
+    # a missing/incomplete snapshot must never count as a quiet observation
+    # or demote a video.
+    scheduler_updates = []
+    for video in videos:
+        video_id = video["videoId"]
+        existing = known_video_by_id.get(video_id)
+        result = classify_after_observation(
+            current_state=existing.activity_state if existing else "Unknown",
+            snapshot_count=existing.snapshot_count if existing else 0,
+            quiet_streak=existing.quiet_streak if existing else 0,
+            previous_view_count=existing.last_view_count if existing else None,
+            previous_checked_at=existing.last_checked_at if existing else None,
+            new_view_count=video["viewCount"],
+            observed_at=observed_at,
+        )
+        scheduler_updates.append(
+            Video(
+                video_id=video_id,
+                creator_id=creator_id_by_video_id[video_id],
+                title=video["title"],
+                published_at=video["publishedAt"],
+                activity_state=result.activity_state,
+                last_checked_at=observed_at,
+                last_view_count=video["viewCount"],
+                snapshot_count=result.snapshot_count,
+                quiet_streak=result.quiet_streak,
+                last_classification_reason=result.reason,
+            )
+        )
+    if scheduler_updates:
+        try:
+            upsert_videos(scheduler_updates)
+        except VideoMasterError as exc:
+            print(f"Error: {exc}")
+            return 1
 
     for video in videos:
         print(

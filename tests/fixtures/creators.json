@@ -6,7 +6,7 @@
     "youtubeChannelId": "UC_TEST_CHANNEL",
     "active": true,
     "branch": "vspo_jp",
-    "tags": ["NO"],
+    "groupKey": ["NO"],
     "channelType": "member",
     "lifecycleStage": "active"
   },
@@ -17,7 +17,7 @@
     "youtubeChannelId": "UC_TEST_CHANNEL_2",
     "active": false,
     "branch": "holo_jp",
-    "tags": ["2期生"],
+    "groupKey": ["2期生"],
     "channelType": "member",
     "lifecycleStage": "active"
   }

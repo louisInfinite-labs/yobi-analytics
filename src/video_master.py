@@ -17,14 +17,27 @@ class VideoMasterError(JsonStoreError):
     """Raised when the Video Master JSON store is malformed or unwritable."""
 
 
+VALID_ACTIVITY_STATES = {"Unknown", "Hot", "Warm", "Cold"}
+
+
 @dataclass(frozen=True)
 class Video:
-    """A single tracked video's discovery metadata."""
+    """A single tracked video's discovery metadata plus its Adaptive Tracking
+    Frequency scheduler state (Roadmap 1.5/2.3)."""
 
     video_id: str
     creator_id: str
     title: str
     published_at: str
+    # Every newly discovered video bootstraps as "Unknown" regardless of
+    # age/views; see tracking_schedule.classify_after_observation for how it
+    # evolves after each statistics snapshot.
+    activity_state: str = "Unknown"
+    last_checked_at: str | None = None
+    last_view_count: int | None = None
+    snapshot_count: int = 0
+    quiet_streak: int = 0
+    last_classification_reason: str | None = None
 
 
 def load_videos(path: Path = DEFAULT_VIDEO_MASTER_PATH) -> list[Video]:
@@ -57,13 +70,31 @@ def upsert_videos(new_videos: list[Video], path: Path = DEFAULT_VIDEO_MASTER_PAT
 
 
 def _parse_video(raw: dict) -> Video:
-    """Convert a raw Video Master JSON record into a Video instance."""
+    """Convert a raw Video Master JSON record into a Video instance.
+
+    activityState/lastCheckedAt/lastViewCount/snapshotCount/quietStreak/
+    lastClassificationReason are all optional with bootstrap-equivalent
+    defaults, so records written before Roadmap 1.5's scheduler-state fields
+    existed still parse — as if never yet classified.
+    """
     try:
+        video_id = _require_str(raw, "videoId")
+
+        activity_state = raw.get("activityState", "Unknown")
+        if activity_state not in VALID_ACTIVITY_STATES:
+            raise VideoMasterError(f"Video {video_id!r} has invalid 'activityState': {activity_state!r}")
+
         return Video(
-            video_id=_require_str(raw, "videoId"),
+            video_id=video_id,
             creator_id=_require_str(raw, "creatorId"),
             title=_require_str(raw, "title"),
             published_at=_require_str(raw, "publishedAt"),
+            activity_state=activity_state,
+            last_checked_at=_optional_str(raw, "lastCheckedAt", video_id),
+            last_view_count=_optional_int(raw, "lastViewCount", video_id),
+            snapshot_count=_int_with_default(raw, "snapshotCount", 0, video_id),
+            quiet_streak=_int_with_default(raw, "quietStreak", 0, video_id),
+            last_classification_reason=_optional_str(raw, "lastClassificationReason", video_id),
         )
     except (KeyError, TypeError) as exc:
         raise VideoMasterError(f"Malformed Video Master record, missing/invalid field: {exc}") from exc
@@ -77,6 +108,34 @@ def _require_str(raw: dict, field: str) -> str:
     return value
 
 
+def _optional_str(raw: dict, field: str, video_id: str) -> str | None:
+    """Return raw[field] as a string if present and non-null, else None."""
+    value = raw.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise VideoMasterError(f"Video {video_id!r} has non-string {field!r}: {value!r}")
+    return value
+
+
+def _optional_int(raw: dict, field: str, video_id: str) -> int | None:
+    """Return raw[field] as an int if present and non-null, else None."""
+    value = raw.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise VideoMasterError(f"Video {video_id!r} has non-integer {field!r}: {value!r}")
+    return value
+
+
+def _int_with_default(raw: dict, field: str, default: int, video_id: str) -> int:
+    """Return raw[field] as an int, or `default` if the key is absent."""
+    value = raw.get(field, default)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise VideoMasterError(f"Video {video_id!r} has non-integer {field!r}: {value!r}")
+    return value
+
+
 def _to_raw(video: Video) -> dict:
     """Convert a Video instance into its JSON-serializable form."""
     return {
@@ -84,4 +143,10 @@ def _to_raw(video: Video) -> dict:
         "creatorId": video.creator_id,
         "title": video.title,
         "publishedAt": video.published_at,
+        "activityState": video.activity_state,
+        "lastCheckedAt": video.last_checked_at,
+        "lastViewCount": video.last_view_count,
+        "snapshotCount": video.snapshot_count,
+        "quietStreak": video.quiet_streak,
+        "lastClassificationReason": video.last_classification_reason,
     }

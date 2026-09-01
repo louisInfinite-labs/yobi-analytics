@@ -175,7 +175,7 @@ creatorId
 displayName
 organization
 branch
-tags
+groupKey
 channelType
 lifecycleStage
 youtubeChannelId
@@ -188,13 +188,15 @@ graduatedAt
 
 `graduatedAt` is an optional ISO 8601 date, only meaningful when `lifecycleStage` is `graduated`. It is **sparse by design**: a creator who hasn't graduated omits the key entirely rather than storing a placeholder like `"0000"`. This is deliberately chosen to carry over cleanly to DynamoDB later (2.3) — DynamoDB items don't require a fixed set of attributes, and a Global Secondary Index on a sparse attribute like `graduatedAt` only includes items that actually have it set, so "list graduated creators" naturally excludes everyone else without extra filtering logic. `lifecycleStage` always reflects the creator's **current** status, looked up live — there is no historical tracking of "was this creator active as of some earlier date"; once graduated, all of a creator's data (past and present) is treated as belonging to a graduated creator from that point on.
 
-`organization` is the top-level product label (`hololive` or `vspo`). `branch` is region/language only — `holo_jp`, `holo_en`, `holo_id`, `vspo_jp`, `vspo_en` (the latter two not populated yet) — it deliberately does not encode sub-labels like DEV_IS, mekPark, or staff; that belongs in `tags`. `tags` is a **list**, not a single value, because a creator can belong to more than one grouping at once — e.g. Shirakami Fubuki is both `"1期生"` and `"ゲーマーズ"` (Hololive Gamers), and a search for either tag must find her. A creator with no applicable grouping (all current `vspo` creators) uses the placeholder `["NO"]` rather than an empty list, so the field is never null/missing.
+`organization` is the top-level product label (`hololive` or `vspo`). `branch` is region/language only — `holo_jp`, `holo_en`, `holo_id`, `vspo_jp`, `vspo_en` (the latter two not populated yet) — it deliberately does not encode sub-labels like DEV_IS, mekPark, or staff; that belongs in `groupKey`. `groupKey` is a **list**, not a single value, because a creator can belong to more than one grouping at once — e.g. Shirakami Fubuki is both `"1期生"` and `"ゲーマーズ"` (Hololive Gamers), and a search for either group key must find her. A creator with no applicable grouping (all current `vspo` creators) uses the placeholder `["NO"]` rather than an empty list, so the field is never null/missing.
 
 `channelType` is `member` (an individual talent's own channel), `group` (an official channel for a unit/generation, not one person), or `staff` (an official non-talent channel, e.g. an announcer/PR channel). `lifecycleStage` is `active`, `pre_debut`, `graduated`, or `retired`, and is independent of the collection toggle `active`: a pre-debut unit can be `lifecycleStage: "pre_debut"` while also having `active: true` (it's still tracked, just hasn't formally debuted). These must be stored fields rather than values inferred from display names. APIs, rankings, and the Dashboard must support hierarchical filtering so group/staff/pre-debut channels are not mistaken for active member rankings.
 
+Note the resulting three-way overload of "active(ity)" in this project — worth keeping straight when naming fields/variables: Creator Master's `active` (a boolean collection on/off toggle), `lifecycleStage: "active"` (a talent's real-world career status, one of four string values), and per-video `activityState` (1.5's `Hot`/`Unknown`/`Warm`/`Cold` engagement tier, unrelated to either of the above).
+
 The following shared/group channels are in `creators.json` (verified via the YouTube Data API), all under `organization: "hololive"` — mekPark's pre-debut units are not a separate organization:
 
-| `creatorId` | Actual YouTube channel name | `branch` | `tags` | `channelType` | `lifecycleStage` | YouTube Channel ID |
+| `creatorId` | Actual YouTube channel name | `branch` | `groupKey` | `channelType` | `lifecycleStage` | YouTube Channel ID |
 | --- | --- | --- | --- | --- | --- | --- |
 | `hololive_dev_is_regloss` | `hololive DEV_IS ReGLOSS` | `holo_jp` | `["ReGLOSS"]` | `group` | `active` | `UC10wVt6hoQiwySRhz7RdOUA` |
 | `hololive_dev_is_flow_glow` | `hololive DEV_IS FLOW GLOW` | `holo_jp` | `["FLOWGLOW"]` | `group` | `active` | `UCu2n3qHuOuQIygREMnWeQWg` |
@@ -202,7 +204,7 @@ The following shared/group channels are in `creators.json` (verified via the You
 | `unit_b_pre_debut` | `UNIT B (Pre-Debut) - mekPark` | `holo_jp` | `["mekpark"]` | `group` | `pre_debut` | `UC3OH5FKQ3qtl4uRme_vZTgA` |
 | `holoan_room` | `holoAN room (ホロアナ)` | `holo_jp` | `["aNnounce"]` | `staff` | `active` | `UCozx5csNhCx1wsVq3SZVkBQ` |
 
-ReGLOSS and FLOW GLOW are two distinct hololive DEV_IS channels with different Channel IDs, not the same channel under two names. `holoAN room`'s `aNnounce` tag comes from the channel's own naming (**AN**nounce + **AN**chor), and it posts as hololive Production's shared official announcer persona rather than one individual talent.
+ReGLOSS and FLOW GLOW are two distinct hololive DEV_IS channels with different Channel IDs, not the same channel under two names. `holoAN room`'s `aNnounce` group key comes from the channel's own naming (**AN**nounce + **AN**chor), and it posts as hololive Production's shared official announcer persona rather than one individual talent.
 
 Initial organizations:
 
@@ -219,7 +221,7 @@ Example (active creator, `graduatedAt` omitted):
   "displayName": "藍沢エマ",
   "organization": "vspo",
   "branch": "vspo_jp",
-  "tags": ["NO"],
+  "groupKey": ["NO"],
   "channelType": "member",
   "lifecycleStage": "active",
   "youtubeChannelId": "UC...",
@@ -236,7 +238,7 @@ Example (graduated creator):
   "displayName": "Gawr Gura",
   "organization": "hololive",
   "branch": "holo_en",
-  "tags": ["Myth"],
+  "groupKey": ["Myth"],
   "channelType": "member",
   "lifecycleStage": "graduated",
   "graduatedAt": "2025-05-01",
@@ -255,7 +257,7 @@ Creator data should not be hard-coded directly inside collection logic.
 - New creators can be added without changing the collection core.
 - Japanese creator names remain intact.
 - `graduatedAt` is present only for `graduated` creators (sparse — omitted, not a placeholder, for everyone else) and is a valid ISO 8601 date.
-- Every Creator Master entry explicitly stores `organization`, `branch`, `tags`, `channelType`, and `lifecycleStage`; neither backend nor Dashboard may infer classification from names.
+- Every Creator Master entry explicitly stores `organization`, `branch`, `groupKey`, `channelType`, and `lifecycleStage`; neither backend nor Dashboard may infer classification from names.
 - The real `creators.json` includes all five shared/group channels from the table above with their verified Channel IDs and classification fields.
 - Channel ID uniqueness is maintained — `holoan_room` is one shared staff channel, not duplicated per persona.
 
@@ -313,7 +315,7 @@ discoveryUnits = sum(playlist pages read for discovery-enabled channels)
 newVideoDetailUnits = ceil(newVideoIdsNotAlreadyInStatisticsRun / 50)
 ```
 
-Under the current YouTube quota table, `playlistItems.list`, `channels.list`, and `videos.list` each cost 1 general quota unit per call. With the current roster file's 65 discovery-enabled channels, one normal one-page scan costs about **65 units (0.65% of a 10,000-unit daily quota)**; two scans cost about **130 units/day (1.3%)** before any separate new-video detail batches. If 1–50 new IDs in a window need a separate batched `videos.list`, add 1 unit; preferably merge the `18:00` discoveries into the same day's statistics batch so no duplicate detail request is made. Two playlist pages for every enabled channel in one window would cost 130 units, but that should be exceptional after a missed run rather than the steady state. Resolving uploads playlist IDs with batched `channels.list` is onboarding/roster-change work and must not be repeated every day.
+Under the current YouTube quota table, `playlistItems.list`, `channels.list`, and `videos.list` each cost 1 general quota unit per call. With the current roster file's 99 discovery-enabled channels, one normal one-page scan costs about **99 units (0.99% of a 10,000-unit daily quota)**; two scans cost about **198 units/day (1.98%)** before any separate new-video detail batches. If 1–50 new IDs in a window need a separate batched `videos.list`, add 1 unit; preferably merge the `18:00` discoveries into the same day's statistics batch so no duplicate detail request is made. Two playlist pages for every enabled channel in one window would cost 198 units, but that should be exceptional after a missed run rather than the steady state. Resolving uploads playlist IDs with batched `channels.list` is onboarding/roster-change work and must not be repeated every day.
 
 All discovery calls and retries use the same Pacific-day quota ledger and hard caps as statistics collection. Persist pages read, new IDs found, estimated/actual units, and the last successful discovery time per channel. A failed channel scan must be retryable independently and must not cause successful channels or known-video statistics batches to run again.
 
@@ -337,6 +339,30 @@ Discovery and Statistics Collection are separate responsibilities: Discovery dec
 - Snapshots must accumulate history — never overwrite the previous day's snapshot.
 - See 1.6 Raw Daily Snapshot Model for the full field list actually stored (`creatorId`, `title`, `publishedAt`, and `organization` in addition to the above).
 - This raw data is what later daily / 7-day / 30-day growth analytics is built from.
+
+#### Video Master Schema
+
+Unlike Creator Master (1.3) and Snapshot (1.6), Video Master's fields have so far only been described in prose across several sections. One record, showing both the discovery-identity fields and the Adaptive Tracking Frequency scheduler state (1.5):
+
+```json
+{
+  "videoId": "dQw4w9WgXcQ",
+  "creatorId": "aizawa_ema",
+  "title": "...",
+  "publishedAt": "2026-08-20T10:00:00Z",
+
+  "activityState": "Warm",
+  "lastCheckedAt": "2026-08-30T18:03:14+09:00",
+  "lastViewCount": 137682,
+  "snapshotCount": 4,
+  "quietStreak": 0,
+  "lastClassificationReason": "moderate_growth"
+}
+```
+
+`activityState` is one of `Unknown`/`Hot`/`Warm`/`Cold` (1.5). `lastCheckedAt`/`lastViewCount` are the prior observation `classify_after_observation` compares the next one against — not duplicated per-day history, which lives in Snapshot (1.6) instead. `snapshotCount` is the video's lifetime observation count (used for the Unknown bootstrap gate); `quietStreak` is consecutive quiet observations since the last promotion (used for the demotion gate). `lastClassificationReason` is a short machine-readable tag (e.g. `bootstrap_first_snapshot`, `strong_growth`, `demoted_after_quiet_streak`) recording why the last transition happened, for auditing without needing to recompute it from snapshot history.
+
+A newly discovered video is inserted with only the identity fields; the scheduler-state fields default to `activityState: "Unknown"`, `snapshotCount: 0`, `quietStreak: 0`, `lastCheckedAt`/`lastViewCount` absent — i.e. bootstrap, per 1.5's Bootstrap and State Transitions. A record written before these fields existed parses the same way, as if never yet classified.
 
 #### Scope Boundary
 
@@ -396,11 +422,11 @@ Cold                    → every 15 days
 Admin override          → explicitly selected run, subject to the hard quota cap
 ```
 
-A video's total `viewCount` does not define activity. Five million lifetime views with +10/day may be Cold, while 5,000 lifetime views with +1,000/day may be Hot. Initial tuning thresholds are:
+A video's total `viewCount` does not define activity. Five million lifetime views with +10/day (0.0002%/day) is Cold, while 5,000 lifetime views with +1,000/day (20%/day) is Hot. Classification is purely percent-of-current-views per day — no absolute views/day floor. This is a deliberate simplification: a very small video can cross these thresholds on a trivial absolute gain (e.g. 10 → 15 views is 50%/day), and that is accepted rather than adding a second absolute-value condition. Initial tuning thresholds are:
 
 ```text
-Hot  → average +1,000 views/day, OR >=2%/day with >=100 absolute views/day
-Warm → average +100 views/day, OR >=0.5%/day
+Hot  → >=2%/day
+Warm → >=0.5%/day
 Cold → below Hot/Warm thresholds for the required consecutive observations
 ```
 
@@ -409,9 +435,9 @@ Thresholds are runtime configuration, not permanent constants. Store the measure
 #### Bootstrap and State Transitions
 
 - A first cumulative `viewCount` is only a baseline. Every first-time import is `Unknown`, even when it is old and has few total views.
-- `Unknown` is checked every 2 days and requires at least three snapshots (two valid comparison intervals) before it may become `Cold`.
-- A strong first interval may promote `Unknown` to provisional `Hot` immediately and schedule it the next day; `Warm` is rechecked on its 3-day schedule.
-- Promotion to a faster class may happen immediately. Demotion requires 2–3 consecutive quiet observations to prevent Hot/Warm/Cold oscillation.
+- `Unknown` is checked every 2 days and requires at least three snapshots (two valid comparison intervals) before it may move to *any* other state — `Hot`/`Warm`/`Cold` alike wait for the same minimum evidence, so an early single strong interval does not promote it early. This keeps every state's promotion/demotion decision resting on the same amount of evidence rather than letting `Unknown` jump the queue.
+- Once `Unknown` has enough snapshots, it moves directly to whichever state the latest interval supports: `Hot` on strong growth, `Warm` on moderate growth, `Cold` if quiet.
+- For an already-classified video (`Hot`/`Warm`/`Cold`), promotion to a faster class may happen immediately on a single strong/moderate interval. Demotion is stricter: exactly 3 consecutive quiet observations (not counting missing/incomplete ones) are required before a video drops one class (`Hot`→`Warm`, `Warm`→`Cold`), to prevent oscillation from a single noisy or quiet data point.
 - A video older than 30 days that becomes active again is promoted to Hot or Warm; age never prevents reactivation.
 - Missing/incomplete snapshots do not count as quiet observations and cannot demote a video.
 
@@ -441,6 +467,8 @@ Recent → Hot → Unknown → Admin override → Warm → due Cold
 ```
 
 The hard cap always wins. Overflow is carried forward by `nextCheckAt`/`lastCheckedAt`; it must not produce duplicate same-day snapshots.
+
+If even the unconditionally-due tiers (Recent + Hot) alone would exceed the hard cap, drop videos published over a year ago whose recent growth is below 5%/day from today's mandatory set first — they fall back to their normal rotation instead of being force-checked. This protects genuinely fast-moving old videos (which still clear the 5% floor) while giving up on stale ones under quota pressure. 5%/day is an initial provisional value, not a permanent constant.
 
 #### Admin Collection Overrides
 
@@ -544,18 +572,18 @@ This should be resolved as part of formalizing the snapshot model in 1.6, not be
 
 The snapshot file and its run-summary file are written as one recoverable pair (`save_daily_collection`): if the summary write fails after the snapshot write succeeds, the snapshot is rolled back rather than left orphaned, so a retry isn't permanently blocked by a stray file that exclusive-create would otherwise refuse to touch again.
 
-#### Design Note: Snapshot Deliberately Does Not Carry `branch`/`tags`/`channelType`/`lifecycleStage`
+#### Design Note: Snapshot Deliberately Does Not Carry `branch`/`groupKey`/`channelType`/`lifecycleStage`
 
-1.3 later added `branch`, `tags`, `channelType`, and `lifecycleStage` to Creator Master. `Snapshot` still only carries `organization`, not these four — this is deliberate, not an oversight:
+1.3 later added `branch`, `groupKey`, `channelType`, and `lifecycleStage` to Creator Master. `Snapshot` still only carries `organization`, not these four — this is deliberate, not an oversight:
 
 ```json
 // Kept lean (current):
 {"snapshotDate": "2026-08-31", "creatorId": "shirakami_fubuki", "videoId": "abc123", "viewCount": 125000, "organization": "hololive"}
 // vs. denormalized (rejected for now):
-{"...": "...", "branch": "holo_jp", "tags": ["1期生", "ゲーマーズ"], "channelType": "member", "lifecycleStage": "active"}
+{"...": "...", "branch": "holo_jp", "groupKey": ["1期生", "ゲーマーズ"], "channelType": "member", "lifecycleStage": "active"}
 ```
 
-`branch`, `tags`, and `channelType` are effectively permanent facts about a creator — duplicating them into every snapshot record, for every video, every day, forever, is pure repeated storage with no analytical benefit; a `creatorId` lookup against Creator Master is enough. `lifecycleStage` is the one field that genuinely changes over time (`active` → `graduated`), which raised a real question: should a report about a past date reflect the creator's status *as of that date*, or their *current* status looked up live?
+`branch`, `groupKey`, and `channelType` are effectively permanent facts about a creator — duplicating them into every snapshot record, for every video, every day, forever, is pure repeated storage with no analytical benefit; a `creatorId` lookup against Creator Master is enough. `lifecycleStage` is the one field that genuinely changes over time (`active` → `graduated`), which raised a real question: should a report about a past date reflect the creator's status *as of that date*, or their *current* status looked up live?
 
 **Decision: always use the creator's current `lifecycleStage`, looked up live — no historical tracking.** Once a creator graduates, every report treats all of their data (past and present) as belonging to a `graduated` creator from that point on; nothing preserves "was `active` as of some earlier date." This keeps the model simple and matches how the project actually wants graduation reflected — retroactively, not date-scoped. Do not denormalize any of these four fields into `Snapshot`; all four are resolved via a live `creatorId` lookup against Creator Master, including at query time in 3.4 (Read API).
 
@@ -1166,7 +1194,7 @@ period=1d | 7d | 30d
 
 `timeZone` must be an IANA zone name, not a raw numeric UTC offset. The API validates it through Python `zoneinfo.ZoneInfo` against the deployed time-zone database, treats `reportDate` as a calendar date in that zone, maps it to the canonical JST snapshot keys, and performs the comparison without exposing the internal collection schedule to normal users. Pin/package current `tzdata` when the Lambda runtime cannot guarantee the required database. Invalid zones return a clear client error rather than silently falling back to another date.
 
-The normalized response should include `timeZone`, `reportDate`, `comparisonDate`, `period`, `lastUpdatedAt`, completeness status, and the analytics result. Every creator/channel/video result must also carry `organization`, `branch`, `tags`, `channelType`, and `lifecycleStage` directly, and the API accepts the same fields as optional filters; the frontend must not infer them from names. `lastUpdatedAt` remains an absolute timestamp so the client can display it in the requested zone.
+The normalized response should include `timeZone`, `reportDate`, `comparisonDate`, `period`, `lastUpdatedAt`, completeness status, and the analytics result. Every creator/channel/video result must also carry `organization`, `branch`, `groupKey`, `channelType`, and `lifecycleStage` directly, and the API accepts the same fields as optional filters; the frontend must not infer them from names. `lastUpdatedAt` remains an absolute timestamp so the client can display it in the requested zone.
 
 **Every query parameter is untrusted input from a public URL and must be validated before it touches any parsing/lookup logic** — this is a request handler, not a trusted internal call. `reportDate`, `timeZone`, `period`, and any creator/organization/branch filter values must all be validated up front (format, length, character set, and — for `reportDate` — that it parses to a real calendar date) before anything downstream tries to use them. A value that fails validation returns a clean 4xx-style client error with a generic message; it must never propagate into a date-parsing call, a dict/file lookup keyed by the raw string, or any other place that could raise an unhandled exception and crash the Lambda or leak an internal stack trace. This applies regardless of *why* the value is unusual — a genuine typo, an automated scanner probing the endpoint, or a deliberate attempt to break the parser must all be handled by the same validation path, not treated as different code paths.
 
@@ -1203,7 +1231,7 @@ The complete UI specification for this section is maintained separately in [`das
 
 For every analytics request, the dashboard detects the device IANA time zone with `Intl.DateTimeFormat().resolvedOptions().timeZone`, provides a searchable IANA time-zone selector, and sends the selected `timeZone`, its local `reportDate`, and `period` to the Read API. Do not model supported zones as a hardcoded TypeScript union. If detection is unavailable, visibly fall back to `UTC` and let the user choose; do not silently assume Tokyo. The UI displays only the localized report/comparison dates and localized last-updated time; the canonical JST snapshot date and collector schedule remain internal.
 
-Classification filters follow `organization → branch → tags → channelType → lifecycleStage`. Hololive is the top-level label, with nested JP generations 0–6/Gamers/holoX, DEV_IS/ReGLOSS/FLOW GLOW, mekPark/ACHRORA/UNIT B, and staff/aNnounce options carried as `tags`. VSPO uses the same contract and may add nested tags later. ACHRORA and UNIT B retain `organization: "hololive"` and are distinguished by branch/tags/status rather than a separate top-level label.
+Classification filters follow `organization → branch → groupKey → channelType → lifecycleStage`. Hololive is the top-level label, with nested JP generations 0–6/Gamers/holoX, DEV_IS/ReGLOSS/FLOW GLOW, mekPark/ACHRORA/UNIT B, and staff/aNnounce options carried as `groupKey`. VSPO uses the same contract and may add nested groupKey later. ACHRORA and UNIT B retain `organization: "hololive"` and are distinguished by branch/groupKey/status rather than a separate top-level label.
 
 Possible dashboard sections:
 
