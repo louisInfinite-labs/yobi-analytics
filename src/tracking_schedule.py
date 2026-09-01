@@ -85,12 +85,22 @@ def is_due_today(video_id: str, published_at: str, activity_state: str, as_of: d
 
 @dataclass(frozen=True)
 class ClassificationResult:
-    """The updated scheduler state for one video after a fresh observation."""
+    """The updated scheduler state for one video after a fresh observation.
+
+    `percent_per_day`/`avg_views_per_day` are the velocity measurements this
+    observation was classified on — None only for `bootstrap_first_snapshot`,
+    where there was no prior observation to measure growth against. Callers
+    persist these onto Video Master so a past Hot/Warm/Cold decision can be
+    audited or used to retune thresholds later, without recomputing it from
+    raw snapshot history.
+    """
 
     activity_state: str
     snapshot_count: int
     quiet_streak: int
     reason: str
+    percent_per_day: float | None
+    avg_views_per_day: float | None
 
 
 def classify_after_observation(
@@ -116,7 +126,7 @@ def classify_after_observation(
     if previous_view_count is None or previous_checked_at is None:
         # A first cumulative viewCount is only a baseline — every first-time
         # import is Unknown, even if it's old and has few total views.
-        return ClassificationResult("Unknown", new_snapshot_count, 0, "bootstrap_first_snapshot")
+        return ClassificationResult("Unknown", new_snapshot_count, 0, "bootstrap_first_snapshot", None, None)
 
     percent_per_day, avg_views_per_day = _growth_per_day(
         previous_view_count, new_view_count, previous_checked_at, observed_at
@@ -130,18 +140,26 @@ def classify_after_observation(
         if is_hot:
             # A strong first interval may promote Unknown straight to Hot
             # immediately, bypassing the minimum-evidence gate below.
-            return ClassificationResult("Hot", new_snapshot_count, 0, "strong_growth")
+            return ClassificationResult(
+                "Hot", new_snapshot_count, 0, "strong_growth", percent_per_day, avg_views_per_day
+            )
         if new_snapshot_count < MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE:
             # Every other transition follows the minimum-evidence gate:
             # Unknown must accumulate MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE
             # snapshots before it may become Warm or Cold.
-            return ClassificationResult("Unknown", new_snapshot_count, 0, "bootstrap_awaiting_more_snapshots")
+            return ClassificationResult(
+                "Unknown", new_snapshot_count, 0, "bootstrap_awaiting_more_snapshots", percent_per_day, avg_views_per_day
+            )
         if is_warm:
-            return ClassificationResult("Warm", new_snapshot_count, 0, "moderate_growth_after_bootstrap")
-        return ClassificationResult("Cold", new_snapshot_count, 0, "quiet_after_bootstrap")
+            return ClassificationResult(
+                "Warm", new_snapshot_count, 0, "moderate_growth_after_bootstrap", percent_per_day, avg_views_per_day
+            )
+        return ClassificationResult(
+            "Cold", new_snapshot_count, 0, "quiet_after_bootstrap", percent_per_day, avg_views_per_day
+        )
 
     if is_hot:
-        return ClassificationResult("Hot", new_snapshot_count, 0, "strong_growth")
+        return ClassificationResult("Hot", new_snapshot_count, 0, "strong_growth", percent_per_day, avg_views_per_day)
 
     if is_warm:
         # Moderate (though not "strong") growth is not a quiet observation —
@@ -149,13 +167,24 @@ def classify_after_observation(
         # A Hot video showing only moderate growth this time stays Hot; only
         # a run of genuinely quiet observations demotes it (see below).
         next_state = "Hot" if current_state == "Hot" else "Warm"
-        return ClassificationResult(next_state, new_snapshot_count, 0, "moderate_growth")
+        return ClassificationResult(
+            next_state, new_snapshot_count, 0, "moderate_growth", percent_per_day, avg_views_per_day
+        )
 
     next_quiet_streak = quiet_streak + 1
     demotion_threshold = _DEMOTION_THRESHOLD_BY_STATE.get(current_state)
     if demotion_threshold is not None and next_quiet_streak >= demotion_threshold:
-        return ClassificationResult(_DEMOTE_TO[current_state], new_snapshot_count, 0, "demoted_after_quiet_streak")
-    return ClassificationResult(current_state, new_snapshot_count, next_quiet_streak, "quiet_observation")
+        return ClassificationResult(
+            _DEMOTE_TO[current_state],
+            new_snapshot_count,
+            0,
+            "demoted_after_quiet_streak",
+            percent_per_day,
+            avg_views_per_day,
+        )
+    return ClassificationResult(
+        current_state, new_snapshot_count, next_quiet_streak, "quiet_observation", percent_per_day, avg_views_per_day
+    )
 
 
 def _growth_per_day(

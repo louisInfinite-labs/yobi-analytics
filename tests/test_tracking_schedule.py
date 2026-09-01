@@ -1,6 +1,7 @@
 import itertools
 from datetime import date, timedelta
 
+import pytest
 from tracking_schedule import (
     COLD_CYCLE_DAYS,
     DEMOTION_QUIET_STREAK_HOT_TO_WARM,
@@ -181,6 +182,29 @@ def test_first_snapshot_bootstraps_to_unknown():
     assert result.snapshot_count == 1
     assert result.quiet_streak == 0
     assert result.reason == "bootstrap_first_snapshot"
+    assert result.percent_per_day is None
+    assert result.avg_views_per_day is None
+
+
+# --- classify_after_observation: velocity measurements persist --------------
+
+
+def test_velocity_measurements_are_returned_alongside_classification():
+    """percent_per_day/avg_views_per_day are returned on the result so the
+    caller can persist the measurements a classification was actually made
+    on, not just the resulting state."""
+    result = classify_after_observation(
+        current_state="Cold",
+        snapshot_count=5,
+        quiet_streak=1,
+        previous_view_count=10_000,
+        previous_checked_at="2026-08-29T18:00:00+09:00",
+        new_view_count=12_000,  # +2,000 views over 1 day = 20%/day, 2,000/day
+        observed_at="2026-08-30T18:00:00+09:00",
+    )
+
+    assert result.percent_per_day == pytest.approx(20.0)
+    assert result.avg_views_per_day == pytest.approx(2000.0)
 
 
 # --- classify_after_observation: promotion to Hot ---------------------------

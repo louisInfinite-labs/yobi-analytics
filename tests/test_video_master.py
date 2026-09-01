@@ -163,6 +163,8 @@ def test_pre_scheduler_state_record_parses_with_bootstrap_defaults(tmp_path):
     assert videos[0].snapshot_count == 0
     assert videos[0].quiet_streak == 0
     assert videos[0].last_classification_reason is None
+    assert videos[0].last_percent_growth_per_day is None
+    assert videos[0].last_avg_views_per_day is None
 
 
 def test_scheduler_state_fields_round_trip(tmp_path):
@@ -179,11 +181,59 @@ def test_scheduler_state_fields_round_trip(tmp_path):
         snapshot_count=4,
         quiet_streak=1,
         last_classification_reason="strong_growth",
+        last_percent_growth_per_day=20.0,
+        last_avg_views_per_day=2000.0,
     )
 
     upsert_videos([video], path)
 
     assert load_videos(path) == [video]
+
+
+def test_non_numeric_velocity_field_is_rejected(tmp_path):
+    """A non-numeric 'lastAvgViewsPerDay' is rejected instead of silently accepted."""
+    path = tmp_path / "video_master.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "videoId": "v1",
+                    "creatorId": "aizawa_ema",
+                    "title": "A",
+                    "publishedAt": "2026-08-20T00:00:00Z",
+                    "lastAvgViewsPerDay": "2000",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VideoMasterError):
+        load_videos(path)
+
+
+def test_integer_velocity_field_is_accepted(tmp_path):
+    """A whole-number velocity measurement round-trips through JSON without a
+    decimal point (e.g. 1000, not 1000.0) and must still parse as a float."""
+    path = tmp_path / "video_master.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "videoId": "v1",
+                    "creatorId": "aizawa_ema",
+                    "title": "A",
+                    "publishedAt": "2026-08-20T00:00:00Z",
+                    "lastAvgViewsPerDay": 1000,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    videos = load_videos(path)
+
+    assert videos[0].last_avg_views_per_day == 1000.0
 
 
 def test_unknown_activity_state_is_rejected(tmp_path):
