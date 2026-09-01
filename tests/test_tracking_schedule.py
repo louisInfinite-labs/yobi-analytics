@@ -1,9 +1,11 @@
 import itertools
 from datetime import date, timedelta
 
+import pytest
 from tracking_schedule import (
     COLD_CYCLE_DAYS,
-    DEMOTION_QUIET_STREAK_THRESHOLD,
+    DEMOTION_QUIET_STREAK_HOT_TO_WARM,
+    DEMOTION_QUIET_STREAK_WARM_TO_COLD,
     MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE,
     UNKNOWN_CYCLE_DAYS,
     WARM_CYCLE_DAYS,
@@ -180,6 +182,29 @@ def test_first_snapshot_bootstraps_to_unknown():
     assert result.snapshot_count == 1
     assert result.quiet_streak == 0
     assert result.reason == "bootstrap_first_snapshot"
+    assert result.percent_per_day is None
+    assert result.avg_views_per_day is None
+
+
+# --- classify_after_observation: velocity measurements persist --------------
+
+
+def test_velocity_measurements_are_returned_alongside_classification():
+    """percent_per_day/avg_views_per_day are returned on the result so the
+    caller can persist the measurements a classification was actually made
+    on, not just the resulting state."""
+    result = classify_after_observation(
+        current_state="Cold",
+        snapshot_count=5,
+        quiet_streak=1,
+        previous_view_count=10_000,
+        previous_checked_at="2026-08-29T18:00:00+09:00",
+        new_view_count=12_000,  # +2,000 views over 1 day = 20%/day, 2,000/day
+        observed_at="2026-08-30T18:00:00+09:00",
+    )
+
+    assert result.percent_per_day == pytest.approx(20.0)
+    assert result.avg_views_per_day == pytest.approx(2000.0)
 
 
 # --- classify_after_observation: promotion to Hot ---------------------------
@@ -202,42 +227,93 @@ def test_strong_percent_growth_promotes_to_hot():
     assert result.reason == "strong_growth"
 
 
-def test_high_percent_growth_on_a_small_video_still_promotes_to_hot():
-    """Classification is purely percent-of-current-views based (no absolute
-    views/day floor) — a deliberate simplification: even a small video
-    crossing 2%/day counts as Hot, the same as a large one."""
+def test_high_percent_growth_on_a_small_video_is_capped_to_warm():
+    """Hot's percent path requires an absolute views/day floor alongside the
+    percent floor, specifically so a small video can't reach Hot purely from
+    a trivial absolute gain — 10 -> 15 views is 50%/day but only 5 views/day,
+    which is below the floor, so it lands on Warm instead (via the percent
+    path, which has no absolute floor)."""
     result = classify_after_observation(
         current_state="Warm",  # already past the Unknown bootstrap gate
         snapshot_count=5,
         quiet_streak=0,
         previous_view_count=10,
         previous_checked_at="2026-08-29T18:00:00+09:00",
-        new_view_count=15,  # +5 views/day = 50%/day
+        new_view_count=15,  # +5 views/day = 50%/day, below Hot's absolute floor
+        observed_at="2026-08-30T18:00:00+09:00",
+    )
+
+    assert result.activity_state == "Warm"
+
+
+def test_large_absolute_gain_promotes_to_hot_even_with_tiny_percent():
+    """A large enough absolute views/day gain promotes to Hot on its own,
+    even when the percent growth is tiny on a huge existing view count."""
+    result = classify_after_observation(
+        current_state="Warm",
+        snapshot_count=5,
+        quiet_streak=0,
+        previous_view_count=10_000_000,
+        previous_checked_at="2026-08-29T18:00:00+09:00",
+        new_view_count=10_001_000,  # +1,000 views/day, ~0.01%/day
         observed_at="2026-08-30T18:00:00+09:00",
     )
 
     assert result.activity_state == "Hot"
 
 
+def test_moderate_absolute_gain_promotes_to_warm_even_with_tiny_percent():
+    """A moderate absolute views/day gain promotes to Warm on its own, even
+    when the percent growth is tiny on a huge existing view count."""
+    result = classify_after_observation(
+        current_state="Cold",
+        snapshot_count=5,
+        quiet_streak=0,
+        previous_view_count=10_000_000,
+        previous_checked_at="2026-08-29T18:00:00+09:00",
+        new_view_count=10_000_100,  # +100 views/day, ~0.001%/day
+        observed_at="2026-08-30T18:00:00+09:00",
+    )
+
+    assert result.activity_state == "Warm"
+
+
 # --- classify_after_observation: Unknown bootstrap path ----------------------
 
 
-def test_unknown_does_not_promote_before_minimum_snapshots_even_with_strong_growth():
-    """Every stage's promotion/demotion follows the same minimum-evidence gate:
-    Unknown must accumulate MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE snapshots before
-    moving to *any* other state — even a strong growth signal doesn't promote
-    it early, unlike an already-classified Hot/Warm/Cold video."""
+def test_unknown_does_not_promote_to_warm_before_minimum_snapshots():
+    """Unknown must accumulate MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE snapshots
+    before it may become Warm or Cold — only a strong (Hot-tier) interval
+    is allowed to skip this gate (see test below)."""
     result = classify_after_observation(
         current_state="Unknown",
         snapshot_count=1,  # this will be only the 2nd snapshot, still < the minimum
         quiet_streak=0,
         previous_view_count=1_000,
         previous_checked_at="2026-08-29T18:00:00+09:00",
-        new_view_count=10_000,  # +9,000 views/day: would be Hot-tier if evaluated
+        new_view_count=1_010,  # +10 views/day = 1%/day: Warm-tier if evaluated, not Hot-tier
         observed_at="2026-08-30T18:00:00+09:00",
     )
 
     assert result.activity_state == "Unknown"
+    assert result.snapshot_count == 2
+
+
+def test_strong_growth_promotes_unknown_to_hot_before_minimum_snapshots():
+    """A strong first interval is the one exception to Unknown's minimum-evidence
+    gate: it may promote Unknown straight to Hot immediately, even on only its
+    2nd-ever snapshot."""
+    result = classify_after_observation(
+        current_state="Unknown",
+        snapshot_count=1,  # this will be only the 2nd snapshot, still < the minimum
+        quiet_streak=0,
+        previous_view_count=1_000,
+        previous_checked_at="2026-08-29T18:00:00+09:00",
+        new_view_count=10_000,  # +9,000 views/day: Hot-tier
+        observed_at="2026-08-30T18:00:00+09:00",
+    )
+
+    assert result.activity_state == "Hot"
     assert result.snapshot_count == 2
 
 
@@ -330,11 +406,12 @@ def test_hot_video_with_only_moderate_growth_stays_hot():
 
 
 def test_quiet_observation_increments_streak_without_demoting_below_threshold():
-    """A quiet observation increments quiet_streak but doesn't demote until the threshold."""
+    """A quiet observation increments quiet_streak but doesn't demote until the threshold.
+    Warm->Cold uses the higher DEMOTION_QUIET_STREAK_WARM_TO_COLD threshold."""
     result = classify_after_observation(
         current_state="Warm",
         snapshot_count=10,
-        quiet_streak=DEMOTION_QUIET_STREAK_THRESHOLD - 2,
+        quiet_streak=DEMOTION_QUIET_STREAK_WARM_TO_COLD - 2,
         previous_view_count=10_000,
         previous_checked_at="2026-08-29T18:00:00+09:00",
         new_view_count=10_010,  # essentially flat: quiet
@@ -342,15 +419,15 @@ def test_quiet_observation_increments_streak_without_demoting_below_threshold():
     )
 
     assert result.activity_state == "Warm"
-    assert result.quiet_streak == DEMOTION_QUIET_STREAK_THRESHOLD - 1
+    assert result.quiet_streak == DEMOTION_QUIET_STREAK_WARM_TO_COLD - 1
 
 
 def test_reaching_quiet_streak_threshold_demotes_warm_to_cold():
-    """Reaching DEMOTION_QUIET_STREAK_THRESHOLD consecutive quiet observations demotes Warm to Cold."""
+    """Reaching DEMOTION_QUIET_STREAK_WARM_TO_COLD consecutive quiet observations demotes Warm to Cold."""
     result = classify_after_observation(
         current_state="Warm",
         snapshot_count=10,
-        quiet_streak=DEMOTION_QUIET_STREAK_THRESHOLD - 1,
+        quiet_streak=DEMOTION_QUIET_STREAK_WARM_TO_COLD - 1,
         previous_view_count=10_000,
         previous_checked_at="2026-08-29T18:00:00+09:00",
         new_view_count=10_010,
@@ -362,11 +439,13 @@ def test_reaching_quiet_streak_threshold_demotes_warm_to_cold():
 
 
 def test_reaching_quiet_streak_threshold_demotes_hot_to_warm():
-    """Reaching the quiet-streak threshold demotes Hot to Warm, not straight to Cold."""
+    """Reaching DEMOTION_QUIET_STREAK_HOT_TO_WARM consecutive quiet observations demotes
+    Hot to Warm, not straight to Cold. Hot's threshold is lower than Warm's since it's
+    checked daily and cheap to re-promote if the demotion turns out to be premature."""
     result = classify_after_observation(
         current_state="Hot",
         snapshot_count=10,
-        quiet_streak=DEMOTION_QUIET_STREAK_THRESHOLD - 1,
+        quiet_streak=DEMOTION_QUIET_STREAK_HOT_TO_WARM - 1,
         previous_view_count=10_000,
         previous_checked_at="2026-08-29T18:00:00+09:00",
         new_view_count=10_010,
@@ -381,7 +460,7 @@ def test_cold_cannot_demote_further():
     result = classify_after_observation(
         current_state="Cold",
         snapshot_count=20,
-        quiet_streak=DEMOTION_QUIET_STREAK_THRESHOLD - 1,
+        quiet_streak=DEMOTION_QUIET_STREAK_WARM_TO_COLD - 1,
         previous_view_count=10_000,
         previous_checked_at="2026-08-15T18:00:00+09:00",
         new_view_count=10_010,
@@ -393,7 +472,8 @@ def test_cold_cannot_demote_further():
 
 def test_zero_baseline_with_trivial_gain_stays_quiet():
     """Growing from 0 views is undefined as a percentage — a trivial absolute
-    gain (0 -> 1 view) must not be treated as "100%/day" strong growth."""
+    gain (0 -> 1 view) must not be treated as "100%/day" strong growth, and
+    is also too small to clear either tier's absolute views/day floor."""
     result = classify_after_observation(
         current_state="Unknown",
         snapshot_count=1,
@@ -408,15 +488,14 @@ def test_zero_baseline_with_trivial_gain_stays_quiet():
     assert result.activity_state != "Warm"
 
 
-def test_zero_baseline_with_large_gain_is_not_hot_since_percent_is_undefined():
-    """Classification is purely percent-based now, with no absolute fallback —
-    even a large jump from a zero baseline (e.g. 0 -> 5,000 views) cannot be
-    classified as Hot, since percent growth from zero is treated as not
-    applicable (0.0) rather than an undefined/infinite spike. This is an
-    accepted limitation of the percent-only design, not a bug."""
+def test_zero_baseline_with_large_absolute_gain_is_hot_via_absolute_floor():
+    """Percent growth from a zero baseline is undefined and treated as 0.0,
+    but a large enough absolute jump (e.g. 0 -> 5,000 views in a day) still
+    clears Hot's absolute views/day floor on its own — this is also a strong
+    enough interval to promote Unknown early, before the minimum-evidence gate."""
     result = classify_after_observation(
         current_state="Unknown",
-        snapshot_count=MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE - 1,  # past the bootstrap minimum-evidence gate
+        snapshot_count=1,  # still below the minimum-evidence gate
         quiet_streak=0,
         previous_view_count=0,
         previous_checked_at="2026-08-29T18:00:00+09:00",
@@ -424,7 +503,7 @@ def test_zero_baseline_with_large_gain_is_not_hot_since_percent_is_undefined():
         observed_at="2026-08-30T18:00:00+09:00",
     )
 
-    assert result.activity_state != "Hot"
+    assert result.activity_state == "Hot"
 
 
 def test_downward_view_count_correction_is_treated_as_quiet_not_negative():

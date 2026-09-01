@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,6 +39,14 @@ class Video:
     snapshot_count: int = 0
     quiet_streak: int = 0
     last_classification_reason: str | None = None
+    # The percent-of-views-per-day and absolute-views-per-day growth measured
+    # for the observation that produced last_classification_reason — the
+    # velocity the Hot/Warm/Cold decision was actually made on (Roadmap 1.5),
+    # so it can be audited or used to retune thresholds without recomputing
+    # it from raw snapshot history. None only when last_classification_reason
+    # is "bootstrap_first_snapshot" (no prior observation to measure against).
+    last_percent_growth_per_day: float | None = None
+    last_avg_views_per_day: float | None = None
 
 
 def load_videos(path: Path = DEFAULT_VIDEO_MASTER_PATH) -> list[Video]:
@@ -73,9 +82,10 @@ def _parse_video(raw: dict) -> Video:
     """Convert a raw Video Master JSON record into a Video instance.
 
     activityState/lastCheckedAt/lastViewCount/snapshotCount/quietStreak/
-    lastClassificationReason are all optional with bootstrap-equivalent
-    defaults, so records written before Roadmap 1.5's scheduler-state fields
-    existed still parse — as if never yet classified.
+    lastClassificationReason/lastPercentGrowthPerDay/lastAvgViewsPerDay are
+    all optional with bootstrap-equivalent defaults, so records written
+    before Roadmap 1.5's scheduler-state fields existed still parse — as if
+    never yet classified.
     """
     try:
         video_id = _require_str(raw, "videoId")
@@ -95,6 +105,8 @@ def _parse_video(raw: dict) -> Video:
             snapshot_count=_int_with_default(raw, "snapshotCount", 0, video_id),
             quiet_streak=_int_with_default(raw, "quietStreak", 0, video_id),
             last_classification_reason=_optional_str(raw, "lastClassificationReason", video_id),
+            last_percent_growth_per_day=_optional_float(raw, "lastPercentGrowthPerDay", video_id),
+            last_avg_views_per_day=_optional_float(raw, "lastAvgViewsPerDay", video_id),
         )
     except (KeyError, TypeError) as exc:
         raise VideoMasterError(f"Malformed Video Master record, missing/invalid field: {exc}") from exc
@@ -136,6 +148,26 @@ def _int_with_default(raw: dict, field: str, default: int, video_id: str) -> int
     return value
 
 
+def _optional_float(raw: dict, field: str, video_id: str) -> float | None:
+    """Return raw[field] as a float if present and non-null, else None.
+
+    A whole-number measurement round-trips through JSON without a decimal
+    point (e.g. 1000 rather than 1000.0), so a bare int is accepted too —
+    just not a bool, which is technically an int subclass in Python. NaN/
+    +-Infinity are rejected too: standard JSON has no token for them, so
+    json.dump would silently emit non-conformant output (`NaN`/`Infinity`)
+    when this value is later written back out via _to_raw.
+    """
+    value = raw.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise VideoMasterError(f"Video {video_id!r} has non-numeric {field!r}: {value!r}")
+    if not math.isfinite(value):
+        raise VideoMasterError(f"Video {video_id!r} has non-finite {field!r}: {value!r}")
+    return float(value)
+
+
 def _to_raw(video: Video) -> dict:
     """Convert a Video instance into its JSON-serializable form."""
     return {
@@ -149,4 +181,6 @@ def _to_raw(video: Video) -> dict:
         "snapshotCount": video.snapshot_count,
         "quietStreak": video.quiet_streak,
         "lastClassificationReason": video.last_classification_reason,
+        "lastPercentGrowthPerDay": video.last_percent_growth_per_day,
+        "lastAvgViewsPerDay": video.last_avg_views_per_day,
     }

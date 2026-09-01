@@ -211,6 +211,8 @@ def main() -> int:
                 snapshot_count=result.snapshot_count,
                 quiet_streak=result.quiet_streak,
                 last_classification_reason=result.reason,
+                last_percent_growth_per_day=result.percent_per_day,
+                last_avg_views_per_day=result.avg_views_per_day,
             )
         )
     if scheduler_updates:

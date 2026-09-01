@@ -27,23 +27,39 @@ COLD_CYCLE_DAYS = 15
 _CYCLE_DAYS_BY_STATE = {"Unknown": UNKNOWN_CYCLE_DAYS, "Warm": WARM_CYCLE_DAYS, "Cold": COLD_CYCLE_DAYS}
 
 # "Unknown" needs at least three snapshots (two valid comparison intervals)
-# before it may move to any other state — Hot/Warm/Cold alike all wait for
-# the same minimum evidence, so promotion/demotion stays consistent across
-# every stage rather than letting Unknown jump early on a single interval.
+# before it may become Cold, and Warm is only evaluated once that same
+# minimum evidence is reached (it is "rechecked on its 3-day schedule").
+# A strong first interval is the one exception: it may promote Unknown
+# straight to Hot immediately, without waiting for this gate.
 MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE = 3
 
 # Demotion requires 2-3 consecutive quiet observations to prevent
-# Hot/Warm/Cold oscillation from a single noisy/quiet data point.
-DEMOTION_QUIET_STREAK_THRESHOLD = 3
+# Hot/Warm/Cold oscillation from a single noisy/quiet data point. The
+# higher-frequency tier (Hot, checked daily) demotes on less evidence than
+# the bigger drop from Warm (3-day cycle) to Cold (15-day cycle), which
+# warrants more confirmation before parking a video that far out.
+DEMOTION_QUIET_STREAK_HOT_TO_WARM = 2
+DEMOTION_QUIET_STREAK_WARM_TO_COLD = 3
+_DEMOTION_THRESHOLD_BY_STATE = {
+    "Hot": DEMOTION_QUIET_STREAK_HOT_TO_WARM,
+    "Warm": DEMOTION_QUIET_STREAK_WARM_TO_COLD,
+}
 
 # Roadmap 1.5 "initial tuning thresholds" — runtime configuration, not
-# permanent constants. Purely percent-of-current-views based (no absolute
-# views/day floor): a deliberate simplification accepting that a very small
-# video can cross these on a trivial absolute gain, in exchange for not
-# needing a second threshold. Store the measurements/reason so they can be
-# tuned without rewriting snapshot history.
+# permanent constants. Each tier is reached via percent-of-current-views
+# growth OR an absolute views/day floor, so a five-million-view video
+# gaining a trivial +10/day stays Cold while a 5,000-view video gaining
+# +1,000/day reads as Hot even though its percent growth would qualify on
+# its own. Hot's percent path additionally requires a modest absolute
+# floor so a tiny video can't reach Hot purely from a trivial absolute
+# gain (e.g. 10 -> 15 views); Warm's percent path has no such floor.
+# Store the measurements/reason so thresholds can be tuned without
+# rewriting snapshot history.
 HOT_MIN_PERCENT_PER_DAY = 2.0
+HOT_MIN_ABS_VIEWS_PER_DAY_FOR_PERCENT = 100
+HOT_MIN_AVG_VIEWS_PER_DAY = 1000
 WARM_MIN_PERCENT_PER_DAY = 0.5
+WARM_MIN_AVG_VIEWS_PER_DAY = 100
 
 _DEMOTE_TO = {"Hot": "Warm", "Warm": "Cold", "Cold": "Cold"}
 
@@ -69,12 +85,22 @@ def is_due_today(video_id: str, published_at: str, activity_state: str, as_of: d
 
 @dataclass(frozen=True)
 class ClassificationResult:
-    """The updated scheduler state for one video after a fresh observation."""
+    """The updated scheduler state for one video after a fresh observation.
+
+    `percent_per_day`/`avg_views_per_day` are the velocity measurements this
+    observation was classified on — None only for `bootstrap_first_snapshot`,
+    where there was no prior observation to measure growth against. Callers
+    persist these onto Video Master so a past Hot/Warm/Cold decision can be
+    audited or used to retune thresholds later, without recomputing it from
+    raw snapshot history.
+    """
 
     activity_state: str
     snapshot_count: int
     quiet_streak: int
     reason: str
+    percent_per_day: float | None
+    avg_views_per_day: float | None
 
 
 def classify_after_observation(
@@ -100,26 +126,40 @@ def classify_after_observation(
     if previous_view_count is None or previous_checked_at is None:
         # A first cumulative viewCount is only a baseline — every first-time
         # import is Unknown, even if it's old and has few total views.
-        return ClassificationResult("Unknown", new_snapshot_count, 0, "bootstrap_first_snapshot")
+        return ClassificationResult("Unknown", new_snapshot_count, 0, "bootstrap_first_snapshot", None, None)
 
-    if current_state == "Unknown" and new_snapshot_count < MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE:
-        # Every stage's promotion/demotion follows the same minimum-evidence
-        # gate: Unknown must accumulate MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE
-        # snapshots before moving to *any* other state (Hot/Warm/Cold alike),
-        # not just before Cold specifically.
-        return ClassificationResult("Unknown", new_snapshot_count, 0, "bootstrap_awaiting_more_snapshots")
-
-    percent_per_day = _percent_growth_per_day(previous_view_count, new_view_count, previous_checked_at, observed_at)
-    is_hot = percent_per_day >= HOT_MIN_PERCENT_PER_DAY
-    is_warm = percent_per_day >= WARM_MIN_PERCENT_PER_DAY
-
-    if is_hot:
-        return ClassificationResult("Hot", new_snapshot_count, 0, "strong_growth")
+    percent_per_day, avg_views_per_day = _growth_per_day(
+        previous_view_count, new_view_count, previous_checked_at, observed_at
+    )
+    is_hot = avg_views_per_day >= HOT_MIN_AVG_VIEWS_PER_DAY or (
+        percent_per_day >= HOT_MIN_PERCENT_PER_DAY and avg_views_per_day >= HOT_MIN_ABS_VIEWS_PER_DAY_FOR_PERCENT
+    )
+    is_warm = avg_views_per_day >= WARM_MIN_AVG_VIEWS_PER_DAY or percent_per_day >= WARM_MIN_PERCENT_PER_DAY
 
     if current_state == "Unknown":
+        if is_hot:
+            # A strong first interval may promote Unknown straight to Hot
+            # immediately, bypassing the minimum-evidence gate below.
+            return ClassificationResult(
+                "Hot", new_snapshot_count, 0, "strong_growth", percent_per_day, avg_views_per_day
+            )
+        if new_snapshot_count < MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE:
+            # Every other transition follows the minimum-evidence gate:
+            # Unknown must accumulate MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE
+            # snapshots before it may become Warm or Cold.
+            return ClassificationResult(
+                "Unknown", new_snapshot_count, 0, "bootstrap_awaiting_more_snapshots", percent_per_day, avg_views_per_day
+            )
         if is_warm:
-            return ClassificationResult("Warm", new_snapshot_count, 0, "moderate_growth_after_bootstrap")
-        return ClassificationResult("Cold", new_snapshot_count, 0, "quiet_after_bootstrap")
+            return ClassificationResult(
+                "Warm", new_snapshot_count, 0, "moderate_growth_after_bootstrap", percent_per_day, avg_views_per_day
+            )
+        return ClassificationResult(
+            "Cold", new_snapshot_count, 0, "quiet_after_bootstrap", percent_per_day, avg_views_per_day
+        )
+
+    if is_hot:
+        return ClassificationResult("Hot", new_snapshot_count, 0, "strong_growth", percent_per_day, avg_views_per_day)
 
     if is_warm:
         # Moderate (though not "strong") growth is not a quiet observation —
@@ -127,29 +167,43 @@ def classify_after_observation(
         # A Hot video showing only moderate growth this time stays Hot; only
         # a run of genuinely quiet observations demotes it (see below).
         next_state = "Hot" if current_state == "Hot" else "Warm"
-        return ClassificationResult(next_state, new_snapshot_count, 0, "moderate_growth")
+        return ClassificationResult(
+            next_state, new_snapshot_count, 0, "moderate_growth", percent_per_day, avg_views_per_day
+        )
 
     next_quiet_streak = quiet_streak + 1
-    if next_quiet_streak >= DEMOTION_QUIET_STREAK_THRESHOLD:
-        return ClassificationResult(_DEMOTE_TO[current_state], new_snapshot_count, 0, "demoted_after_quiet_streak")
-    return ClassificationResult(current_state, new_snapshot_count, next_quiet_streak, "quiet_observation")
+    demotion_threshold = _DEMOTION_THRESHOLD_BY_STATE.get(current_state)
+    if demotion_threshold is not None and next_quiet_streak >= demotion_threshold:
+        return ClassificationResult(
+            _DEMOTE_TO[current_state],
+            new_snapshot_count,
+            0,
+            "demoted_after_quiet_streak",
+            percent_per_day,
+            avg_views_per_day,
+        )
+    return ClassificationResult(
+        current_state, new_snapshot_count, next_quiet_streak, "quiet_observation", percent_per_day, avg_views_per_day
+    )
 
 
-def _percent_growth_per_day(
+def _growth_per_day(
     previous_view_count: int, new_view_count: int, previous_checked_at: str, observed_at: str
-) -> float:
-    """Return the percent-of-previous-views growth per day since the last observation."""
+) -> tuple[float, float]:
+    """Return (percent-of-previous-views growth per day, absolute views per day) since the last observation."""
     previous_dt = datetime.fromisoformat(previous_checked_at.replace("Z", "+00:00"))
     observed_dt = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
     elapsed_days = max((observed_dt - previous_dt).total_seconds() / 86400, 1e-9)
     # A rare downward view-count correction from YouTube is not "growth"; floor at 0
     # rather than letting it read as negative.
     delta_views = max(new_view_count - previous_view_count, 0)
+    avg_views_per_day = delta_views / elapsed_days
     if previous_view_count <= 0:
         # Percent growth from a zero baseline is undefined, not "100%/day" —
-        # treat it as not applicable (quiet) rather than a false spike.
-        return 0.0
-    return delta_views / previous_view_count / elapsed_days * 100
+        # treat it as not applicable (quiet) rather than a false spike. The
+        # absolute views/day floor above still applies in this case.
+        return 0.0, avg_views_per_day
+    return delta_views / previous_view_count / elapsed_days * 100, avg_views_per_day
 
 
 def _age_in_days(published_at: str, as_of: date) -> int:

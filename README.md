@@ -373,7 +373,6 @@ Examples:
 一ノ瀬うるは
 ぶいすぽっ！
 ホロライブ
-立川
 ```
 
 UTF-8 support applies to:
@@ -588,6 +587,8 @@ GET /organizations/vspo/trending?period=1d
 GET /organizations/hololive/trending?period=30d
 ```
 
+Here, `period=1d|7d|30d` is an analytics comparison window over stored snapshots, not a collection schedule. It never triggers a YouTube API request. The independent collection cadence remains Recent/Hot daily, Unknown every 2 days, Warm every 3 days, and Cold every 15 days.
+
 The API should return normalized analytics data rather than expose DynamoDB implementation details.
 
 Daily, 7-day, and 30-day analytics use the requesting user's local calendar dates, not rolling elapsed-hour windows. The client sends any valid IANA `timeZone`—for example `Asia/Tokyo`, `Asia/Hong_Kong`, or `Europe/London`—and a local `reportDate` (`YYYY-MM-DD`). The Read Lambda validates the zone, including daylight-saving rules, maps that date to the canonical JST snapshot internally, and returns localized `reportDate` / `comparisonDate` values. The collector's 18:00 JST execution time is only an internal acquisition schedule: it never changes a user's local midnight boundary, `reportDate`, or comparison dates and does not create another tracking tier. Before the snapshot needed for a requested local date is available, the API/dashboard must report the latest completed update or an unavailable/pending state rather than silently relabeling an older snapshot as that date.
@@ -605,6 +606,37 @@ The frontend will use **React with TypeScript**. React is the UI library; TypeSc
 React was selected for its mature dashboard and charting ecosystem, TypeScript API contracts, and ability to build static assets for S3 / CloudFront while keeping the Python backend separate. See [`dashboard_ui_direction_en.md`](./dashboard_ui_direction_en.md) for the complete dashboard UI specification.
 
 The dashboard detects the device IANA time zone, provides a searchable time-zone selector, and sends the selected `timeZone`, local `reportDate`, and `period` with every analytics request.
+
+The planned first frontend pass lives under `frontend/dashboard` and uses realistic mock JSON shaped like the future Read API response. It establishes the responsive layout and UI states before API integration:
+
+```text
+DashboardHeader + classification/date filters
+→ Total Views / Daily Gain / Average Growth Rate / Top Performer KPIs
+→ GrowthBarChart + contribution ring/ranking
+→ concise InsightCards
+→ searchable, sortable, paginated VideoStatsTable
+```
+
+The shared visual foundation is a calm, modern analytics dashboard with restrained hololive soft-idol or VSPO soft-esports accents. Desktop uses a 12-column grid; tablet and mobile progressively stack controls, cards, charts, and table content. Loading, empty, error, pending-update, stale-data, keyboard/focus, and reduced-motion behavior are part of the frontend plan, not optional polish.
+
+Classification follows the existing Creator Master contract: `organization → branch → groupKey → channelType → lifecycleStage`. The frontend displays human-readable labels, sends stable stored values, clears invalid child selections when a parent changes, and never infers classification from channel names.
+
+Creator group keys are multi-value memberships, not mutually exclusive categories. The UI uses OR within a multi-select dimension and AND across dimensions, so a creator may be found through either `1期生` or `ゲーマーズ`, while `Hololive + JP + 1期生 + 卒業` finds only graduated creators who still retain that generation group key. Graduation changes `lifecycleStage` but never removes the creator's organization, branch, generation, or unit group keys; matching multiple selected group keys does not duplicate the result.
+
+The default implementation workflow does not require a paid external UI generator:
+
+```text
+README + Roadmap + dashboard_ui_direction_en.md
+→ Codex/Claude Code builds the React + TypeScript draft in frontend/dashboard
+→ preview locally with realistic mock response fixtures
+→ review and refine layout, chart size, animation, and responsive behavior
+→ run the normal TypeScript build, tests, accessibility, and responsive checks
+→ connect the approved UI to the Phase 3.4 Read API
+```
+
+If free allowance is available, v0 by Vercel or a comparable AI UI tool may optionally generate a visual/code draft before the local review step. No paid AI UI subscription is required or assumed. Generated output is reference code, not an architectural authority. It must not add a backend, database, authentication, API routes, server functions, or changes to the Python collector, DynamoDB model, Lambda, or infrastructure. v0 is an external Vercel tool and is not required for development or at runtime.
+
+This dashboard work belongs to Phase 3.5. It is separate from Phase 2.3, which remains limited to DynamoDB storage plus the local-JSON migration and cutover. No frontend implementation is required to complete Phase 2.3.
 
 Possible dashboard data:
 
@@ -635,6 +667,7 @@ Later Yobi versions may use the AWS backend for:
 - remote configuration
 - per-client notification overrides
 - offline cache synchronization
+- Twitch live/upcoming schedule tracking and go-live notifications (Phase 5.5)
 
 Google account identity should not be used as the Yobi device identity.
 
