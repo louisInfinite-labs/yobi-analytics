@@ -51,7 +51,6 @@ Examples of valid values:
 一ノ瀬うるは
 ぶいすぽっ！
 ホロライブ
-立川
 Traditional Chinese text
 English text
 ```
@@ -190,9 +189,9 @@ graduatedAt
 
 `organization` is the top-level product label (`hololive` or `vspo`). `branch` is region/language only — `holo_jp`, `holo_en`, `holo_id`, `vspo_jp`, `vspo_en` (the latter two not populated yet) — it deliberately does not encode sub-labels like DEV_IS, mekPark, or staff; that belongs in `groupKey`. `groupKey` is a **list**, not a single value, because a creator can belong to more than one grouping at once — e.g. Shirakami Fubuki is both `"1期生"` and `"ゲーマーズ"` (Hololive Gamers), and a search for either group key must find her. A creator with no applicable grouping (all current `vspo` creators) uses the placeholder `["NO"]` rather than an empty list, so the field is never null/missing.
 
-`channelType` is `member` (an individual talent's own channel), `group` (an official channel for a unit/generation, not one person), or `staff` (an official non-talent channel, e.g. an announcer/PR channel). `lifecycleStage` is `active`, `pre_debut`, `graduated`, or `retired`, and is independent of the collection toggle `active`: a pre-debut unit can be `lifecycleStage: "pre_debut"` while also having `active: true` (it's still tracked, just hasn't formally debuted). These must be stored fields rather than values inferred from display names. APIs, rankings, and the Dashboard must support hierarchical filtering so group/staff/pre-debut channels are not mistaken for active member rankings.
+Creator membership is retained when lifecycle changes. Graduation sets `lifecycleStage: "graduated"` and the sparse `graduatedAt`, but never removes or replaces the creator's organization, branch, generation, unit, or Gamers group keys. Filter semantics are OR within one multi-value dimension and AND across different dimensions: selecting `1期生` and `ゲーマーズ` matches either creator group key, while selecting `hololive + holo_jp + 1期生 + graduated` returns only records matching all four dimensions. A record matching multiple selected group keys appears once.
 
-Note the resulting three-way overload of "active(ity)" in this project — worth keeping straight when naming fields/variables: Creator Master's `active` (a boolean collection on/off toggle), `lifecycleStage: "active"` (a talent's real-world career status, one of four string values), and per-video `activityState` (1.5's `Hot`/`Unknown`/`Warm`/`Cold` engagement tier, unrelated to either of the above).
+`channelType` is `member` (an individual talent's own channel), `group` (an official channel for a unit/generation, not one person), or `staff` (an official non-talent channel, e.g. an announcer/PR channel). `lifecycleStage` is `active`, `pre_debut`, `graduated`, or `retired`, and is independent of the collection toggle `active`: a pre-debut unit can be `lifecycleStage: "pre_debut"` while also having `active: true` (it's still tracked, just hasn't formally debuted). These must be stored fields rather than values inferred from display names. APIs, rankings, and the Dashboard must support hierarchical filtering so group/staff/pre-debut channels are not mistaken for active member rankings.
 
 The following shared/group channels are in `creators.json` (verified via the YouTube Data API), all under `organization: "hololive"` — mekPark's pre-debut units are not a separate organization:
 
@@ -340,30 +339,6 @@ Discovery and Statistics Collection are separate responsibilities: Discovery dec
 - See 1.6 Raw Daily Snapshot Model for the full field list actually stored (`creatorId`, `title`, `publishedAt`, and `organization` in addition to the above).
 - This raw data is what later daily / 7-day / 30-day growth analytics is built from.
 
-#### Video Master Schema
-
-Unlike Creator Master (1.3) and Snapshot (1.6), Video Master's fields have so far only been described in prose across several sections. One record, showing both the discovery-identity fields and the Adaptive Tracking Frequency scheduler state (1.5):
-
-```json
-{
-  "videoId": "dQw4w9WgXcQ",
-  "creatorId": "aizawa_ema",
-  "title": "...",
-  "publishedAt": "2026-08-20T10:00:00Z",
-
-  "activityState": "Warm",
-  "lastCheckedAt": "2026-08-30T18:03:14+09:00",
-  "lastViewCount": 137682,
-  "snapshotCount": 4,
-  "quietStreak": 0,
-  "lastClassificationReason": "moderate_growth"
-}
-```
-
-`activityState` is one of `Unknown`/`Hot`/`Warm`/`Cold` (1.5). `lastCheckedAt`/`lastViewCount` are the prior observation `classify_after_observation` compares the next one against — not duplicated per-day history, which lives in Snapshot (1.6) instead. `snapshotCount` is the video's lifetime observation count (used for the Unknown bootstrap gate); `quietStreak` is consecutive quiet observations since the last promotion (used for the demotion gate). `lastClassificationReason` is a short machine-readable tag (e.g. `bootstrap_first_snapshot`, `strong_growth`, `demoted_after_quiet_streak`) recording why the last transition happened, for auditing without needing to recompute it from snapshot history.
-
-A newly discovered video is inserted with only the identity fields; the scheduler-state fields default to `activityState: "Unknown"`, `snapshotCount: 0`, `quietStreak: 0`, `lastCheckedAt`/`lastViewCount` absent — i.e. bootstrap, per 1.5's Bootstrap and State Transitions. A record written before these fields existed parses the same way, as if never yet classified.
-
 #### Scope Boundary
 
 ```text
@@ -422,11 +397,11 @@ Cold                    → every 15 days
 Admin override          → explicitly selected run, subject to the hard quota cap
 ```
 
-A video's total `viewCount` does not define activity. Five million lifetime views with +10/day (0.0002%/day) is Cold, while 5,000 lifetime views with +1,000/day (20%/day) is Hot. Classification is purely percent-of-current-views per day — no absolute views/day floor. This is a deliberate simplification: a very small video can cross these thresholds on a trivial absolute gain (e.g. 10 → 15 views is 50%/day), and that is accepted rather than adding a second absolute-value condition. Initial tuning thresholds are:
+A video's total `viewCount` does not define activity. Five million lifetime views with +10/day may be Cold, while 5,000 lifetime views with +1,000/day may be Hot. Initial tuning thresholds are:
 
 ```text
-Hot  → >=2%/day
-Warm → >=0.5%/day
+Hot  → average +1,000 views/day, OR >=2%/day with >=100 absolute views/day
+Warm → average +100 views/day, OR >=0.5%/day
 Cold → below Hot/Warm thresholds for the required consecutive observations
 ```
 
@@ -435,9 +410,9 @@ Thresholds are runtime configuration, not permanent constants. Store the measure
 #### Bootstrap and State Transitions
 
 - A first cumulative `viewCount` is only a baseline. Every first-time import is `Unknown`, even when it is old and has few total views.
-- `Unknown` is checked every 2 days and requires at least three snapshots (two valid comparison intervals) before it may move to *any* other state — `Hot`/`Warm`/`Cold` alike wait for the same minimum evidence, so an early single strong interval does not promote it early. This keeps every state's promotion/demotion decision resting on the same amount of evidence rather than letting `Unknown` jump the queue.
-- Once `Unknown` has enough snapshots, it moves directly to whichever state the latest interval supports: `Hot` on strong growth, `Warm` on moderate growth, `Cold` if quiet.
-- For an already-classified video (`Hot`/`Warm`/`Cold`), promotion to a faster class may happen immediately on a single strong/moderate interval. Demotion is stricter: exactly 3 consecutive quiet observations (not counting missing/incomplete ones) are required before a video drops one class (`Hot`→`Warm`, `Warm`→`Cold`), to prevent oscillation from a single noisy or quiet data point.
+- `Unknown` is checked every 2 days and requires at least three snapshots (two valid comparison intervals) before it may become `Cold`.
+- A strong first interval may promote `Unknown` to provisional `Hot` immediately and schedule it the next day; `Warm` is rechecked on its 3-day schedule.
+- Promotion to a faster class may happen immediately. Demotion requires 2–3 consecutive quiet observations to prevent Hot/Warm/Cold oscillation.
 - A video older than 30 days that becomes active again is promoted to Hot or Warm; age never prevents reactivation.
 - Missing/incomplete snapshots do not count as quiet observations and cannot demote a video.
 
@@ -467,8 +442,6 @@ Recent → Hot → Unknown → Admin override → Warm → due Cold
 ```
 
 The hard cap always wins. Overflow is carried forward by `nextCheckAt`/`lastCheckedAt`; it must not produce duplicate same-day snapshots.
-
-If even the unconditionally-due tiers (Recent + Hot) alone would exceed the hard cap, drop videos published over a year ago whose recent growth is below 5%/day from today's mandatory set first — they fall back to their normal rotation instead of being force-checked. This protects genuinely fast-moving old videos (which still clear the 5% floor) while giving up on stale ones under quota pressure. 5%/day is an initial provisional value, not a permanent constant.
 
 #### Admin Collection Overrides
 
@@ -865,6 +838,7 @@ Only one system may be the authoritative writer during cutover. Do not leave the
 - MySQL migration
 - Heavy relational analytics
 - Direct unrestricted Yobi.exe access to DynamoDB
+- Frontend/dashboard design or implementation; that remains future Phase 3.5 work
 
 ---
 
@@ -1192,6 +1166,8 @@ reportDate=YYYY-MM-DD
 period=1d | 7d | 30d
 ```
 
+This block defines the **analytics read-query contract**, not the collection circle. `period` selects which stored snapshot dates the Read API compares (`D-1`, `D-7`, or `D-30`); it does not schedule or trigger YouTube API requests. Collection cadence remains the separate adaptive policy from 1.5: Recent/Hot daily, Unknown every 2 days, Warm every 3 days, and Cold every 15 days. The values above are the initially supported analytics periods rather than examples of scheduler tiers.
+
 `timeZone` must be an IANA zone name, not a raw numeric UTC offset. The API validates it through Python `zoneinfo.ZoneInfo` against the deployed time-zone database, treats `reportDate` as a calendar date in that zone, maps it to the canonical JST snapshot keys, and performs the comparison without exposing the internal collection schedule to normal users. Pin/package current `tzdata` when the Lambda runtime cannot guarantee the required database. Invalid zones return a clear client error rather than silently falling back to another date.
 
 The normalized response should include `timeZone`, `reportDate`, `comparisonDate`, `period`, `lastUpdatedAt`, completeness status, and the analytics result. Every creator/channel/video result must also carry `organization`, `branch`, `groupKey`, `channelType`, and `lifecycleStage` directly, and the API accepts the same fields as optional filters; the frontend must not infer them from names. `lastUpdatedAt` remains an absolute timestamp so the client can display it in the requested zone.
@@ -1229,9 +1205,46 @@ Use **React with TypeScript** for the dashboard frontend. React is the UI librar
 
 The complete UI specification for this section is maintained separately in [`dashboard_ui_direction_en.md`](./dashboard_ui_direction_en.md).
 
+The planned implementation target is `frontend/dashboard`. Start with realistic mock JSON shaped like the normalized Read API response so layout, component boundaries, derived display values, and UI states can be reviewed without changing or waiting on backend implementation. Keep data access and presentation separate, then replace the mock adapter with the Phase 3.4 Read API client when that contract is available.
+
 For every analytics request, the dashboard detects the device IANA time zone with `Intl.DateTimeFormat().resolvedOptions().timeZone`, provides a searchable IANA time-zone selector, and sends the selected `timeZone`, its local `reportDate`, and `period` to the Read API. Do not model supported zones as a hardcoded TypeScript union. If detection is unavailable, visibly fall back to `UTC` and let the user choose; do not silently assume Tokyo. The UI displays only the localized report/comparison dates and localized last-updated time; the canonical JST snapshot date and collector schedule remain internal.
 
-Classification filters follow `organization → branch → groupKey → channelType → lifecycleStage`. Hololive is the top-level label, with nested JP generations 0–6/Gamers/holoX, DEV_IS/ReGLOSS/FLOW GLOW, mekPark/ACHRORA/UNIT B, and staff/aNnounce options carried as `groupKey`. VSPO uses the same contract and may add nested groupKey later. ACHRORA and UNIT B retain `organization: "hololive"` and are distinguished by branch/groupKey/status rather than a separate top-level label.
+Classification filters follow `organization → branch → groupKey → channelType → lifecycleStage`. Hololive is the top-level label, with nested JP generations 0–6/Gamers/holoX, DEV_IS/ReGLOSS/FLOW GLOW, mekPark/ACHRORA/UNIT B, and staff/aNnounce options carried as `groupKey`. VSPO uses the same contract and may add nested group keys later. ACHRORA and UNIT B retain `organization: "hololive"` and are distinguished by branch/groupKey/status rather than a separate top-level label.
+
+The dashboard renders available organizations as Hololive/VSPO, available branches as JP/EN (and Hololive ID where present), generation/unit memberships as multi-select group keys, and lifecycle as a separate status filter including `卒業`. It reads actual membership values from Creator Master rather than maintaining a second hardcoded roster. Graduated creators remain discoverable through both their original generation/unit group key and the lifecycle filter, including combined queries such as `Hololive + JP + 1期生 + 卒業`.
+
+Video content classification is separate from Creator Master's `groupKey`. The frontend-first mock taxonomy uses topic tags `valorant`, `sf6`, `karaoke`, `chat`, `gaming`, `collab`, `announcement`, `3d_live`, `clip`, and `translation`, plus formats `shorts`, `live_archive`, `normal_video`, `live_upcoming`, `live_now`, `premiere`, and `unknown`. `Ranking` is an analytics result/view, not a content tag. Phase 3.5 may demonstrate these filters with realistic mock data and an extensible adapter, but automatic classification, title/metadata enrichment, and production `contentTags`/`contentFormat` API fields remain future work. This does not expand Phase 2.3 or authorize changes to snapshots, DynamoDB migration, the collector, or infrastructure.
+
+The shared responsive layout is:
+
+```text
+DashboardHeader
+→ classification filters + IANA time zone + 1d/7d/30d period
+→ four KPI cards: Total Views, Daily Gain, Average Growth Rate, Top Performer
+→ eight-column GrowthBarChart + four-column contribution ring/ranking area
+→ two or three concise InsightCards
+→ full-width VideoStatsTable with search, filters, sorting, and pagination
+```
+
+On tablet, KPIs become two columns and charts become full width. On mobile, use one column, stack controls, and render the table as compact cards or deliberate horizontal scrolling. Implement complete loading, empty, error, pending-update, and stale-data states. Motion must remain short and data-oriented, support `prefers-reduced-motion`, and never block keyboard use or readable chart alternatives.
+
+Visual styling follows **Soft Idol Analytics + Subtle JRPG Accent**: a calm SaaS analytics foundation with restrained hololive member-color accents and slightly sharper VSPO soft-esports states. Do not reproduce recognizable game assets, logos, fonts, menus, or compositions.
+
+#### Optional AI-Assisted UI Draft Workflow
+
+The default workflow uses Codex/Claude Code to build and preview the frontend directly in the repository; it does not require a paid external UI generator. v0 by Vercel, or a comparable AI UI tool, may be used later within any available free allowance to accelerate a frontend-only visual draft. It is optional, not a project dependency, and not a substitute for repository review.
+
+```text
+README + Roadmap + dashboard_ui_direction_en.md
+→ prepare a frontend-only prompt and realistic mock response fixtures
+→ build the React + TypeScript draft directly in frontend/dashboard
+→ optionally compare against an AI UI draft generated within free allowance
+→ review, remove unsupported dependencies, and refactor into frontend/dashboard
+→ run the normal TypeScript build, tests, accessibility, and responsive checks
+→ connect to the existing Phase 3.4 Read API contract
+```
+
+The prompt and review must reject generated backend, database, authentication, API-route, server-function, Supabase/Firebase/Prisma, collector, DynamoDB, Lambda, and infrastructure changes. Generated code remains provisional until it matches the repository stack, the stored classification contract, and this phase's definition of done.
 
 Possible dashboard sections:
 
@@ -1268,9 +1281,12 @@ AWS-provided URLs are acceptable for development.
 - Dashboard can display latest update time.
 - Dashboard can query analytics without direct DB credentials.
 - Dashboard is implemented with React and TypeScript and can be built as static deployment assets.
+- Dashboard follows the documented responsive component layout and includes loading, empty, error, pending-update, and stale-data states.
+- Mock-data development can be replaced through a separate data adapter without rewriting presentation components.
 - Dashboard requests always include a validated IANA `timeZone`, local `reportDate`, and `period`, and changing the selected zone refreshes the date labels and analytics result.
 - The selector and request model support valid IANA zones beyond Japan and Hong Kong, including daylight-saving zones such as `Europe/London`.
 - The Dashboard, charts, tables, and rankings share one classification filter state and correctly distinguish member/group/staff plus active/pre-debut/graduated/retired; pre-debut channels never enter active-member rankings by mistake.
+- Multi-membership and graduation filters use the documented OR-within/AND-across semantics; graduation never erases generation/unit group keys, and one creator is not duplicated when multiple selected group keys match.
 
 #### Out of Scope
 
@@ -1278,6 +1294,7 @@ AWS-provided URLs are acceptable for development.
 - Production branding
 - Paid domain
 - Production authentication
+- Implementing or changing the Python collector, DynamoDB storage/migration, Lambda functions, API Gateway infrastructure, or the Phase 3.4 Read API
 
 ---
 
@@ -1716,6 +1733,8 @@ Users
 Add Twitch as another creator platform.
 
 #### Scope
+
+Twitch platform identities are managed explicitly in Creator Master. A person does not enter the initial Hololive/VSPO YouTube tracking roster merely because they collaborated with a VTuber; future non-VTuber Twitch collaborators may be added only as intentional platform records when the product needs their schedules or notifications.
 
 Support:
 
