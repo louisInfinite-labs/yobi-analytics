@@ -39,12 +39,14 @@ class Creator:
     # Regional/language branch — one of holo_jp/holo_en/holo_id/vspo_jp/vspo_en.
     # A finer split than `organization`, since a single agency spans regions;
     # deliberately does NOT encode sub-labels like DEV_IS/mekPark/staff — see
-    # `tags` for that.
+    # `group_key` for that.
     branch: str
     # Generation/unit membership (a creator can belong to more than one, e.g.
     # Shirakami Fubuki is both "1期生" and "ゲーマーズ") or a single-element
     # placeholder like ["NO"] where the concept doesn't apply. Never empty.
-    tags: list[str]
+    # A list rather than a single value specifically so the frontend can look
+    # a creator up under every group they belong to.
+    group_key: list[str]
     # "member" (an individual talent's own channel), "group" (an official
     # channel for a unit/generation, not one person), or "staff" (an official
     # non-talent channel, e.g. an announcer/PR channel).
@@ -89,7 +91,7 @@ def _parse_creator(raw: dict) -> Creator:
         if branch not in VALID_BRANCHES:
             raise CreatorMasterError(f"Creator {creator_id!r} has invalid 'branch': {branch!r}")
 
-        tags = _require_str_list(raw, "tags", creator_id)
+        group_key = _require_str_list(raw, "groupKey", creator_id)
 
         channel_type = _require_str(raw, "channelType")
         if channel_type not in VALID_CHANNEL_TYPES:
@@ -120,7 +122,7 @@ def _parse_creator(raw: dict) -> Creator:
             youtube_channel_id=youtube_channel_id,
             active=active,
             branch=branch,
-            tags=tags,
+            group_key=group_key,
             channel_type=channel_type,
             lifecycle_stage=lifecycle_stage,
             discovery_enabled=discovery_enabled,

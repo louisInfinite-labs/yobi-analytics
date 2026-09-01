@@ -6,11 +6,11 @@
     "youtubeChannelId": "UCyLGcqYs7RsBb3L0SJfzGYA",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "kaga_nazuna",
@@ -19,11 +19,11 @@
     "youtubeChannelId": "UCiMG6VdScBabPhJ1ZtaVmbw",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "kosuzume_toto",
@@ -32,11 +32,11 @@
     "youtubeChannelId": "UCgTzsBI0DIRopMylJEDqnog",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "ichinose_uruha",
@@ -45,11 +45,11 @@
     "youtubeChannelId": "UC5LyYg6cCA4yHEYvtUsir3g",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "kurumi_noa",
@@ -58,11 +58,11 @@
     "youtubeChannelId": "UCIcAj6WkJ8vZ7DeJVgmeqKw",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "usaki_mimi",
@@ -71,11 +71,11 @@
     "youtubeChannelId": "UCnvVG9RbOW3J6Ifqo-zKLiw",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "sorasumi_sena",
@@ -84,11 +84,11 @@
     "youtubeChannelId": "UCF_U2GCKHvDz52jWdizppIA",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "tachibana_hinano",
@@ -97,11 +97,11 @@
     "youtubeChannelId": "UCvUc0m317LWTTPZoBQV479A",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "hanabusa_risa",
@@ -110,11 +110,11 @@
     "youtubeChannelId": "UCurEA8YoqFwimJcAuSHU0MQ",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "kisaragi_ren",
@@ -123,11 +123,11 @@
     "youtubeChannelId": "UCGWa1dMU_sDCaRQjdabsVgg",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "kanari_kyupi",
@@ -136,11 +136,11 @@
     "youtubeChannelId": "UCMp55EbT_ZlqiMS3lCj01BQ",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "yakumo_beni",
@@ -149,11 +149,11 @@
     "youtubeChannelId": "UCjXBuHmWkieBApgBhDuJMMQ",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "aizawa_ema",
@@ -162,11 +162,11 @@
     "youtubeChannelId": "UCPkKpOHxEDcwmUAnRpIu-Ng",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "shinomiya_runa",
@@ -175,11 +175,11 @@
     "youtubeChannelId": "UCD5W21JqNMv_tV9nfjvF9sw",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "nekota_tsuna",
@@ -188,11 +188,11 @@
     "youtubeChannelId": "UCIjdfjcSaEgdjwbgjxC3ZWg",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "shiranami_ramune",
@@ -201,11 +201,11 @@
     "youtubeChannelId": "UC61OwuYOVuKkpKnid-43Twg",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "komori_meto",
@@ -214,11 +214,11 @@
     "youtubeChannelId": "UCzUNASdzI4PV5SlqtYwAkKQ",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "yumeno_akari",
@@ -227,11 +227,11 @@
     "youtubeChannelId": "UCS5l_Y0oMVTjEos2LuyeSZQ",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "yano_kuromu",
@@ -240,11 +240,11 @@
     "youtubeChannelId": "UCX4WL24YEOUYd7qDsFSLDOw",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "tsumugi_kokage",
@@ -253,11 +253,11 @@
     "youtubeChannelId": "UC-WX1CXssCtCtc2TNIRnJzg",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "sendo_yuuhi",
@@ -266,11 +266,11 @@
     "youtubeChannelId": "UCuDY3ibSP2MFRgf7eo3cojg",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "choya_hanabi",
@@ -279,11 +279,11 @@
     "youtubeChannelId": "UCL9hJsdk9eQa0IlWbFB2oRg",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "amayui_moka",
@@ -292,11 +292,11 @@
     "youtubeChannelId": "UC8vKBjGY2HVfbW9GAmgikWw",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "ginjo_saine",
@@ -305,11 +305,11 @@
     "youtubeChannelId": "UC2xXx1m1jeL0W84_0jTg-Yw",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "tatsumaki_chise",
@@ -318,11 +318,11 @@
     "youtubeChannelId": "UCoW8qQy80mKH0RJTKAK-nNA",
     "active": true,
     "branch": "vspo_jp",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "tokino_sora",
@@ -331,11 +331,11 @@
     "youtubeChannelId": "UCp6993wxpyDPHUpavwDFqgg",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "0期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "0期生"
+    ]
   },
   {
     "creatorId": "robocosan",
@@ -344,11 +344,11 @@
     "youtubeChannelId": "UCDqI2jOz0weumE8s7paEk6g",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "0期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "0期生"
+    ]
   },
   {
     "creatorId": "azki",
@@ -357,11 +357,11 @@
     "youtubeChannelId": "UC0TXe_LYZ4scaW2XMyi5_kw",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "0期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "0期生"
+    ]
   },
   {
     "creatorId": "sakura_miko",
@@ -370,11 +370,11 @@
     "youtubeChannelId": "UC-hM6YJuNYVAmUWxeIr9FeA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "0期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "0期生"
+    ]
   },
   {
     "creatorId": "hoshimachi_suisei",
@@ -383,11 +383,11 @@
     "youtubeChannelId": "UC5CwaMl1eIgY8h02uZw7u8A",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "0期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "0期生"
+    ]
   },
   {
     "creatorId": "yozora_mel",
@@ -397,12 +397,12 @@
     "active": true,
     "discoveryEnabled": false,
     "branch": "holo_jp",
-    "tags": [
-      "1期生"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
-    "graduatedAt": "2024-01-16"
+    "graduatedAt": "2024-01-16",
+    "groupKey": [
+      "1期生"
+    ]
   },
   {
     "creatorId": "aki_rosenthal",
@@ -411,11 +411,11 @@
     "youtubeChannelId": "UCFTLzh12_nrtzqBPsTCqenA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "1期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "1期生"
+    ]
   },
   {
     "creatorId": "akai_haato",
@@ -424,11 +424,11 @@
     "youtubeChannelId": "UC1CfXB_kRs3C-zaeTG3oGyg",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "1期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "1期生"
+    ]
   },
   {
     "creatorId": "shirakami_fubuki",
@@ -437,12 +437,12 @@
     "youtubeChannelId": "UCdn5BQ06XqgXoAxIhbqw5Rg",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
+    "channelType": "member",
+    "lifecycleStage": "active",
+    "groupKey": [
       "1期生",
       "ゲーマーズ"
-    ],
-    "channelType": "member",
-    "lifecycleStage": "active"
+    ]
   },
   {
     "creatorId": "natsuiro_matsuri",
@@ -451,11 +451,11 @@
     "youtubeChannelId": "UCQ0UDLQCjY0rmuxCDE38FGg",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "1期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "1期生"
+    ]
   },
   {
     "creatorId": "minato_aqua",
@@ -465,12 +465,12 @@
     "active": true,
     "discoveryEnabled": false,
     "branch": "holo_jp",
-    "tags": [
-      "2期生"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
-    "graduatedAt": "2024-08-28"
+    "graduatedAt": "2024-08-28",
+    "groupKey": [
+      "2期生"
+    ]
   },
   {
     "creatorId": "murasaki_shion",
@@ -480,12 +480,12 @@
     "active": true,
     "discoveryEnabled": false,
     "branch": "holo_jp",
-    "tags": [
-      "2期生"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
-    "graduatedAt": "2025-04-26"
+    "graduatedAt": "2025-04-26",
+    "groupKey": [
+      "2期生"
+    ]
   },
   {
     "creatorId": "nakiri_ayame",
@@ -494,11 +494,11 @@
     "youtubeChannelId": "UC7fk0CB07ly8oSl0aqKkqFg",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "2期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "2期生"
+    ]
   },
   {
     "creatorId": "yuzuki_choco",
@@ -507,11 +507,11 @@
     "youtubeChannelId": "UC1suqwovbL1kzsoaZgFZLKg",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "2期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "2期生"
+    ]
   },
   {
     "creatorId": "oozora_subaru",
@@ -520,11 +520,11 @@
     "youtubeChannelId": "UCvzGlP9oQwU--Y0r9id_jnA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "2期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "2期生"
+    ]
   },
   {
     "creatorId": "ookami_mio",
@@ -533,11 +533,11 @@
     "youtubeChannelId": "UCp-5t9SrOQwXMU7iIjQfARg",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "ゲーマーズ"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "ゲーマーズ"
+    ]
   },
   {
     "creatorId": "nekomata_okayu",
@@ -546,11 +546,11 @@
     "youtubeChannelId": "UCvaTdHTWBGv3MKj3KVqJVCw",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "ゲーマーズ"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "ゲーマーズ"
+    ]
   },
   {
     "creatorId": "inugami_korone",
@@ -559,11 +559,11 @@
     "youtubeChannelId": "UChAnqc_AY5_I3Px5dig3X1Q",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "ゲーマーズ"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "ゲーマーズ"
+    ]
   },
   {
     "creatorId": "usada_pekora",
@@ -572,11 +572,11 @@
     "youtubeChannelId": "UC1DCedRgGHBdm81E1llLhOQ",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "3期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "3期生"
+    ]
   },
   {
     "creatorId": "uruha_rushia",
@@ -586,12 +586,12 @@
     "active": true,
     "discoveryEnabled": false,
     "branch": "holo_jp",
-    "tags": [
-      "3期生"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
-    "graduatedAt": "2022-02-24"
+    "graduatedAt": "2022-02-24",
+    "groupKey": [
+      "3期生"
+    ]
   },
   {
     "creatorId": "shiranui_flare",
@@ -600,11 +600,11 @@
     "youtubeChannelId": "UCvInZx9h3jC2JzsIzoOebWg",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "3期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "3期生"
+    ]
   },
   {
     "creatorId": "shirogane_noel",
@@ -613,11 +613,11 @@
     "youtubeChannelId": "UCdyqAaZDKHXg4Ahi7VENThQ",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "3期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "3期生"
+    ]
   },
   {
     "creatorId": "houshou_marine",
@@ -626,11 +626,11 @@
     "youtubeChannelId": "UCCzUftO8KOVkV4wQG1vkUvg",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "3期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "3期生"
+    ]
   },
   {
     "creatorId": "amane_kanata",
@@ -640,12 +640,12 @@
     "active": true,
     "discoveryEnabled": false,
     "branch": "holo_jp",
-    "tags": [
-      "4期生"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
-    "graduatedAt": "2025-12-27"
+    "graduatedAt": "2025-12-27",
+    "groupKey": [
+      "4期生"
+    ]
   },
   {
     "creatorId": "kiryu_coco",
@@ -655,12 +655,12 @@
     "active": true,
     "discoveryEnabled": false,
     "branch": "holo_jp",
-    "tags": [
-      "4期生"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
-    "graduatedAt": "2021-07-01"
+    "graduatedAt": "2021-07-01",
+    "groupKey": [
+      "4期生"
+    ]
   },
   {
     "creatorId": "tsunomaki_watame",
@@ -669,11 +669,11 @@
     "youtubeChannelId": "UCqm3BQLlJfvkTsX_hvm0UmA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "4期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "4期生"
+    ]
   },
   {
     "creatorId": "tokoyami_towa",
@@ -682,11 +682,11 @@
     "youtubeChannelId": "UC1uv2Oq6kNxgATlCiez59hw",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "4期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "4期生"
+    ]
   },
   {
     "creatorId": "himemori_luna",
@@ -695,11 +695,11 @@
     "youtubeChannelId": "UCa9Y57gfeY0Zro_noHRVrnw",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "4期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "4期生"
+    ]
   },
   {
     "creatorId": "yukihana_lamy",
@@ -708,11 +708,11 @@
     "youtubeChannelId": "UCFKOVgVbGmX65RxO3EtH3iw",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "5期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "5期生"
+    ]
   },
   {
     "creatorId": "momosuzu_nene",
@@ -721,11 +721,11 @@
     "youtubeChannelId": "UCAWSyEs_Io8MtpY3m-zqILA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "5期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "5期生"
+    ]
   },
   {
     "creatorId": "shishiro_botan",
@@ -734,11 +734,11 @@
     "youtubeChannelId": "UCUKD-uaobj9jiqB-VXt71mA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "5期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "5期生"
+    ]
   },
   {
     "creatorId": "omaru_polka",
@@ -747,11 +747,11 @@
     "youtubeChannelId": "UCK9V2B22uJYu3N7eR_BT9QA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "5期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "5期生"
+    ]
   },
   {
     "creatorId": "mano_aloe",
@@ -761,12 +761,12 @@
     "active": true,
     "discoveryEnabled": false,
     "branch": "holo_jp",
-    "tags": [
-      "5期生"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
-    "graduatedAt": "2020-08-31"
+    "graduatedAt": "2020-08-31",
+    "groupKey": [
+      "5期生"
+    ]
   },
   {
     "creatorId": "laplus_darkness",
@@ -775,11 +775,11 @@
     "youtubeChannelId": "UCENwRMx5Yh42zWpzURebzTw",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "6期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "6期生"
+    ]
   },
   {
     "creatorId": "takane_lui",
@@ -788,11 +788,11 @@
     "youtubeChannelId": "UCs9_O1tRPMQTHQ-N_L6FU2g",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "6期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "6期生"
+    ]
   },
   {
     "creatorId": "hakui_koyori",
@@ -801,11 +801,11 @@
     "youtubeChannelId": "UC6eWCld0KwmyHFbAqK3V-Rw",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "6期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "6期生"
+    ]
   },
   {
     "creatorId": "sakamata_chloe",
@@ -814,13 +814,13 @@
     "youtubeChannelId": "UCIBY1ollUsauvVi4hW4cumw",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "6期生"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
     "discoveryEnabled": false,
-    "graduatedAt": "2025-01-26"
+    "graduatedAt": "2025-01-26",
+    "groupKey": [
+      "6期生"
+    ]
   },
   {
     "creatorId": "kazama_iroha",
@@ -829,11 +829,11 @@
     "youtubeChannelId": "UC_vMYWcDjmfdpH6r4TTn1MQ",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "6期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "6期生"
+    ]
   },
   {
     "creatorId": "hiodoshi_ao",
@@ -843,12 +843,12 @@
     "active": true,
     "discoveryEnabled": false,
     "branch": "holo_jp",
-    "tags": [
-      "ReGLOSS"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
-    "graduatedAt": "2025-09-08"
+    "graduatedAt": "2025-09-08",
+    "groupKey": [
+      "ReGLOSS"
+    ]
   },
   {
     "creatorId": "otonose_kanade",
@@ -857,11 +857,11 @@
     "youtubeChannelId": "UCWQtYtq9EOB4-I5P-3fh8lA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "ReGLOSS"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "ReGLOSS"
+    ]
   },
   {
     "creatorId": "ichijou_ririka",
@@ -870,11 +870,11 @@
     "youtubeChannelId": "UCtyWhCj3AqKh2dXctLkDtng",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "ReGLOSS"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "ReGLOSS"
+    ]
   },
   {
     "creatorId": "juufuutei_raden",
@@ -883,11 +883,11 @@
     "youtubeChannelId": "UCdXAk5MpyLD8594lm_OvtGQ",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "ReGLOSS"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "ReGLOSS"
+    ]
   },
   {
     "creatorId": "todoroki_hajime",
@@ -896,11 +896,11 @@
     "youtubeChannelId": "UC1iA6_NT4mtAcIII6ygrvCw",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "ReGLOSS"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "ReGLOSS"
+    ]
   },
   {
     "creatorId": "isaki_riona",
@@ -909,11 +909,11 @@
     "youtubeChannelId": "UC9LSiN9hXI55svYEBrrK-tw",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "FLOWGLOW"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "FLOWGLOW"
+    ]
   },
   {
     "creatorId": "koganei_niko",
@@ -922,11 +922,11 @@
     "youtubeChannelId": "UCuI_opAVX6qbxZY-a-AxFuQ",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "FLOWGLOW"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "FLOWGLOW"
+    ]
   },
   {
     "creatorId": "mizumiya_su",
@@ -935,11 +935,11 @@
     "youtubeChannelId": "UCjk2nKmHzgH5Xy-C5qYRd5A",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "FLOWGLOW"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "FLOWGLOW"
+    ]
   },
   {
     "creatorId": "rindo_chihaya",
@@ -948,11 +948,11 @@
     "youtubeChannelId": "UCKMWFR6lAstLa7Vbf5dH7ig",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "FLOWGLOW"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "FLOWGLOW"
+    ]
   },
   {
     "creatorId": "kikirara_vivi",
@@ -961,11 +961,11 @@
     "youtubeChannelId": "UCGzTVXqMQHa4AgJVJIVvtDQ",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "FLOWGLOW"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "FLOWGLOW"
+    ]
   },
   {
     "creatorId": "unit_b_pre_debut",
@@ -974,11 +974,11 @@
     "youtubeChannelId": "UC3OH5FKQ3qtl4uRme_vZTgA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "mekpark"
-    ],
     "channelType": "group",
-    "lifecycleStage": "pre_debut"
+    "lifecycleStage": "pre_debut",
+    "groupKey": [
+      "mekpark"
+    ]
   },
   {
     "creatorId": "achrora",
@@ -987,11 +987,11 @@
     "youtubeChannelId": "UChpRPsAeSZn5DistGacR3iA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "mekpark"
-    ],
     "channelType": "group",
-    "lifecycleStage": "pre_debut"
+    "lifecycleStage": "pre_debut",
+    "groupKey": [
+      "mekpark"
+    ]
   },
   {
     "creatorId": "holoan_room",
@@ -1000,11 +1000,11 @@
     "youtubeChannelId": "UCozx5csNhCx1wsVq3SZVkBQ",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "aNnounce"
-    ],
     "channelType": "staff",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "aNnounce"
+    ]
   },
   {
     "creatorId": "hololive_dev_is_regloss",
@@ -1013,11 +1013,11 @@
     "youtubeChannelId": "UC10wVt6hoQiwySRhz7RdOUA",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "ReGLOSS"
-    ],
     "channelType": "group",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "ReGLOSS"
+    ]
   },
   {
     "creatorId": "hololive_dev_is_flow_glow",
@@ -1026,11 +1026,11 @@
     "youtubeChannelId": "UCu2n3qHuOuQIygREMnWeQWg",
     "active": true,
     "branch": "holo_jp",
-    "tags": [
-      "FLOWGLOW"
-    ],
     "channelType": "group",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "FLOWGLOW"
+    ]
   },
   {
     "creatorId": "mori_calliope",
@@ -1039,11 +1039,11 @@
     "youtubeChannelId": "UCL_qhgtOy0dy1Agp8vkySQg",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Myth"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Myth"
+    ]
   },
   {
     "creatorId": "takanashi_kiara",
@@ -1052,11 +1052,11 @@
     "youtubeChannelId": "UCHsx4Hqa-1ORjQTh9TYDhww",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Myth"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Myth"
+    ]
   },
   {
     "creatorId": "ninomae_inanis",
@@ -1065,11 +1065,11 @@
     "youtubeChannelId": "UCMwGHR0BTZuLsmjY_NT5Pwg",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Myth"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Myth"
+    ]
   },
   {
     "creatorId": "gawr_gura",
@@ -1078,13 +1078,13 @@
     "youtubeChannelId": "UCoSrY_IQQVpmIRZ9Xf-y93g",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Myth"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
     "discoveryEnabled": false,
-    "graduatedAt": "2025-05-01"
+    "graduatedAt": "2025-05-01",
+    "groupKey": [
+      "Myth"
+    ]
   },
   {
     "creatorId": "watson_amelia",
@@ -1093,13 +1093,13 @@
     "youtubeChannelId": "UCyl1z3jo3XHR1riLFKG5UAg",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Myth"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
     "discoveryEnabled": false,
-    "graduatedAt": "2024-10-25"
+    "graduatedAt": "2024-10-25",
+    "groupKey": [
+      "Myth"
+    ]
   },
   {
     "creatorId": "irys",
@@ -1108,11 +1108,11 @@
     "youtubeChannelId": "UC8rcEBzJSleTkf_-agPM20g",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Promise"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Promise"
+    ]
   },
   {
     "creatorId": "ceres_fauna",
@@ -1121,13 +1121,13 @@
     "youtubeChannelId": "UCO_aKKYxn4tvrqPjcTzZ6EQ",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Promise"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
     "discoveryEnabled": false,
-    "graduatedAt": "2025-01-03"
+    "graduatedAt": "2025-01-03",
+    "groupKey": [
+      "Promise"
+    ]
   },
   {
     "creatorId": "ouro_kronii",
@@ -1136,11 +1136,11 @@
     "youtubeChannelId": "UCmbs8T6MWqUHP1tIQvSgKrg",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Promise"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Promise"
+    ]
   },
   {
     "creatorId": "nanashi_mumei",
@@ -1149,13 +1149,13 @@
     "youtubeChannelId": "UC3n5uGu18FoCy23ggWWp8tA",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Promise"
-    ],
     "channelType": "member",
     "lifecycleStage": "graduated",
     "discoveryEnabled": false,
-    "graduatedAt": "2025-04-28"
+    "graduatedAt": "2025-04-28",
+    "groupKey": [
+      "Promise"
+    ]
   },
   {
     "creatorId": "hakos_baelz",
@@ -1164,11 +1164,11 @@
     "youtubeChannelId": "UCgmPnx-EEeOrZSg5Tiw7ZRQ",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Promise"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Promise"
+    ]
   },
   {
     "creatorId": "shiori_novella",
@@ -1177,11 +1177,11 @@
     "youtubeChannelId": "UCgnfPPb9JI3e9A4cXHnWbyg",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Advent"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Advent"
+    ]
   },
   {
     "creatorId": "koseki_bijou",
@@ -1190,11 +1190,11 @@
     "youtubeChannelId": "UC9p_lqQ0FEDz327Vgf5JwqA",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Advent"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Advent"
+    ]
   },
   {
     "creatorId": "nerissa_ravencroft",
@@ -1203,11 +1203,11 @@
     "youtubeChannelId": "UC_sFNM0z0MWm9A6WlKPuMMg",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Advent"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Advent"
+    ]
   },
   {
     "creatorId": "fuwamoco",
@@ -1216,12 +1216,12 @@
     "youtubeChannelId": "UCt9H_RpQzhxzlyBxFqrdHqA",
     "active": true,
     "branch": "holo_en",
-    "tags": [
+    "channelType": "group",
+    "lifecycleStage": "active",
+    "groupKey": [
       "Advent",
       "FUWAMOCO"
-    ],
-    "channelType": "group",
-    "lifecycleStage": "active"
+    ]
   },
   {
     "creatorId": "elizabeth_rose_bloodflame",
@@ -1230,11 +1230,11 @@
     "youtubeChannelId": "UC--YolkGxqTiZtZss9ug3uQ",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Justice"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Justice"
+    ]
   },
   {
     "creatorId": "gigi_murin",
@@ -1243,11 +1243,11 @@
     "youtubeChannelId": "UC_8AmCWUFI3laCeY3TTIHDA",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Justice"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Justice"
+    ]
   },
   {
     "creatorId": "cecilia_immergreen",
@@ -1256,11 +1256,11 @@
     "youtubeChannelId": "UCvN5h1ShZtc7nly3pezRayg",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Justice"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Justice"
+    ]
   },
   {
     "creatorId": "raora_panthera",
@@ -1269,11 +1269,11 @@
     "youtubeChannelId": "UCl69AEx4MdqMZH7Jtsm7Tig",
     "active": true,
     "branch": "holo_en",
-    "tags": [
-      "Justice"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "Justice"
+    ]
   },
   {
     "creatorId": "ayunda_risu",
@@ -1282,11 +1282,11 @@
     "youtubeChannelId": "UCOyYb1c43VlX9rc_lT6NKQw",
     "active": true,
     "branch": "holo_id",
-    "tags": [
-      "1期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "1期生"
+    ]
   },
   {
     "creatorId": "moona_hoshinova",
@@ -1295,11 +1295,11 @@
     "youtubeChannelId": "UCP0BspO_AMEe3aQqqpo89Dg",
     "active": true,
     "branch": "holo_id",
-    "tags": [
-      "1期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "1期生"
+    ]
   },
   {
     "creatorId": "airani_iofifteen",
@@ -1308,11 +1308,11 @@
     "youtubeChannelId": "UCAoy6rzhSf4ydcYjJw3WoVg",
     "active": true,
     "branch": "holo_id",
-    "tags": [
-      "1期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "1期生"
+    ]
   },
   {
     "creatorId": "kureiji_ollie",
@@ -1321,11 +1321,11 @@
     "youtubeChannelId": "UCYz_5n-uDuChHtLo7My1HnQ",
     "active": true,
     "branch": "holo_id",
-    "tags": [
-      "2期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "2期生"
+    ]
   },
   {
     "creatorId": "anya_melfissa",
@@ -1334,11 +1334,11 @@
     "youtubeChannelId": "UC727SQYUvx5pDDGQpTICNWg",
     "active": true,
     "branch": "holo_id",
-    "tags": [
-      "2期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "2期生"
+    ]
   },
   {
     "creatorId": "pavolia_reine",
@@ -1347,11 +1347,11 @@
     "youtubeChannelId": "UChgTyjG-pdNvxxhdsXfHQ5Q",
     "active": true,
     "branch": "holo_id",
-    "tags": [
-      "2期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "2期生"
+    ]
   },
   {
     "creatorId": "vestia_zeta",
@@ -1360,11 +1360,11 @@
     "youtubeChannelId": "UCTvHWSfBZgtxE4sILOaurIQ",
     "active": true,
     "branch": "holo_id",
-    "tags": [
-      "3期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "3期生"
+    ]
   },
   {
     "creatorId": "kaela_kovalskia",
@@ -1373,11 +1373,11 @@
     "youtubeChannelId": "UCZLZ8Jjx_RN2CXloOmgTHVg",
     "active": true,
     "branch": "holo_id",
-    "tags": [
-      "3期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "3期生"
+    ]
   },
   {
     "creatorId": "kobo_kanaeru",
@@ -1386,11 +1386,11 @@
     "youtubeChannelId": "UCjLEmnpCNeisMxy134KPwWw",
     "active": true,
     "branch": "holo_id",
-    "tags": [
-      "3期生"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "3期生"
+    ]
   },
   {
     "creatorId": "jira_jisaki",
@@ -1399,11 +1399,11 @@
     "youtubeChannelId": "UCeCWj-SiJG9SWN6wGORiLmw",
     "active": true,
     "branch": "vspo_en",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "remia_aotsuki",
@@ -1412,11 +1412,11 @@
     "youtubeChannelId": "UCCra1t-eIlO3ULyXQQMD9Xw",
     "active": true,
     "branch": "vspo_en",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "arya_kuroha",
@@ -1425,11 +1425,11 @@
     "youtubeChannelId": "UCLlJpxXt6L5d-XQ0cDdIyDQ",
     "active": true,
     "branch": "vspo_en",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "narin_mikure",
@@ -1438,11 +1438,11 @@
     "youtubeChannelId": "UCKSpM183c85d5V2cW5qaUjA",
     "active": true,
     "branch": "vspo_en",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "riko_solari",
@@ -1451,11 +1451,11 @@
     "youtubeChannelId": "UC7Xglp1fske9zmRe7Oj8YyA",
     "active": true,
     "branch": "vspo_en",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "eris_suzukami",
@@ -1464,11 +1464,11 @@
     "youtubeChannelId": "UCp_3ej2br9l9L1DSoHVDZGw",
     "active": true,
     "branch": "vspo_en",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   },
   {
     "creatorId": "juno_umezono",
@@ -1477,10 +1477,10 @@
     "youtubeChannelId": "UCRJV_1aV4aZjFAEUn6o5arw",
     "active": true,
     "branch": "vspo_en",
-    "tags": [
-      "NO"
-    ],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
   }
 ]

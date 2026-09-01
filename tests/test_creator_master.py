@@ -16,7 +16,7 @@ def _base_record(**overrides):
         "youtubeChannelId": "UC_TEST_CHANNEL_7",
         "active": True,
         "branch": "vspo_jp",
-        "tags": ["NO"],
+        "groupKey": ["NO"],
         "channelType": "member",
         "lifecycleStage": "active",
     }
@@ -36,7 +36,7 @@ def test_load_creators_parses_all_fields():
             youtube_channel_id="UC_TEST_CHANNEL",
             active=True,
             branch="vspo_jp",
-            tags=["NO"],
+            group_key=["NO"],
             channel_type="member",
             lifecycle_stage="active",
         ),
@@ -47,7 +47,7 @@ def test_load_creators_parses_all_fields():
             youtube_channel_id="UC_TEST_CHANNEL_2",
             active=False,
             branch="holo_jp",
-            tags=["2期生"],
+            group_key=["2期生"],
             channel_type="member",
             lifecycle_stage="active",
         ),
@@ -81,7 +81,7 @@ def test_discovery_enabled_false_is_parsed(tmp_path):
     e.g. a graduated talent whose known videos still get statistics/snapshots."""
     path = tmp_path / "creators.json"
     path.write_text(
-        json.dumps([_base_record(discoveryEnabled=False, branch="holo_jp", tags=["3期生"])]),
+        json.dumps([_base_record(discoveryEnabled=False, branch="holo_jp", groupKey=["3期生"])]),
         encoding="utf-8",
     )
 
@@ -121,40 +121,40 @@ def test_string_active_value_is_rejected(tmp_path):
         load_creators(path)
 
 
-def test_multiple_tags_are_parsed(tmp_path):
-    """A creator can carry more than one tag at once (e.g. a generation and a cross-generation unit)."""
+def test_multiple_group_keys_are_parsed(tmp_path):
+    """A creator can belong to more than one group at once (e.g. a generation and a cross-generation unit)."""
     path = tmp_path / "creators.json"
     path.write_text(
-        json.dumps([_base_record(branch="holo_jp", tags=["1期生", "ゲーマーズ"])]), encoding="utf-8"
+        json.dumps([_base_record(branch="holo_jp", groupKey=["1期生", "ゲーマーズ"])]), encoding="utf-8"
     )
 
     creators = load_creators(path)
 
-    assert creators[0].tags == ["1期生", "ゲーマーズ"]
+    assert creators[0].group_key == ["1期生", "ゲーマーズ"]
 
 
-def test_empty_tags_list_is_rejected(tmp_path):
-    """An empty 'tags' list is rejected — every creator must carry at least a placeholder tag."""
+def test_empty_group_key_list_is_rejected(tmp_path):
+    """An empty 'groupKey' list is rejected — every creator must carry at least a placeholder group key."""
     path = tmp_path / "creators.json"
-    path.write_text(json.dumps([_base_record(tags=[])]), encoding="utf-8")
+    path.write_text(json.dumps([_base_record(groupKey=[])]), encoding="utf-8")
 
     with pytest.raises(CreatorMasterError):
         load_creators(path)
 
 
-def test_non_list_tags_value_is_rejected(tmp_path):
-    """A 'tags' value that isn't a list (e.g. a bare string) is rejected."""
+def test_non_list_group_key_value_is_rejected(tmp_path):
+    """A 'groupKey' value that isn't a list (e.g. a bare string) is rejected."""
     path = tmp_path / "creators.json"
-    path.write_text(json.dumps([_base_record(tags="NO")]), encoding="utf-8")
+    path.write_text(json.dumps([_base_record(groupKey="NO")]), encoding="utf-8")
 
     with pytest.raises(CreatorMasterError):
         load_creators(path)
 
 
-def test_tags_with_non_string_element_is_rejected(tmp_path):
-    """A 'tags' list containing a non-string element (e.g. null) is rejected."""
+def test_group_key_with_non_string_element_is_rejected(tmp_path):
+    """A 'groupKey' list containing a non-string element (e.g. null) is rejected."""
     path = tmp_path / "creators.json"
-    path.write_text(json.dumps([_base_record(tags=["NO", None])]), encoding="utf-8")
+    path.write_text(json.dumps([_base_record(groupKey=["NO", None])]), encoding="utf-8")
 
     with pytest.raises(CreatorMasterError):
         load_creators(path)
