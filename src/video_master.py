@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -152,13 +153,18 @@ def _optional_float(raw: dict, field: str, video_id: str) -> float | None:
 
     A whole-number measurement round-trips through JSON without a decimal
     point (e.g. 1000 rather than 1000.0), so a bare int is accepted too —
-    just not a bool, which is technically an int subclass in Python.
+    just not a bool, which is technically an int subclass in Python. NaN/
+    +-Infinity are rejected too: standard JSON has no token for them, so
+    json.dump would silently emit non-conformant output (`NaN`/`Infinity`)
+    when this value is later written back out via _to_raw.
     """
     value = raw.get(field)
     if value is None:
         return None
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise VideoMasterError(f"Video {video_id!r} has non-numeric {field!r}: {value!r}")
+    if not math.isfinite(value):
+        raise VideoMasterError(f"Video {video_id!r} has non-finite {field!r}: {value!r}")
     return float(value)
 
 

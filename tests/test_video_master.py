@@ -212,6 +212,32 @@ def test_non_numeric_velocity_field_is_rejected(tmp_path):
         load_videos(path)
 
 
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_velocity_field_is_rejected(tmp_path, bad_value):
+    """NaN/+-Infinity are rejected — standard JSON has no token for them, so
+    silently accepting one here would let it round-trip back out through
+    json.dump as non-conformant JSON (`NaN`/`Infinity`) the next time this
+    video is upserted."""
+    path = tmp_path / "video_master.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "videoId": "v1",
+                    "creatorId": "aizawa_ema",
+                    "title": "A",
+                    "publishedAt": "2026-08-20T00:00:00Z",
+                    "lastAvgViewsPerDay": bad_value,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VideoMasterError):
+        load_videos(path)
+
+
 def test_integer_velocity_field_is_accepted(tmp_path):
     """A whole-number velocity measurement round-trips through JSON without a
     decimal point (e.g. 1000, not 1000.0) and must still parse as a float."""
