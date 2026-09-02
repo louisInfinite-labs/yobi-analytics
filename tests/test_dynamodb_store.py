@@ -246,9 +246,11 @@ def test_save_run_summary_standalone(dynamodb_tables):
 
 
 def test_save_daily_collection_rolls_back_run_summary_on_snapshot_write_failure(dynamodb_tables, monkeypatch):
-    """If the snapshot batch write fails partway through, the reserved run
-    summary is rolled back so a retry for that date is not permanently
-    blocked by a completion marker for data that was never fully written."""
+    """If the snapshot batch write fails partway through, both the partially
+    written snapshot items and the reserved run summary are rolled back, so
+    a retry for that date is not permanently blocked by a completion marker
+    for data that was never fully written, and no stray unowned items are
+    left behind under a date nothing claims responsibility for."""
     import dynamodb_store
     from botocore.exceptions import ClientError
 
@@ -272,6 +274,9 @@ def test_save_daily_collection_rolls_back_run_summary_on_snapshot_write_failure(
 
     resource = boto3.resource("dynamodb", region_name=AWS_REGION)
     assert "Item" not in resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})
+    # v1 was already flushed to DynamoDB by batch_writer before the failure on
+    # v2 — it must be cleaned up too, not left behind as orphaned partial data.
+    assert resource.Table(SNAPSHOTS_TABLE).scan()["Items"] == []
 
     # The rollback must actually unblock a retry, not just delete-and-still-fail.
     save_daily_collection([_snapshot(video_id="v1")], _summary(collected=1), date(2026, 9, 1))

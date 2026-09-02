@@ -451,13 +451,16 @@ Do not implement routine admin selection with `search.list`. The uploads playlis
 
 #### Implementation Note / Verification Checkpoint
 
-These requirements have been verified against the current implementation in `src/` (tracking_schedule.py, video_master.py, main.py):
+Verified against the current implementation in `src/` (tracking_schedule.py, video_master.py, main.py):
 
-- Calculate `ageDays` once per video per run as a calendar-date difference in `Asia/Tokyo`: convert `publishedAt` to its JST calendar date, then subtract it from the run's JST `snapshotDate`. Do not classify by partially elapsed 24-hour periods. Treat a negative result as invalid data that must be reported.
 - Keep age and activity fields separate. `ageDays <= 30` forces daily Recent treatment; older videos use exactly one of Unknown/Hot/Warm/Cold for normal scheduling.
-- Scheduling plus admin selectors must produce one final `isDue` decision per video per run.
-- Deduplicate the collection input by `videoId`, and allow at most one statistics request result and one snapshot record for the same `(videoId, snapshotDate)`. A same-day retry must be idempotent rather than create another snapshot.
-- Add tests for ages `30`/`31`, bootstrap Unknown handling, 2/3/15-day rotations, promotion/demotion hysteresis, incomplete intervals, quota overflow, selector bounds/date inclusivity, duplicate Video IDs, and same-day retries.
+- Deduplicate the collection input by `videoId`, and allow at most one statistics request result and one snapshot record for the same `(videoId, snapshotDate)`. A same-day retry is idempotent rather than creating another snapshot (enforced at the whole-day grain by the local JSON store's exclusive-create, and at the per-record grain by DynamoDB's key-based overwrite).
+- Tests exist for the 30-day Recent boundary, bootstrap Unknown handling, the 2/3/15-day rotations, and promotion/demotion hysteresis.
+
+Not yet implemented, and not verifiable until they are — these belong to Admin Collection Overrides above and to quota tracking (1.4), not to the core adaptive schedule:
+
+- `ageDays` is currently computed from `publishedAt`'s raw UTC calendar date, not converted to its JST calendar date first, and a negative result is not specially detected or reported — `_age_in_days`/`is_due_today` in tracking_schedule.py have no such conversion or check.
+- Admin selectors (newest/oldest N, rank range, date range, explicit Video IDs), their `--dry-run`, and quota overflow handling do not exist in `src/` yet, so "scheduling plus admin selectors produce one final `isDue` decision," "selector bounds/date inclusivity," and "quota overflow" cannot be tested until they're built.
 
 #### Definition of Done
 

@@ -112,10 +112,15 @@ def save_daily_collection(
     run before committing to batch-writing tens of thousands of snapshot
     items. If that batch write then fails partway through — a realistic risk
     given it can take minutes and cross a Lambda timeout or hit throttling —
-    the reserved run summary is deleted before re-raising. Without this, the
-    summary would claim the date is fully collected while most snapshot items
-    are missing, and every retry would be rejected by the same exclusivity
-    check with no way to ever finish that date.
+    the rollback deletes whatever snapshot items *did* get written for this
+    date before releasing the run summary reservation. Releasing the
+    reservation while partial snapshot items remained would leave stray,
+    unowned data behind — a later successful run isn't guaranteed to rewrite
+    every one of those same items (e.g. a differently-scoped retry), so
+    without this cleanup a video could keep a snapshot from a run that was
+    never actually recorded as complete. Without releasing the reservation
+    at all, every retry would be rejected by the same exclusivity check with
+    no way to ever finish that date.
     """
     expected_date = snapshot_date.isoformat()
     mismatched = [snapshot.video_id for snapshot in snapshots if snapshot.snapshot_date != expected_date]
@@ -132,6 +137,7 @@ def save_daily_collection(
             for snapshot in snapshots:
                 batch.put_item(Item=_snapshot_to_raw(snapshot))
     except ClientError as exc:
+        _delete_snapshots_for_date(snapshot_date)
         _delete_run_summary(snapshot_date)
         raise SnapshotStoreError(f"Failed to write to {SNAPSHOTS_TABLE}: {exc}") from exc
 
@@ -139,6 +145,41 @@ def save_daily_collection(
         f"DynamoDB table {SNAPSHOTS_TABLE} (snapshotDate={expected_date})",
         f"DynamoDB table {RUN_SUMMARIES_TABLE} (snapshotDate={expected_date})",
     )
+
+
+def _delete_snapshots_for_date(snapshot_date: date) -> None:
+    """Best-effort delete of every YobiSnapshots item for one date, used to
+    clean up a partial write after a failed batch. Swallows its own failures
+    rather than masking the original error that triggered the rollback — a
+    retry will simply see leftover items via _put_run_summary_exclusive's
+    normal path if this didn't fully take. No GSI on snapshotDate yet, so
+    this is a filtered Scan (Roadmap 2.3's documented "later optimization"),
+    acceptable here since a rollback is an exceptional path, not the steady
+    state.
+    """
+    expected_date = snapshot_date.isoformat()
+    table = _resource().Table(SNAPSHOTS_TABLE)
+    try:
+        keys_to_delete: list[dict] = []
+        scan_kwargs = {
+            "FilterExpression": "snapshotDate = :d",
+            "ProjectionExpression": "videoId, snapshotDate",
+            "ExpressionAttributeValues": {":d": expected_date},
+        }
+        while True:
+            response = table.scan(**scan_kwargs)
+            keys_to_delete.extend(
+                {"videoId": item["videoId"], "snapshotDate": item["snapshotDate"]} for item in response["Items"]
+            )
+            if "LastEvaluatedKey" not in response:
+                break
+            scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
+        with table.batch_writer() as batch:
+            for key in keys_to_delete:
+                batch.delete_item(Key=key)
+    except ClientError:
+        pass
 
 
 def _delete_run_summary(snapshot_date: date) -> None:

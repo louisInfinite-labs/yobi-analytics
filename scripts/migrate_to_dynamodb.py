@@ -228,13 +228,14 @@ def main() -> int:
         "action": "upsert (Video Master is mutable current-state, not conflict-checked)",
     }
 
-    # --- Snapshots + run summaries --------------------------------------
+    # --- Pass 1: validate every day and plan its action — no writes here ---
     local_dates = _local_days()
     if not local_dates:
         print("No local (snapshot, summary) day pairs found.")
     earliest_date, latest_date = (local_dates[0], local_dates[-1]) if local_dates else (None, None)
 
     conflicts: list[str] = []
+    day_plans: dict[str, tuple[list[Snapshot], SnapshotRunSummary, str]] = {}
     for snapshot_date_str in local_dates:
         snapshots, summary = _load_local_day(snapshot_date_str)
         day_errors = _validate_day(snapshot_date_str, snapshots, summary, known_video_ids)
@@ -264,18 +265,26 @@ def main() -> int:
             "validationErrors": day_errors,
             "action": action,
         }
+        day_plans[snapshot_date_str] = (snapshots, summary, action)
 
-        if action == "write" and not args.dry_run and not day_errors:
+    # --- Pass 2: only write anything once every day above validated clean ---
+    # Gating writes on `all_errors`/`conflicts` (accumulated across *all* days
+    # and Video Master), not on one day's own errors, is what keeps "nothing
+    # destructive was done" on failure actually true: a later day failing
+    # validation must not leave an earlier day's write already committed.
+    if not args.dry_run and not all_errors and not conflicts:
+        upsert_videos(local_videos)
+        manifest["videoMaster"]["action"] = "upserted"
+
+        for snapshot_date_str, (snapshots, summary, action) in day_plans.items():
+            if action != "write":
+                continue
             try:
                 save_daily_collection(snapshots, summary, date.fromisoformat(snapshot_date_str))
                 manifest["days"][snapshot_date_str]["action"] = "written"
             except FileExistsError:
                 # Reserved by a concurrent run between our read and our write; treat as skip, not fatal.
                 manifest["days"][snapshot_date_str]["action"] = "skip (reserved concurrently)"
-
-    if not args.dry_run and not all_errors and not conflicts:
-        upsert_videos(local_videos)
-        manifest["videoMaster"]["action"] = "upserted"
 
     manifest["proposedNextCollectionDate"] = None
     if latest_date:
