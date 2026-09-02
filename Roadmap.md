@@ -187,7 +187,7 @@ graduatedAt
 
 `graduatedAt` is an optional ISO 8601 date, only meaningful when `lifecycleStage` is `graduated`. It is **sparse by design**: a creator who hasn't graduated omits the key entirely rather than storing a placeholder like `"0000"`. This is deliberately chosen to carry over cleanly to DynamoDB later (2.3) — DynamoDB items don't require a fixed set of attributes, and a Global Secondary Index on a sparse attribute like `graduatedAt` only includes items that actually have it set, so "list graduated creators" naturally excludes everyone else without extra filtering logic. `lifecycleStage` always reflects the creator's **current** status, looked up live — there is no historical tracking of "was this creator active as of some earlier date"; once graduated, all of a creator's data (past and present) is treated as belonging to a graduated creator from that point on.
 
-`organization` is the top-level product label (`hololive` or `vspo`). `branch` is region/language only — `holo_jp`, `holo_en`, `holo_id`, `vspo_jp`, `vspo_en` (the latter two not populated yet) — it deliberately does not encode sub-labels like DEV_IS, mekPark, or staff; that belongs in `groupKey`. `groupKey` is a **list**, not a single value, because a creator can belong to more than one grouping at once — e.g. Shirakami Fubuki is both `"1期生"` and `"ゲーマーズ"` (Hololive Gamers), and a search for either group key must find her. A creator with no applicable grouping (all current `vspo` creators) uses the placeholder `["NO"]` rather than an empty list, so the field is never null/missing.
+`organization` is the top-level product label (`hololive` or `vspo`). `branch` is region/language only — `holo_jp`, `holo_en`, `holo_id`, `vspo_jp`, `vspo_en` — it deliberately does not encode sub-labels like DEV_IS, mekPark, or staff; that belongs in `groupKey`. `groupKey` is a **list**, not a single value, because a creator can belong to more than one grouping at once — e.g. Shirakami Fubuki is both `"1期生"` and `"ゲーマーズ"` (Hololive Gamers), and a search for either group key must find her. A creator with no applicable grouping (all current `vspo` creators) uses the placeholder `["NO"]` rather than an empty list, so the field is never null/missing.
 
 Creator membership is retained when lifecycle changes. Graduation sets `lifecycleStage: "graduated"` and the sparse `graduatedAt`, but never removes or replaces the creator's organization, branch, generation, unit, or Gamers group keys. Filter semantics are OR within one multi-value dimension and AND across different dimensions: selecting `1期生` and `ゲーマーズ` matches either creator group key, while selecting `hololive + holo_jp + 1期生 + graduated` returns only records matching all four dimensions. A record matching multiple selected group keys appears once.
 
@@ -451,13 +451,16 @@ Do not implement routine admin selection with `search.list`. The uploads playlis
 
 #### Implementation Note / Verification Checkpoint
 
-The collector source code is not currently present in this repository checkout, so the following requirements must be verified against the implementation when the source is available. They are requirements, not claims about the current code:
+Verified against the current implementation in `src/` (tracking_schedule.py, video_master.py, main.py):
 
-- Calculate `ageDays` once per video per run as a calendar-date difference in `Asia/Tokyo`: convert `publishedAt` to its JST calendar date, then subtract it from the run's JST `snapshotDate`. Do not classify by partially elapsed 24-hour periods. Treat a negative result as invalid data that must be reported.
 - Keep age and activity fields separate. `ageDays <= 30` forces daily Recent treatment; older videos use exactly one of Unknown/Hot/Warm/Cold for normal scheduling.
-- Scheduling plus admin selectors must produce one final `isDue` decision per video per run.
-- Deduplicate the collection input by `videoId`, and allow at most one statistics request result and one snapshot record for the same `(videoId, snapshotDate)`. A same-day retry must be idempotent rather than create another snapshot.
-- Add tests for ages `30`/`31`, bootstrap Unknown handling, 2/3/15-day rotations, promotion/demotion hysteresis, incomplete intervals, quota overflow, selector bounds/date inclusivity, duplicate Video IDs, and same-day retries.
+- Deduplicate the collection input by `videoId`, and allow at most one statistics request result and one snapshot record for the same `(videoId, snapshotDate)`. A same-day retry is idempotent rather than creating another snapshot (enforced at the whole-day grain by the local JSON store's exclusive-create, and at the per-record grain by DynamoDB's key-based overwrite).
+- Tests exist for the 30-day Recent boundary, bootstrap Unknown handling, the 2/3/15-day rotations, and promotion/demotion hysteresis.
+
+Not yet implemented, and not verifiable until they are — these belong to Admin Collection Overrides above and to quota tracking (1.4), not to the core adaptive schedule:
+
+- `ageDays` is currently computed from `publishedAt`'s raw UTC calendar date, not converted to its JST calendar date first, and a negative result is not specially detected or reported — `_age_in_days`/`is_due_today` in tracking_schedule.py have no such conversion or check.
+- Admin selectors (newest/oldest N, rank range, date range, explicit Video IDs), their `--dry-run`, and quota overflow handling do not exist in `src/` yet, so "scheduling plus admin selectors produce one final `isDue` decision," "selector bounds/date inclusivity," and "quota overflow" cannot be tested until they're built.
 
 #### Definition of Done
 

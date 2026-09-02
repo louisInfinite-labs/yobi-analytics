@@ -20,8 +20,11 @@ SRC_DIR = ROOT / "src"
 
 # Packages in requirements.txt that main.py/lambda_handler.py never import at
 # runtime — kept out of the Lambda package rather than duplicated by version
-# here, so requirements.txt stays the single source of truth.
-DEV_ONLY_PACKAGES = {"pytest"}
+# here, so requirements.txt stays the single source of truth. moto is a
+# test-only DynamoDB mock (Roadmap 2.3); boto3 itself is a real runtime
+# dependency (dynamodb_store.py) and stays bundled, even though the Lambda
+# Python runtime also provides its own copy.
+DEV_ONLY_PACKAGES = {"pytest", "moto"}
 
 
 def _load_runtime_dependencies() -> list[str]:

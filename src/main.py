@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -13,18 +14,23 @@ if hasattr(sys.stdout, "reconfigure"):
 from config import MissingAPIKeyError, get_api_key
 from creator_master import Creator, get_active_creators
 from googleapiclient.discovery import Resource
-from snapshot_store import (
-    SkippedVideo,
-    Snapshot,
-    SnapshotRunSummary,
-    SnapshotStoreError,
-    save_daily_collection,
-    save_run_summary,
-)
+from snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
 from tracking_schedule import classify_after_observation, is_due_today
 from video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
-from video_master import Video, VideoMasterError, load_video_ids_for_creator, load_videos, upsert_videos
+from video_master import Video, VideoMasterError, load_video_ids_for_creator
 from youtube_client import YouTubeAPIError, build_youtube_client, get_video_statistics
+
+# Local development keeps using the JSON file stores. Lambda sets
+# YOBI_STORAGE_BACKEND=dynamodb (Roadmap 2.3) because /tmp is wiped on cold
+# start and cannot durably hold scheduler state or snapshot history in
+# production; dynamodb_store exposes the same load_videos/upsert_videos/
+# save_daily_collection/save_run_summary signatures so nothing below this
+# needs to know which backend it's talking to.
+if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
+    from dynamodb_store import load_videos, save_daily_collection, save_run_summary, upsert_videos
+else:
+    from snapshot_store import save_daily_collection, save_run_summary
+    from video_master import load_videos, upsert_videos
 
 # The production schedule (Roadmap.md 2.4) runs the collector at 18:00 Asia/Tokyo.
 # Snapshot dates must be derived from JST, not the server's local/UTC clock.
