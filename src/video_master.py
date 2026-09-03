@@ -68,6 +68,20 @@ def load_video_ids_for_creator(
     return {video.video_id for video in videos if video.creator_id == creator_id}
 
 
+def get_video(video_id: str, path: Path = DEFAULT_VIDEO_MASTER_PATH, *, videos: list[Video] | None = None) -> Video | None:
+    """Return one video by ID, or None if it isn't in the Tracking Universe.
+
+    Pass an already-loaded `videos` list to avoid re-reading the store from
+    disk when the caller already has it (mirrors load_video_ids_for_creator).
+    """
+    if videos is None:
+        videos = load_videos(path)
+    for video in videos:
+        if video.video_id == video_id:
+            return video
+    return None
+
+
 def upsert_videos(new_videos: list[Video], path: Path = DEFAULT_VIDEO_MASTER_PATH) -> None:
     """Insert or update videos into the Video Master file without creating duplicates."""
     existing = {video.video_id: video for video in load_videos(path)}

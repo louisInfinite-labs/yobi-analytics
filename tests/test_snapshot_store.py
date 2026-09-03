@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -8,6 +9,9 @@ from snapshot_store import (
     Snapshot,
     SnapshotRunSummary,
     SnapshotStoreError,
+    coerce_view_count,
+    get_snapshot,
+    load_snapshots_for_date,
     run_summary_path_for,
     save_daily_collection,
     save_daily_snapshot,
@@ -17,6 +21,7 @@ from snapshot_store import (
 
 
 def _make_snapshot(**overrides):
+    """Build a minimal valid Snapshot for a test, overriding only the given fields."""
     fields = {
         "snapshot_date": "2026-08-29",
         "observed_at": "2026-08-29T00:00:05+00:00",
@@ -77,6 +82,7 @@ def test_snapshot_path_for_uses_iso_date(tmp_path):
 
 
 def _make_run_summary(**overrides):
+    """Build a minimal valid SnapshotRunSummary for a test, overriding only the given fields."""
     fields = {
         "snapshot_date": "2026-08-29",
         "requested_count": 1,
@@ -151,6 +157,61 @@ def test_save_daily_collection_writes_both_files(tmp_path):
     assert summary_path.exists()
 
 
+def test_save_daily_collection_rejects_duplicate_video_id(tmp_path):
+    """Two snapshots for the same videoId would silently collapse in the
+    file (or drift out of sync with a backend that keys on it) — matches
+    dynamodb_store.py's equivalent check, now shared via validate_daily_collection."""
+    snapshots = [_make_snapshot(video_id="v1"), _make_snapshot(video_id="v1")]
+    summary = _make_run_summary(collected_count=2)
+
+    with pytest.raises(SnapshotStoreError):
+        save_daily_collection(snapshots, summary, date(2026, 8, 29), tmp_path)
+
+    assert not (tmp_path / "2026-08-29.json").exists()
+
+
+def test_save_daily_collection_rejects_collected_count_mismatch(tmp_path):
+    """summary.collectedCount must match the actual number of snapshots provided."""
+    summary = _make_run_summary(collected_count=2)
+
+    with pytest.raises(SnapshotStoreError):
+        save_daily_collection([_make_snapshot(video_id="v1")], summary, date(2026, 8, 29), tmp_path)
+
+
+def test_save_daily_collection_rejects_requested_count_arithmetic_mismatch(tmp_path):
+    """requestedCount must equal collectedCount + len(skipped)."""
+    summary = SnapshotRunSummary(snapshot_date="2026-08-29", requested_count=5, collected_count=1, skipped=[])
+
+    with pytest.raises(SnapshotStoreError):
+        save_daily_collection([_make_snapshot(video_id="v1")], summary, date(2026, 8, 29), tmp_path)
+
+
+def test_save_daily_collection_rejects_duplicate_skipped_video_id(tmp_path):
+    summary = SnapshotRunSummary(
+        snapshot_date="2026-08-29",
+        requested_count=3,
+        collected_count=1,
+        skipped=[SkippedVideo(video_id="v2", reason="a"), SkippedVideo(video_id="v2", reason="b")],
+    )
+
+    with pytest.raises(SnapshotStoreError):
+        save_daily_collection([_make_snapshot(video_id="v1")], summary, date(2026, 8, 29), tmp_path)
+
+
+def test_save_daily_collection_rejects_video_id_both_collected_and_skipped(tmp_path):
+    """A videoId reported as both collected and skipped would let the
+    persisted summary contradict itself about that video's outcome."""
+    summary = SnapshotRunSummary(
+        snapshot_date="2026-08-29",
+        requested_count=2,
+        collected_count=1,
+        skipped=[SkippedVideo(video_id="v1", reason="malformed item")],
+    )
+
+    with pytest.raises(SnapshotStoreError):
+        save_daily_collection([_make_snapshot(video_id="v1")], summary, date(2026, 8, 29), tmp_path)
+
+
 def test_save_daily_collection_rolls_back_snapshot_if_summary_write_fails(tmp_path):
     """If the summary write fails after the snapshot write succeeded, the snapshot is
     deleted too, so a retry isn't permanently blocked by a stray leftover file."""
@@ -162,3 +223,108 @@ def test_save_daily_collection_rolls_back_snapshot_if_summary_write_fails(tmp_pa
 
     assert not (tmp_path / "2026-08-29.json").exists()
     assert not (tmp_path / "2026-08-29.summary.json").exists()
+
+
+# --- load_snapshots_for_date / get_snapshot -------------------------------
+
+
+def test_load_snapshots_for_date_returns_empty_list_when_file_missing(tmp_path):
+    """A date with no snapshot file yet behaves like an empty day, not an error."""
+    assert load_snapshots_for_date(date(2026, 8, 29), tmp_path) == []
+
+
+def test_load_snapshots_for_date_returns_every_recorded_snapshot(tmp_path):
+    """Every video recorded for a date is returned, not just the first one."""
+    snapshots = [_make_snapshot(video_id="v1"), _make_snapshot(video_id="v2")]
+    save_daily_snapshot(snapshots, date(2026, 8, 29), tmp_path)
+
+    loaded = load_snapshots_for_date(date(2026, 8, 29), tmp_path)
+
+    assert {s.video_id for s in loaded} == {"v1", "v2"}
+
+
+def test_get_snapshot_returns_none_when_date_has_no_file(tmp_path):
+    """A date with no snapshot file at all returns None, not an error."""
+    assert get_snapshot("v1", date(2026, 8, 29), tmp_path) is None
+
+
+def test_get_snapshot_returns_none_when_video_not_in_that_days_file(tmp_path):
+    """A missing video within an existing day's file is None, not KeyError —
+    the caller (Roadmap 3.1) decides what that means (pending vs. not available)."""
+    save_daily_snapshot([_make_snapshot(video_id="v1")], date(2026, 8, 29), tmp_path)
+
+    assert get_snapshot("v2", date(2026, 8, 29), tmp_path) is None
+
+
+def test_get_snapshot_returns_the_matching_video(tmp_path):
+    """Only the requested video's snapshot is returned from a multi-video day."""
+    snapshots = [_make_snapshot(video_id="v1", view_count=100), _make_snapshot(video_id="v2", view_count=200)]
+    save_daily_snapshot(snapshots, date(2026, 8, 29), tmp_path)
+
+    found = get_snapshot("v2", date(2026, 8, 29), tmp_path)
+
+    assert found is not None
+    assert found.video_id == "v2"
+    assert found.view_count == 200
+
+
+def test_load_snapshots_for_date_rejects_a_string_view_count(tmp_path):
+    """A hand-edited/corrupt JSON file with a string viewCount must be rejected,
+    not passed through — calculate_growth would otherwise raise an uncaught
+    TypeError subtracting a str from an int."""
+    path = tmp_path / "2026-08-29.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "snapshotDate": "2026-08-29",
+                    "observedAt": "2026-08-29T00:00:05+00:00",
+                    "creatorId": "aizawa_ema",
+                    "videoId": "v1",
+                    "title": "A",
+                    "publishedAt": "2026-08-25T12:00:00Z",
+                    "viewCount": "10230",
+                    "organization": "vspo",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SnapshotStoreError):
+        load_snapshots_for_date(date(2026, 8, 29), tmp_path)
+
+
+# --- coerce_view_count -----------------------------------------------------
+
+
+def test_coerce_view_count_accepts_a_plain_int():
+    assert coerce_view_count(10230, video_id="v1") == 10230
+
+
+def test_coerce_view_count_accepts_a_whole_decimal():
+    assert coerce_view_count(Decimal("10230"), video_id="v1") == 10230
+
+
+def test_coerce_view_count_rejects_a_string():
+    with pytest.raises(SnapshotStoreError):
+        coerce_view_count("10230", video_id="v1")
+
+
+def test_coerce_view_count_rejects_a_fractional_decimal():
+    """A fractional Decimal (e.g. DynamoDB data corruption) must be rejected,
+    not silently truncated by a bare int(...)."""
+    with pytest.raises(SnapshotStoreError):
+        coerce_view_count(Decimal("100.7"), video_id="v1")
+
+
+def test_coerce_view_count_rejects_a_negative_value():
+    with pytest.raises(SnapshotStoreError):
+        coerce_view_count(-5, video_id="v1")
+
+
+def test_coerce_view_count_rejects_a_bool():
+    """bool is a subclass of int in Python — True/False must not silently
+    become viewCount 1/0."""
+    with pytest.raises(SnapshotStoreError):
+        coerce_view_count(True, video_id="v1")

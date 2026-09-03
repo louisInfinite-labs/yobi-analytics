@@ -36,6 +36,8 @@ from snapshot_store import (
     Snapshot,
     SnapshotRunSummary,
     SnapshotStoreError,
+    coerce_view_count,
+    validate_daily_collection,
 )
 from snapshot_store import _summary_to_raw
 from snapshot_store import _to_raw as _snapshot_to_raw
@@ -83,6 +85,20 @@ def load_videos() -> list[Video]:
     return [_item_to_video(item) for item in items]
 
 
+def get_video(video_id: str) -> Video | None:
+    """Return one video by ID, or None if it isn't in the Tracking Universe.
+
+    A direct GetItem on the table's own videoId key, so no full-table Scan
+    is needed for this single-video access pattern (Roadmap 3.4's Read API).
+    """
+    table = _resource().Table(VIDEO_MASTER_TABLE)
+    try:
+        item = table.get_item(Key={"videoId": video_id}).get("Item")
+    except ClientError as exc:
+        raise VideoMasterError(f"Failed to read {VIDEO_MASTER_TABLE}: {exc}") from exc
+    return _item_to_video(item) if item else None
+
+
 def upsert_videos(videos: list[Video]) -> None:
     """Insert or update videos into the DynamoDB Video Master table."""
     if not videos:
@@ -94,6 +110,23 @@ def upsert_videos(videos: list[Video]) -> None:
                 batch.put_item(Item=_video_to_item(video))
     except ClientError as exc:
         raise VideoMasterError(f"Failed to write to {VIDEO_MASTER_TABLE}: {exc}") from exc
+
+
+def get_snapshot(video_id: str, snapshot_date: date) -> Snapshot | None:
+    """Return one video's snapshot for a specific date, or None if no such item exists.
+
+    Roadmap 3.1: a caller must never substitute a nearby date's snapshot for
+    a missing one, so this returns None rather than querying a range — the
+    caller decides what a missing result means (pending vs. not available).
+    A direct GetItem on the table's own (videoId, snapshotDate) key, so no
+    GSI or scan is needed for this access pattern.
+    """
+    table = _resource().Table(SNAPSHOTS_TABLE)
+    try:
+        item = table.get_item(Key={"videoId": video_id, "snapshotDate": snapshot_date.isoformat()}).get("Item")
+    except ClientError as exc:
+        raise SnapshotStoreError(f"Failed to read {SNAPSHOTS_TABLE}: {exc}") from exc
+    return _item_to_snapshot(item) if item else None
 
 
 def save_run_summary(summary: SnapshotRunSummary, snapshot_date: date) -> str:
@@ -123,52 +156,7 @@ def save_daily_collection(
     no way to ever finish that date.
     """
     expected_date = snapshot_date.isoformat()
-    mismatched = [snapshot.video_id for snapshot in snapshots if snapshot.snapshot_date != expected_date]
-    if mismatched:
-        raise SnapshotStoreError(
-            f"Snapshot(s) with snapshotDate not matching the requested {expected_date}: {mismatched}"
-        )
-
-    seen_video_ids: set[str] = set()
-    duplicate_video_ids = set()
-    for snapshot in snapshots:
-        if snapshot.video_id in seen_video_ids:
-            duplicate_video_ids.add(snapshot.video_id)
-        seen_video_ids.add(snapshot.video_id)
-    if duplicate_video_ids:
-        raise SnapshotStoreError(
-            f"Duplicate (videoId, snapshotDate) key(s) for {expected_date}: {sorted(duplicate_video_ids)}"
-        )
-
-    seen_skipped_ids: set[str] = set()
-    duplicate_skipped_ids = set()
-    for skipped in run_summary.skipped:
-        if skipped.video_id in seen_skipped_ids:
-            duplicate_skipped_ids.add(skipped.video_id)
-        seen_skipped_ids.add(skipped.video_id)
-    if duplicate_skipped_ids:
-        raise SnapshotStoreError(
-            f"Duplicate skipped videoId(s) for {expected_date}: {sorted(duplicate_skipped_ids)}"
-        )
-
-    collected_and_skipped = seen_video_ids & seen_skipped_ids
-    if collected_and_skipped:
-        raise SnapshotStoreError(
-            f"videoId(s) reported as both collected and skipped for {expected_date}: "
-            f"{sorted(collected_and_skipped)}"
-        )
-
-    if run_summary.collected_count != len(snapshots):
-        raise SnapshotStoreError(
-            f"Run summary collectedCount ({run_summary.collected_count}) does not match "
-            f"the number of snapshots provided ({len(snapshots)}) for {expected_date}"
-        )
-    if run_summary.requested_count != run_summary.collected_count + len(run_summary.skipped):
-        raise SnapshotStoreError(
-            f"Run summary requestedCount ({run_summary.requested_count}) does not equal "
-            f"collectedCount + len(skipped) ({run_summary.collected_count + len(run_summary.skipped)}) "
-            f"for {expected_date}"
-        )
+    validate_daily_collection(snapshots, run_summary, snapshot_date)
 
     _put_run_summary_exclusive(run_summary, snapshot_date)
 
@@ -297,6 +285,21 @@ def _video_to_item(video: Video) -> dict[str, Any]:
                 raise VideoMasterError(f"Video {video.video_id!r} has non-finite {field!r}: {raw[field]!r}")
             raw[field] = Decimal(str(raw[field]))
     return raw
+
+
+def _item_to_snapshot(item: dict[str, Any]) -> Snapshot:
+    """Convert a DynamoDB Snapshots item back into a Snapshot, restoring int from Decimal."""
+    raw = dict(item)
+    return Snapshot(
+        snapshot_date=raw["snapshotDate"],
+        observed_at=raw["observedAt"],
+        creator_id=raw["creatorId"],
+        video_id=raw["videoId"],
+        title=raw["title"],
+        published_at=raw["publishedAt"],
+        view_count=coerce_view_count(raw["viewCount"], video_id=raw.get("videoId", "<unknown>")),
+        organization=raw["organization"],
+    )
 
 
 def _item_to_video(item: dict[str, Any]) -> Video:

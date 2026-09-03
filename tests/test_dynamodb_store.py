@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 import boto3
 import pytest
@@ -8,6 +9,7 @@ from dynamodb_store import (
     RUN_SUMMARIES_TABLE,
     SNAPSHOTS_TABLE,
     VIDEO_MASTER_TABLE,
+    get_snapshot,
     load_videos,
     save_daily_collection,
     save_run_summary,
@@ -198,6 +200,52 @@ def test_save_daily_collection_writes_snapshots_and_summary(dynamodb_tables):
 
     summary_item = resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})["Item"]
     assert summary_item["collectedCount"] == 2
+
+
+def test_get_snapshot_returns_none_when_no_item_exists(dynamodb_tables):
+    """A (videoId, snapshotDate) with no item at all returns None, not an error."""
+    assert get_snapshot("v1", date(2026, 9, 1)) is None
+
+
+def test_get_snapshot_returns_none_for_a_video_not_in_that_days_collection(dynamodb_tables):
+    """A missing video on an otherwise-recorded date is None, not KeyError —
+    the caller (Roadmap 3.1) decides what that means (pending vs. not available)."""
+    save_daily_collection([_snapshot(video_id="v1")], _summary(collected=1), date(2026, 9, 1))
+
+    assert get_snapshot("v2", date(2026, 9, 1)) is None
+
+
+def test_get_snapshot_round_trips_view_count_as_int_not_decimal(dynamodb_tables):
+    """viewCount must come back as a plain int (DynamoDB's Number type has no
+    int/float distinction — boto3 returns Decimal on read unless converted)."""
+    save_daily_collection([_snapshot(video_id="v1")], _summary(collected=1), date(2026, 9, 1))
+
+    found = get_snapshot("v1", date(2026, 9, 1))
+
+    assert found is not None
+    assert found.video_id == "v1"
+    assert isinstance(found.view_count, int)
+
+
+def test_get_snapshot_rejects_a_fractional_decimal_view_count(dynamodb_tables):
+    """A fractional Decimal viewCount (data corruption — this field should
+    always be a whole number) must be rejected, not silently truncated."""
+    resource = boto3.resource("dynamodb", region_name=AWS_REGION)
+    resource.Table(SNAPSHOTS_TABLE).put_item(
+        Item={
+            "snapshotDate": "2026-09-01",
+            "observedAt": "2026-09-01T18:00:05+09:00",
+            "creatorId": "aizawa_ema",
+            "videoId": "v1",
+            "title": "A",
+            "publishedAt": "2026-08-20T00:00:00Z",
+            "viewCount": Decimal("100.7"),
+            "organization": "vspo",
+        }
+    )
+
+    with pytest.raises(SnapshotStoreError):
+        get_snapshot("v1", date(2026, 9, 1))
 
 
 def test_save_daily_collection_rejects_duplicate_date(dynamodb_tables):
