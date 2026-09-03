@@ -51,6 +51,7 @@ class QuotaExhaustedError(YouTubeAPIError):
         partial_skip_reasons: dict[str, str] | None = None,
         remaining_video_ids: list[str] | None = None,
     ) -> None:
+        """Build the error, defaulting every partial-progress field to empty."""
         super().__init__(message)
         self.partial_results = partial_results if partial_results is not None else []
         self.partial_skip_reasons = partial_skip_reasons if partial_skip_reasons is not None else {}
@@ -58,6 +59,7 @@ class QuotaExhaustedError(YouTubeAPIError):
 
 
 def build_youtube_client(api_key: str) -> Resource:
+    """Build a YouTube Data API v3 client resource for the given API key."""
     try:
         return build("youtube", "v3", developerKey=api_key, cache_discovery=False)
     except Exception as exc:  # invalid key format, client build failure, etc.
@@ -177,6 +179,7 @@ def get_video_statistics(youtube: Resource, video_ids: list[str]) -> tuple[list[
 
 
 def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[str, str]]:
+    """Fetch and parse one videos.list batch, skipping missing/malformed items with a reason."""
     response = call_youtube_api(
         lambda: youtube.videos().list(part="snippet,statistics", id=",".join(batch)).execute()
     )
@@ -207,6 +210,7 @@ def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[
 
 
 def _parse_video_item(item: dict) -> dict:
+    """Extract videoId/title/publishedAt/viewCount from one videos.list response item."""
     try:
         snippet = item["snippet"]
         statistics = item["statistics"]

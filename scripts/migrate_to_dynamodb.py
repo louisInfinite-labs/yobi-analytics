@@ -147,6 +147,7 @@ def _validate_day(
 
 
 def _load_local_day(snapshot_date_str: str) -> tuple[list[Snapshot], SnapshotRunSummary]:
+    """Load one local date's (snapshots, run summary) pair from the JSON store."""
     raw_snapshots = json.loads((DEFAULT_SNAPSHOTS_DIR / f"{snapshot_date_str}.json").read_text(encoding="utf-8"))
     snapshots = [
         Snapshot(
@@ -172,6 +173,7 @@ def _load_local_day(snapshot_date_str: str) -> tuple[list[Snapshot], SnapshotRun
 
 
 def _local_days() -> list[str]:
+    """Return every local date that has both a snapshot file and a matching summary file."""
     return sorted(
         p.stem
         for p in DEFAULT_SNAPSHOTS_DIR.glob("*.json")

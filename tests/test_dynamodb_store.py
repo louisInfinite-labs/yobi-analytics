@@ -62,6 +62,7 @@ def dynamodb_tables(aws_credentials):
 
 
 def _snapshot(video_id: str = "v1", snapshot_date: str = "2026-09-01") -> Snapshot:
+    """Build a minimal valid Snapshot for a test, overriding only videoId/snapshotDate."""
     return Snapshot(
         snapshot_date=snapshot_date,
         observed_at="2026-09-01T18:00:00+09:00",
@@ -75,6 +76,7 @@ def _snapshot(video_id: str = "v1", snapshot_date: str = "2026-09-01") -> Snapsh
 
 
 def _summary(snapshot_date: str = "2026-09-01", collected: int = 1, skipped=None) -> SnapshotRunSummary:
+    """Build a SnapshotRunSummary whose requestedCount is derived to stay internally consistent."""
     skipped = skipped or []
     return SnapshotRunSummary(
         snapshot_date=snapshot_date,
@@ -304,6 +306,7 @@ def test_save_daily_collection_keeps_reservation_when_cleanup_also_fails(dynamod
     from botocore.exceptions import ClientError
 
     def _failing_snapshot_to_raw(snapshot):
+        """Force the snapshot batch write to fail on every item."""
         raise ClientError({"Error": {"Code": "InternalServerError", "Message": "boom"}}, "PutItem")
 
     monkeypatch.setattr(dynamodb_store, "_snapshot_to_raw", _failing_snapshot_to_raw)
@@ -328,6 +331,7 @@ def test_save_daily_collection_raises_when_summary_deletion_unconfirmed_after_cl
     from botocore.exceptions import ClientError
 
     def _failing_snapshot_to_raw(snapshot):
+        """Force the snapshot batch write to fail on every item."""
         raise ClientError({"Error": {"Code": "InternalServerError", "Message": "boom"}}, "PutItem")
 
     monkeypatch.setattr(dynamodb_store, "_snapshot_to_raw", _failing_snapshot_to_raw)
@@ -363,6 +367,7 @@ def test_save_daily_collection_rolls_back_run_summary_on_snapshot_write_failure(
     call_count = {"n": 0}
 
     def _failing_snapshot_to_raw(snapshot):
+        """Let the first snapshot write through, then fail the second (partial-write simulation)."""
         call_count["n"] += 1
         if call_count["n"] == 2:
             raise ClientError({"Error": {"Code": "InternalServerError", "Message": "boom"}}, "PutItem")

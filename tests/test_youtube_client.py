@@ -14,6 +14,7 @@ from youtube_client import (
 
 
 def _http_error(status: int, reason: str | None = None):
+    """Build an HttpError with the given HTTP status and optional YouTube error reason code."""
     from googleapiclient.errors import HttpError
 
     response = MagicMock(status=status, reason="error")
@@ -24,6 +25,7 @@ def _http_error(status: int, reason: str | None = None):
 
 
 def _make_youtube_client(response):
+    """Build a mock YouTube client whose videos().list().execute() returns the given response."""
     youtube = MagicMock()
     youtube.videos.return_value.list.return_value.execute.return_value = response
     return youtube
@@ -123,6 +125,7 @@ def test_call_youtube_api_raises_quota_exhausted_immediately_without_retrying(mo
 
 
 def test_call_youtube_api_raises_quota_exhausted_for_daily_limit_exceeded(monkeypatch):
+    """dailyLimitExceeded, like quotaExceeded, stops immediately without retrying."""
     monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
     executor = MagicMock(side_effect=_http_error(403, "dailyLimitExceeded"))
 
@@ -133,6 +136,7 @@ def test_call_youtube_api_raises_quota_exhausted_for_daily_limit_exceeded(monkey
 
 
 def test_returns_structured_data_for_valid_video():
+    """A well-formed videos.list item is parsed into the expected result shape."""
     response = {
         "items": [
             {
@@ -161,6 +165,7 @@ def test_returns_structured_data_for_valid_video():
 
 
 def test_empty_video_ids_returns_empty_list_without_calling_api():
+    """An empty video ID list short-circuits without issuing any API call."""
     youtube = MagicMock()
 
     result, skip_reasons = get_video_statistics(youtube, [])
@@ -171,6 +176,7 @@ def test_empty_video_ids_returns_empty_list_without_calling_api():
 
 
 def test_invalid_video_id_is_skipped_with_a_warning(capsys):
+    """A video ID with no matching item in the response is skipped, not silently dropped."""
     youtube = _make_youtube_client({"items": []})
 
     result, skip_reasons = get_video_statistics(youtube, ["does_not_exist"])
@@ -333,6 +339,7 @@ def test_one_failing_batch_does_not_abort_the_others(monkeypatch, capsys):
 
 
 def test_requests_are_batched_at_fifty_ids():
+    """More than MAX_IDS_PER_REQUEST video IDs are split across multiple batched calls."""
     response_batch = {
         "items": [
             {

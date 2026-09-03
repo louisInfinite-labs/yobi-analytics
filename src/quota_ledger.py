@@ -128,8 +128,10 @@ class RetryRecord:
 
     @property
     def projected_units(self) -> int:
+        """Total quota units this record accounts for: used + reserved + the next estimated retry."""
         return self.used_units + self.reserved_units + self.estimated_retry_units
 
     @property
     def projected_quota_ratio(self) -> float:
+        """projected_units as a fraction of the day's quota limit."""
         return self.projected_units / self.quota_limit_units
