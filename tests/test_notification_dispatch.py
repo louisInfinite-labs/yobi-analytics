@@ -78,6 +78,14 @@ def test_parse_notification_preference_rejects_an_unsupported_notification_level
         parse_notification_preference(_raw_preference(notificationLevel="everything"))
 
 
+def test_parse_notification_preference_rejects_an_unhashable_notification_level():
+    """A JSON array/object for notificationLevel must not crash with a raw
+    TypeError from the frozenset membership check — it's still just a
+    malformed value and should fail the same clean ClientError path."""
+    with pytest.raises(ClientError):
+        parse_notification_preference(_raw_preference(notificationLevel=[]))
+
+
 @pytest.mark.parametrize("bad_value", ["not-iso", "2026-09-03T20:00:00"])
 def test_parse_notification_preference_rejects_a_malformed_or_naive_temporary_mute(bad_value):
     """A naive (no UTC offset) timestamp is rejected rather than silently
@@ -233,3 +241,26 @@ def test_next_delivery_window_utc_is_strictly_after_not_equal():
     pref = parse_notification_preference(_raw_preference(notificationTimeZone="UTC", deliveryWindows=["08:00"]))
     result = next_delivery_window_utc(pref, after=datetime(2026, 9, 3, 8, 0, tzinfo=timezone.utc))
     assert result == datetime(2026, 9, 4, 8, 0, tzinfo=timezone.utc)
+
+
+def test_next_delivery_window_utc_handles_repeated_hour_during_dst_fallback():
+    """During a DST fall-back transition, a wall-clock delivery time recurs
+    once at the earlier UTC offset and once at the later one. Naively
+    comparing same-zone datetimes ignores this (Python drops `fold` when
+    both sides share one tzinfo object), so the first occurrence's actual
+    UTC instant — already in the past relative to `after` — must not be
+    picked as the "next" window."""
+    pref = parse_notification_preference(
+        _raw_preference(notificationTimeZone="America/New_York", deliveryWindows=["01:45"])
+    )
+    # 2026-11-01 06:00 UTC is exactly the fall-back transition (02:00 EDT ->
+    # 01:00 EST); 06:30 UTC is 01:30 EST, just after it.
+    after = datetime(2026, 11, 1, 6, 30, tzinfo=timezone.utc)
+
+    result = next_delivery_window_utc(pref, after=after)
+
+    assert result > after
+    # The correct next window is the following day's 01:45 EST (UTC-5) — not
+    # that same day's 01:45 EDT (UTC-4), whose real instant (05:45 UTC) is
+    # actually before `after`.
+    assert result == datetime(2026, 11, 2, 6, 45, tzinfo=timezone.utc)

@@ -94,3 +94,11 @@ def test_parse_read_query_rejects_a_missing_or_malformed_client_id(bad_client_id
 def test_parse_read_query_rejects_a_non_string_key_when_present():
     with pytest.raises(ClientError):
         parse_read_query({"clientId": "client-1", "key": 123})
+
+
+def test_parse_read_query_rejects_an_explicitly_empty_key():
+    """An explicitly supplied key="" is not the same as an absent key — the
+    documented "all keys" behavior applies only when key is absent entirely,
+    so an empty string must be rejected rather than silently treated the same."""
+    with pytest.raises(ClientError):
+        parse_read_query({"clientId": "client-1", "key": ""})

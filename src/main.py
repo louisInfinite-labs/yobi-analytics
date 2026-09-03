@@ -79,7 +79,9 @@ def main() -> int:
                 continue
 
             try:
-                new_video_ids, new_videos = _discover_creator(youtube, creator, known_ids)
+                new_video_ids, new_videos = _discover_creator(
+                    youtube, creator, known_ids, discovered_at=collection_time.isoformat()
+                )
                 print(
                     f"{creator.display_name} ({creator.organization}): "
                     f"{len(new_video_ids)} new video(s) discovered"
@@ -271,12 +273,15 @@ def main() -> int:
 
 
 def _discover_creator(
-    youtube: Resource, creator: Creator, known_ids: set[str]
+    youtube: Resource, creator: Creator, known_ids: set[str], *, discovered_at: str
 ) -> tuple[list[str], list[Video]]:
     """Run Initial or Incremental Discovery for one creator.
 
     Does not touch Video Master directly — the caller collects results
     across all creators and writes them once at the end of the run.
+    `discovered_at` (this run's own timestamp) is stamped onto every newly
+    found video — see Video.discovered_at for why this is distinct from
+    `published_at`.
     """
     playlist_id = get_uploads_playlist_id(youtube, creator.youtube_channel_id)
 
@@ -291,6 +296,7 @@ def _discover_creator(
             creator_id=creator.creator_id,
             title=item["title"],
             published_at=item["publishedAt"],
+            discovered_at=discovered_at,
         )
         for item in discovered
     ]

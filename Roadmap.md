@@ -1892,7 +1892,7 @@ DynamoDB data should remain migration-friendly from the beginning.
 
 ## Phase 6 — Live Notifications and Fan Engagement
 
-#### Prerequisite
+### Prerequisite
 
 Do not start any Phase 6 sub-section until Phase 5 (Production, Automation and Intelligence) is complete — specifically 5.1's CI/CD deploy and 5.2's production AWS hardening — so the Dashboard/collector is actually deployed and running in production, not just local dev, before fan-facing notification features are built on top of it. The practical signal that this condition is met is real people beyond the developer actually using the deployed Dashboard (the ~500-person VSPO group, per Phase 6's stated initial audience).
 

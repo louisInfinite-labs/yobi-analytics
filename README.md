@@ -681,12 +681,12 @@ Minimum requirements to actually receive a notification:
 
 ```text
 Windows 10 / 11 — a current version of Chrome, Edge, or Firefox
-macOS 13.3 (Ventura) or later — Safari 16.4+, or a current Chrome/Edge/Firefox
+macOS 13 (Ventura) or later — Safari 16.1+, or a current Chrome/Edge/Firefox
 HTTPS (except localhost during development)
 The user must explicitly grant the browser's notification permission prompt
 ```
 
-macOS 13.3/Safari 16.4 shipped in March 2023; any Mac that can run macOS Ventura (2017-or-later MacBook Pro, 2018-or-later MacBook Air, 2017-or-later iMac, 2018-or-later Mac mini, 2019-or-later Mac Pro, and every Apple Silicon Mac) can get it as a free software update — it is not tied to a Mac's original factory-installed OS. Safari on iOS/iPadOS also supports Web Push from 16.4, but only after the site has been added to the Home Screen; this is an iOS-specific limitation that does not apply to macOS or Windows. A browser below these versions is handled as an expected "notifications unavailable" state (`isPushSupported()` in `pushNotifications.ts`), not an error.
+Safari's Web Push support shipped with Safari 16.1 alongside macOS Ventura; any Mac that can run macOS Ventura as a free software update — not tied to its original factory-installed OS — can get it. Check Apple's own current macOS Ventura compatibility list for the exact supported model list rather than relying on an enumerated one here, which risks going stale as new Mac models ship. Safari on iOS/iPadOS also supports Web Push from 16.4, but only after the site has been added to the Home Screen; this is an iOS-specific limitation that does not apply to macOS or Windows. A browser below these versions is handled as an expected "notifications unavailable" state (`isPushSupported()` in `pushNotifications.ts`), not an error.
 
 ---
 

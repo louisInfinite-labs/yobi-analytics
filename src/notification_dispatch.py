@@ -78,7 +78,7 @@ def parse_notification_preference(raw: Any) -> NotificationPreference:
         raise ClientError(f"enabled is required and must be a boolean, got {enabled!r}")
 
     notification_level = raw.get("notificationLevel", "all")
-    if notification_level not in NOTIFICATION_LEVELS:
+    if not isinstance(notification_level, str) or notification_level not in NOTIFICATION_LEVELS:
         raise ClientError(f"notificationLevel must be one of {sorted(NOTIFICATION_LEVELS)}, got {notification_level!r}")
 
     temporary_mute_until: datetime | None = None
@@ -204,11 +204,20 @@ def next_delivery_window_utc(preference: NotificationPreference, *, after: datet
     """
     zone = ZoneInfo(preference.time_zone)
     local_after = after.astimezone(zone)
+    after_utc = after.astimezone(timezone.utc)
     candidates: list[datetime] = []
     for day_offset in (0, 1):  # today's remaining windows, then tomorrow's (always >= 1 candidate)
         candidate_date = local_after.date() + timedelta(days=day_offset)
         for window_time in preference.delivery_windows:
             candidate = datetime.combine(candidate_date, window_time, tzinfo=zone)
-            if candidate > local_after:
+            # Compare as UTC instants, not same-zone wall-clock values: two
+            # aware datetimes sharing one tzinfo object compare as if naive
+            # (Python ignores `fold`), so during a repeated local hour (a
+            # DST fall-back transition) a first-fold candidate could pass
+            # this check even though its actual UTC instant is still before
+            # `after`.
+            if candidate.astimezone(timezone.utc) > after_utc:
                 candidates.append(candidate)
-    return min(candidates).astimezone(timezone.utc)
+    # Same reasoning as the filter above: select by UTC instant, not by the
+    # candidates' shared-tzinfo wall-clock ordering.
+    return min(candidate.astimezone(timezone.utc) for candidate in candidates)

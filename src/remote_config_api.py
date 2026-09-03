@@ -80,5 +80,5 @@ def parse_read_query(query: dict[str, Any]) -> tuple[str, str | None]:
     """
     client_id = parse_client_id(query.get("clientId"))
     raw_key = query.get("key")
-    key = parse_config_key(raw_key) if raw_key not in (None, "") else None
+    key = parse_config_key(raw_key) if raw_key is not None else None
     return client_id, key

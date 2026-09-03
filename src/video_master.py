@@ -47,6 +47,14 @@ class Video:
     # is "bootstrap_first_snapshot" (no prior observation to measure against).
     last_percent_growth_per_day: float | None = None
     last_avg_views_per_day: float | None = None
+    # When this project's own collector first discovered/started tracking
+    # this video — distinct from `published_at` (when it went up on
+    # YouTube), which can predate onboarding by years for a channel's back
+    # catalog picked up by Initial Discovery. None for a record written
+    # before this field existed; read_api.py falls back to the global
+    # COLLECTION_START_DATE in that case (Roadmap 3.4's documented
+    # simplification for pre-existing records).
+    discovered_at: str | None = None
 
 
 def load_videos(path: Path = DEFAULT_VIDEO_MASTER_PATH) -> list[Video]:
@@ -96,10 +104,10 @@ def _parse_video(raw: dict) -> Video:
     """Convert a raw Video Master JSON record into a Video instance.
 
     activityState/lastCheckedAt/lastViewCount/snapshotCount/quietStreak/
-    lastClassificationReason/lastPercentGrowthPerDay/lastAvgViewsPerDay are
-    all optional with bootstrap-equivalent defaults, so records written
-    before Roadmap 1.5's scheduler-state fields existed still parse — as if
-    never yet classified.
+    lastClassificationReason/lastPercentGrowthPerDay/lastAvgViewsPerDay/
+    discoveredAt are all optional with bootstrap-equivalent defaults, so
+    records written before Roadmap 1.5's scheduler-state fields (or before
+    discoveredAt) existed still parse — as if never yet classified.
     """
     try:
         video_id = _require_str(raw, "videoId")
@@ -121,6 +129,7 @@ def _parse_video(raw: dict) -> Video:
             last_classification_reason=_optional_str(raw, "lastClassificationReason", video_id),
             last_percent_growth_per_day=_optional_float(raw, "lastPercentGrowthPerDay", video_id),
             last_avg_views_per_day=_optional_float(raw, "lastAvgViewsPerDay", video_id),
+            discovered_at=_optional_str(raw, "discoveredAt", video_id),
         )
     except (KeyError, TypeError) as exc:
         raise VideoMasterError(f"Malformed Video Master record, missing/invalid field: {exc}") from exc
@@ -197,4 +206,5 @@ def _to_raw(video: Video) -> dict:
         "lastClassificationReason": video.last_classification_reason,
         "lastPercentGrowthPerDay": video.last_percent_growth_per_day,
         "lastAvgViewsPerDay": video.last_avg_views_per_day,
+        "discoveredAt": video.discovered_at,
     }

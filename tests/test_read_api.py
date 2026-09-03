@@ -193,6 +193,21 @@ def test_get_video_growth_tolerates_a_video_with_no_creator_master_record(monkey
     assert response["status"] == "pending"
 
 
+def test_get_video_growth_reports_not_available_for_dates_before_the_videos_own_onboarding(monkeypatch):
+    """A video discovered after COLLECTION_START_DATE must not be reported
+    `pending` for dates before its own onboarding — those snapshots can
+    never arrive, since the collector didn't know about the video yet."""
+    monkeypatch.setattr(
+        read_api, "get_video", lambda video_id: _video(video_id=video_id, discovered_at="2026-09-01T00:00:00Z")
+    )
+    monkeypatch.setattr(read_api, "get_snapshot", lambda video_id, snapshot_date: None)
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+
+    response = get_video_growth({"videoId": "v1", "reportDate": "2026-08-30", "timeZone": "UTC", "period": "1d"})
+
+    assert response["status"] == "not_available"
+
+
 def test_get_video_growth_rejects_malformed_report_date_before_touching_storage(monkeypatch):
     """Validation happens before any lookup — a malformed reportDate never
     reaches get_video/get_snapshot at all."""
@@ -329,6 +344,7 @@ def test_get_creator_trending_returns_ranked_response(monkeypatch):
         "channelType": "member",
         "lifecycleStage": "active",
         "latestViewCount": 500,
+        "lastUpdatedAt": "2026-09-01T18:00:05+09:00",
         "growth": 400,
         "growthPercent": pytest.approx(400.0),
         "status": "ok",
@@ -364,6 +380,38 @@ def test_get_creator_trending_reports_the_oldest_result_as_last_updated_at(monke
     )
 
     assert {entry["videoId"] for entry in response["results"]} == {"v1", "v2"}
+    assert response["lastUpdatedAt"] == "2026-09-01T10:00:00+09:00"
+
+
+def test_get_creator_trending_compares_last_updated_at_by_instant_not_string(monkeypatch):
+    """Two offset-bearing ISO 8601 timestamps don't sort the same
+    lexicographically as they do chronologically: "2026-09-01T10:00:00+09:00"
+    (01:00 UTC) is the earlier instant, but "2026-09-01T01:30:00+00:00"
+    (01:30 UTC) sorts first as a raw string. The aggregate must pick the
+    former, and must return its original string, not a reformatted one."""
+    _trending_fixture(
+        monkeypatch,
+        creators=[_creator()],
+        videos=[
+            _video(video_id="v1", creator_id="aizawa_ema"),
+            _video(video_id="v2", creator_id="aizawa_ema", title="Video Two"),
+        ],
+        snapshots={
+            ("v1", "2026-09-01"): _snapshot(
+                "2026-09-01", 1240, video_id="v1", observed_at="2026-09-01T10:00:00+09:00"
+            ),
+            ("v1", "2026-08-25"): _snapshot("2026-08-25", 1000, video_id="v1"),
+            ("v2", "2026-09-01"): _snapshot(
+                "2026-09-01", 500, video_id="v2", observed_at="2026-09-01T01:30:00+00:00"
+            ),
+            ("v2", "2026-08-25"): _snapshot("2026-08-25", 100, video_id="v2"),
+        },
+    )
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "7d"}
+    )
+
     assert response["lastUpdatedAt"] == "2026-09-01T10:00:00+09:00"
 
 

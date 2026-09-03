@@ -12,22 +12,19 @@ lookup; `get_creator_trending`/`get_organization_trending` mirror Roadmap
 ranking logic (previously untested/unwired from this module) to real
 storage the same way `get_video_growth` already does.
 
-Known simplification: Video Master does not currently persist a video's own
-discovery/onboarding date (Roadmap 1.5/2.3's Video has no such field). Until
-that's added, `earliest_available_date` falls back to
-view_growth_analytics.COLLECTION_START_DATE for every video, so a video
-onboarded significantly after project start (Roadmap 3.1's hololive
-EN/ID/VSPO EN example, onboarded 2026-08-31) is reported `pending` rather
-than the more precise `not_available` for dates between project start and
-its own onboarding. This never crashes and never fabricates a value — it is
-strictly less precise in that one edge case, not incorrect in the cases this
-module can actually distinguish today.
+`earliest_available_date` uses each video's own Video.discovered_at (Roadmap
+1.5/2.3) when present, falling back to the global
+view_growth_analytics.COLLECTION_START_DATE only for a Video Master record
+written before that field existed. This keeps a video onboarded
+significantly after project start (Roadmap 3.1's hololive EN/ID/VSPO EN
+example, onboarded 2026-08-31) correctly reported `not_available` for dates
+before its own onboarding, rather than the less precise `pending`.
 """
 
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from creator_master import Creator, load_creators
@@ -212,7 +209,7 @@ def get_video_growth(query: dict[str, Any]) -> dict[str, Any]:
         period=period,
         latest_snapshot=get_snapshot(video_id, report_date),
         comparison_snapshot=get_snapshot(video_id, comp_date),
-        earliest_available_date=COLLECTION_START_DATE,
+        earliest_available_date=_earliest_available_date_for(video),
     )
 
     return _to_response(result, video=video, creator=_find_creator(video.creator_id), time_zone=time_zone)
@@ -236,9 +233,9 @@ def get_creator_trending(query: dict[str, Any]) -> dict[str, Any]:
     if creator is None:
         raise ClientError(f"No creator found for creatorId {creator_id!r}")
 
-    video_ids = [video.video_id for video in load_videos() if video.creator_id == creator_id]
+    videos = [video for video in load_videos() if video.creator_id == creator_id]
     ranked = rank_videos(
-        _compute_growth_results(video_ids, report_date=report_date, period=period), ranking_type, limit=limit
+        _compute_growth_results(videos, report_date=report_date, period=period), ranking_type, limit=limit
     )
 
     return _trending_response(
@@ -269,9 +266,9 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
     if not creator_ids:
         raise ClientError(f"No creators found for organization {organization!r}")
 
-    video_ids = [video.video_id for video in load_videos() if video.creator_id in creator_ids]
+    videos = [video for video in load_videos() if video.creator_id in creator_ids]
     ranked = rank_videos(
-        _compute_growth_results(video_ids, report_date=report_date, period=period), ranking_type, limit=limit
+        _compute_growth_results(videos, report_date=report_date, period=period), ranking_type, limit=limit
     )
 
     return _trending_response(
@@ -284,20 +281,34 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _compute_growth_results(video_ids: list[str], *, report_date: date, period: str) -> list[GrowthResult]:
-    """Compute one GrowthResult per video_id for the same (report_date, period) comparison window."""
+def _compute_growth_results(videos: list[Video], *, report_date: date, period: str) -> list[GrowthResult]:
+    """Compute one GrowthResult per video for the same (report_date, period) comparison window."""
     comp_date = comparison_date(report_date, period)
     return [
         calculate_growth(
-            video_id=video_id,
+            video_id=video.video_id,
             report_date=report_date,
             period=period,
-            latest_snapshot=get_snapshot(video_id, report_date),
-            comparison_snapshot=get_snapshot(video_id, comp_date),
-            earliest_available_date=COLLECTION_START_DATE,
+            latest_snapshot=get_snapshot(video.video_id, report_date),
+            comparison_snapshot=get_snapshot(video.video_id, comp_date),
+            earliest_available_date=_earliest_available_date_for(video),
         )
-        for video_id in video_ids
+        for video in videos
     ]
+
+
+def _earliest_available_date_for(video: Video) -> date:
+    """The earliest report date this video can have real snapshot data for.
+
+    Uses the video's own discovered_at (when this project started tracking
+    it) so a video onboarded after COLLECTION_START_DATE correctly reports
+    `not_available` rather than `pending` for dates before its own
+    onboarding. Falls back to COLLECTION_START_DATE for a Video Master
+    record written before discovered_at existed.
+    """
+    if video.discovered_at is None:
+        return COLLECTION_START_DATE
+    return datetime.fromisoformat(video.discovered_at).date()
 
 
 def _trending_response(
@@ -331,7 +342,14 @@ def _aggregate_last_updated_at(ranked: list[RankedEntry]) -> str | None:
     no entry carries a timestamp, rather than fabricating one.
     """
     timestamps = [entry.result.last_updated_at for entry in ranked if entry.result.last_updated_at is not None]
-    return min(timestamps) if timestamps else None
+    if not timestamps:
+        return None
+    # Compare by actual instant, not by string value: two offset-bearing
+    # ISO 8601 timestamps with different UTC offsets (e.g. "+09:00" vs
+    # "+00:00") don't sort the same lexicographically as they do
+    # chronologically. Returns the earliest entry's original string rather
+    # than a reformatted one.
+    return min(timestamps, key=datetime.fromisoformat)
 
 
 def _ranked_entry_to_dict(entry: RankedEntry) -> dict[str, Any]:
@@ -349,6 +367,7 @@ def _ranked_entry_to_dict(entry: RankedEntry) -> dict[str, Any]:
         "channelType": creator.channel_type if creator else None,
         "lifecycleStage": creator.lifecycle_stage if creator else None,
         "latestViewCount": entry.result.latest.view_count,
+        "lastUpdatedAt": entry.result.last_updated_at,
         "growth": entry.result.growth,
         "growthPercent": entry.result.growth_percent,
         "status": entry.result.status,
