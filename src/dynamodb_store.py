@@ -129,6 +129,47 @@ def save_daily_collection(
             f"Snapshot(s) with snapshotDate not matching the requested {expected_date}: {mismatched}"
         )
 
+    seen_video_ids: set[str] = set()
+    duplicate_video_ids = set()
+    for snapshot in snapshots:
+        if snapshot.video_id in seen_video_ids:
+            duplicate_video_ids.add(snapshot.video_id)
+        seen_video_ids.add(snapshot.video_id)
+    if duplicate_video_ids:
+        raise SnapshotStoreError(
+            f"Duplicate (videoId, snapshotDate) key(s) for {expected_date}: {sorted(duplicate_video_ids)}"
+        )
+
+    seen_skipped_ids: set[str] = set()
+    duplicate_skipped_ids = set()
+    for skipped in run_summary.skipped:
+        if skipped.video_id in seen_skipped_ids:
+            duplicate_skipped_ids.add(skipped.video_id)
+        seen_skipped_ids.add(skipped.video_id)
+    if duplicate_skipped_ids:
+        raise SnapshotStoreError(
+            f"Duplicate skipped videoId(s) for {expected_date}: {sorted(duplicate_skipped_ids)}"
+        )
+
+    collected_and_skipped = seen_video_ids & seen_skipped_ids
+    if collected_and_skipped:
+        raise SnapshotStoreError(
+            f"videoId(s) reported as both collected and skipped for {expected_date}: "
+            f"{sorted(collected_and_skipped)}"
+        )
+
+    if run_summary.collected_count != len(snapshots):
+        raise SnapshotStoreError(
+            f"Run summary collectedCount ({run_summary.collected_count}) does not match "
+            f"the number of snapshots provided ({len(snapshots)}) for {expected_date}"
+        )
+    if run_summary.requested_count != run_summary.collected_count + len(run_summary.skipped):
+        raise SnapshotStoreError(
+            f"Run summary requestedCount ({run_summary.requested_count}) does not equal "
+            f"collectedCount + len(skipped) ({run_summary.collected_count + len(run_summary.skipped)}) "
+            f"for {expected_date}"
+        )
+
     _put_run_summary_exclusive(run_summary, snapshot_date)
 
     table = _resource().Table(SNAPSHOTS_TABLE)
@@ -137,8 +178,21 @@ def save_daily_collection(
             for snapshot in snapshots:
                 batch.put_item(Item=_snapshot_to_raw(snapshot))
     except ClientError as exc:
-        _delete_snapshots_for_date(snapshot_date)
-        _delete_run_summary(snapshot_date)
+        cleanup_succeeded = _delete_snapshots_for_date(snapshot_date)
+        if not cleanup_succeeded:
+            raise SnapshotStoreError(
+                f"Failed to write to {SNAPSHOTS_TABLE}: {exc}. Cleanup of the partial write also failed, "
+                f"so the {expected_date} run summary reservation was deliberately left in place rather than "
+                "released over unconfirmed-clean data — manual cleanup is required before this date can be retried."
+            ) from exc
+        summary_deleted = _delete_run_summary(snapshot_date)
+        if not summary_deleted:
+            raise SnapshotStoreError(
+                f"Failed to write to {SNAPSHOTS_TABLE}: {exc}. Snapshot cleanup succeeded, but deleting the "
+                f"{expected_date} run summary reservation could not be confirmed — manual cleanup is required "
+                "before this date can be retried, otherwise every retry will fail against a reservation that "
+                "may still exist."
+            ) from exc
         raise SnapshotStoreError(f"Failed to write to {SNAPSHOTS_TABLE}: {exc}") from exc
 
     return (
@@ -147,15 +201,19 @@ def save_daily_collection(
     )
 
 
-def _delete_snapshots_for_date(snapshot_date: date) -> None:
-    """Best-effort delete of every YobiSnapshots item for one date, used to
-    clean up a partial write after a failed batch. Swallows its own failures
-    rather than masking the original error that triggered the rollback — a
-    retry will simply see leftover items via _put_run_summary_exclusive's
-    normal path if this didn't fully take. No GSI on snapshotDate yet, so
-    this is a filtered Scan (Roadmap 2.3's documented "later optimization"),
-    acceptable here since a rollback is an exceptional path, not the steady
-    state.
+def _delete_snapshots_for_date(snapshot_date: date) -> bool:
+    """Delete every YobiSnapshots item for one date, used to clean up a partial
+    write after a failed batch. Returns True if the cleanup completed, False
+    if it failed partway — the caller must not release the run summary
+    reservation on a False result, or a video could keep a snapshot from a
+    run that was never actually recorded as complete (see save_daily_collection).
+    No GSI on snapshotDate yet, so this is a filtered Scan (Roadmap 2.3's
+    documented "later optimization"), acceptable here since a rollback is an
+    exceptional path, not the steady state. ConsistentRead=True so this scan
+    cannot miss an item the just-failed batch write already committed — an
+    eventually-consistent read could otherwise return True over snapshots
+    that are still actually present, letting the caller release the run
+    summary reservation too early.
     """
     expected_date = snapshot_date.isoformat()
     table = _resource().Table(SNAPSHOTS_TABLE)
@@ -165,6 +223,7 @@ def _delete_snapshots_for_date(snapshot_date: date) -> None:
             "FilterExpression": "snapshotDate = :d",
             "ProjectionExpression": "videoId, snapshotDate",
             "ExpressionAttributeValues": {":d": expected_date},
+            "ConsistentRead": True,
         }
         while True:
             response = table.scan(**scan_kwargs)
@@ -178,20 +237,24 @@ def _delete_snapshots_for_date(snapshot_date: date) -> None:
         with table.batch_writer() as batch:
             for key in keys_to_delete:
                 batch.delete_item(Key=key)
+        return True
     except ClientError:
-        pass
+        return False
 
 
-def _delete_run_summary(snapshot_date: date) -> None:
-    """Best-effort rollback of a run summary reservation after a failed snapshot
-    batch write. Swallows its own failures rather than masking the original
-    error that triggered the rollback — a retry will simply hit the same
-    conditional-put check again if this delete didn't take.
+def _delete_run_summary(snapshot_date: date) -> bool:
+    """Delete a run summary reservation after a failed snapshot batch write.
+
+    Returns True if the deletion completed, False if it failed — the caller
+    must not treat a False result as "reservation gone", or every retry for
+    this date will keep failing FileExistsError against a reservation that
+    may still be present (see save_daily_collection).
     """
     try:
         _resource().Table(RUN_SUMMARIES_TABLE).delete_item(Key={"snapshotDate": snapshot_date.isoformat()})
+        return True
     except ClientError:
-        pass
+        return False
 
 
 def _put_run_summary_exclusive(summary: SnapshotRunSummary, snapshot_date: date) -> None:

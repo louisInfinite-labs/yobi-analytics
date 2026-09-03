@@ -18,7 +18,7 @@ from snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotS
 from tracking_schedule import classify_after_observation, is_due_today
 from video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
 from video_master import Video, VideoMasterError, load_video_ids_for_creator
-from youtube_client import YouTubeAPIError, build_youtube_client, get_video_statistics
+from youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_client, get_video_statistics
 
 # Local development keeps using the JSON file stores. Lambda sets
 # YOBI_STORAGE_BACKEND=dynamodb (Roadmap 2.3) because /tmp is wiped on cold
@@ -88,6 +88,26 @@ def main() -> int:
                 published_at_by_id.update({video.video_id: video.published_at for video in new_videos})
                 creator_id_by_video_id.update({video.video_id: video.creator_id for video in new_videos})
                 tracking_universe.extend(known_ids | set(new_video_ids))
+            except QuotaExhaustedError as exc:
+                # Roadmap 2.5: once quota is exhausted, every remaining creator's
+                # discovery call would fail the same way — stop issuing new
+                # requests immediately instead of burning through the rest of
+                # the creator list one preventable failure at a time. Videos
+                # already discovered from earlier creators this run are real,
+                # paid-for results — persist them before stopping, rather
+                # than losing them along with the exception. Statistics
+                # collection never started this run, so there is no partial
+                # day and no `due_today` list to fall back on — unlike a
+                # mid-stats quota exhaustion (handled below), this must
+                # return here rather than propagate into that handler.
+                if newly_discovered:
+                    try:
+                        upsert_videos(newly_discovered)
+                    except VideoMasterError as upsert_exc:
+                        print(f"Error: failed to persist discovered videos before stopping: {upsert_exc}")
+                        return 1
+                print(f"Error: YouTube quota exhausted during discovery: {exc}")
+                return 1
             except YouTubeAPIError as exc:
                 print(f"Warning: discovery failed for {creator.display_name} ({creator.organization}): {exc}")
                 tracking_universe.extend(known_ids)
@@ -112,6 +132,19 @@ def main() -> int:
         print(f"Tracking universe: {len(tracking_universe)} video(s), {len(due_today)} due for a check today\n")
 
         videos, skip_reasons = get_video_statistics(youtube, due_today)
+    except QuotaExhaustedError as exc:
+        # Roadmap 2.5: statistics already fetched before quota ran out are
+        # real, already-paid-for results — treat them exactly as if
+        # get_video_statistics had returned normally (the rest of this
+        # function already knows how to persist a partial day and record
+        # why the remaining videos are missing), rather than discarding them
+        # along with the exception.
+        print(f"Warning: YouTube quota exhausted mid-run, saving partial results: {exc}")
+        videos = exc.partial_results
+        skip_reasons = {
+            **exc.partial_skip_reasons,
+            **{video_id: f"YouTube quota exhausted: {exc}" for video_id in exc.remaining_video_ids},
+        }
     except (YouTubeAPIError, VideoMasterError) as exc:
         print(f"Error: {exc}")
         return 1
