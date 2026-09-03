@@ -1,0 +1,659 @@
+/* ============ Layout shell ============ */
+
+.dashboard-page {
+  min-height: 100%;
+  padding: var(--space-5) var(--space-6) var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--space-5);
+}
+
+.dashboard-grid__kpis {
+  grid-column: span 12;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+
+.dashboard-grid__chart {
+  grid-column: span 8;
+}
+
+.dashboard-grid__side {
+  grid-column: span 4;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.dashboard-grid__insights {
+  grid-column: span 12;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+
+.dashboard-grid__table {
+  grid-column: span 12;
+}
+
+@media (max-width: 1080px) {
+  .dashboard-grid__kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .dashboard-grid__chart,
+  .dashboard-grid__side {
+    grid-column: span 12;
+  }
+  .dashboard-grid__insights {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-page {
+    padding: var(--space-4) var(--space-3) var(--space-6);
+  }
+  .dashboard-grid__kpis,
+  .dashboard-grid__insights {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============ Header ============ */
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+}
+
+.dashboard-header__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.dashboard-header__title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.dashboard-header__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.dashboard-header__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* header-idol-soft vs header-esports-hud give the header a subtle accent line */
+.header-idol-soft .dashboard-header__title::before,
+.header-esports-hud .dashboard-header__title::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 16px;
+  margin-right: var(--space-2);
+  background: var(--theme-primary);
+  vertical-align: -2px;
+}
+
+.header-esports-hud .dashboard-header__title::before {
+  clip-path: polygon(30% 0, 100% 0, 70% 100%, 0 100%);
+}
+
+/* ============ Section header ============ */
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+}
+
+.section-header::before {
+  content: "";
+  width: 3px;
+  height: 14px;
+  background: var(--theme-primary);
+  border-radius: 2px;
+}
+
+/* ============ Buttons / selects ============ */
+
+.soft-select,
+.soft-button {
+  border: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.shape-soft-angular .soft-select,
+.shape-soft-angular .soft-button,
+.shape-soft-angular .filter-chip {
+  border-radius: var(--radius-md);
+}
+
+.shape-sharp-angular .soft-select,
+.shape-sharp-angular .soft-button,
+.shape-sharp-angular .filter-chip {
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+
+.soft-button:hover,
+.soft-select:hover {
+  background: var(--surface-hover);
+}
+
+.soft-button:active {
+  transform: translateY(1px);
+}
+
+/* A toggle button's selected state (DateRangeTabs, GrowthBarChart's
+ * dimension switch, RankingCard's ranking-type switch) — these use
+ * aria-pressed rather than role="tab" (no associated tabpanel exists for
+ * true tab semantics), so the selected look lives here once instead of
+ * being reimplemented per component. Listed after :hover so it stays
+ * visible even when also hovered. */
+.soft-button[aria-pressed="true"] {
+  background: var(--theme-primary);
+  border-color: var(--theme-primary);
+  color: white;
+}
+
+.soft-button--primary {
+  background: var(--theme-primary);
+  border-color: var(--theme-primary);
+  color: white;
+  font-weight: 600;
+}
+
+.soft-button--primary:hover {
+  background: var(--theme-text-accent);
+}
+
+/* ============ Filter bar ============ */
+
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.filter-row__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 88px;
+}
+
+.filter-chip-group {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.filter-chip {
+  border: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out;
+}
+
+.filter-chip:hover {
+  background: var(--surface-hover);
+}
+
+.filter-chip[aria-pressed="true"] {
+  background: var(--theme-primary-soft);
+  border-color: var(--theme-primary);
+  color: var(--theme-text-accent);
+  font-weight: 600;
+}
+
+.badge-angled-chip .filter-chip,
+.badge-meter-chip .filter-chip {
+  border-radius: 4px;
+}
+
+/* ============ Cards ============ */
+
+.card {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4);
+}
+
+/* ============ KPI card ============ */
+
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--theme-primary);
+}
+
+.kpi-card__label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.kpi-card__value {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-card__sub {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.kpi-card__performer {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============ Growth badge ============ */
+
+.growth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.growth-badge--positive {
+  background: var(--positive-soft);
+  color: var(--positive);
+}
+
+.growth-badge--negative {
+  background: var(--negative-soft);
+  color: var(--negative);
+}
+
+.growth-badge--neutral {
+  background: var(--neutral-badge-soft);
+  color: var(--neutral-badge);
+}
+
+.badge-angled-chip .growth-badge,
+.badge-meter-chip .growth-badge {
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* ============ Charts ============ */
+
+.chart-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 100%;
+}
+
+.chart-card__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ring-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ring-chart__center-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ring-chart__legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+}
+
+.ring-chart__legend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+}
+
+.ring-chart__legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ring-chart__legend-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============ Ranking card ============ */
+
+.ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ranking-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.ranking-row:first-child {
+  background: var(--theme-primary-muted);
+}
+
+.ranking-row__rank {
+  width: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.ranking-row:first-child .ranking-row__rank {
+  color: var(--theme-text-accent);
+}
+
+.ranking-row__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.ranking-row__meta {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* ============ Insight card ============ */
+
+.insight-card {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.insight-card__icon {
+  color: var(--theme-primary);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.insight-card__text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* ============ Video stats table ============ */
+
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.table-search {
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  min-width: 220px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.video-table {
+  width: 100%;
+  font-size: 13px;
+}
+
+.video-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-tertiary);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--surface-border);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.video-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--surface-border);
+  vertical-align: middle;
+}
+
+.video-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+.video-table__numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.video-table__title-cell {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-table__format-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ============ Table cards on mobile ============ */
+
+@media (max-width: 640px) {
+  .video-table thead {
+    display: none;
+  }
+  .video-table,
+  .video-table tbody,
+  .video-table tr,
+  .video-table td {
+    display: block;
+    width: 100%;
+  }
+  .video-table tr {
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-2);
+    padding: var(--space-2);
+  }
+  .video-table td {
+    border-bottom: none;
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: 4px 0;
+  }
+  .video-table td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 600;
+  }
+  .video-table__title-cell {
+    max-width: none;
+    white-space: normal;
+  }
+}
+
+/* ============ Empty/loading/error/pending/stale states ============ */
+
+.state-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-7) var(--space-4);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.state-panel__icon {
+  color: var(--text-tertiary);
+}
+
+.state-panel--error {
+  color: var(--negative);
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-hover) 25%, var(--surface-border) 37%, var(--surface-hover) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* index.css's global `* { animation-duration: 0.001ms !important }` reduced-motion
+ * rule already freezes this shimmer; restated here explicitly so a reader of
+ * this file alone doesn't need to know that. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background-position: 0 50%;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+.stale-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: var(--surface-hover);
+  padding: 2px 8px;
+  border-radius: 999px;
+}

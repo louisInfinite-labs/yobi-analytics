@@ -1204,6 +1204,8 @@ The normalized response should include `timeZone`, `reportDate`, `comparisonDate
 
 ### 3.5 Internal Web Dashboard
 
+**Implemented — frontend-only first pass** (`frontend/dashboard`, a Vite + React + TypeScript project; see `frontend/dashboard/FIRST_PASS_REPORT.md` for full detail): the complete default layout — theme system (Hololive soft-idol / VSPO tactical / VSPO momentum), the full hierarchical creator filter set plus independent content-tag/format filters (all sharing one filter state across KPIs/charts/rankings/table), KPI cards, growth bar chart, animated contribution ring, trending ranking, data-driven insights, and a sortable/searchable/paginated video table — built against mock data shaped like the future Read API response, with 73 passing tests and verified live in a browser at desktop/tablet/mobile widths. The `period` (1d/7d/30d) selector visibly changes the displayed numbers via a mock-only `scaleStatsForPeriod` multiplier (`src/lib/period.ts`) — not real period-specific data, just enough for the selector to demo honestly against; it goes away once 3.4 is connected. **Not yet wired**: the real 3.4 Read API client (still on mock data behind an isolated adapter boundary) and API-Gateway/Lambda deployment (this is a local frontend build, not yet deployed anywhere).
+
 #### Goal
 
 Create a personal/admin dashboard for viewing Yobi Analytics data.
@@ -1308,6 +1310,8 @@ AWS-provided URLs are acceptable for development.
 ---
 
 ### 3.6 Local Cache and Last Updated Handling
+
+**Implemented** (`frontend/dashboard/src/lib/analyticsCache.ts`, `src/hooks/useCachedDashboardData.ts`): `localStorage`-backed cache keyed by `(timeZone, reportDate, period)` exactly as specified — a mismatched/corrupt/missing entry is treated as no cache rather than thrown, and a background "fetch" (currently the mock adapter; swapping in the real 3.4 Read API client is the only change this needs) only replaces the cache when its `fetchedAt` is strictly newer, so a stale or racing response can never clobber fresher cached data. Verified live in a browser: a first load fetches and caches; a reload displays the cached dashboard with no loading flash at all, matching the Definition of Done's "cached data can display immediately."
 
 #### Goal
 

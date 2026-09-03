@@ -1,0 +1,116 @@
+:root {
+  color-scheme: light;
+
+  /* Neutral surfaces — calm, off-white analytics foundation shared by every theme */
+  --surface-bg: #f7f6f8;
+  --surface-card: #ffffff;
+  --surface-border: #e6e3ea;
+  --surface-hover: #f1eff3;
+
+  --text-primary: #232028;
+  --text-secondary: #6b6572;
+  --text-tertiary: #9a94a2;
+
+  --positive: #3f8f5f;
+  --positive-soft: #e0f2e6;
+  --negative: #c85a5a;
+  --negative-soft: #f8e2e2;
+  --neutral-badge: #8f8a97;
+  --neutral-badge-soft: #eeecf0;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --shadow-sm: 0 1px 2px rgba(35, 32, 40, 0.06);
+  --shadow-md: 0 4px 16px rgba(35, 32, 40, 0.08);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --font-sans: "Hiragino Sans", "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Theme-provided at runtime (see MemberThemeProvider) */
+  --theme-primary: #c77fb0;
+  --theme-primary-soft: #f3dcec;
+  --theme-primary-muted: #faf0f6;
+  --theme-text-accent: #8a4a76;
+  --theme-chart: #c77fb0;
+  --theme-ring: #c77fb0;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p,
+ul {
+  margin: 0;
+}
+
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
