@@ -134,7 +134,7 @@ def send_push_notification(
     try:
         parsed = parse_subscription(subscription)
         payload = build_payload(title=title, body=body, data=data)
-    except (InvalidSubscriptionError, ValueError) as exc:
+    except (InvalidSubscriptionError, TypeError, ValueError) as exc:
         return PushResult(sent=False, subscription_expired=False, error=str(exc))
 
     try:

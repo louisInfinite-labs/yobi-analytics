@@ -119,6 +119,24 @@ def test_send_push_notification_reports_success(monkeypatch):
     assert result.error is None
 
 
+def test_send_push_notification_never_raises_for_a_non_json_serializable_data_payload():
+    """`data` reaching build_payload's json.dumps can carry a value that
+    isn't JSON-serializable (e.g. a datetime) — json.dumps raises TypeError
+    for that, not ValueError, so it must be caught here too."""
+    result = send_push_notification(
+        _subscription(),
+        title="t",
+        body="b",
+        data={"when": object()},
+        vapid_private_key="fake-key",
+        vapid_claims={"sub": "mailto:test@example.com"},
+    )
+
+    assert result.sent is False
+    assert result.subscription_expired is False
+    assert result.error is not None
+
+
 def test_send_push_notification_never_raises_for_a_malformed_stored_subscription():
     """A stored subscription is untrusted data (Roadmap 4.5's opaque
     key/value store) — a corrupt/partial value must come back as a
