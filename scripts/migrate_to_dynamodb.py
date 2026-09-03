@@ -63,6 +63,11 @@ def _checksum(records: list[dict]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _dict_checksum(record: dict) -> str:
+    """Deterministic SHA-256 over a single record (no videoId-based ordering needed)."""
+    return hashlib.sha256(json.dumps(record, sort_keys=True).encode("utf-8")).hexdigest()
+
+
 def _decimals_to_plain(item: dict[str, Any]) -> dict[str, Any]:
     """Convert every Decimal in a DynamoDB item to int (whole numbers) or float, for JSON checksumming."""
     plain = {}
@@ -191,6 +196,13 @@ def _existing_dynamo_day(snapshot_date_str: str) -> list[dict] | None:
     return items or None
 
 
+def _existing_dynamo_summary(snapshot_date_str: str) -> dict | None:
+    """Return this date's existing DynamoDB run summary item (plain, Decimal-free), or None if absent."""
+    table = boto3.resource("dynamodb").Table(RUN_SUMMARIES_TABLE)
+    item = table.get_item(Key={"snapshotDate": snapshot_date_str}).get("Item")
+    return _decimals_to_plain(item) if item else None
+
+
 def main() -> int:
     """Validate, plan (and optionally execute) the local-to-DynamoDB migration."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -243,25 +255,38 @@ def main() -> int:
 
         source_records = [_snapshot_to_raw(s) for s in snapshots]
         source_checksum = _checksum(source_records)
+        source_summary_checksum = _dict_checksum(_summary_to_raw(summary))
 
-        existing = _existing_dynamo_day(snapshot_date_str)
-        if existing is None:
+        existing_snapshots = _existing_dynamo_day(snapshot_date_str)
+        existing_summary = _existing_dynamo_summary(snapshot_date_str)
+
+        # A day only counts as "already migrated" when *both* the snapshot
+        # data and the run summary are present and match — checking
+        # snapshots alone would silently skip a day whose summary is
+        # missing or was overwritten with different content (including a
+        # zero-collected day, where "no snapshot items" is the correct
+        # state and the summary is the only record to verify).
+        snapshots_match = (existing_snapshots is None and not snapshots) or (
+            existing_snapshots is not None and _checksum(existing_snapshots) == source_checksum
+        )
+        summary_matches = existing_summary is not None and _dict_checksum(existing_summary) == source_summary_checksum
+
+        if existing_snapshots is None and existing_summary is None:
             action = "write"
+        elif snapshots_match and summary_matches:
+            action = "skip (already migrated, checksum matches)"
         else:
-            dest_checksum = _checksum(existing)
-            if dest_checksum == source_checksum:
-                action = "skip (already migrated, checksum matches)"
-            else:
-                action = "CONFLICT (destination has different data for this date)"
-                conflicts.append(snapshot_date_str)
+            action = "CONFLICT (destination has different data for this date)"
+            conflicts.append(snapshot_date_str)
 
         print(
             f"{snapshot_date_str}: {len(snapshots)} snapshot(s), {len(day_errors)} validation error(s), "
-            f"checksum={source_checksum[:12]}..., action={action}"
+            f"checksum={source_checksum[:12]}..., summary_checksum={source_summary_checksum[:12]}..., action={action}"
         )
         manifest["days"][snapshot_date_str] = {
             "sourceSnapshotCount": len(snapshots),
             "sourceChecksum": source_checksum,
+            "sourceSummaryChecksum": source_summary_checksum,
             "validationErrors": day_errors,
             "action": action,
         }

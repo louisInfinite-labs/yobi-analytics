@@ -129,6 +129,29 @@ def save_daily_collection(
             f"Snapshot(s) with snapshotDate not matching the requested {expected_date}: {mismatched}"
         )
 
+    seen_video_ids: set[str] = set()
+    duplicate_video_ids = set()
+    for snapshot in snapshots:
+        if snapshot.video_id in seen_video_ids:
+            duplicate_video_ids.add(snapshot.video_id)
+        seen_video_ids.add(snapshot.video_id)
+    if duplicate_video_ids:
+        raise SnapshotStoreError(
+            f"Duplicate (videoId, snapshotDate) key(s) for {expected_date}: {sorted(duplicate_video_ids)}"
+        )
+
+    if run_summary.collected_count != len(snapshots):
+        raise SnapshotStoreError(
+            f"Run summary collectedCount ({run_summary.collected_count}) does not match "
+            f"the number of snapshots provided ({len(snapshots)}) for {expected_date}"
+        )
+    if run_summary.requested_count != run_summary.collected_count + len(run_summary.skipped):
+        raise SnapshotStoreError(
+            f"Run summary requestedCount ({run_summary.requested_count}) does not equal "
+            f"collectedCount + len(skipped) ({run_summary.collected_count + len(run_summary.skipped)}) "
+            f"for {expected_date}"
+        )
+
     _put_run_summary_exclusive(run_summary, snapshot_date)
 
     table = _resource().Table(SNAPSHOTS_TABLE)
@@ -137,9 +160,15 @@ def save_daily_collection(
             for snapshot in snapshots:
                 batch.put_item(Item=_snapshot_to_raw(snapshot))
     except ClientError as exc:
-        _delete_snapshots_for_date(snapshot_date)
-        _delete_run_summary(snapshot_date)
-        raise SnapshotStoreError(f"Failed to write to {SNAPSHOTS_TABLE}: {exc}") from exc
+        cleanup_succeeded = _delete_snapshots_for_date(snapshot_date)
+        if cleanup_succeeded:
+            _delete_run_summary(snapshot_date)
+            raise SnapshotStoreError(f"Failed to write to {SNAPSHOTS_TABLE}: {exc}") from exc
+        raise SnapshotStoreError(
+            f"Failed to write to {SNAPSHOTS_TABLE}: {exc}. Cleanup of the partial write also failed, "
+            f"so the {expected_date} run summary reservation was deliberately left in place rather than "
+            "released over unconfirmed-clean data — manual cleanup is required before this date can be retried."
+        ) from exc
 
     return (
         f"DynamoDB table {SNAPSHOTS_TABLE} (snapshotDate={expected_date})",
@@ -147,15 +176,15 @@ def save_daily_collection(
     )
 
 
-def _delete_snapshots_for_date(snapshot_date: date) -> None:
-    """Best-effort delete of every YobiSnapshots item for one date, used to
-    clean up a partial write after a failed batch. Swallows its own failures
-    rather than masking the original error that triggered the rollback — a
-    retry will simply see leftover items via _put_run_summary_exclusive's
-    normal path if this didn't fully take. No GSI on snapshotDate yet, so
-    this is a filtered Scan (Roadmap 2.3's documented "later optimization"),
-    acceptable here since a rollback is an exceptional path, not the steady
-    state.
+def _delete_snapshots_for_date(snapshot_date: date) -> bool:
+    """Delete every YobiSnapshots item for one date, used to clean up a partial
+    write after a failed batch. Returns True if the cleanup completed, False
+    if it failed partway — the caller must not release the run summary
+    reservation on a False result, or a video could keep a snapshot from a
+    run that was never actually recorded as complete (see save_daily_collection).
+    No GSI on snapshotDate yet, so this is a filtered Scan (Roadmap 2.3's
+    documented "later optimization"), acceptable here since a rollback is an
+    exceptional path, not the steady state.
     """
     expected_date = snapshot_date.isoformat()
     table = _resource().Table(SNAPSHOTS_TABLE)
@@ -178,8 +207,9 @@ def _delete_snapshots_for_date(snapshot_date: date) -> None:
         with table.batch_writer() as batch:
             for key in keys_to_delete:
                 batch.delete_item(Key=key)
+        return True
     except ClientError:
-        pass
+        return False
 
 
 def _delete_run_summary(snapshot_date: date) -> None:

@@ -28,12 +28,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import boto3  # noqa: E402
+from dynamodb_store import RUN_SUMMARIES_TABLE, SNAPSHOTS_TABLE, VIDEO_MASTER_TABLE  # noqa: E402
 from snapshot_store import DEFAULT_SNAPSHOTS_DIR  # noqa: E402
 from video_master import DEFAULT_VIDEO_MASTER_PATH, load_videos  # noqa: E402
-
-VIDEO_MASTER_TABLE = "YobiVideoMaster"
-SNAPSHOTS_TABLE = "YobiSnapshots"
-RUN_SUMMARIES_TABLE = "YobiRunSummaries"
 
 
 def _local_days() -> list[str]:

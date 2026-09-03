@@ -445,6 +445,8 @@ The hard cap always wins. Overflow is carried forward by `nextCheckAt`/`lastChec
 
 #### Admin Collection Overrides
 
+**Deferred — not implemented, and not required for 2.4's initial EventBridge automatic-collection cutover.** The daily/twice-daily automatic schedule in 2.4 ships without this; it remains a real requirement for later, once there's an actual operational need for on-demand bounded re-collection outside the normal adaptive schedule.
+
 Support bounded selectors for one creator or organization: newest N, oldest N, an oldest-first rank range such as 101–500, an inclusive JST publication-date range, or explicit Video IDs. Resolve these selectors against Video Master, using deterministic `(publishedAt, videoId)` ordering, then batch the resulting IDs through `videos.list`. Union them with the normal due set and deduplicate by `videoId`.
 
 Do not implement routine admin selection with `search.list`. The uploads playlist can be completely paginated into Video Master, after which newest/oldest/range selection is local and complete. `playlistItems.list` has pagination but no native oldest/latest-count or publication-date-range filter; `search.list` exposes date bounds but channel results can be limited/incomplete. Provide a dry-run that reports selected count, batches, estimated quota, and videos excluded by validation before making API calls.
@@ -923,6 +925,10 @@ Use CloudWatch logs.
 Do not log secrets.
 
 #### 2.5.1 Bounded Immediate and Deferred Retry Policy
+
+**Deferred retry (step 3 onward below, the EventBridge Scheduler/SQS-based durable retry queue, the `YobiRetryState` DynamoDB table, and atomic quota-reservation version checks) is deferred to a future TODO, not implemented.** Real measured usage on a normal day (~1,400 units, ~14% of the 10,000-unit quota — see 2026-09-02's actual run) sits comfortably under even the 20% preferred target, let alone the 30%/40% caps this machinery exists to protect against, so the immediate-attempt bound below is sufficient for now. Building it would also require another new IAM role (the same root-console setup cost as the Lambda and Scheduler roles in 2.2/2.4). Revisit once real usage approaches these thresholds — e.g. from a significantly larger creator/video catalog.
+
+What *is* implemented (`src/quota_ledger.py`, `src/youtube_client.py`): failure classification (retryable / stop-all / non-retryable), three total immediate attempts per batch with capped exponential backoff and jitter, immediate cancellation of further requests on `quotaExceeded`/`dailyLimitExceeded`, and DST-aware Pacific quota-reset/cutoff calculations. Immediate attempts are not currently bounded by an actual measured 30% cap (there is no live quota-unit counter yet — see the Definition of Done below).
 
 Retries are per failed creator batch/Video ID set, not a full rerun of successful work. Every attempt consumes quota, including invalid requests, so all attempts reserve from one Pacific-day quota ledger. The original scheduled request and two immediate retries share a 3,000-unit/30% immediate-phase cap; eligible deferred recovery may subsequently use additional headroom, while the entire workflow shares a 4,000-unit/40% absolute daily hard cap. The 2,000-unit/20% value is a planning target, not a stop boundary.
 

@@ -30,10 +30,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import boto3  # noqa: E402
 from boto3.dynamodb.conditions import Key  # noqa: E402
-from dynamodb_store import load_videos  # noqa: E402
+from dynamodb_store import SNAPSHOTS_TABLE, load_videos  # noqa: E402
 from tracking_schedule import classify_after_observation  # noqa: E402
-
-SNAPSHOTS_TABLE = "YobiSnapshots"
 
 
 def main() -> int:

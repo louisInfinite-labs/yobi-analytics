@@ -1,8 +1,26 @@
+import json
 from unittest.mock import MagicMock
 
 import pytest
 
-from youtube_client import MAX_RETRIES, YouTubeAPIError, _fetch_batch, call_youtube_api, get_video_statistics
+from youtube_client import (
+    MAX_RETRIES,
+    QuotaExhaustedError,
+    YouTubeAPIError,
+    _fetch_batch,
+    call_youtube_api,
+    get_video_statistics,
+)
+
+
+def _http_error(status: int, reason: str | None = None):
+    from googleapiclient.errors import HttpError
+
+    response = MagicMock(status=status, reason="error")
+    if reason is None:
+        return HttpError(response, b"not json")
+    content = json.dumps({"error": {"errors": [{"reason": reason, "message": "boom"}], "message": "boom"}})
+    return HttpError(response, content.encode("utf-8"))
 
 
 def _make_youtube_client(response):
@@ -48,15 +66,67 @@ def test_call_youtube_api_retries_dns_and_ssl_failures(monkeypatch):
         assert result == "ok"
 
 
-def test_call_youtube_api_does_not_retry_http_errors(monkeypatch):
-    """An HTTP-level error (e.g. 403/404) fails immediately without retrying."""
-    from googleapiclient.errors import HttpError
-
+def test_call_youtube_api_does_not_retry_non_retryable_http_errors(monkeypatch):
+    """A non-retryable HTTP-level error (e.g. a plain 404) fails immediately without retrying."""
     monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
-    response = MagicMock(status=404, reason="Not Found")
-    executor = MagicMock(side_effect=HttpError(response, b"not found"))
+    executor = MagicMock(side_effect=_http_error(404))
 
     with pytest.raises(YouTubeAPIError):
+        call_youtube_api(executor)
+
+    assert executor.call_count == 1
+
+
+def test_call_youtube_api_retries_http_429_then_succeeds(monkeypatch):
+    """A bare 429 (no parseable reason) is retried like a transient failure."""
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    executor = MagicMock(side_effect=[_http_error(429), "ok"])
+
+    result = call_youtube_api(executor)
+
+    assert result == "ok"
+    assert executor.call_count == 2
+
+
+def test_call_youtube_api_retries_rate_limit_exceeded_reason(monkeypatch):
+    """YouTube's rateLimitExceeded reason is retried even though the HTTP status (403)
+    alone would not be — the reason code takes priority."""
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    executor = MagicMock(side_effect=[_http_error(403, "rateLimitExceeded"), "ok"])
+
+    result = call_youtube_api(executor)
+
+    assert result == "ok"
+    assert executor.call_count == 2
+
+
+def test_call_youtube_api_gives_up_after_max_retries_on_retryable_http_error(monkeypatch):
+    """A persistently retryable HTTP error still gives up after MAX_RETRIES, not forever."""
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    executor = MagicMock(side_effect=_http_error(503))
+
+    with pytest.raises(YouTubeAPIError, match="after 3 attempts"):
+        call_youtube_api(executor)
+
+    assert executor.call_count == MAX_RETRIES
+
+
+def test_call_youtube_api_raises_quota_exhausted_immediately_without_retrying(monkeypatch):
+    """quotaExceeded stops immediately — retrying would just waste more quota."""
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    executor = MagicMock(side_effect=_http_error(403, "quotaExceeded"))
+
+    with pytest.raises(QuotaExhaustedError):
+        call_youtube_api(executor)
+
+    assert executor.call_count == 1
+
+
+def test_call_youtube_api_raises_quota_exhausted_for_daily_limit_exceeded(monkeypatch):
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    executor = MagicMock(side_effect=_http_error(403, "dailyLimitExceeded"))
+
+    with pytest.raises(QuotaExhaustedError):
         call_youtube_api(executor)
 
     assert executor.call_count == 1
@@ -136,6 +206,55 @@ def test_get_video_statistics_skips_a_batch_that_fails_outright(capsys):
     assert result == []
     assert "abc123" not in capsys.readouterr().out  # no per-video warning, just a batch-level one
     assert "YouTube API error" in skip_reasons["abc123"]
+
+
+def test_get_video_statistics_stops_immediately_on_quota_exhaustion(monkeypatch):
+    """Unlike an ordinary batch failure, quota exhaustion on one batch must not
+    be treated as "skip and continue" — with potentially thousands of
+    remaining batches, that would just keep re-issuing doomed requests."""
+    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    youtube = MagicMock()
+    youtube.videos.return_value.list.return_value.execute.side_effect = _http_error(403, "quotaExceeded")
+    video_ids = [f"id{i}" for i in range(150)]  # three batches of 50
+
+    with pytest.raises(QuotaExhaustedError):
+        get_video_statistics(youtube, video_ids)
+
+    # Only the first batch should have been attempted — quota exhaustion on
+    # it must stop before any later batch is even requested.
+    assert youtube.videos.return_value.list.return_value.execute.call_count == 1
+
+
+def test_quota_exhausted_error_carries_partial_progress():
+    """Statistics already fetched before quota ran out, and the video IDs
+    never attempted, must both be recoverable from the exception — losing
+    already-paid-for results along with the error would waste real quota."""
+    youtube = MagicMock()
+    good_batch_response = {
+        "items": [
+            {
+                "id": f"id{i}",
+                "snippet": {"title": f"Video {i}", "publishedAt": "2026-08-25T12:00:00Z"},
+                "statistics": {"viewCount": "1"},
+            }
+            for i in range(50)
+        ]
+    }
+    youtube.videos.return_value.list.return_value.execute.side_effect = [
+        good_batch_response,  # batch 1 (ids 0-49): succeeds
+        _http_error(403, "quotaExceeded"),  # batch 2 (ids 50-99): quota runs out here
+    ]
+    video_ids = [f"id{i}" for i in range(150)]  # three batches of 50
+
+    with pytest.raises(QuotaExhaustedError) as exc_info:
+        get_video_statistics(youtube, video_ids)
+
+    exc = exc_info.value
+    assert len(exc.partial_results) == 50
+    assert {video["videoId"] for video in exc.partial_results} == {f"id{i}" for i in range(50)}
+    # Batch 2's IDs never got a result, and batch 3 was never even attempted —
+    # both must be reported as never-attempted, not silently dropped.
+    assert set(exc.remaining_video_ids) == {f"id{i}" for i in range(50, 150)}
 
 
 def test_hidden_view_count_is_skipped_with_a_warning(capsys):
