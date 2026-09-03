@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from json_store import DATA_DIR, JsonStoreError, write_json_list_exclusive, write_json_object_exclusive
+from json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list_exclusive, write_json_object_exclusive
 
 # DATA_DIR defaults to this package's own directory locally, but is overridden
 # to /tmp on Lambda, where the deployment package itself is read-only (see
@@ -119,6 +119,65 @@ def save_run_summary(
     return path
 
 
+def validate_daily_collection(snapshots: list[Snapshot], run_summary: SnapshotRunSummary, snapshot_date: date) -> None:
+    """Validate a day's (snapshots, run_summary) pair before either is persisted.
+
+    Shared by both storage backends (this module and dynamodb_store.py) so
+    local JSON development catches the same integrity problems production
+    DynamoDB would, rather than only being validated on one backend:
+    snapshotDate consistency, no duplicate collected videoId, no duplicate
+    skipped videoId, no videoId reported as both collected and skipped, and
+    the run summary's own counts agreeing with the actual snapshot list.
+    """
+    expected_date = snapshot_date.isoformat()
+    mismatched = [snapshot.video_id for snapshot in snapshots if snapshot.snapshot_date != expected_date]
+    if mismatched:
+        raise SnapshotStoreError(
+            f"Snapshot(s) with snapshotDate not matching the requested {expected_date}: {mismatched}"
+        )
+
+    seen_video_ids: set[str] = set()
+    duplicate_video_ids = set()
+    for snapshot in snapshots:
+        if snapshot.video_id in seen_video_ids:
+            duplicate_video_ids.add(snapshot.video_id)
+        seen_video_ids.add(snapshot.video_id)
+    if duplicate_video_ids:
+        raise SnapshotStoreError(
+            f"Duplicate (videoId, snapshotDate) key(s) for {expected_date}: {sorted(duplicate_video_ids)}"
+        )
+
+    seen_skipped_ids: set[str] = set()
+    duplicate_skipped_ids = set()
+    for skipped in run_summary.skipped:
+        if skipped.video_id in seen_skipped_ids:
+            duplicate_skipped_ids.add(skipped.video_id)
+        seen_skipped_ids.add(skipped.video_id)
+    if duplicate_skipped_ids:
+        raise SnapshotStoreError(
+            f"Duplicate skipped videoId(s) for {expected_date}: {sorted(duplicate_skipped_ids)}"
+        )
+
+    collected_and_skipped = seen_video_ids & seen_skipped_ids
+    if collected_and_skipped:
+        raise SnapshotStoreError(
+            f"videoId(s) reported as both collected and skipped for {expected_date}: "
+            f"{sorted(collected_and_skipped)}"
+        )
+
+    if run_summary.collected_count != len(snapshots):
+        raise SnapshotStoreError(
+            f"Run summary collectedCount ({run_summary.collected_count}) does not match "
+            f"the number of snapshots provided ({len(snapshots)}) for {expected_date}"
+        )
+    if run_summary.requested_count != run_summary.collected_count + len(run_summary.skipped):
+        raise SnapshotStoreError(
+            f"Run summary requestedCount ({run_summary.requested_count}) does not equal "
+            f"collectedCount + len(skipped) ({run_summary.collected_count + len(run_summary.skipped)}) "
+            f"for {expected_date}"
+        )
+
+
 def save_daily_collection(
     snapshots: list[Snapshot],
     run_summary: SnapshotRunSummary,
@@ -133,6 +192,7 @@ def save_daily_collection(
     and refuse to write it again, permanently blocking the summary from ever
     being saved for that day.
     """
+    validate_daily_collection(snapshots, run_summary, snapshot_date)
     snapshot_path = save_daily_snapshot(snapshots, snapshot_date, directory)
     try:
         summary_path = save_run_summary(run_summary, snapshot_date, directory)
@@ -140,6 +200,44 @@ def save_daily_collection(
         snapshot_path.unlink(missing_ok=True)
         raise
     return snapshot_path, summary_path
+
+
+def load_snapshots_for_date(snapshot_date: date, directory: Path = DEFAULT_SNAPSHOTS_DIR) -> list[Snapshot]:
+    """Load every snapshot recorded for one date, or [] if that date has no file yet."""
+    path = snapshot_path_for(snapshot_date, directory)
+    raw_snapshots = load_json_list(path, store_name="Snapshot", error_class=SnapshotStoreError)
+    return [_parse_snapshot(raw, path) for raw in raw_snapshots]
+
+
+def get_snapshot(video_id: str, snapshot_date: date, directory: Path = DEFAULT_SNAPSHOTS_DIR) -> Snapshot | None:
+    """Return one video's snapshot for a specific date, or None if that date/video has no record.
+
+    Roadmap 3.1: a caller must never substitute a nearby date's snapshot for
+    a missing one, so this returns None rather than searching neighboring
+    dates — the caller decides what a missing result means (pending vs. not
+    available).
+    """
+    for snapshot in load_snapshots_for_date(snapshot_date, directory):
+        if snapshot.video_id == video_id:
+            return snapshot
+    return None
+
+
+def _parse_snapshot(raw: dict, path: Path) -> Snapshot:
+    """Convert one JSON record back into a Snapshot, raising if a required field is missing."""
+    try:
+        return Snapshot(
+            snapshot_date=raw["snapshotDate"],
+            observed_at=raw["observedAt"],
+            creator_id=raw["creatorId"],
+            video_id=raw["videoId"],
+            title=raw["title"],
+            published_at=raw["publishedAt"],
+            view_count=raw["viewCount"],
+            organization=raw["organization"],
+        )
+    except KeyError as exc:
+        raise SnapshotStoreError(f"Snapshot file {path} has a record missing field {exc}") from exc
 
 
 def _summary_to_raw(summary: SnapshotRunSummary) -> dict:

@@ -1035,6 +1035,8 @@ Time-zone delivery is split across this phase: section 3.1 defines local-calenda
 
 ### 3.1 View Growth Analytics
 
+**Implemented** (`src/view_growth_analytics.py`, plus a new read path — `get_snapshot` added to both `src/snapshot_store.py` and `src/dynamodb_store.py`, and `load_snapshots_for_date` added to `src/snapshot_store.py` only, since the DynamoDB backend's `get_snapshot` is a direct GetItem and has no need for a scan-then-filter helper — the local JSON backend's `get_snapshot` uses it internally to implement its own lookup): IANA time zone validation, calendar-date (not UTC-round-tripped) comparison-date arithmetic for 1d/7d/30d, and `calculate_growth` producing a deterministic `ok`/`pending`/`not_available` result per Roadmap 3.1's own distinctions — including the pre-onboarding vs. pre-collection-start cases. Pure logic only, with no AWS dependency, matching 2.5.1's module pattern; wiring this to an actual request (resolving a video's `earliest_available_date` from Video Master, calling the Read API's DynamoDB queries) is 3.4's job, not this module's.
+
 #### Goal
 
 Calculate useful metrics from historical snapshots.
@@ -1080,6 +1082,8 @@ A third, distinct case: a `reportDate` before the project's own collection start
 
 ### 3.2 Creator Trending
 
+**Implemented** (`src/trending.py`, shared with 3.3 below): `rank_videos` sorts/ranks a list of already-computed 3.1 `GrowthResult` values for `most_viewed`, `fastest_growing`, and each `Nd Trending` period, numbering the ranking and excluding any result whose ranked metric is pending/not_available rather than treating it as zero. Scoping the input list to one creator (this section) vs. an organization (3.3) is the caller's join against Creator/Video Master, not this module's job — the ranking math itself doesn't differ, so it isn't duplicated per scope.
+
 #### Goal
 
 Rank videos for an individual creator.
@@ -1121,6 +1125,8 @@ Example:
 
 ### 3.3 Organization Trending
 
+**Implemented** — see 3.2's note above; `src/trending.py`'s `rank_videos` is shared by both sections. Organization scoping (filtering the input list to one organization's videos before ranking) is a caller-side join against Creator Master, not a separate code path.
+
 #### Goal
 
 Generate rankings across creator organizations.
@@ -1149,6 +1155,8 @@ Fastest Growing Videos by Organization
 ---
 
 ### 3.4 Read API
+
+**Partially implemented** (`src/read_api.py`): request validation (`videoId`/`reportDate`/`timeZone`/`period`, rejecting malformed and adversarial values with a clean `ClientError` before any lookup) and `get_video_growth`, which wires 3.1's `calculate_growth` to real `get_video`/`get_snapshot`/Creator Master lookups and returns the normalized response shape (classification fields carried directly, never inferred). **Not implemented / deferred**: the actual API Gateway + Lambda deployment (this is request-handling logic only, matching `lambda_handler.py`'s split for 2.2 — deploying it is blocked on AWS console access, not a coding task); ranking-endpoint wiring for 3.2/3.3 (`src/trending.py` exists and is tested but has no `read_api.py` entry point yet); and `contentTags`/`contentFormat` filtering, since neither exists in the current Snapshot/Video Master schema (the frontend, per `dashboard_ui_direction_en.md`, mocks these until the Read API exposes them). **Known simplification**: Video Master has no persisted per-video onboarding/discovery date, so `earliest_available_date` falls back to `COLLECTION_START_DATE` for every video — a video onboarded well after project start (e.g. the hololive EN/ID/VSPO EN 2026-08-31 case) is reported `pending` rather than the more precise `not_available` for the gap between project start and its own onboarding. Never crashes or fabricates a value; only less precise in that one edge case.
 
 #### Goal
 
