@@ -71,6 +71,49 @@ describe("readCache / writeCache", () => {
     expect(readCache(key, storage)).toBeNull()
   })
 
+  it("readCache returns null when a results element is malformed, not just when results itself is missing", () => {
+    // Array.isArray([null]) and Array.isArray([{}]) are both true — this
+    // must reject the individual elements, not just the array shape.
+    const storage = memoryStorage()
+    storage.setItem(
+      "yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d",
+      JSON.stringify({ ...entry(), results: [null] }),
+    )
+    expect(readCache(key, storage)).toBeNull()
+
+    storage.setItem(
+      "yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d",
+      JSON.stringify({ ...entry(), results: [{}] }),
+    )
+    expect(readCache(key, storage)).toBeNull()
+  })
+
+  it("readCache accepts a well-formed results element", () => {
+    const storage = memoryStorage()
+    const validStat = {
+      date: "2026-09-03",
+      channelId: "ch_a",
+      channelName: "Channel A",
+      organization: "vspo",
+      branch: "vspo_jp",
+      groupKey: ["1期生"],
+      channelType: "member",
+      lifecycleStage: "active",
+      videoId: "v1",
+      videoTitle: "Video",
+      contentFormat: "normal_video",
+      contentTags: [],
+      totalViews: 1000,
+      dailyIncrease: 100,
+      growthPercent: 10,
+      collectedAt: "2026-09-03T18:00:00+09:00",
+      status: "ok",
+    }
+    writeCache(key, entry({ results: [validStat as never] }), storage)
+
+    expect(readCache(key, storage)?.results).toHaveLength(1)
+  })
+
   it("writeCache never throws even if storage.setItem throws (quota/private mode)", () => {
     const storage = memoryStorage()
     storage.setItem = () => {

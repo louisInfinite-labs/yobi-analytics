@@ -54,7 +54,36 @@ function isValidCacheEntry(value: unknown, key: CacheKey): value is CacheEntry {
     entry.period === key.period &&
     typeof entry.comparisonDate === "string" &&
     typeof entry.fetchedAt === "string" &&
-    Array.isArray(entry.results)
+    Array.isArray(entry.results) &&
+    entry.results.every(isValidDailyVideoStat)
+  )
+}
+
+/** Runtime shape check for one cached DailyVideoStat element — `Array.isArray`
+ * alone accepts `[null]` or `[{}]` as a valid `DailyVideoStat[]`, which would
+ * then crash every downstream consumer (filters, KPI/derivation code, the
+ * table) the moment it reads a missing field. Checks only the fields those
+ * consumers actually read, not every field on the type. */
+function isValidDailyVideoStat(value: unknown): value is DailyVideoStat {
+  if (typeof value !== "object" || value === null) return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.videoId === "string" &&
+    typeof v.videoTitle === "string" &&
+    typeof v.channelId === "string" &&
+    typeof v.channelName === "string" &&
+    typeof v.organization === "string" &&
+    typeof v.branch === "string" &&
+    Array.isArray(v.groupKey) &&
+    typeof v.channelType === "string" &&
+    typeof v.lifecycleStage === "string" &&
+    typeof v.contentFormat === "string" &&
+    Array.isArray(v.contentTags) &&
+    typeof v.totalViews === "number" &&
+    typeof v.dailyIncrease === "number" &&
+    (v.growthPercent === null || typeof v.growthPercent === "number") &&
+    typeof v.collectedAt === "string" &&
+    typeof v.status === "string"
   )
 }
 
