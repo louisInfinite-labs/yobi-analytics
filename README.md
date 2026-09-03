@@ -2,7 +2,7 @@
 
 Yobi Analytics is a separate Python/AWS data-collection and analytics project for Yobi.
 
-Its purpose is to collect public YouTube video statistics for selected creators, store daily historical snapshots, and later provide analytics such as view growth and trending rankings to the Yobi desktop application.
+Its purpose is to collect public YouTube video statistics for selected creators, store daily historical snapshots, and later provide analytics such as view growth and trending rankings to both the Yobi Dashboard website and the Yobi desktop application.
 
 The initial target creator groups are:
 
@@ -24,7 +24,7 @@ Creator Master
 → Create Daily Raw Snapshots
 → Store Snapshots in AWS
 → Calculate Analytics
-→ Expose Data to Yobi.exe
+→ Expose Data to the Yobi Dashboard Website and Yobi.exe
 ```
 
 The core data collected for each video will include information such as:
@@ -566,18 +566,18 @@ Automatic GitHub deployment will be added only after the collector is stable.
 
 ## Future Read API
 
-The Yobi desktop application should not connect directly to DynamoDB with unrestricted AWS credentials.
+Neither client — the Web Dashboard nor the Yobi desktop application — should connect directly to DynamoDB with unrestricted AWS credentials.
 
 Future architecture:
 
 ```text
-Yobi.exe
+Dashboard / Yobi.exe
 → API Gateway
 → Read Lambda
 → DynamoDB
 ```
 
-Possible future endpoints:
+Endpoints (request validation and response normalization implemented in `src/read_api.py`; live API Gateway + Lambda deployment remains blocked on AWS console access — see [`Roadmap.md`](./Roadmap.md) 4.1):
 
 ```text
 GET /creators/{creatorId}/trending?period=7d
@@ -657,9 +657,9 @@ A custom domain is not required during development.
 
 ---
 
-## Future Yobi Client Features
+## Future Client Features (Dashboard + Yobi.exe)
 
-Later Yobi versions may use the AWS backend for:
+The AWS backend features below (Roadmap Phase 4) are shared: they get built once and used by **both** the Web Dashboard and later Yobi versions, not Yobi alone. Each client gets its own independent `clientId`; a feature landing in the Dashboard does not imply Yobi.exe has it, and vice versa — see [`Roadmap.md`](./Roadmap.md) Phase 4 for what's implemented, what's buildable now, and what depends on the separate Yobi.exe (Unity) codebase.
 
 - analytics display
 - client/device UUID
@@ -669,9 +669,24 @@ Later Yobi versions may use the AWS backend for:
 - offline cache synchronization
 - Twitch live/upcoming schedule tracking and go-live notifications (Phase 5.5)
 
-Google account identity should not be used as the Yobi device identity.
+Google account identity should not be used as either client's device identity.
 
 Google OAuth should remain optional and only be used for features that actually require Google user authorization.
+
+### Web Push Notification Requirements (Dashboard)
+
+The Dashboard's chosen delivery mechanism for per-client notification overrides (Roadmap 4.6) is OS-level Web Push — a native Windows/macOS notification, not an in-page list — implemented with the standard `Notification`/`Push` Web APIs and VAPID (`frontend/dashboard/src/lib/pushNotifications.ts`, `frontend/dashboard/public/sw.js`, `src/push_sender.py`). This is plain web technology: it runs identically on any CPU architecture (Intel or Apple Silicon/ARM) — there is no separate build per architecture, unlike a native app.
+
+Minimum requirements to actually receive a notification:
+
+```text
+Windows 10 / 11 — a current version of Chrome, Edge, or Firefox
+macOS 13.3 (Ventura) or later — Safari 16.4+, or a current Chrome/Edge/Firefox
+HTTPS (except localhost during development)
+The user must explicitly grant the browser's notification permission prompt
+```
+
+macOS 13.3/Safari 16.4 shipped in March 2023; any Mac that can run macOS Ventura (2017-or-later MacBook Pro, 2018-or-later MacBook Air, 2017-or-later iMac, 2018-or-later Mac mini, 2019-or-later Mac Pro, and every Apple Silicon Mac) can get it as a free software update — it is not tied to a Mac's original factory-installed OS. Safari on iOS/iPadOS also supports Web Push from 16.4, but only after the site has been added to the Home Screen; this is an iOS-specific limitation that does not apply to macOS or Windows. A browser below these versions is handled as an expected "notifications unavailable" state (`isPushSupported()` in `pushNotifications.ts`), not an error.
 
 ---
 

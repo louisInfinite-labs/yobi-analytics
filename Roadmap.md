@@ -1156,7 +1156,7 @@ Fastest Growing Videos by Organization
 
 ### 3.4 Read API
 
-**Partially implemented** (`src/read_api.py`): request validation (`videoId`/`reportDate`/`timeZone`/`period`, rejecting malformed and adversarial values with a clean `ClientError` before any lookup) and `get_video_growth`, which wires 3.1's `calculate_growth` to real `get_video`/`get_snapshot`/Creator Master lookups and returns the normalized response shape (classification fields carried directly, never inferred). **Not implemented / deferred**: the actual API Gateway + Lambda deployment (this is request-handling logic only, matching `lambda_handler.py`'s split for 2.2 — deploying it is blocked on AWS console access, not a coding task); ranking-endpoint wiring for 3.2/3.3 (`src/trending.py` exists and is tested but has no `read_api.py` entry point yet); and `contentTags`/`contentFormat` filtering, since neither exists in the current Snapshot/Video Master schema (the frontend, per `dashboard_ui_direction_en.md`, mocks these until the Read API exposes them). **Known simplification**: Video Master has no persisted per-video onboarding/discovery date, so `earliest_available_date` falls back to `COLLECTION_START_DATE` for every video — a video onboarded well after project start (e.g. the hololive EN/ID/VSPO EN 2026-08-31 case) is reported `pending` rather than the more precise `not_available` for the gap between project start and its own onboarding. Never crashes or fabricates a value; only less precise in that one edge case.
+**Partially implemented** (`src/read_api.py`): request validation (`videoId`/`reportDate`/`timeZone`/`period`, rejecting malformed and adversarial values with a clean `ClientError` before any lookup) and `get_video_growth`, which wires 3.1's `calculate_growth` to real `get_video`/`get_snapshot`/Creator Master lookups and returns the normalized response shape (classification fields carried directly, never inferred). Ranking-endpoint wiring for 3.2/3.3 is now implemented too (`get_creator_trending`, `get_organization_trending` — see 4.1). **Not implemented / deferred**: the actual API Gateway + Lambda deployment (this is request-handling logic only, matching `lambda_handler.py`'s split for 2.2 — deploying it is blocked on AWS console access, not a coding task); and `contentTags`/`contentFormat` filtering, since neither exists in the current Snapshot/Video Master schema (the frontend, per `dashboard_ui_direction_en.md`, mocks these until the Read API exposes them). **Known simplification**: Video Master has no persisted per-video onboarding/discovery date, so `earliest_available_date` falls back to `COLLECTION_START_DATE` for every video — a video onboarded well after project start (e.g. the hololive EN/ID/VSPO EN 2026-08-31 case) is reported `pending` rather than the more precise `not_available` for the gap between project start and its own onboarding. Never crashes or fabricates a value; only less precise in that one edge case.
 
 #### Goal
 
@@ -1360,24 +1360,28 @@ If the server still only has yesterday's snapshot, the UI should not falsely lab
 
 ---
 
-## Phase 4 — Yobi.exe Integration and Remote Control
+## Phase 4 — Client Integration and Remote Control (Dashboard + Yobi.exe)
 
-### 4.1 Yobi Analytics API
+**Dual-client scope note**: every section in this phase (4.1–4.7) is built once for the shared AWS backend but consumed by **two independent clients**: the Web Dashboard (`frontend/dashboard`, this repo, Phase 3.5/3.6) and Yobi.exe (Unity desktop app, a separate repo/machine). Neither client is a stand-in for the other — a feature landing in the Dashboard does not mean Yobi.exe has it, and vice versa. Live2D avatar rendering and any other Yobi.exe presentation-only feature that has no analytics/remote-control meaning is explicitly **not** part of this phase. Each section below states what belongs to the shared backend (buildable in this repo now), what belongs to the Dashboard (buildable in this repo now), and what belongs to Yobi.exe (Unity/C#, a separate codebase — out of scope for this repo; tracked here only as a parallel requirement so the backend contract doesn't accidentally assume a single client).
+
+### 4.1 Analytics API (Trending Endpoints)
 
 #### Goal
 
-Provide normalized analytics data to Yobi.exe.
+Provide normalized analytics data to both clients — the Dashboard and Yobi.exe — through one shared Read API.
+
+**Implemented** (`src/read_api.py`): `get_creator_trending` and `get_organization_trending`, mirroring the endpoints below. Both validate `creatorId`/`organization`, `reportDate`, `timeZone`, `period`, and the optional `rankingType`/`limit` the same way `get_video_growth` (3.4) validates its own query — a malformed or adversarial value is rejected with `ClientError` before any lookup, and an unknown `creatorId`/`organization` (one with zero matching Creator Master records) is also a clean `ClientError`, not a crash or a silent empty result. `rankingType` defaults to the period-trending type matching the requested `period` (e.g. `period=7d` alone returns the 7-day growth trending list, matching the endpoint examples below, which carry no separate ranking selector) and is rejected if an explicitly-passed period-trending type doesn't match the requested period — that combination can never produce a ranked result, since 3.2/3.3's `rank_videos` filters by each result's own `period`. Every ranked result row carries the same `organization`/`branch`/`groupKey`/`channelType`/`lifecycleStage` fields as 3.4's single-video response, joined live from Creator Master. **Not implemented / deferred**: the actual API Gateway + Lambda deployment, for the same reason as 3.4 — this is request-handling logic only, blocked on AWS console access, not a coding task.
 
 #### Architecture
 
 ```text
-Yobi.exe
+Dashboard / Yobi.exe
 → API Gateway
 → Read Lambda
 → DynamoDB
 ```
 
-Possible future endpoints:
+Endpoints:
 
 ```text
 GET /creators/{creatorId}/trending?period=7d
@@ -1385,24 +1389,29 @@ GET /organizations/vspo/trending?period=1d
 GET /organizations/hololive/trending?period=30d
 ```
 
-Yobi.exe must not receive unrestricted AWS credentials.
+Neither client receives unrestricted AWS credentials.
 
 #### Definition of Done
 
-- Yobi.exe can retrieve normalized analytics.
+- Both the Dashboard and Yobi.exe can retrieve normalized trending analytics through the same contract.
 - AWS storage details remain behind the API.
+- Ranking-endpoint request validation and response normalization are implemented and tested locally (done); live API Gateway + Lambda deployment remains blocked on AWS console access.
 
 ---
 
-### 4.2 Yobi.exe Analytics Integration
+### 4.2 Client-Side Analytics Integration (Dashboard + Yobi.exe)
 
 #### Goal
 
-Display analytics inside the desktop application.
+Display analytics inside both clients: the Web Dashboard and the Yobi.exe desktop application.
+
+**Dashboard: satisfied by 3.5/3.6.** The Web Dashboard already displays creator/organization trending, daily/7d/30d growth, and last-updated time (3.5), with a local cache so data displays immediately (3.6). No further Dashboard-side work belongs to this section — it exists only so this phase states the requirement once for both clients rather than letting it read as Yobi.exe-only.
+
+**Yobi.exe: not implemented.** Unity/C# work in the separate Yobi.exe codebase — out of scope for this repo. Once 4.1's trending endpoints are actually deployed (blocked on AWS console access), Yobi.exe can consume the same normalized response shape the Dashboard already consumes.
 
 #### Scope
 
-Possible UI data:
+Possible UI data (shared contract, either client):
 
 ```text
 Creator Trending
@@ -1415,21 +1424,26 @@ Last Updated
 
 #### Definition of Done
 
-- Desktop app can display AWS analytics.
-- Local cache works.
-- No direct unrestricted DynamoDB access exists.
+- Dashboard can display AWS analytics — done (3.5/3.6).
+- Yobi.exe can display AWS analytics — deferred to the Yobi.exe codebase.
+- Local cache works on both clients — done for the Dashboard (3.6); Yobi.exe's own local cache is 4.7.
+- Neither client has direct unrestricted DynamoDB access.
 
 ---
 
-### 4.3 Client / Device ID
+### 4.3 Client / Device ID (Dashboard + Yobi.exe)
 
 #### Goal
 
-Give each Yobi installation an independent identity.
+Give each installation of **either client** — a Dashboard browser and a Yobi.exe installation — its own independent anonymous identity, so 4.4–4.6 can target one client without needing an account system.
+
+**Dashboard: implemented** (`frontend/dashboard/src/lib/clientId.ts`): `getOrCreateClientId()` generates a `crypto.randomUUID()` on first call and persists it in `localStorage` (the same mechanism 3.6's cache already uses) under its own key, independent of any Read API call. Never throws — storage unavailable (private browsing, quota) falls back to a fresh in-memory id for that call rather than crashing, matching 3.6's cache's own never-throw contract. This is plain frontend TypeScript with no backend/AWS dependency — unlike 4.1/4.4/4.5, nothing here is blocked on AWS console access. **Not yet wired**: no UI/hook currently calls it yet, since nothing consumes a `clientId` until 4.4/4.5/4.6's backends exist.
+
+**Yobi.exe: not implemented.** Unity/C# work in the separate Yobi.exe codebase — out of scope for this repo.
 
 #### Design
 
-Generate a random UUID on first run.
+Generate a random UUID on first run, per client.
 
 Example:
 
@@ -1437,7 +1451,7 @@ Example:
 clientId = UUID
 ```
 
-Store it locally.
+Store it locally — `localStorage` for the Dashboard, local app storage for Yobi.exe. A Dashboard `clientId` and a Yobi.exe `clientId` for the same person are two different, unrelated IDs; nothing links them.
 
 Do not use:
 
@@ -1447,26 +1461,34 @@ YouTube Account ID
 Email Address
 ```
 
-as the device identity.
+as the device identity, on either client.
 
 #### Definition of Done
 
-- Every installation has a stable anonymous client ID.
-- ID survives app restart.
+- Every Dashboard browser and every Yobi.exe installation has its own stable anonymous client ID — done for the Dashboard; deferred to the Yobi.exe codebase.
+- ID survives a Dashboard page reload (verified via tests) / Yobi.exe app restart.
 - ID is independent of Google OAuth.
 
 ---
 
-### 4.4 Heartbeat / Online Status
+### 4.4 Heartbeat / Online Status (Dashboard + Yobi.exe)
 
 #### Goal
 
-Allow the dashboard to estimate which Yobi clients are online.
+Let an admin view estimate which clients — Dashboard browsers and Yobi.exe installations — are currently active, using the `clientId` from 4.3.
+
+**Backend: implemented** (`src/heartbeat_api.py`): `record_heartbeat` validates `clientId`/`appVersion` and always sets `lastSeenAt` from the server's own clock — never from the request body, since trusting a client-supplied timestamp would let a skewed or spoofed client clock misreport its own online status. `online_status` classifies a stored `lastSeenAt` as `online`/`offline` against the 2-minute freshness rule below, rejecting a naive (no UTC offset) or malformed timestamp before comparing it against the reference clock. Both are pure request-handling logic with no AWS Lambda/API Gateway/DynamoDB dependency of its own, mirroring 3.4/4.1's split — the actual deployment (writing to DynamoDB, wiring a real Lambda entry point) remains blocked on AWS console access, not a coding task.
+
+**Dashboard: deferred until the backend is deployed.** The Dashboard would send its own periodic heartbeat using its 4.3 `clientId` while a tab is open; there is no endpoint to call until the backend above is actually deployed, so this stays undone until that unblocks — same relationship 3.5's Dashboard has to the still-undeployed 3.4 Read API.
+
+**Yobi.exe: not implemented.** Unity/C# work in the separate Yobi.exe codebase — out of scope for this repo.
+
+An admin view showing online/offline state is itself a small addition to the Dashboard (3.5) once heartbeat data exists to show; it is not a separate roadmap section.
 
 #### Flow
 
 ```text
-Yobi.exe
+Dashboard / Yobi.exe
 → POST heartbeat
 → API Gateway
 → Lambda
@@ -1493,7 +1515,8 @@ older
 
 #### Definition of Done
 
-- Dashboard can show approximate online/offline state.
+- An admin view can show approximate online/offline state for both Dashboard and Yobi.exe clients.
+- Request validation and the online/offline classification rule are implemented and tested locally (done); the write endpoint's live deployment and an admin view consuming it remain blocked on AWS console access.
 - Google login is not required.
 
 #### Out of Scope
@@ -1503,11 +1526,17 @@ older
 
 ---
 
-### 4.5 Remote Config
+### 4.5 Remote Config (Dashboard authors it, both clients apply it)
 
 #### Goal
 
-Allow dashboard-controlled runtime configuration.
+Let the Dashboard author runtime configuration, targeted at either client (by 4.3's `clientId`) — including targeting the Dashboard itself, not only Yobi.exe.
+
+**Backend: implemented** (`src/remote_config_api.py`): a generic `(clientId, key) → value` key/value store — `write_remote_config` validates the envelope (`clientId`/`key` non-empty, `value` present) and stamps `updatedAt` from the server's own clock, the same way 4.4's `record_heartbeat` never trusts a client-supplied timestamp; `parse_read_query` validates a read's `clientId` and optional `key` (absent `key` means "every stored key for this client"). **`value` is deliberately opaque to the backend** — it accepts any JSON-typed value (string, number, bool, `None`, list, or object) and never interprets what a given `key` means; the Dashboard (the sole author) and whichever client reads a value back are the ones who agree on the key/value contract, so adding a new per-client setting never requires a backend schema change. Both write and read paths are pure request-handling logic with no AWS Lambda/API Gateway/DynamoDB dependency of its own, mirroring 3.4/4.1/4.4's split — the actual deployment remains blocked on AWS console access, not a coding task.
+
+**Dashboard: not implemented.** Two roles, both frontend work once the backend above exists: an admin screen that writes config entries (as originally scoped), and applying a fetched config entry to its own runtime settings (new relative to the original Yobi.exe-only scope — e.g. the Dashboard muting its own notification badge for one creator, per 4.6).
+
+**Yobi.exe: not implemented.** Unity/C# work in the separate Yobi.exe codebase — out of scope for this repo.
 
 #### Example Uses
 
@@ -1518,7 +1547,7 @@ Enable/disable experimental feature
 Temporary per-client override
 ```
 
-Write flow:
+Write flow (unchanged — the Dashboard remains the sole author):
 
 ```text
 Dashboard
@@ -1527,10 +1556,10 @@ Dashboard
 → DynamoDB RemoteConfig
 ```
 
-Read flow:
+Read flow (either client, using its own `clientId`):
 
 ```text
-Yobi.exe
+Dashboard / Yobi.exe
 → API Gateway
 → Read Lambda
 → DynamoDB RemoteConfig
@@ -1547,17 +1576,24 @@ Remote runtime config should remain separate.
 
 #### Definition of Done
 
-- Dashboard can change remote settings.
-- Yobi can fetch and apply them.
+- Dashboard can change remote settings for any client, including itself.
+- Both Dashboard and Yobi.exe can fetch and apply their own remote config.
 - Local secrets remain separate.
+- Write/read request validation and the opaque key/value contract are implemented and tested locally (done); live API Gateway + Lambda deployment, and both clients actually applying a fetched value, remain blocked on AWS console access / future frontend work.
 
 ---
 
-### 4.6 Per-Client Notification Overrides
+### 4.6 Per-Client Notification Overrides (Dashboard + Yobi.exe)
 
 #### Goal
 
-Control notification behavior for a specific Yobi installation.
+Control notification behavior for one specific client installation — a Dashboard browser or a Yobi.exe installation — identified by its own 4.3 `clientId`.
+
+**Backend override validation/dispatch decision: implemented** (`src/notification_dispatch.py`): `parse_notification_preference` validates a stored/incoming preference dict into a typed `NotificationPreference` (`enabled`, `notificationLevel` restricted to `{"all", "important"}`, an optional `temporaryMute` that must carry a UTC offset, `creatorOverride` as a `creatorId → bool` map, a validated IANA `notificationTimeZone`, non-empty deduplicated `deliveryWindows`, and an optional `quietHours` pair) the same untrusted-input-first way `read_api.py`/`remote_config_api.py` validate their own inputs. `should_notify_now(preference, creator_id, now=...)` combines three independent suppression rules — **a per-creator override always wins over the global `enabled` flag** (otherwise Roadmap 4.6's own worked example, one client muting one specific creator, couldn't be expressed), an active `temporaryMute`, and `quietHours` — where `is_within_quiet_hours` correctly handles a window that wraps past midnight (e.g. `22:00`–`07:00`) as "outside `[end, start)`" rather than a naive `start<=t<=end` range, after converting `now` through the preference's own IANA zone (not a fixed offset). `next_delivery_window_utc` computes when a near-real-time event should be held until, for the "send only at the client's local delivery windows" rule. This module is storage-agnostic by design — it doesn't read/write 4.5's store or know what key a preference is saved under, matching 4.1/4.4/4.5's deferred-AWS-deployment pattern: pure decision logic, code-complete and unit-tested locally now; a scheduled dispatcher that actually calls it against real stored preferences/events and invokes `push_sender.py` remains future work, blocked on AWS deployment.
+
+**Dashboard delivery mechanism: decided — OS-level Web Push, not an in-page list.** `Notification`/`Push` API via a service worker, so a notification reaches the user (a Windows toast, bottom-right) even when the Dashboard tab isn't focused, not only while actively looking at an in-page list. **Implemented**: `frontend/dashboard/src/lib/pushNotifications.ts` (`subscribeToPush`/`unsubscribeFromPush`/`getPushSubscriptionStatus`, requesting Notification permission and registering/reusing a `PushManager` subscription; returns `null`/`"unsubscribed"` rather than throwing when push is unsupported or permission is denied — both are expected outcomes, not errors) and `frontend/dashboard/public/sw.js` (the service worker: shows a notification on a `push` event, falls back to a generic notification for a malformed/non-JSON payload rather than dropping it silently, and focuses an already-open Dashboard tab on click instead of piling up duplicate tabs). A VAPID key pair has been generated (`py_vapid`): the private key stays local-only (`.env`'s `VAPID_PRIVATE_KEY_PATH`, gitignored — never committed, goes to AWS only once a Lambda actually needs to sign a push, e.g. a Lambda environment variable or Secrets Manager entry) while the public key is committed in `frontend/dashboard/src/lib/vapidPublicKey.ts` (a VAPID public key is designed to be shared with every subscribing browser, unlike its private counterpart). `NotificationToggle.tsx`, wired into `DashboardHeader`, is a real "Enable notifications" button using all of the above — verified live in a browser: renders, and the permission-denied path degrades cleanly with no crash/console error. `src/push_sender.py` (backend) sends one encrypted push via `pywebpush` (VAPID/RFC 8291/8292) to a stored subscription; never raises — a 404/410 response is reported as `subscription_expired=True` (caller should delete the stored subscription) while any other failure is transient (worth retrying, nothing deleted); AWS is not on this delivery hop's critical path at all — the encrypted message goes straight to the browser vendor's own push service (Google FCM / Mozilla), so once deployed this runs from any Lambda/host, same as every other Phase 4 backend module. **Not yet wired / deferred**: storing a subscribed browser's subscription via 4.5's remote-config write (needs 4.5's endpoint deployed first); and the delivery-window/quiet-hours/dedup dispatch orchestration above, which decides *when* to call `push_sender.py` for a given `(clientId, event)` pair. **Verification caveat**: full end-to-end registration (`navigator.serviceWorker.register()` actually succeeding, a real permission grant, a real toast) could not be confirmed inside Claude Code's own sandboxed preview browser pane — isolated testing there showed even a trivially minimal service worker file fails registration with the same error, indicating a pane-level restriction unrelated to this code; verify in an ordinary Chrome/Edge window on the dev machine to see the real prompt/toast.
+
+**Yobi.exe: not implemented.** Unity/C# work in the separate Yobi.exe codebase — out of scope for this repo. Live2D avatar rendering has no notification/remote-control meaning and is explicitly excluded from this phase (see the Phase 4 dual-client scope note above).
 
 #### Scope
 
@@ -1589,19 +1625,24 @@ The selected timezone controls notification grouping and delivery, not upstream 
 
 #### Definition of Done
 
-- Remote settings can target one anonymous client ID.
-- One client's settings do not affect others unintentionally.
-- Local delivery windows remain correct across UTC offsets and daylight-saving transitions by using IANA timezone rules.
-- A stored new-video event is delivered at most once per client/window unless an explicit repeat-reminder policy says otherwise.
-- Adding users does not create duplicate upstream YouTube API collection requests.
+- Remote settings can target one anonymous client ID — the preference schema and its validation are implemented (`notification_dispatch.py`); actually storing one under 4.5's store is deferred to that endpoint's deployment.
+- One client's settings do not affect others unintentionally — `creator_overrides`/`temporary_mute_until`/`quiet_hours` are all per-`NotificationPreference`, never shared/global state.
+- Local delivery windows remain correct across UTC offsets and daylight-saving transitions by using IANA timezone rules — done: `is_within_quiet_hours`/`next_delivery_window_utc` convert through `ZoneInfo`, tested against a non-UTC zone.
+- A stored new-video event is delivered at most once per client/window unless an explicit repeat-reminder policy says otherwise — the dedup contract is documented; the delivered-event storage/check itself is a scheduled dispatcher's job (deferred, blocked on AWS deployment), not this pure-decision module's.
+- Adding users does not create duplicate upstream YouTube API collection requests — unaffected by this section; Discovery (1.4) already collects once regardless of subscriber count.
+- The Dashboard's delivery mechanism is OS-level Web Push (done: subscribe/unsubscribe flow, service worker, backend send-one-notification logic, all unit-tested locally); the override preference schema and dispatch suppression rules (creator override / temporary mute / quiet hours) and the next-delivery-window calculation are also done and unit-tested. Generating/configuring VAPID keys is done (a key pair exists; the public key is committed, the private key is local-only pending AWS deployment). Deferred, blocked on AWS deployment: wiring a subscription into 4.5's store, and an actual scheduled dispatcher that reads real stored preferences/events and calls this module + `push_sender.py`.
 
 ---
 
-### 4.7 Offline Cache / Fallback
+### 4.7 Offline Cache / Fallback (Dashboard + Yobi.exe)
 
 #### Goal
 
-Keep Yobi usable during temporary network or AWS failure.
+Keep both clients usable during temporary network or AWS failure.
+
+**Dashboard: satisfied by 3.6.** The `localStorage`-backed cache already shows the last-known data immediately and falls back to it on a failed background fetch, with a visible last-updated time (3.6's Definition of Done). No further Dashboard-side work belongs to this section.
+
+**Yobi.exe: not implemented.** Unity/C# work in the separate Yobi.exe codebase — out of scope for this repo.
 
 #### Behavior
 
@@ -1614,8 +1655,8 @@ AWS request fails
 
 #### Definition of Done
 
-- Network failure does not make Yobi unusable.
-- Cached analytics/config can still load.
+- Network failure does not make either client unusable — done for the Dashboard (3.6); deferred to the Yobi.exe codebase.
+- Cached analytics/config can still load on both clients.
 - Recovery happens safely.
 
 ---
@@ -1849,6 +1890,154 @@ DynamoDB data should remain migration-friendly from the beginning.
 
 ---
 
+## Phase 6 — Live Notifications and Fan Engagement
+
+#### Prerequisite
+
+Do not start any Phase 6 sub-section until Phase 5 (Production, Automation and Intelligence) is complete — specifically 5.1's CI/CD deploy and 5.2's production AWS hardening — so the Dashboard/collector is actually deployed and running in production, not just local dev, before fan-facing notification features are built on top of it. The practical signal that this condition is met is real people beyond the developer actually using the deployed Dashboard (the ~500-person VSPO group, per Phase 6's stated initial audience).
+
+### 6.1 Holodex Live Status Notifications
+
+#### Goal
+
+Notify users when a tracked creator goes live, as a new event type alongside 4.6's existing new-video notifications, without adding to the YouTube Data API quota the view-growth collector already depends on.
+
+#### Why Holodex Instead of the YouTube Data API
+
+`search.list` with `eventType=live` costs 100 units per call. Polling roughly 70 tracked creators individually for live status would consume most of the 10,000-units/day project quota on live checks alone, competing directly with the existing collector's `playlistItems.list`/`videos.list` calls (Phase 1/2). Holodex aggregates live/upcoming status for the tracked Hololive/VSPO roster from a single org-scoped `/live` call and runs on its own separate API and quota system — it does not consume or touch the project's YouTube Data API quota.
+
+#### Flow
+
+```text
+Holodex API (own key, own quota)
+→ live / upcoming status per creator
+→ Creator/Video Master: liveStatus, nextScheduledAt (new fields, independent of view-count data)
+
+Existing YOUTUBE_API_KEY
+→ unchanged: view-count snapshot collection only (Phase 1/2 collector)
+```
+
+#### Scope
+
+- New env var `HOLODEX_API_KEY`, stored the same way as `YOUTUBE_API_KEY` (local `.env`, gitignored; AWS Secrets Manager/Lambda env var once deployed). This is a distinct provider with its own quota, not a second YouTube key — it does not require a second Google Cloud project and does not raise the YouTube API ToS's quota-circumvention concerns discussed for multiple YouTube keys/projects.
+- Live status is a new `goLive` event type, separate from the `newVideo` event type Phase 4.6 already dispatches. `notification_dispatch.py`'s `NotificationPreference`/`creatorOverride` must be able to target the two independently — a user may want a new-video digest without live pings, or vice versa.
+- Coverage caveat: confirm VSPO channels are present and timely in Holodex before relying on it as the sole live-status source; Hololive coverage is well established there.
+
+#### Definition of Done
+
+- A tracked creator going live triggers a `goLive` notification, gated by the same per-client suppression rules as 4.6 (creator override, temporary mute, quiet hours), with zero additional YouTube Data API quota usage.
+- Holodex integration uses its own API key/quota, fully independent of `YOUTUBE_API_KEY` and the view-growth collector.
+- Users can independently enable/disable `goLive` vs `newVideo` notifications per creator.
+- `liveStatus`/`nextScheduledAt` are stored separately from view-count/growth fields in Creator/Video Master, never blended into the same fields.
+
+#### Out of Scope Initially
+
+- Twitch live status (already tracked separately under Phase 5.5).
+- Merging live schedule and video-growth data into one unified content calendar UI (candidate future Phase 6 sub-section).
+
+---
+
+### 6.2 Pre-Live Reminders and Discord Delivery
+
+#### Goal
+
+Fix the specific low-usefulness problem with the existing Discord live-notification bot the target community already uses: it only fires once a stream has already started. Deliver an earlier, more actionable signal, and deliver it where this product's actual initial audience (a ~500-person private VSPO fan Discord group) already is, rather than only inside the Dashboard's own Web Push.
+
+#### Why
+
+Holodex's live-status data includes a scheduled/upcoming start time, not just "is live now" — 6.1 only used the "is live now" half. A reminder fired when a stream is scheduled (e.g. N minutes before `scheduledStart`) is strictly more useful than a same-moment or after-the-fact "went live" ping, and is not something the community's current bot or Holodex/YouTube/ChatGPT already deliver to this specific audience. Requiring a user to visit the Dashboard and grant browser Notification permission is also friction the initial audience does not need to pay: they already live in one Discord server.
+
+#### Scope
+
+```text
+Holodex scheduled/upcoming status
+→ goLiveSoon event (new, distinct from 6.1's goLive)
+→ Discord webhook delivery (new channel, alongside 4.6's Web Push)
+```
+
+- `goLiveSoon` is a third event type alongside 4.6's `newVideo` and 6.1's `goLive` — reminder lead time (e.g. 15 minutes before `scheduledStart`) should be configurable, not hardcoded, since different communities/creators may want different lead times.
+- A Discord webhook is a new delivery mechanism alongside 4.6's Web Push, targeting a Discord channel rather than one `clientId`. It reuses 6.1's Holodex data and 4.6's suppression concepts (mute/quiet hours) where they still make sense at server-channel granularity, but is not itself a `clientId`-scoped preference — a webhook posts to a shared channel the whole group sees, not one subscriber.
+- Initial deployment target is the one private ~500-person VSPO group; a public/multi-server Discord bot (install flow, per-server config, OAuth) is out of scope here — see Phase-6-general note on commercial/public readiness being deferred while the audience stays private.
+
+#### Definition of Done
+
+- A scheduled stream produces a `goLiveSoon` reminder before `actualStart`, using Holodex's scheduled-start data.
+- The reminder reaches the group's Discord channel via webhook without requiring any per-member Dashboard visit or Web Push permission grant.
+- `goLiveSoon` remains distinguishable from `newVideo` (4.6) and `goLive` (6.1) so future per-event controls are possible.
+
+#### Out of Scope Initially
+
+- Public/multi-server Discord bot installation flow.
+- Per-member (as opposed to per-channel) mute/quiet-hours control over Discord-delivered reminders.
+
+---
+
+### 6.3 In-Group Trending Leaderboard and Milestone Celebrations
+
+#### Prerequisite
+
+In addition to Phase 6's own prerequisite above: do not build this until 6.1 and 6.2 are themselves already live and delivering to the real ~500-person group. A trending leaderboard and milestone celebrations only have discussion value once there is a real active audience already receiving go-live/pre-live pings and a real stream of view-count data to rank/celebrate — built earlier, against no live audience, it is unverifiable and wasted effort. This is a build-order gate, not a difficulty ranking: it stays listed after 6.1/6.2 in priority discussion, but must not start before that condition is met, regardless of how the rest of Phase 6 is sequenced.
+
+#### Goal
+
+Give the private fan group's Discord channel recurring, discussion-worthy content beyond individual go-live/new-video/pre-live pings, prioritized ahead of other Future Candidates (below) because it maximizes return-visit/engagement value for the smallest additional build cost: it reuses 6.2's Discord webhook delivery and Phase 3's already-implemented ranking math, rather than requiring any new personalization or account system.
+
+#### Scope
+
+```text
+Trending leaderboard (periodic, e.g. weekly)
+→ trending.py's rank_videos(..., FASTEST_GROWING or 7d_trending)
+   over the tracked Hololive/VSPO roster (already implemented, Roadmap 3.2/3.3)
+→ top-N formatted as one message
+→ Discord webhook (6.2)
+
+Milestone celebration (event-driven)
+→ a tracked creator/video's totalViews crosses a round-number threshold
+   (e.g. 1M / 5M / 10M)
+→ dedup check: has this (creatorId or videoId, threshold) already fired?
+→ Discord webhook (6.2)
+```
+
+- Leaderboard: no new ranking logic needed — `rank_videos` with `FASTEST_GROWING` or a period-based type (`7d_trending`) already computes exactly this; the new work is a scheduled job to run it periodically and format the top N for a Discord message, reusing 6.2's webhook.
+- Milestone celebration needs one new piece of state: a small dedup store recording which `(creatorId or videoId, threshold)` pairs have already been announced, so the same milestone is never posted twice — the same shape of problem 4.6's deferred delivered-event dedup already describes for `newVideo`, applied here to a different trigger condition.
+- Threshold list (1M/5M/10M, etc.) should be configurable, not hardcoded, so it can be tuned per creator scale without a code change.
+
+#### Definition of Done
+
+- A periodic leaderboard post reaches the group's Discord channel via 6.2's webhook, built from `trending.py`'s existing ranking output with no new ranking math.
+- A tracked creator/video crossing a configured view-count threshold triggers exactly one celebration post — never duplicated on a later run.
+- Both reuse 6.2's webhook delivery; neither requires a user account, `clientId`-level preference, or new personalization system.
+
+#### Out of Scope Initially
+
+- Per-user opt-out of leaderboard/milestone posts (channel-wide content, not an individual notification preference, unlike 4.6/6.1/6.2).
+- Subscriber-count milestones (only view-count data is currently collected; subscriber counts are not yet part of the collector's data model).
+
+---
+
+### Future Candidates for Phase 6 (not yet scoped)
+
+Discussed as differentiators beyond LLM features and beyond what YouTube/Google/ChatGPT/Holodex/the community's current Discord bot already offer this audience; not yet written up as sub-sections:
+
+```text
+Per-user watchlist with growth-anomaly / view-milestone notifications
+Per-video historical growth timeline ("since upload" replay)
+Shareable growth report card (image/link) for social sharing
+Collab detection (tracked creator appearing in another creator's video/stream)
+Personalized "my oshi" home view (default-filtered to a user's followed members)
+```
+
+Deferred until the audience moves beyond one private fan group (public/commercial readiness — not yet scoped as Phase 6 sub-sections):
+
+```text
+User accounts / cross-device sync (beyond 4.3's anonymous clientId)
+Privacy Policy / Terms of Service, YouTube API branding/display compliance
+Public status page / SLA for collector freshness
+Application-layer abuse protection on public push/API endpoints
+```
+
+---
+
 ## Current Priority
 
 Phase 1 (Local Data Collection Foundation, sections 1.1–1.6) is implemented and running locally against the real YouTube API.
@@ -1872,6 +2061,7 @@ Phase 1
 → Phase 3
 → Phase 4
 → Phase 5
+→ Phase 6
 ```
 
 Implementation must proceed one numbered sub-section at a time.
