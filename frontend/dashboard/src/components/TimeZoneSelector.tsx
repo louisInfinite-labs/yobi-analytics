@@ -21,6 +21,7 @@ const FALLBACK_ZONES = [
   "Australia/Sydney",
 ]
 
+/** Return every IANA zone the engine knows about, or a small curated fallback list. */
 function listSupportedZones(): string[] {
   const supportedValuesOf = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf
   try {

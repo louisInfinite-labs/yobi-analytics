@@ -11,6 +11,7 @@ interface ChannelTypeFilterProps {
   onChange: (value: ChannelType | null) => void
 }
 
+/** Member / Group / Staff single-select filter. */
 export function ChannelTypeFilter({ value, onChange }: ChannelTypeFilterProps) {
   return (
     <div className="filter-row">

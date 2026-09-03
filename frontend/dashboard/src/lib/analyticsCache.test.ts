@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { isNewer, readCache, writeCache, type CacheEntry, type CacheKey } from "./analyticsCache"
 
+/** A minimal in-memory Storage implementation, isolated per test (no shared jsdom localStorage state). */
 function memoryStorage(): Storage {
   const store = new Map<string, string>()
   return {
@@ -15,6 +16,7 @@ function memoryStorage(): Storage {
   }
 }
 
+/** Build a minimal CacheEntry for a test, overriding only the given fields. */
 function entry(overrides: Partial<CacheEntry> = {}): CacheEntry {
   return {
     timeZone: "Asia/Tokyo",
@@ -54,6 +56,18 @@ describe("readCache / writeCache", () => {
   it("readCache returns null for corrupt JSON rather than throwing", () => {
     const storage = memoryStorage()
     storage.setItem("yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d", "{not json")
+    expect(readCache(key, storage)).toBeNull()
+  })
+
+  it("readCache returns null for a stored value missing required fields, not just a wrong-key mismatch", () => {
+    // Matches the identity fields but is otherwise incomplete (e.g. an
+    // older app version's shape, or a partially-written value) — a bare
+    // `as CacheEntry` type assertion would let this through unchecked.
+    const storage = memoryStorage()
+    storage.setItem(
+      "yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d",
+      JSON.stringify({ timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d" }),
+    )
     expect(readCache(key, storage)).toBeNull()
   })
 

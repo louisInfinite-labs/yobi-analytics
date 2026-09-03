@@ -32,6 +32,7 @@ interface VideoStatsTableProps {
   timeZone: string
 }
 
+/** Searchable, sortable, paginated video statistics table. */
 export function VideoStatsTable({ stats, timeZone }: VideoStatsTableProps) {
   const [search, setSearch] = useState("")
   const [sortKey, setSortKey] = useState<SortKey>("dailyIncrease")

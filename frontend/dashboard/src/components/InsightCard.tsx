@@ -4,6 +4,7 @@ interface InsightCardProps {
   text: string
 }
 
+/** One concise data-driven observation row. */
 export function InsightCard({ text }: InsightCardProps) {
   return (
     <div className="card insight-card">

@@ -10,6 +10,7 @@ import {
 } from "../lib/filterState"
 import type { ChannelType, ContentFormat, ContentTagKey, GroupKey, LifecycleStage, OrganizationKey } from "../types/domain"
 
+/** React state wrapper around lib/filterState.ts's pure hierarchical-narrowing functions. */
 export function useFilterState() {
   const [state, setState] = useState<FilterState>(EMPTY_FILTER_STATE)
 

@@ -20,13 +20,18 @@ export function formatSignedCompactNumber(value: number): string {
   return `${sign}${formatCompactNumber(value)}`
 }
 
-/** Render an ISO timestamp in the given IANA time zone, e.g. "Sep 3, 18:00". */
+/** Render an ISO timestamp in the given IANA time zone, e.g. "Sep 3, 18:00".
+ *
+ * hourCycle: "h23" is required — the "en-US" locale's own default is
+ * 12-hour with AM/PM (e.g. "06:00 PM"), which doesn't match this format's
+ * documented 24-hour output. */
 export function formatTimeInZone(isoTimestamp: string, timeZone: string): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hourCycle: "h23",
     timeZone,
   }).format(new Date(isoTimestamp))
 }

@@ -63,10 +63,12 @@ export const THEME_PRESETS: Record<string, ThemePreset> = {
 
 export const DEFAULT_THEME_ID = "hololive-jp"
 
+/** Map a creator's organization to its default theme group. */
 export function themeGroupForOrganization(organization: "hololive" | "vspo"): ThemeGroup {
   return organization === "hololive" ? "hololive-jp" : "vspo-jp"
 }
 
+/** Human-readable label for a ThemeVisualMode. */
 export function visualModeLabel(mode: ThemeVisualMode): string {
   switch (mode) {
     case "soft-idol":

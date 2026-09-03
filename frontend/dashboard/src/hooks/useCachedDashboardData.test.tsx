@@ -5,6 +5,7 @@ import { useCachedDashboardData } from "./useCachedDashboardData"
 
 const key: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d" }
 
+/** Build a minimal CacheEntry for a test, overriding only the given fields. */
 function entry(overrides: Partial<CacheEntry> = {}): CacheEntry {
   return {
     timeZone: "Asia/Tokyo",

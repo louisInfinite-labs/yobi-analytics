@@ -3,6 +3,7 @@ import { mockCreators } from "./mockCreators"
 
 const creatorByChannel = Object.fromEntries(mockCreators.map((c) => [c.channelId, c]))
 
+/** Build one mock DailyVideoStat, filling in its owning creator's classification fields. */
 function stat(partial: Omit<DailyVideoStat, "channelName" | "organization" | "branch" | "groupKey" | "channelType" | "lifecycleStage"> & { channelId: string }): DailyVideoStat {
   const creator = creatorByChannel[partial.channelId]
   if (!creator) throw new Error(`Unknown mock channelId: ${partial.channelId}`)

@@ -10,6 +10,7 @@ interface KpiCardProps {
   formatAsCompactNumber?: boolean
 }
 
+/** A single labeled metric card, optionally with a growth badge and extra sub-content. */
 export function KpiCard({ label, value, growthPercent, sub, formatAsCompactNumber = true }: KpiCardProps) {
   const displayValue = typeof value === "number" && formatAsCompactNumber ? formatCompactNumber(value) : value
 

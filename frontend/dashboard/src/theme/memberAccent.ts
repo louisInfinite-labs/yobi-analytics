@@ -20,6 +20,7 @@ const PALETTE: MemberAccent[] = [
   { primary: "#d97b3f", soft: "#f7ded0", textAccent: "#8a4a1f" }, // soft orange
 ]
 
+/** Simple deterministic string hash (djb2-style), used to pick a stable palette index. */
 function hashString(value: string): number {
   let hash = 0
   for (let i = 0; i < value.length; i++) {
@@ -28,6 +29,7 @@ function hashString(value: string): number {
   return hash
 }
 
+/** Return this creator's deterministic small-area accent color from the shared palette. */
 export function getMemberAccent(channelId: string): MemberAccent {
   const index = hashString(channelId) % PALETTE.length
   return PALETTE[index]

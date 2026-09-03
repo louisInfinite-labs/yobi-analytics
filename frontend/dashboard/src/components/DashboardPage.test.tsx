@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest"
 import { MemberThemeProvider } from "../theme/MemberThemeProvider"
 import { DashboardPage } from "./DashboardPage"
 
+/** Render DashboardPage wrapped in the theme provider it requires. */
 function renderDashboard() {
   return render(
     <MemberThemeProvider>

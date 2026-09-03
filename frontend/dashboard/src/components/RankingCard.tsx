@@ -14,6 +14,7 @@ interface RankingCardProps {
   stats: DailyVideoStat[]
 }
 
+/** Trending/Most Viewed/Fastest Growing top-5 ranking with its own type switch. */
 export function RankingCard({ stats }: RankingCardProps) {
   const [rankingType, setRankingType] = useState<RankingType>("trending")
   const ranked = rankVideos(stats, rankingType, 5)

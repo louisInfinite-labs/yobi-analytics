@@ -26,6 +26,7 @@ export function rankVideos(stats: DailyVideoStat[], rankingType: RankingType, li
   return limited.map((entry, index) => ({ rank: index + 1, video: entry.video, value: entry.value }))
 }
 
+/** The value video should be ranked by for rankingType, or null if not rankable (not status "ok"). */
 function metricFor(video: DailyVideoStat, rankingType: RankingType): number | null {
   if (video.status !== "ok") return null
   switch (rankingType) {

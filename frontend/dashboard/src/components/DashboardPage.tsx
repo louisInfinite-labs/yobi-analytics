@@ -23,13 +23,15 @@ import { EmptyState } from "./states/EmptyState"
 import { ErrorState } from "./states/ErrorState"
 import { LoadingState } from "./states/LoadingState"
 
-// Stands in for the future Roadmap 3.4 Read API call — currently resolves
-// the mock fixture after a short delay so the cache-then-refresh flow
-// (Roadmap 3.6) is real, not simulated away. Swapping this for an actual
-// fetch() is the only change 3.4's wiring needs to make here — a real
-// Read API call already returns period-specific growth values directly, so
-// scaleStatsForPeriod (a mock-only stand-in for that) goes away too, not
-// just this setTimeout.
+/**
+ * Stands in for the future Roadmap 3.4 Read API call — currently resolves
+ * the mock fixture after a short delay so the cache-then-refresh flow
+ * (Roadmap 3.6) is real, not simulated away. Swapping this for an actual
+ * fetch() is the only change 3.4's wiring needs to make here — a real
+ * Read API call already returns period-specific growth values directly, so
+ * scaleStatsForPeriod (a mock-only stand-in for that) goes away too, not
+ * just this setTimeout.
+ */
 function fetchAnalytics(reportDate: string, period: Period): Promise<CacheEntry> {
   return new Promise((resolve) => {
     setTimeout(() => {
@@ -45,6 +47,8 @@ function fetchAnalytics(reportDate: string, period: Period): Promise<CacheEntry>
   })
 }
 
+/** Top-level composition: wires cache-backed data, filters, and every
+ * KPI/chart/ranking/table view together behind one shared filter state. */
 export function DashboardPage() {
   const [period, setPeriod] = useState<Period>("1d")
   const [timeZone, setTimeZone] = useState(detectDeviceTimeZone)
@@ -64,7 +68,7 @@ export function DashboardPage() {
 
   const kpis = useMemo(() => deriveKpis(filteredStats), [filteredStats])
   const contributions = useMemo(() => deriveChannelContribution(filteredStats), [filteredStats])
-  const insights = useMemo(() => deriveInsights(filteredStats), [filteredStats])
+  const insights = useMemo(() => deriveInsights(filteredStats, period), [filteredStats, period])
 
   const byChannel = useMemo(
     () => contributions.slice(0, 8).map((c) => ({ label: c.channelName, value: c.dailyIncrease })),
@@ -131,7 +135,7 @@ export function DashboardPage() {
           </div>
 
           <div className="dashboard-grid__side">
-            <AnimatedRingChart contributions={contributions} />
+            <AnimatedRingChart contributions={contributions} period={period} />
             <RankingCard stats={filteredStats} />
           </div>
 

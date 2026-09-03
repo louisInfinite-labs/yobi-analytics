@@ -35,13 +35,14 @@ export function setOrganization(state: FilterState, organization: OrganizationKe
   return { ...state, organization, branch, groupKey }
 }
 
+/** Set the branch filter, clearing it (and any now-invalid groupKey) if it
+ * doesn't belong to the current organization — defensive, mirroring
+ * setOrganization: the UI only ever offers branches already scoped to
+ * state.organization (BranchFilter's own `options` prop), but this function
+ * is exported standalone, so a caller passing an inconsistent branch must
+ * not be allowed to produce an inconsistent (organization, branch) pair. */
 export function setBranch(state: FilterState, branch: BranchKey | null, creators: MockCreator[]): FilterState {
   if (branch === state.branch) return state
-  // Defensive, mirroring setOrganization: the UI only ever offers branches
-  // already scoped to state.organization (BranchFilter's own `options`
-  // prop), but this function is exported standalone, so a caller passing a
-  // branch that doesn't belong to the current organization must not be
-  // allowed to produce an inconsistent (organization, branch) pair.
   const validBranches = new Set(
     creators.filter((c) => state.organization === null || c.organization === state.organization).map((c) => c.branch),
   )
@@ -50,6 +51,7 @@ export function setBranch(state: FilterState, branch: BranchKey | null, creators
   return { ...state, branch: validBranch, groupKey }
 }
 
+/** Drop any selected groupKey no longer valid under the given organization/branch scope. */
 function filterValidGroupKeys(
   selected: GroupKey[],
   organization: OrganizationKey | null,
@@ -63,21 +65,25 @@ function filterValidGroupKeys(
   return selected.filter((key) => valid.has(key))
 }
 
+/** Add or remove one groupKey from the multi-select generation/unit filter. */
 export function toggleGroupKey(state: FilterState, key: GroupKey): FilterState {
   const has = state.groupKey.includes(key)
   return { ...state, groupKey: has ? state.groupKey.filter((k) => k !== key) : [...state.groupKey, key] }
 }
 
+/** Add or remove one tag from the multi-select content-tag filter. */
 export function toggleContentTag(state: FilterState, tag: ContentTagKey): FilterState {
   const has = state.contentTags.includes(tag)
   return { ...state, contentTags: has ? state.contentTags.filter((t) => t !== tag) : [...state.contentTags, tag] }
 }
 
+/** Every branch present among creators under the given organization (or all creators if null). */
 export function availableBranches(organization: OrganizationKey | null, creators: MockCreator[]): BranchKey[] {
   const scoped = organization ? creators.filter((c) => c.organization === organization) : creators
   return Array.from(new Set(scoped.map((c) => c.branch)))
 }
 
+/** Every groupKey present among creators under the given organization+branch scope, excluding the "NO" placeholder. */
 export function availableGroupKeys(organization: OrganizationKey | null, branch: BranchKey | null, creators: MockCreator[]): GroupKey[] {
   const scoped = creators.filter(
     (c) => (organization === null || c.organization === organization) && (branch === null || c.branch === branch),
@@ -106,6 +112,8 @@ export function matchesClassification(
   return true
 }
 
+/** Matches a video's content tags/format against the filter state — OR within
+ * contentTags, AND with contentFormat; an omitted dimension means "All". */
 export function matchesContent(
   item: { contentTags: ContentTagKey[]; contentFormat: ContentFormat },
   state: FilterState,

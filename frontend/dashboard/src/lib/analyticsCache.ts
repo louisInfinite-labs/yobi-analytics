@@ -20,6 +20,7 @@ export interface CacheEntry {
   results: DailyVideoStat[]
 }
 
+/** Build the localStorage key for one (timeZone, reportDate, period) cache slot. */
 function cacheKeyString(key: CacheKey): string {
   return `${CACHE_PREFIX}:${key.timeZone}:${key.reportDate}:${key.period}`
 }
@@ -32,16 +33,32 @@ export function readCache(key: CacheKey, storage?: Storage): CacheEntry | null {
   try {
     const raw = (storage ?? window.localStorage).getItem(cacheKeyString(key))
     if (!raw) return null
-    const parsed = JSON.parse(raw) as CacheEntry
-    if (parsed.timeZone !== key.timeZone || parsed.reportDate !== key.reportDate || parsed.period !== key.period) {
-      return null
-    }
-    return parsed
+    const parsed: unknown = JSON.parse(raw)
+    return isValidCacheEntry(parsed, key) ? parsed : null
   } catch {
     return null
   }
 }
 
+/** Runtime shape check for a value read out of localStorage — an older app
+ * version's entry, a partially-written value, or hand-edited storage could
+ * otherwise pass the identity check below despite missing `results`,
+ * `comparisonDate`, or `fetchedAt`, and a bare `as CacheEntry` type
+ * assertion would let it through as if it were valid. */
+function isValidCacheEntry(value: unknown, key: CacheKey): value is CacheEntry {
+  if (typeof value !== "object" || value === null) return false
+  const entry = value as Record<string, unknown>
+  return (
+    entry.timeZone === key.timeZone &&
+    entry.reportDate === key.reportDate &&
+    entry.period === key.period &&
+    typeof entry.comparisonDate === "string" &&
+    typeof entry.fetchedAt === "string" &&
+    Array.isArray(entry.results)
+  )
+}
+
+/** Write an entry to this exact (timeZone, reportDate, period) cache slot; never throws. */
 export function writeCache(key: CacheKey, entry: CacheEntry, storage?: Storage): void {
   try {
     ;(storage ?? window.localStorage).setItem(cacheKeyString(key), JSON.stringify(entry))

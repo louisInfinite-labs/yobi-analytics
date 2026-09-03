@@ -12,6 +12,7 @@ interface DashboardHeaderProps {
   onPeriodChange: (period: Period) => void
 }
 
+/** Page title, last-updated time, and the period/time-zone/theme controls. */
 export function DashboardHeader({ lastUpdatedAt, timeZone, onTimeZoneChange, period, onPeriodChange }: DashboardHeaderProps) {
   return (
     <header className="dashboard-header">

@@ -5,6 +5,7 @@ interface OrganizationFilterProps {
   onChange: (value: OrganizationKey | null) => void
 }
 
+/** Top-level Hololive / VSPO / All single-select filter. */
 export function OrganizationFilter({ value, onChange }: OrganizationFilterProps) {
   const options: (OrganizationKey | null)[] = [null, "hololive", "vspo"]
 

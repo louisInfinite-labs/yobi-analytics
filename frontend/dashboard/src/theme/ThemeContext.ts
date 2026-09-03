@@ -10,6 +10,7 @@ export interface ThemeContextValue {
 
 export const ThemeContext = createContext<ThemeContextValue | null>(null)
 
+/** Access the active theme preset and selector — throws outside MemberThemeProvider. */
 export function useMemberTheme(): ThemeContextValue {
   const ctx = useContext(ThemeContext)
   if (!ctx) throw new Error("useMemberTheme must be used within a MemberThemeProvider")

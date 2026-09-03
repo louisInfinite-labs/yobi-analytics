@@ -3,11 +3,8 @@
   "configurations": [
     {
       "name": "dashboard",
-      "runtimeExecutable": "C:\\Windows\\System32\\cmd.exe",
-      "runtimeArgs": [
-        "/c",
-        "set PATH=C:\\Users\\Louis\\tools\\node;%PATH% && cd /d C:\\Users\\Louis\\Documents\\yobi-analytics\\frontend\\dashboard && npm run dev -- --port 5173 --strictPort"
-      ],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend/dashboard", "run", "dev", "--", "--port", "5173", "--strictPort"],
       "port": 5173
     }
   ]

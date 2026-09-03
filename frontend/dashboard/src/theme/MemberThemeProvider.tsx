@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react"
 import { ThemeContext, type ThemeContextValue } from "./ThemeContext"
 import { DEFAULT_THEME_ID, THEME_PRESETS } from "./themePresets"
 
+/** Provides the active theme preset + CSS variables to every descendant. */
 export function MemberThemeProvider({ children }: { children: ReactNode }) {
   const [themeId, setThemeId] = useState(DEFAULT_THEME_ID)
   const theme = THEME_PRESETS[themeId] ?? THEME_PRESETS[DEFAULT_THEME_ID]

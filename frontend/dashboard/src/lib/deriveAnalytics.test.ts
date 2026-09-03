@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { DailyVideoStat } from "../types/domain"
 import { deriveChannelContribution, deriveKpis } from "./deriveAnalytics"
 
+/** Build a minimal DailyVideoStat for a test, overriding only the given fields. */
 function stat(overrides: Partial<DailyVideoStat> = {}): DailyVideoStat {
   return {
     date: "2026-09-03",

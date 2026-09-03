@@ -14,6 +14,7 @@ import {
   type FilterState,
 } from "./filterState"
 
+/** Apply both classification and content matching to the full mock fixture. */
 function matches(state: FilterState) {
   return mockVideoStats.filter((v) => matchesClassification(v, state) && matchesContent(v, state))
 }
