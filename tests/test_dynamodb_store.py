@@ -263,6 +263,39 @@ def test_save_daily_collection_rejects_requested_count_arithmetic_mismatch(dynam
         save_daily_collection([_snapshot(video_id="v1")], bad_summary, date(2026, 9, 1))
 
 
+def test_save_daily_collection_rejects_duplicate_skipped_video_id(dynamodb_tables):
+    """Two SkippedVideo entries for the same videoId would make the persisted
+    summary internally inconsistent about how many distinct videos were
+    actually skipped, even though the raw counts might still add up."""
+    bad_summary = SnapshotRunSummary(
+        snapshot_date="2026-09-01",
+        requested_count=3,
+        collected_count=1,
+        skipped=[
+            SkippedVideo(video_id="v2", reason="a"),
+            SkippedVideo(video_id="v2", reason="b"),
+        ],
+    )
+
+    with pytest.raises(SnapshotStoreError):
+        save_daily_collection([_snapshot(video_id="v1")], bad_summary, date(2026, 9, 1))
+
+
+def test_save_daily_collection_rejects_video_id_both_collected_and_skipped(dynamodb_tables):
+    """A videoId reported as both collected (has a snapshot) and skipped would
+    let the persisted summary contradict itself about that video's outcome,
+    even though collectedCount/requestedCount arithmetic alone wouldn't catch it."""
+    bad_summary = SnapshotRunSummary(
+        snapshot_date="2026-09-01",
+        requested_count=2,
+        collected_count=1,
+        skipped=[SkippedVideo(video_id="v1", reason="malformed item")],
+    )
+
+    with pytest.raises(SnapshotStoreError):
+        save_daily_collection([_snapshot(video_id="v1")], bad_summary, date(2026, 9, 1))
+
+
 def test_save_daily_collection_keeps_reservation_when_cleanup_also_fails(dynamodb_tables, monkeypatch):
     """If the snapshot batch write fails AND cleaning up the partial write also
     fails, the run summary reservation must be kept rather than released over
@@ -281,6 +314,28 @@ def test_save_daily_collection_keeps_reservation_when_cleanup_also_fails(dynamod
 
     resource = boto3.resource("dynamodb", region_name=AWS_REGION)
     assert "Item" in resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})
+
+
+def test_save_daily_collection_raises_when_summary_deletion_unconfirmed_after_cleanup_succeeds(
+    dynamodb_tables, monkeypatch
+):
+    """If the snapshot batch write fails, snapshot cleanup succeeds, but deleting
+    the run summary reservation itself cannot be confirmed, the caller must be
+    told explicitly — silently swallowing this would leave a stale reservation
+    that fails every future retry with FileExistsError, with only a misleading
+    'snapshot write failed' error to explain why."""
+    import dynamodb_store
+    from botocore.exceptions import ClientError
+
+    def _failing_snapshot_to_raw(snapshot):
+        raise ClientError({"Error": {"Code": "InternalServerError", "Message": "boom"}}, "PutItem")
+
+    monkeypatch.setattr(dynamodb_store, "_snapshot_to_raw", _failing_snapshot_to_raw)
+    monkeypatch.setattr(dynamodb_store, "_delete_snapshots_for_date", lambda snapshot_date: True)
+    monkeypatch.setattr(dynamodb_store, "_delete_run_summary", lambda snapshot_date: False)
+
+    with pytest.raises(SnapshotStoreError, match="could not be confirmed"):
+        save_daily_collection([_snapshot(video_id="v1")], _summary(collected=1), date(2026, 9, 1))
 
 
 def test_save_run_summary_standalone(dynamodb_tables):

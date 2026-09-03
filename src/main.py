@@ -101,7 +101,11 @@ def main() -> int:
                 # mid-stats quota exhaustion (handled below), this must
                 # return here rather than propagate into that handler.
                 if newly_discovered:
-                    upsert_videos(newly_discovered)
+                    try:
+                        upsert_videos(newly_discovered)
+                    except VideoMasterError as upsert_exc:
+                        print(f"Error: failed to persist discovered videos before stopping: {upsert_exc}")
+                        return 1
                 print(f"Error: YouTube quota exhausted during discovery: {exc}")
                 return 1
             except YouTubeAPIError as exc:

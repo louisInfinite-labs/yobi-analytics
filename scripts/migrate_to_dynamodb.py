@@ -186,6 +186,7 @@ def _existing_dynamo_day(snapshot_date_str: str) -> list[dict] | None:
     scan_kwargs = {
         "FilterExpression": "snapshotDate = :d",
         "ExpressionAttributeValues": {":d": snapshot_date_str},
+        "ConsistentRead": True,
     }
     while True:
         response = table.scan(**scan_kwargs)
@@ -199,7 +200,7 @@ def _existing_dynamo_day(snapshot_date_str: str) -> list[dict] | None:
 def _existing_dynamo_summary(snapshot_date_str: str) -> dict | None:
     """Return this date's existing DynamoDB run summary item (plain, Decimal-free), or None if absent."""
     table = boto3.resource("dynamodb").Table(RUN_SUMMARIES_TABLE)
-    item = table.get_item(Key={"snapshotDate": snapshot_date_str}).get("Item")
+    item = table.get_item(Key={"snapshotDate": snapshot_date_str}, ConsistentRead=True).get("Item")
     return _decimals_to_plain(item) if item else None
 
 

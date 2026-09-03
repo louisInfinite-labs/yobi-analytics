@@ -140,6 +140,24 @@ def save_daily_collection(
             f"Duplicate (videoId, snapshotDate) key(s) for {expected_date}: {sorted(duplicate_video_ids)}"
         )
 
+    seen_skipped_ids: set[str] = set()
+    duplicate_skipped_ids = set()
+    for skipped in run_summary.skipped:
+        if skipped.video_id in seen_skipped_ids:
+            duplicate_skipped_ids.add(skipped.video_id)
+        seen_skipped_ids.add(skipped.video_id)
+    if duplicate_skipped_ids:
+        raise SnapshotStoreError(
+            f"Duplicate skipped videoId(s) for {expected_date}: {sorted(duplicate_skipped_ids)}"
+        )
+
+    collected_and_skipped = seen_video_ids & seen_skipped_ids
+    if collected_and_skipped:
+        raise SnapshotStoreError(
+            f"videoId(s) reported as both collected and skipped for {expected_date}: "
+            f"{sorted(collected_and_skipped)}"
+        )
+
     if run_summary.collected_count != len(snapshots):
         raise SnapshotStoreError(
             f"Run summary collectedCount ({run_summary.collected_count}) does not match "
@@ -161,14 +179,21 @@ def save_daily_collection(
                 batch.put_item(Item=_snapshot_to_raw(snapshot))
     except ClientError as exc:
         cleanup_succeeded = _delete_snapshots_for_date(snapshot_date)
-        if cleanup_succeeded:
-            _delete_run_summary(snapshot_date)
-            raise SnapshotStoreError(f"Failed to write to {SNAPSHOTS_TABLE}: {exc}") from exc
-        raise SnapshotStoreError(
-            f"Failed to write to {SNAPSHOTS_TABLE}: {exc}. Cleanup of the partial write also failed, "
-            f"so the {expected_date} run summary reservation was deliberately left in place rather than "
-            "released over unconfirmed-clean data — manual cleanup is required before this date can be retried."
-        ) from exc
+        if not cleanup_succeeded:
+            raise SnapshotStoreError(
+                f"Failed to write to {SNAPSHOTS_TABLE}: {exc}. Cleanup of the partial write also failed, "
+                f"so the {expected_date} run summary reservation was deliberately left in place rather than "
+                "released over unconfirmed-clean data — manual cleanup is required before this date can be retried."
+            ) from exc
+        summary_deleted = _delete_run_summary(snapshot_date)
+        if not summary_deleted:
+            raise SnapshotStoreError(
+                f"Failed to write to {SNAPSHOTS_TABLE}: {exc}. Snapshot cleanup succeeded, but deleting the "
+                f"{expected_date} run summary reservation could not be confirmed — manual cleanup is required "
+                "before this date can be retried, otherwise every retry will fail against a reservation that "
+                "may still exist."
+            ) from exc
+        raise SnapshotStoreError(f"Failed to write to {SNAPSHOTS_TABLE}: {exc}") from exc
 
     return (
         f"DynamoDB table {SNAPSHOTS_TABLE} (snapshotDate={expected_date})",
@@ -212,16 +237,19 @@ def _delete_snapshots_for_date(snapshot_date: date) -> bool:
         return False
 
 
-def _delete_run_summary(snapshot_date: date) -> None:
-    """Best-effort rollback of a run summary reservation after a failed snapshot
-    batch write. Swallows its own failures rather than masking the original
-    error that triggered the rollback — a retry will simply hit the same
-    conditional-put check again if this delete didn't take.
+def _delete_run_summary(snapshot_date: date) -> bool:
+    """Delete a run summary reservation after a failed snapshot batch write.
+
+    Returns True if the deletion completed, False if it failed — the caller
+    must not treat a False result as "reservation gone", or every retry for
+    this date will keep failing FileExistsError against a reservation that
+    may still be present (see save_daily_collection).
     """
     try:
         _resource().Table(RUN_SUMMARIES_TABLE).delete_item(Key={"snapshotDate": snapshot_date.isoformat()})
+        return True
     except ClientError:
-        pass
+        return False
 
 
 def _put_run_summary_exclusive(summary: SnapshotRunSummary, snapshot_date: date) -> None:
