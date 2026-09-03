@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list
@@ -129,7 +130,7 @@ def _parse_video(raw: dict) -> Video:
             last_classification_reason=_optional_str(raw, "lastClassificationReason", video_id),
             last_percent_growth_per_day=_optional_float(raw, "lastPercentGrowthPerDay", video_id),
             last_avg_views_per_day=_optional_float(raw, "lastAvgViewsPerDay", video_id),
-            discovered_at=_optional_str(raw, "discoveredAt", video_id),
+            discovered_at=_optional_iso_datetime_str(raw, "discoveredAt", video_id),
         )
     except (KeyError, TypeError) as exc:
         raise VideoMasterError(f"Malformed Video Master record, missing/invalid field: {exc}") from exc
@@ -150,6 +151,26 @@ def _optional_str(raw: dict, field: str, video_id: str) -> str | None:
         return None
     if not isinstance(value, str):
         raise VideoMasterError(f"Video {video_id!r} has non-string {field!r}: {value!r}")
+    return value
+
+
+def _optional_iso_datetime_str(raw: dict, field: str, video_id: str) -> str | None:
+    """Return raw[field] as a string if present and non-null, requiring it
+    parse as an ISO 8601 datetime, else None.
+
+    read_api.py calls datetime.fromisoformat(video.discovered_at) directly
+    (Roadmap 3.4's per-video earliest_available_date) — validating the
+    format here, at load time, means a malformed persisted value surfaces
+    as a clear VideoMasterError instead of crashing a later, unrelated
+    growth/trending request.
+    """
+    value = _optional_str(raw, field, video_id)
+    if value is None:
+        return None
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        raise VideoMasterError(f"Video {video_id!r} has invalid {field!r}: {value!r}") from None
     return value
 
 
