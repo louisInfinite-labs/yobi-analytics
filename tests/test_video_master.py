@@ -190,6 +190,47 @@ def test_scheduler_state_fields_round_trip(tmp_path):
     assert load_videos(path) == [video]
 
 
+def test_discovered_at_round_trips(tmp_path):
+    """A video's discoveredAt survives a write/read round trip."""
+    path = tmp_path / "video_master.json"
+    video = Video(
+        video_id="v1",
+        creator_id="aizawa_ema",
+        title="A",
+        published_at="2026-08-20T00:00:00Z",
+        discovered_at="2026-09-01T18:00:00+09:00",
+    )
+
+    upsert_videos([video], path)
+
+    assert load_videos(path) == [video]
+
+
+@pytest.mark.parametrize("bad_value", ["", "not-a-timestamp", "2026-13-40T00:00:00Z"])
+def test_malformed_discovered_at_is_rejected(tmp_path, bad_value):
+    """A discoveredAt that isn't a parseable ISO 8601 timestamp is rejected at
+    load time instead of surfacing as a ValueError later, in read_api.py's
+    datetime.fromisoformat(video.discovered_at) call."""
+    path = tmp_path / "video_master.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "videoId": "v1",
+                    "creatorId": "aizawa_ema",
+                    "title": "A",
+                    "publishedAt": "2026-08-20T00:00:00Z",
+                    "discoveredAt": bad_value,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(VideoMasterError):
+        load_videos(path)
+
+
 def test_non_numeric_velocity_field_is_rejected(tmp_path):
     """A non-numeric 'lastAvgViewsPerDay' is rejected instead of silently accepted."""
     path = tmp_path / "video_master.json"

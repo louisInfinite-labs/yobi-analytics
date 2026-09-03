@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list
@@ -47,6 +48,14 @@ class Video:
     # is "bootstrap_first_snapshot" (no prior observation to measure against).
     last_percent_growth_per_day: float | None = None
     last_avg_views_per_day: float | None = None
+    # When this project's own collector first discovered/started tracking
+    # this video — distinct from `published_at` (when it went up on
+    # YouTube), which can predate onboarding by years for a channel's back
+    # catalog picked up by Initial Discovery. None for a record written
+    # before this field existed; read_api.py falls back to the global
+    # COLLECTION_START_DATE in that case (Roadmap 3.4's documented
+    # simplification for pre-existing records).
+    discovered_at: str | None = None
 
 
 def load_videos(path: Path = DEFAULT_VIDEO_MASTER_PATH) -> list[Video]:
@@ -96,10 +105,10 @@ def _parse_video(raw: dict) -> Video:
     """Convert a raw Video Master JSON record into a Video instance.
 
     activityState/lastCheckedAt/lastViewCount/snapshotCount/quietStreak/
-    lastClassificationReason/lastPercentGrowthPerDay/lastAvgViewsPerDay are
-    all optional with bootstrap-equivalent defaults, so records written
-    before Roadmap 1.5's scheduler-state fields existed still parse — as if
-    never yet classified.
+    lastClassificationReason/lastPercentGrowthPerDay/lastAvgViewsPerDay/
+    discoveredAt are all optional with bootstrap-equivalent defaults, so
+    records written before Roadmap 1.5's scheduler-state fields (or before
+    discoveredAt) existed still parse — as if never yet classified.
     """
     try:
         video_id = _require_str(raw, "videoId")
@@ -121,6 +130,7 @@ def _parse_video(raw: dict) -> Video:
             last_classification_reason=_optional_str(raw, "lastClassificationReason", video_id),
             last_percent_growth_per_day=_optional_float(raw, "lastPercentGrowthPerDay", video_id),
             last_avg_views_per_day=_optional_float(raw, "lastAvgViewsPerDay", video_id),
+            discovered_at=_optional_iso_datetime_str(raw, "discoveredAt", video_id),
         )
     except (KeyError, TypeError) as exc:
         raise VideoMasterError(f"Malformed Video Master record, missing/invalid field: {exc}") from exc
@@ -141,6 +151,26 @@ def _optional_str(raw: dict, field: str, video_id: str) -> str | None:
         return None
     if not isinstance(value, str):
         raise VideoMasterError(f"Video {video_id!r} has non-string {field!r}: {value!r}")
+    return value
+
+
+def _optional_iso_datetime_str(raw: dict, field: str, video_id: str) -> str | None:
+    """Return raw[field] as a string if present and non-null, requiring it
+    parse as an ISO 8601 datetime, else None.
+
+    read_api.py calls datetime.fromisoformat(video.discovered_at) directly
+    (Roadmap 3.4's per-video earliest_available_date) — validating the
+    format here, at load time, means a malformed persisted value surfaces
+    as a clear VideoMasterError instead of crashing a later, unrelated
+    growth/trending request.
+    """
+    value = _optional_str(raw, field, video_id)
+    if value is None:
+        return None
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        raise VideoMasterError(f"Video {video_id!r} has invalid {field!r}: {value!r}") from None
     return value
 
 
@@ -197,4 +227,5 @@ def _to_raw(video: Video) -> dict:
         "lastClassificationReason": video.last_classification_reason,
         "lastPercentGrowthPerDay": video.last_percent_growth_per_day,
         "lastAvgViewsPerDay": video.last_avg_views_per_day,
+        "discoveredAt": video.discovered_at,
     }
