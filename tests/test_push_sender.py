@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import pytest
+import requests
 from pywebpush import WebPushException
 
 import push_sender
@@ -52,6 +53,19 @@ def test_parse_subscription_accepts_a_well_formed_subscription():
 def test_parse_subscription_rejects_malformed_values(bad_value):
     with pytest.raises(InvalidSubscriptionError):
         parse_subscription(bad_value)
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://fcm.googleapis.com/fcm/send/abc123",  # not HTTPS
+        "https://evil.example.com/fcm/send/abc123",  # not an approved push service
+        "https://fcm.googleapis.com.evil.example.com/fcm/send/abc123",  # lookalike host
+    ],
+)
+def test_parse_subscription_rejects_an_endpoint_outside_the_allowlist(endpoint):
+    with pytest.raises(InvalidSubscriptionError):
+        parse_subscription(_subscription(endpoint=endpoint))
 
 
 # --- build_payload -------------------------------------------------------
@@ -180,3 +194,53 @@ def test_send_push_notification_treats_a_response_less_exception_as_transient_no
 
     assert result.sent is False
     assert result.subscription_expired is False
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        requests.Timeout("timed out"),
+        requests.ConnectionError("connection refused"),
+        requests.TooManyRedirects("redirected"),  # _PUSH_SESSION's max_redirects=0
+    ],
+)
+def test_send_push_notification_treats_a_transport_failure_as_transient_not_expired(monkeypatch, exc):
+    def _boom(**kwargs):
+        raise exc
+
+    monkeypatch.setattr(push_sender, "webpush", _boom)
+
+    result = send_push_notification(
+        _subscription(),
+        title="t",
+        body="b",
+        data=None,
+        vapid_private_key="fake-key",
+        vapid_claims={"sub": "mailto:test@example.com"},
+    )
+
+    assert result.sent is False
+    assert result.subscription_expired is False
+    assert result.error is not None
+
+
+def test_send_push_notification_passes_a_bounded_timeout_and_the_hardened_session(monkeypatch):
+    captured = {}
+
+    def _fake_webpush(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(push_sender, "webpush", _fake_webpush)
+
+    send_push_notification(
+        _subscription(),
+        title="t",
+        body="b",
+        data=None,
+        vapid_private_key="fake-key",
+        vapid_claims={"sub": "mailto:test@example.com"},
+    )
+
+    assert captured["timeout"] == push_sender._PUSH_REQUEST_TIMEOUT_SECONDS
+    assert captured["requests_session"] is push_sender._PUSH_SESSION
+    assert captured["requests_session"].max_redirects == 0

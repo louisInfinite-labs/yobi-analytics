@@ -25,8 +25,36 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
+import requests
 from pywebpush import WebPushException, webpush
+
+# The only Web Push services a real browser subscription can ever point to
+# for this project's supported browsers (module docstring: Chrome/Edge via
+# Google FCM, Firefox via Mozilla) — a stored subscription is untrusted data
+# (Roadmap 4.5's opaque store), so an endpoint outside this allowlist is
+# rejected rather than handed to pywebpush, which would otherwise POST the
+# VAPID-signed payload to whatever host the stored value names.
+_ALLOWED_PUSH_ENDPOINT_HOSTS = frozenset(
+    {
+        "fcm.googleapis.com",  # Chrome / Edge
+        "updates.push.services.mozilla.com",  # Firefox
+    }
+)
+
+# Bounded so a slow/unresponsive push service can't hang the caller (e.g. a
+# Lambda invocation) indefinitely.
+_PUSH_REQUEST_TIMEOUT_SECONDS = 10.0
+
+# max_redirects=0 makes `requests` raise TooManyRedirects on any redirect
+# response instead of following it — the push service's own endpoint URL is
+# already the correct destination, so a redirect (which could point off the
+# approved allowlist, including cross-origin) is always a reason to stop,
+# never a reason to follow. Module-level and reused across calls so a warm
+# Lambda container keeps its connection pool.
+_PUSH_SESSION = requests.Session()
+_PUSH_SESSION.max_redirects = 0
 
 
 class InvalidSubscriptionError(ValueError):
@@ -54,6 +82,12 @@ def parse_subscription(raw: Any) -> dict[str, Any]:
     endpoint = raw.get("endpoint")
     if not isinstance(endpoint, str) or not endpoint:
         raise InvalidSubscriptionError("subscription.endpoint is required and must be a non-empty string")
+    parsed_endpoint = urlparse(endpoint)
+    if parsed_endpoint.scheme != "https" or parsed_endpoint.hostname not in _ALLOWED_PUSH_ENDPOINT_HOSTS:
+        raise InvalidSubscriptionError(
+            f"subscription.endpoint must be an HTTPS URL from an approved Web Push service "
+            f"({sorted(_ALLOWED_PUSH_ENDPOINT_HOSTS)}), got {endpoint!r}"
+        )
     keys = raw.get("keys")
     if not isinstance(keys, dict):
         raise InvalidSubscriptionError("subscription.keys is required and must be an object")
@@ -109,9 +143,17 @@ def send_push_notification(
             data=payload,
             vapid_private_key=vapid_private_key,
             vapid_claims=dict(vapid_claims),
+            timeout=_PUSH_REQUEST_TIMEOUT_SECONDS,
+            requests_session=_PUSH_SESSION,
         )
     except WebPushException as exc:
         status_code = exc.response.status_code if exc.response is not None else None
         return PushResult(sent=False, subscription_expired=status_code in (404, 410), error=str(exc))
+    except requests.RequestException as exc:
+        # A transport-level failure (timeout, connection error, or a
+        # rejected redirect from _PUSH_SESSION's max_redirects=0) never
+        # reached the push service well enough to know the subscription is
+        # gone — always transient, matching the "not expired" branch above.
+        return PushResult(sent=False, subscription_expired=False, error=str(exc))
 
     return PushResult(sent=True, subscription_expired=False)

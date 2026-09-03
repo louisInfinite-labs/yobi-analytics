@@ -336,6 +336,48 @@ def test_get_creator_trending_returns_ranked_response(monkeypatch):
     assert response["results"][1]["rank"] == 2
 
 
+def test_get_creator_trending_reports_the_oldest_result_as_last_updated_at(monkeypatch):
+    """The trending list's own lastUpdatedAt is the oldest among its results
+    (Roadmap 4.1's normalized contract), not the freshest — a list is only
+    as current as its stalest entry. Both videos share the same report_date
+    (both status "ok", so both are ranked), but v2's point was actually
+    observed earlier in that day's collection run than v1's."""
+    _trending_fixture(
+        monkeypatch,
+        creators=[_creator()],
+        videos=[
+            _video(video_id="v1", creator_id="aizawa_ema"),
+            _video(video_id="v2", creator_id="aizawa_ema", title="Video Two"),
+        ],
+        snapshots={
+            ("v1", "2026-09-01"): _snapshot("2026-09-01", 1240, video_id="v1"),
+            ("v1", "2026-08-25"): _snapshot("2026-08-25", 1000, video_id="v1"),
+            ("v2", "2026-09-01"): _snapshot(
+                "2026-09-01", 500, video_id="v2", observed_at="2026-09-01T10:00:00+09:00"
+            ),
+            ("v2", "2026-08-25"): _snapshot("2026-08-25", 100, video_id="v2"),
+        },
+    )
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "7d"}
+    )
+
+    assert {entry["videoId"] for entry in response["results"]} == {"v1", "v2"}
+    assert response["lastUpdatedAt"] == "2026-09-01T10:00:00+09:00"
+
+
+def test_get_creator_trending_reports_no_last_updated_at_when_there_are_no_results(monkeypatch):
+    _trending_fixture(monkeypatch, creators=[_creator()], videos=[], snapshots={})
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "7d"}
+    )
+
+    assert response["results"] == []
+    assert response["lastUpdatedAt"] is None
+
+
 def test_get_creator_trending_respects_limit(monkeypatch):
     _trending_fixture(
         monkeypatch,

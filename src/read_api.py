@@ -316,9 +316,22 @@ def _trending_response(
         "comparisonDate": comparison_date(report_date, period).isoformat(),
         "period": period,
         "rankingType": ranking_type,
+        "lastUpdatedAt": _aggregate_last_updated_at(ranked),
         **scope,
         "results": [_ranked_entry_to_dict(entry) for entry in ranked],
     }
+
+
+def _aggregate_last_updated_at(ranked: list[RankedEntry]) -> str | None:
+    """The trending list's own freshness: the oldest lastUpdatedAt among its results.
+
+    A list is only as fresh as its stalest entry — reporting the newest
+    entry's timestamp would overstate how current the rest of the list is.
+    None (Roadmap 3.4's own "no value" convention) when ranked is empty or
+    no entry carries a timestamp, rather than fabricating one.
+    """
+    timestamps = [entry.result.last_updated_at for entry in ranked if entry.result.last_updated_at is not None]
+    return min(timestamps) if timestamps else None
 
 
 def _ranked_entry_to_dict(entry: RankedEntry) -> dict[str, Any]:
