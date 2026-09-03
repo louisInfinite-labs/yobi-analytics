@@ -209,7 +209,11 @@ def _delete_snapshots_for_date(snapshot_date: date) -> bool:
     run that was never actually recorded as complete (see save_daily_collection).
     No GSI on snapshotDate yet, so this is a filtered Scan (Roadmap 2.3's
     documented "later optimization"), acceptable here since a rollback is an
-    exceptional path, not the steady state.
+    exceptional path, not the steady state. ConsistentRead=True so this scan
+    cannot miss an item the just-failed batch write already committed — an
+    eventually-consistent read could otherwise return True over snapshots
+    that are still actually present, letting the caller release the run
+    summary reservation too early.
     """
     expected_date = snapshot_date.isoformat()
     table = _resource().Table(SNAPSHOTS_TABLE)
@@ -219,6 +223,7 @@ def _delete_snapshots_for_date(snapshot_date: date) -> bool:
             "FilterExpression": "snapshotDate = :d",
             "ProjectionExpression": "videoId, snapshotDate",
             "ExpressionAttributeValues": {":d": expected_date},
+            "ConsistentRead": True,
         }
         while True:
             response = table.scan(**scan_kwargs)
