@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -8,6 +9,7 @@ from snapshot_store import (
     Snapshot,
     SnapshotRunSummary,
     SnapshotStoreError,
+    coerce_view_count,
     get_snapshot,
     load_snapshots_for_date,
     run_summary_path_for,
@@ -264,3 +266,65 @@ def test_get_snapshot_returns_the_matching_video(tmp_path):
     assert found is not None
     assert found.video_id == "v2"
     assert found.view_count == 200
+
+
+def test_load_snapshots_for_date_rejects_a_string_view_count(tmp_path):
+    """A hand-edited/corrupt JSON file with a string viewCount must be rejected,
+    not passed through — calculate_growth would otherwise raise an uncaught
+    TypeError subtracting a str from an int."""
+    path = tmp_path / "2026-08-29.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "snapshotDate": "2026-08-29",
+                    "observedAt": "2026-08-29T00:00:05+00:00",
+                    "creatorId": "aizawa_ema",
+                    "videoId": "v1",
+                    "title": "A",
+                    "publishedAt": "2026-08-25T12:00:00Z",
+                    "viewCount": "10230",
+                    "organization": "vspo",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SnapshotStoreError):
+        load_snapshots_for_date(date(2026, 8, 29), tmp_path)
+
+
+# --- coerce_view_count -----------------------------------------------------
+
+
+def test_coerce_view_count_accepts_a_plain_int():
+    assert coerce_view_count(10230, video_id="v1") == 10230
+
+
+def test_coerce_view_count_accepts_a_whole_decimal():
+    assert coerce_view_count(Decimal("10230"), video_id="v1") == 10230
+
+
+def test_coerce_view_count_rejects_a_string():
+    with pytest.raises(SnapshotStoreError):
+        coerce_view_count("10230", video_id="v1")
+
+
+def test_coerce_view_count_rejects_a_fractional_decimal():
+    """A fractional Decimal (e.g. DynamoDB data corruption) must be rejected,
+    not silently truncated by a bare int(...)."""
+    with pytest.raises(SnapshotStoreError):
+        coerce_view_count(Decimal("100.7"), video_id="v1")
+
+
+def test_coerce_view_count_rejects_a_negative_value():
+    with pytest.raises(SnapshotStoreError):
+        coerce_view_count(-5, video_id="v1")
+
+
+def test_coerce_view_count_rejects_a_bool():
+    """bool is a subclass of int in Python — True/False must not silently
+    become viewCount 1/0."""
+    with pytest.raises(SnapshotStoreError):
+        coerce_view_count(True, video_id="v1")

@@ -187,6 +187,23 @@ def test_calculate_growth_pending_when_todays_snapshot_not_recorded_yet():
     assert result.growth_percent is None
 
 
+def test_calculate_growth_surfaces_the_latest_completed_timestamp_when_todays_point_is_pending():
+    """Roadmap 3.1: a pending `latest` must still report the most recent
+    *completed* data's timestamp (here, the comparison snapshot's), not
+    None — a caller needs to know how fresh the last real data is even
+    while waiting for today's."""
+    result = calculate_growth(
+        video_id="v1",
+        report_date=date(2026, 9, 2),
+        period="1d",
+        latest_snapshot=None,
+        comparison_snapshot=_snapshot("2026-09-01", 1000, observed_at="2026-09-01T18:00:05+09:00"),
+        earliest_available_date=COLLECTION_START_DATE,
+    )
+
+    assert result.last_updated_at == "2026-09-01T18:00:05+09:00"
+
+
 def test_calculate_growth_not_available_before_project_collection_start():
     """A comparison date before the project's own collection start date can
     never resolve — distinctly not_available, never pending."""

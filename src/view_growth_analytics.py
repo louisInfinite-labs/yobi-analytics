@@ -148,7 +148,11 @@ def calculate_growth(
         status=overall_status,
         growth=growth,
         growth_percent=growth_percent,
-        last_updated_at=latest.last_updated_at,
+        # Roadmap 3.1: a pending/not_available `latest` still needs to surface
+        # the most recent *completed* data's timestamp (falling back to
+        # `comparison`'s), not None — a bare `latest.last_updated_at` would
+        # silently drop that whenever today's own point isn't ready yet.
+        last_updated_at=latest.last_updated_at or comparison.last_updated_at,
     )
 
 

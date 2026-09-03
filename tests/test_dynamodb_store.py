@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 import boto3
 import pytest
@@ -224,6 +225,27 @@ def test_get_snapshot_round_trips_view_count_as_int_not_decimal(dynamodb_tables)
     assert found is not None
     assert found.video_id == "v1"
     assert isinstance(found.view_count, int)
+
+
+def test_get_snapshot_rejects_a_fractional_decimal_view_count(dynamodb_tables):
+    """A fractional Decimal viewCount (data corruption — this field should
+    always be a whole number) must be rejected, not silently truncated."""
+    resource = boto3.resource("dynamodb", region_name=AWS_REGION)
+    resource.Table(SNAPSHOTS_TABLE).put_item(
+        Item={
+            "snapshotDate": "2026-09-01",
+            "observedAt": "2026-09-01T18:00:05+09:00",
+            "creatorId": "aizawa_ema",
+            "videoId": "v1",
+            "title": "A",
+            "publishedAt": "2026-08-20T00:00:00Z",
+            "viewCount": Decimal("100.7"),
+            "organization": "vspo",
+        }
+    )
+
+    with pytest.raises(SnapshotStoreError):
+        get_snapshot("v1", date(2026, 9, 1))
 
 
 def test_save_daily_collection_rejects_duplicate_date(dynamodb_tables):

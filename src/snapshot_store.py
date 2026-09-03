@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 from json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list_exclusive, write_json_object_exclusive
@@ -233,11 +234,32 @@ def _parse_snapshot(raw: dict, path: Path) -> Snapshot:
             video_id=raw["videoId"],
             title=raw["title"],
             published_at=raw["publishedAt"],
-            view_count=raw["viewCount"],
+            view_count=coerce_view_count(raw["viewCount"], video_id=raw.get("videoId", "<unknown>")),
             organization=raw["organization"],
         )
     except KeyError as exc:
         raise SnapshotStoreError(f"Snapshot file {path} has a record missing field {exc}") from exc
+
+
+def coerce_view_count(value: object, *, video_id: str) -> int:
+    """Validate and coerce a raw viewCount value into a plain non-negative int.
+
+    Shared by this module's own JSON read path and dynamodb_store.py's, so
+    malformed source data is rejected consistently on both backends rather
+    than passed through: a string viewCount (e.g. a hand-edited local JSON
+    file) would otherwise raise an uncaught TypeError later when
+    calculate_growth subtracts two snapshots' counts, and a fractional
+    DynamoDB Decimal would otherwise be silently truncated by a bare
+    int(...) instead of surfaced as the corrupt data it actually is.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, Decimal)):
+        raise SnapshotStoreError(f"Snapshot for {video_id!r} has a non-numeric viewCount: {value!r}")
+    if isinstance(value, Decimal) and value != value.to_integral_value():
+        raise SnapshotStoreError(f"Snapshot for {video_id!r} has a non-integer viewCount: {value!r}")
+    coerced = int(value)
+    if coerced < 0:
+        raise SnapshotStoreError(f"Snapshot for {video_id!r} has a negative viewCount: {coerced}")
+    return coerced
 
 
 def _summary_to_raw(summary: SnapshotRunSummary) -> dict:

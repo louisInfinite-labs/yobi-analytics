@@ -36,6 +36,7 @@ from snapshot_store import (
     Snapshot,
     SnapshotRunSummary,
     SnapshotStoreError,
+    coerce_view_count,
     validate_daily_collection,
 )
 from snapshot_store import _summary_to_raw
@@ -289,8 +290,6 @@ def _video_to_item(video: Video) -> dict[str, Any]:
 def _item_to_snapshot(item: dict[str, Any]) -> Snapshot:
     """Convert a DynamoDB Snapshots item back into a Snapshot, restoring int from Decimal."""
     raw = dict(item)
-    if isinstance(raw.get("viewCount"), Decimal):
-        raw["viewCount"] = int(raw["viewCount"])
     return Snapshot(
         snapshot_date=raw["snapshotDate"],
         observed_at=raw["observedAt"],
@@ -298,7 +297,7 @@ def _item_to_snapshot(item: dict[str, Any]) -> Snapshot:
         video_id=raw["videoId"],
         title=raw["title"],
         published_at=raw["publishedAt"],
-        view_count=raw["viewCount"],
+        view_count=coerce_view_count(raw["viewCount"], video_id=raw.get("videoId", "<unknown>")),
         organization=raw["organization"],
     )
 
