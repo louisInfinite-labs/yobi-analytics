@@ -24,6 +24,7 @@ before its own onboarding, rather than the less precise `pending`.
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from typing import Any
 
@@ -281,19 +282,38 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+# Bounds how many concurrent DynamoDB GetItem calls _compute_growth_results
+# fans out for one trending request. Each video needs two independent
+# snapshot lookups (report_date, comparison_date) with no ordering
+# dependency between them — fetching sequentially for an organization with
+# thousands of videos is what previously made a real production-scale
+# trending request exceed API Gateway's fixed 29-second integration
+# timeout; a bounded thread pool (I/O-bound network calls, not CPU-bound
+# work, so the GIL is not a limiting factor here) brings that well under it
+# without needing a schema change to Video Master.
+_SNAPSHOT_FETCH_WORKERS = 20
+
+
 def _compute_growth_results(videos: list[Video], *, report_date: date, period: str) -> list[GrowthResult]:
     """Compute one GrowthResult per video for the same (report_date, period) comparison window."""
     comp_date = comparison_date(report_date, period)
+
+    def _fetch_snapshot_pair(video: Video) -> tuple[Any, Any]:
+        return get_snapshot(video.video_id, report_date), get_snapshot(video.video_id, comp_date)
+
+    with ThreadPoolExecutor(max_workers=_SNAPSHOT_FETCH_WORKERS) as executor:
+        snapshot_pairs = list(executor.map(_fetch_snapshot_pair, videos))
+
     return [
         calculate_growth(
             video_id=video.video_id,
             report_date=report_date,
             period=period,
-            latest_snapshot=get_snapshot(video.video_id, report_date),
-            comparison_snapshot=get_snapshot(video.video_id, comp_date),
+            latest_snapshot=latest_snapshot,
+            comparison_snapshot=comparison_snapshot,
             earliest_available_date=_earliest_available_date_for(video),
         )
-        for video in videos
+        for video, (latest_snapshot, comparison_snapshot) in zip(videos, snapshot_pairs)
     ]
 
 
@@ -361,6 +381,8 @@ def _ranked_entry_to_dict(entry: RankedEntry) -> dict[str, Any]:
         "videoId": entry.video_id,
         "value": entry.value,
         "title": video.title if video else None,
+        "creatorId": video.creator_id if video else None,
+        "channelName": creator.display_name if creator else None,
         "organization": creator.organization if creator else None,
         "branch": creator.branch if creator else None,
         "groupKey": creator.group_key if creator else None,
@@ -393,6 +415,8 @@ def _to_response(result: GrowthResult, *, video: Video, creator: Creator | None,
         "lastUpdatedAt": result.last_updated_at,
         "videoId": result.video_id,
         "title": video.title,
+        "creatorId": video.creator_id,
+        "channelName": creator.display_name if creator else None,
         "organization": creator.organization if creator else None,
         "branch": creator.branch if creator else None,
         "groupKey": creator.group_key if creator else None,

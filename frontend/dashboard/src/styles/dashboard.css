@@ -657,3 +657,64 @@
   padding: 2px 8px;
   border-radius: 999px;
 }
+
+.admin-panel {
+  max-width: 480px;
+  margin: 40px auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--surface-hover);
+}
+
+.admin-panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.admin-panel__field input,
+.admin-panel__field textarea {
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  color: var(--text-primary);
+}
+
+.admin-panel__field textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.admin-panel__error {
+  color: var(--negative);
+}
+
+.admin-panel__hint {
+  margin-top: -8px;
+  color: var(--text-secondary);
+  font-size: 0.85em;
+}
+
+.notification-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-toggle__error {
+  color: var(--negative);
+  font-size: 0.85em;
+}

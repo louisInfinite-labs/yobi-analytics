@@ -24,12 +24,14 @@ optimization, not implemented here.
 from __future__ import annotations
 
 import math
+import threading
 from datetime import date
 from decimal import Decimal
 from typing import Any
 
 import boto3
 import os
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from snapshot_store import (
     SkippedVideo,
@@ -60,14 +62,42 @@ _VELOCITY_FIELDS = ("lastPercentGrowthPerDay", "lastAvgViewsPerDay")
 _INT_FIELDS = ("lastViewCount", "snapshotCount", "quietStreak")
 
 
+_thread_local = threading.local()
+
+
 def _resource():
-    """Return a boto3 DynamoDB resource, using the ambient AWS credentials/region.
+    """Return this thread's own cached boto3 DynamoDB resource, using the ambient AWS credentials/region.
+
+    Boto3 Resource and Session instances are documented as not thread-safe
+    (https://docs.aws.amazon.com/boto3/latest/guide/resources.html) and
+    should not be shared across threads — unlike the low-level Client,
+    which is. read_api.py's _compute_growth_results fans out concurrent
+    GetItem calls across threads (its own _SNAPSHOT_FETCH_WORKERS), so a
+    single process-wide Resource singleton was the wrong cache key. Caching
+    one per thread instead keeps the same benefit a cache exists for at all
+    — constructing a fresh `boto3.resource()` per call gets its own
+    underlying connection pool, forcing a brand new TLS handshake for every
+    single call instead of reusing a warm connection, which is what made a
+    real production-scale (~thousands of videos) trending request exceed
+    API Gateway's 29-second integration timeout even after parallelizing
+    the calls themselves — while giving every thread its own Resource
+    instance rather than sharing one.
+
+    max_pool_connections is raised from botocore's own default of 10 so one
+    thread's own resource has enough headroom for _SNAPSHOT_FETCH_WORKERS'
+    per-thread concurrency (currently sequential per resource, but sized
+    with the same margin as before this per-thread split).
 
     No region_name override: locally this resolves via `aws configure`'s
     saved config, and on Lambda via the execution environment's own region —
     same resolution boto3 always does, deliberately not hardcoded here.
     """
-    return boto3.resource("dynamodb")
+    resource = getattr(_thread_local, "dynamodb_resource", None)
+    if resource is None:
+        session = boto3.session.Session()
+        resource = session.resource("dynamodb", config=Config(max_pool_connections=30))
+        _thread_local.dynamodb_resource = resource
+    return resource
 
 
 def load_videos() -> list[Video]:

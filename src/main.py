@@ -28,9 +28,16 @@ from youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_c
 # needs to know which backend it's talking to.
 if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
     from dynamodb_store import load_videos, save_daily_collection, save_run_summary, upsert_videos
+    from notification_events_store import NotificationEventsStoreError, record_new_video_events
 else:
     from snapshot_store import save_daily_collection, save_run_summary
     from video_master import load_videos, upsert_videos
+
+    class NotificationEventsStoreError(Exception):
+        """Placeholder so main.py's except clause is valid locally; never raised (see below)."""
+
+    def record_new_video_events(videos: list[Video]) -> None:
+        """No-op locally — the Roadmap 4.6 notification dispatcher only exists once deployed to AWS."""
 
 # The production schedule (Roadmap.md 2.4) runs the collector at 18:00 Asia/Tokyo.
 # Snapshot dates must be derived from JST, not the server's local/UTC clock.
@@ -108,6 +115,7 @@ def main() -> int:
                     except VideoMasterError as upsert_exc:
                         print(f"Error: failed to persist discovered videos before stopping: {upsert_exc}")
                         return 1
+                    _record_new_video_events_best_effort(newly_discovered)
                 print(f"Error: YouTube quota exhausted during discovery: {exc}")
                 return 1
             except YouTubeAPIError as exc:
@@ -116,6 +124,7 @@ def main() -> int:
 
         if newly_discovered:
             upsert_videos(newly_discovered)
+            _record_new_video_events_best_effort(newly_discovered)
 
         # Adaptive Tracking Frequency (Roadmap 1.5): every video is checked
         # daily for its first 30 days regardless of activity_state; afterward
@@ -270,6 +279,21 @@ def main() -> int:
         )
 
     return 0
+
+
+def _record_new_video_events_best_effort(newly_discovered: list[Video]) -> None:
+    """Record a Roadmap 4.6 notification event for each newly discovered video.
+
+    Best-effort: a video is already durably tracked in Video Master by the
+    time this runs (the caller always calls upsert_videos first), so a
+    failure here means the Roadmap 4.6 notification dispatcher misses one
+    run's worth of new-video events — worth a warning, not a reason to fail
+    a collection run that otherwise succeeded.
+    """
+    try:
+        record_new_video_events(newly_discovered)
+    except NotificationEventsStoreError as exc:
+        print(f"Warning: failed to record notification events for {len(newly_discovered)} video(s): {exc}")
 
 
 def _discover_creator(

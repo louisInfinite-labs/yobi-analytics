@@ -1,6 +1,7 @@
 import type { Period } from "../types/domain"
 import { formatTimeInZone } from "../lib/format"
 import { DateRangeTabs } from "./DateRangeTabs"
+import { NotificationToggle } from "./NotificationToggle"
 import { ThemeSelector } from "./ThemeSelector"
 import { TimeZoneSelector } from "./TimeZoneSelector"
 
@@ -28,6 +29,7 @@ export function DashboardHeader({ lastUpdatedAt, timeZone, onTimeZoneChange, per
         <DateRangeTabs value={period} onChange={onPeriodChange} />
         <TimeZoneSelector value={timeZone} onChange={onTimeZoneChange} />
         <ThemeSelector />
+        <NotificationToggle />
       </div>
     </header>
   )
