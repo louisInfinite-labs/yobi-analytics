@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 BUILD_DIR = ROOT / "build" / "lambda_package"
+WHEELHOUSE_DIR = ROOT / "build" / "wheelhouse"
 ZIP_PATH = ROOT / "build" / "lambda_deployment.zip"
 SRC_DIR = ROOT / "src"
 
@@ -25,6 +26,19 @@ SRC_DIR = ROOT / "src"
 # dependency (dynamodb_store.py) and stays bundled, even though the Lambda
 # Python runtime also provides its own copy.
 DEV_ONLY_PACKAGES = {"pytest", "moto"}
+
+# Transitive dependencies with no published wheel at all (sdist-only on
+# PyPI), so --only-binary=:all: below would otherwise fail to install them
+# no matter the platform — pip's cross-platform install mode (--platform/
+# --implementation/--python-version) refuses to build from source at all,
+# even when --no-binary is used to ask for it (it can't invoke a build
+# backend for a foreign platform). Worked around below by pre-building a
+# real wheel for each of these locally first: each is pure Python with no
+# compiled extension, so the wheel that comes out is platform-independent
+# ("py3-none-any") and satisfies the manylinux/cp312 target just as well as
+# if PyPI had published one. http-ece is pulled in by pywebpush==2.5.0
+# (Roadmap 4.6's push_sender.py).
+SDIST_ONLY_PACKAGES = {"http-ece"}
 
 
 def _load_runtime_dependencies() -> list[str]:
@@ -41,9 +55,24 @@ def main() -> int:
     """Build a clean Lambda deployment ZIP from src/ and its runtime dependencies."""
     if BUILD_DIR.exists():
         shutil.rmtree(BUILD_DIR)
+    if WHEELHOUSE_DIR.exists():
+        shutil.rmtree(WHEELHOUSE_DIR)
     if ZIP_PATH.exists():
         ZIP_PATH.unlink()
     BUILD_DIR.mkdir(parents=True)
+
+    find_links_args: list[str] = []
+    if SDIST_ONLY_PACKAGES:
+        WHEELHOUSE_DIR.mkdir(parents=True)
+        # Built with the host's own interpreter/platform (no cross-platform
+        # flags) — safe only because every package here is pure Python; see
+        # SDIST_ONLY_PACKAGES' comment for why that makes the result reusable
+        # for the manylinux/cp312 target below.
+        subprocess.run(
+            [sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(WHEELHOUSE_DIR), *SDIST_ONLY_PACKAGES],
+            check=True,
+        )
+        find_links_args = [f"--find-links={WHEELHOUSE_DIR}"]
 
     # Force manylinux/cp312 wheels regardless of the host platform (this repo
     # develops on Windows — see Roadmap 2.2 "Known Constraint"). Without this,
@@ -65,6 +94,7 @@ def main() -> int:
             "--python-version",
             "3.12",
             "--only-binary=:all:",
+            *find_links_args,
             *_load_runtime_dependencies(),
         ],
         check=True,

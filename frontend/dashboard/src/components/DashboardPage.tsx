@@ -4,6 +4,7 @@ import { mockDailySeries } from "../data/mockDailySeries"
 import type { CacheEntry } from "../lib/analyticsCache"
 import { useCachedDashboardData } from "../hooks/useCachedDashboardData"
 import { useFilterState } from "../hooks/useFilterState"
+import { useHeartbeat } from "../hooks/useHeartbeat"
 import { deriveChannelContribution, deriveKpis } from "../lib/deriveAnalytics"
 import { deriveInsights } from "../lib/deriveInsights"
 import { matchesClassification, matchesContent } from "../lib/filterState"
@@ -50,6 +51,7 @@ function fetchAnalytics(reportDate: string, period: Period): Promise<CacheEntry>
 /** Top-level composition: wires cache-backed data, filters, and every
  * KPI/chart/ranking/table view together behind one shared filter state. */
 export function DashboardPage() {
+  useHeartbeat()
   const [period, setPeriod] = useState<Period>("1d")
   const [timeZone, setTimeZone] = useState(detectDeviceTimeZone)
   const filters = useFilterState()

@@ -1,3 +1,4 @@
+import threading
 from datetime import date
 from decimal import Decimal
 
@@ -448,3 +449,21 @@ def test_save_run_summary_rejects_duplicate_date(dynamodb_tables):
 
     with pytest.raises(FileExistsError):
         save_run_summary(_summary(), date(2026, 9, 1))
+
+
+def test_resource_is_cached_per_thread_not_shared_as_a_global_singleton(dynamodb_tables):
+    """Boto3 Resource instances are documented as not thread-safe, so
+    dynamodb_store._resource() must not hand every thread the same cached
+    Resource object — only the calling thread's own cached one."""
+    import dynamodb_store
+
+    first_call = dynamodb_store._resource()
+    second_call = dynamodb_store._resource()
+    assert first_call is second_call  # cached within the same thread
+
+    other_thread_resource: list = []
+    thread = threading.Thread(target=lambda: other_thread_resource.append(dynamodb_store._resource()))
+    thread.start()
+    thread.join()
+
+    assert other_thread_resource[0] is not first_call

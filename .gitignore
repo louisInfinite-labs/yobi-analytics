@@ -6,6 +6,7 @@
 # Web Push VAPID key material (Roadmap 4.6) — generated locally via py_vapid
 vapid_private_key.pem
 vapid_public_key.txt
+env-dispatcher.json
 
 # Python
 __pycache__/
