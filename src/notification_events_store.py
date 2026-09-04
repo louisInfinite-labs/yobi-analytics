@@ -24,7 +24,7 @@ from typing import Any
 
 import boto3
 from boto3.dynamodb.conditions import Key
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from video_master import Video
 
@@ -63,12 +63,18 @@ def record_new_video_events(videos: list[Video]) -> None:
     """
     if not videos:
         return
-    table = _resource().Table(NOTIFICATION_EVENTS_TABLE)
     try:
+        table = _resource().Table(NOTIFICATION_EVENTS_TABLE)
         with table.batch_writer() as batch:
             for video in videos:
                 batch.put_item(Item=_video_to_event_item(video))
-    except ClientError as exc:
+    except (ClientError, BotoCoreError) as exc:
+        # BotoCoreError (e.g. EndpointConnectionError) is a separate
+        # exception family from ClientError and can surface from
+        # batch_writer()'s own retries — catching only ClientError let it
+        # bypass _record_new_video_events_best_effort's
+        # NotificationEventsStoreError-only catch in main.py and fail an
+        # otherwise-successful collection run instead of just warning.
         raise NotificationEventsStoreError(f"Failed to write to {NOTIFICATION_EVENTS_TABLE}: {exc}") from exc
 
 

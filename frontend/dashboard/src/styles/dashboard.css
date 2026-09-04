@@ -707,3 +707,14 @@
   color: var(--text-secondary);
   font-size: 0.85em;
 }
+
+.notification-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-toggle__error {
+  color: var(--negative);
+  font-size: 0.85em;
+}

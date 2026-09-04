@@ -20,14 +20,28 @@ than a client reporting its own — Roadmap 4.5 says "the Dashboard is the
 sole author", so this route (and the admin stats route below) requires a
 shared admin API key (YOBI_ADMIN_API_KEY) in an X-Admin-Key request header.
 
-Every other write route is self-service: a client can only ever act on the
+Every other write route is self-service: a client only ever acts on the
 clientId named in its own path/body, the same trust level as POST
 /heartbeat (a client reporting its own liveness). This includes the
 push-subscription and notification-preference routes — Roadmap 4.6's own
 example ("clientId A turns one creator's notifications off") is one client
 managing its own preference, not an admin managing someone else's — so
-these do not require the admin key, matching Roadmap 4.4's "Google login is
-not required" and 4.3's fully anonymous clientId design.
+these do not require the shared admin key, matching Roadmap 4.4's "Google
+login is not required" and 4.3's fully anonymous clientId design.
+
+Client-scoped routes (PR #18 CodeRabbit hardening): a bare clientId is an
+identifier, not proof of ownership — it's a browser-generated UUID with no
+cryptographic binding to whoever holds it, so trusting it alone would let
+anyone who learned or guessed one read or overwrite that client's stored
+data. GET /remote-config and the push-subscription/notification-preference
+PUT/DELETE routes below now also require an X-Client-Secret header matching
+the secret issued once via POST /clients/{clientId}/credential (see
+client_credential_api.py/client_credential_store.py) — self-service in the
+sense that no shared admin secret is needed, but no longer "anyone who
+knows the clientId." POST /heartbeat and GET /heartbeat/{clientId}/status
+are unaffected: a heartbeat is low-sensitivity liveness reporting, not
+authored state, and requiring a credential to obtain a credential doesn't
+make sense for the registration route itself.
 """
 
 from __future__ import annotations
@@ -38,6 +52,8 @@ import json
 import os
 from typing import Any, Callable
 
+import client_credential_api
+import client_credential_store
 import heartbeat_api
 import heartbeat_store
 import notification_dispatch
@@ -52,6 +68,11 @@ import remote_config_store
 # (see module docstring).
 _ADMIN_PROTECTED_ROUTES = frozenset({"POST /remote-config", "GET /admin/heartbeat-stats"})
 _ADMIN_KEY_HEADER = "x-admin-key"
+
+# PR #18 CodeRabbit hardening (see module docstring): every client-scoped
+# read/write requires the caller to prove it holds the secret issued to
+# this specific clientId, not just know/guess the clientId itself.
+_CLIENT_SECRET_HEADER = "x-client-secret"
 
 _PUSH_SUBSCRIPTION_KEY = "pushSubscription"
 _NOTIFICATION_PREFERENCE_KEY = "notificationPreference"
@@ -77,6 +98,10 @@ class MalformedRequestError(read_api.ClientError):
     """
 
 
+class _ForbiddenError(Exception):
+    """Raised when a client-scoped route's X-Client-Secret header is missing or doesn't match the target clientId."""
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Route one API Gateway HTTP API proxy event to its handler and return an HTTP API v2 response.
 
@@ -99,6 +124,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         result = handler(event)
     except read_api.VideoNotFoundError as exc:
         return _json_response(404, {"error": str(exc)})
+    except _ForbiddenError as exc:
+        return _json_response(403, {"error": str(exc)})
     except _CLIENT_ERROR_TYPES as exc:
         return _json_response(400, {"error": str(exc)})
     except Exception as exc:  # noqa: BLE001 - deliberate catch-all, see docstring
@@ -165,6 +192,7 @@ def _handle_get_remote_config(event: dict[str, Any]) -> dict[str, Any]:
     explicit `?key=pushSubscription` read is unaffected.
     """
     client_id, key = remote_config_api.parse_read_query(_merged_params(event))
+    _require_client_secret(event, client_id)
     if key is not None:
         record = remote_config_store.get_remote_config(client_id, key)
         return {"clientId": client_id, "configs": [record] if record is not None else []}
@@ -177,6 +205,7 @@ def _handle_get_remote_config(event: dict[str, Any]) -> dict[str, Any]:
 def _handle_put_push_subscription(event: dict[str, Any]) -> dict[str, Any]:
     """Self-service: a client stores its own Web Push subscription (Roadmap 4.6), keyed by its own clientId path parameter."""
     client_id = heartbeat_api.parse_client_id(_merged_params(event).get("clientId"))
+    _require_client_secret(event, client_id)
     subscription = push_sender.parse_subscription(_json_body(event))
     record = remote_config_api.write_remote_config(
         {"clientId": client_id, "key": _PUSH_SUBSCRIPTION_KEY, "value": subscription}
@@ -188,6 +217,7 @@ def _handle_put_push_subscription(event: dict[str, Any]) -> dict[str, Any]:
 def _handle_delete_push_subscription(event: dict[str, Any]) -> dict[str, Any]:
     """Self-service: a client retracts its own stored Web Push subscription (e.g. on unsubscribe)."""
     client_id = heartbeat_api.parse_client_id(_merged_params(event).get("clientId"))
+    _require_client_secret(event, client_id)
     remote_config_store.delete_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
     return {"clientId": client_id, "key": _PUSH_SUBSCRIPTION_KEY, "deleted": True}
 
@@ -195,6 +225,7 @@ def _handle_delete_push_subscription(event: dict[str, Any]) -> dict[str, Any]:
 def _handle_put_notification_preference(event: dict[str, Any]) -> dict[str, Any]:
     """Self-service: a client sets its own notification preference (Roadmap 4.6), keyed by its own clientId path parameter."""
     client_id = heartbeat_api.parse_client_id(_merged_params(event).get("clientId"))
+    _require_client_secret(event, client_id)
     raw_preference = _json_body(event)
     notification_dispatch.parse_notification_preference(raw_preference)
     record = remote_config_api.write_remote_config(
@@ -202,6 +233,46 @@ def _handle_put_notification_preference(event: dict[str, Any]) -> dict[str, Any]
     )
     remote_config_store.put_remote_config(record)
     return record
+
+
+def _handle_post_client_credential(event: dict[str, Any]) -> dict[str, Any]:
+    """Issue a new client secret for a clientId that doesn't have one yet (PR #18 CodeRabbit hardening).
+
+    The raw secret is returned in this response only — only its hash is
+    ever persisted (client_credential_store.py), the same way a password
+    would be handled. A clientId that already has a credential gets a clean
+    4xx instead of a second raw secret: this route establishes trust for a
+    clientId once, it doesn't re-issue it. A client that lost its cached
+    secret has no recovery flow at this scale — client_id.ts already mints
+    a fresh clientId whenever its own localStorage entry is missing, so the
+    common "lost local state" case naturally pairs a new clientId with a
+    new credential rather than needing one.
+
+    First-claimant trust model, deliberate: this route has no enrollment
+    authenticator or device-attestation check before issuing a credential
+    — whichever caller registers a given clientId first *is* that
+    clientId's owner from then on, with nothing stronger backing that
+    claim. This is intentional, not a gap to close later: Roadmap 4.3's
+    clientId is itself anonymous and unauthenticated by design (no
+    accounts, no Google login), so no enrollment check here could verify
+    "real" ownership beyond what the clientId already doesn't prove.
+    Registering first is not a meaningfully weaker guarantee than the
+    clientId scheme it hardens, because a clientId is a 122-bit random
+    UUID generated client-side and never transmitted anywhere until its
+    own browser calls this endpoint — an attacker registering it first
+    requires already having learned or guessed that specific unregistered
+    UUID, the same precondition every client-scoped route this hardening
+    protects already treats as sufficiently unlikely (see this module's
+    own docstring). A stronger model (per-account enrollment, device
+    attestation) would require Roadmap 4.3's whole no-accounts premise to
+    change first.
+    """
+    client_id = heartbeat_api.parse_client_id(_merged_params(event).get("clientId"))
+    secret = client_credential_api.generate_secret()
+    created = client_credential_store.create_secret(client_id, client_credential_api.hash_secret(secret))
+    if not created:
+        raise read_api.ClientError(f"clientId {client_id!r} already has a credential")
+    return {"clientId": client_id, "clientSecret": secret}
 
 
 def _handle_get_admin_heartbeat_stats(event: dict[str, Any]) -> dict[str, Any]:
@@ -217,6 +288,7 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /organizations/{organization}/trending": _handle_get_organization_trending,
     "POST /heartbeat": _handle_post_heartbeat,
     "GET /heartbeat/{clientId}/status": _handle_get_heartbeat_status,
+    "POST /clients/{clientId}/credential": _handle_post_client_credential,
     "POST /remote-config": _handle_post_remote_config,
     "GET /remote-config": _handle_get_remote_config,
     "PUT /clients/{clientId}/push-subscription": _handle_put_push_subscription,
@@ -251,6 +323,27 @@ def _check_admin_key(event: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _require_client_secret(event: dict[str, Any], client_id: str) -> None:
+    """Raise _ForbiddenError unless X-Client-Secret matches the credential issued to client_id.
+
+    PR #18 CodeRabbit hardening (see module docstring): a clientId alone
+    isn't proof of ownership. A client_id with no registered credential at
+    all (never called POST /clients/{clientId}/credential) is refused the
+    same as a wrong secret — there is no "credential not required yet"
+    fallback once a route is protected. Byte-encoded before
+    hmac.compare_digest for the same non-ASCII-safety reason
+    _check_admin_key already documents.
+    """
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    provided = headers.get(_CLIENT_SECRET_HEADER)
+    stored_hash = client_credential_store.get_secret_hash(client_id)
+    if not provided or stored_hash is None:
+        raise _ForbiddenError("Missing or invalid client secret")
+    provided_hash = client_credential_api.hash_secret(provided)
+    if not hmac.compare_digest(provided_hash.encode("utf-8"), stored_hash.encode("utf-8")):
+        raise _ForbiddenError("Missing or invalid client secret")
+
+
 def _merged_params(event: dict[str, Any]) -> dict[str, Any]:
     """Combine query-string and path parameters into one dict for a parse_* function.
 
@@ -280,9 +373,14 @@ def _reject_json_constant(constant: str) -> None:
 def _json_body(event: dict[str, Any]) -> dict[str, Any]:
     """Parse the request body as a JSON object, raising a clean 4xx for anything else."""
     raw_body = event.get("body") or "{}"
-    if event.get("isBase64Encoded"):
-        raw_body = base64.b64decode(raw_body).decode("utf-8")
     try:
+        # Base64 decoding moved inside this try: malformed base64
+        # (binascii.Error, a ValueError subclass) or non-UTF-8 decoded
+        # bytes (UnicodeDecodeError, also a ValueError subclass) used to
+        # raise before this block, escaping as an unhandled exception —
+        # an opaque 500 instead of this function's own clean 4xx.
+        if event.get("isBase64Encoded"):
+            raw_body = base64.b64decode(raw_body).decode("utf-8")
         body = json.loads(raw_body, parse_constant=_reject_json_constant)
     except (ValueError, TypeError) as exc:
         raise MalformedRequestError(f"Request body is not valid JSON: {exc}") from None

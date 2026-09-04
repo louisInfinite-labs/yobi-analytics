@@ -19,8 +19,18 @@ own precise hold-and-refire scheduling machinery instead. Each run:
    eligible delivery window (notification_dispatch.next_delivery_window_utc)
    hasn't arrived yet, or if notification_dispatch.should_notify_now says
    this client is currently suppressed (disabled/overridden creator,
-   temporary mute, quiet hours). Otherwise sends via push_sender.py and
-   marks the pair delivered.
+   temporary mute, quiet hours). Otherwise atomically claims the pair via
+   notification_delivery_log_store.mark_delivered's conditional write
+   *before* sending — closing the race where two overlapping runs could
+   both see "not yet delivered" and both push — then sends via
+   push_sender.py: a successful send calls confirm_delivered() to make the
+   record permanent, while a send that didn't actually succeed calls
+   release_claim() so a later run can retry immediately. A claim that gets
+   neither call (the invocation that made it terminated first — Lambda
+   timeout, crash) expires on its own after
+   notification_delivery_log_store._CLAIM_EXPIRY and becomes reclaimable,
+   rather than looking permanently delivered with nothing ever actually
+   sent.
 
 A client with a stored preference but no stored push subscription is
 skipped entirely (nothing to deliver to), not treated as an error — Roadmap
@@ -121,6 +131,14 @@ def _deliver_if_due(
     if not notification_dispatch.should_notify_now(preference, candidate["creatorId"], now=now):
         return False
 
+    # Claimed *before* sending (not just recorded after a successful send):
+    # this is the atomic gate that stops two overlapping dispatcher runs
+    # from both passing the already_delivered() check above and both
+    # sending. A lost claim means a concurrent run already owns this
+    # (client, video) pair, so this run must not send.
+    if not notification_delivery_log_store.mark_delivered(client_id, video_id, now.isoformat()):
+        return False
+
     creator = creators_by_id.get(candidate["creatorId"])
     result = push_sender.send_push_notification(
         subscription,
@@ -132,12 +150,14 @@ def _deliver_if_due(
     )
     if result.subscription_expired:
         print(f"Push subscription expired for client {client_id!r}; leaving cleanup to a future pass")
+        notification_delivery_log_store.release_claim(client_id, video_id)
         return False
     if not result.sent:
         print(f"Warning: push send failed for client {client_id!r}, video {video_id!r}: {result.error}")
+        notification_delivery_log_store.release_claim(client_id, video_id)
         return False
 
-    notification_delivery_log_store.mark_delivered(client_id, video_id, now.isoformat())
+    notification_delivery_log_store.confirm_delivered(client_id, video_id, now.isoformat())
     return True
 
 

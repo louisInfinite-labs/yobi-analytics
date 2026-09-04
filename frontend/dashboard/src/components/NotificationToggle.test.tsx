@@ -145,4 +145,87 @@ describe("NotificationToggle", () => {
     await waitFor(() => expect(pushNotifications.subscribeToPush).toHaveBeenCalled())
     expect(apiClient.apiRequest).not.toHaveBeenCalled()
   })
+
+  it("rolls back the local subscription and shows an error when a backend sync fails while enabling", async () => {
+    // If the toggle flipped to "on" regardless of whether the backend
+    // writes actually succeeded, the dispatcher could end up with a
+    // preference but no subscription (or vice versa) while the UI claims
+    // everything is fine — this is the coordination CodeRabbit flagged.
+    const user = userEvent.setup()
+    vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
+    const subscription = { endpoint: "https://fcm.example.com/x", keys: { p256dh: "p", auth: "a" } }
+    vi.mocked(pushNotifications.subscribeToPush).mockResolvedValue(subscription)
+    vi.mocked(apiClient.apiRequest).mockRejectedValue(new Error("network error"))
+
+    render(<NotificationToggle />)
+    const button = await screen.findByRole("button", { name: /enable notifications/i })
+    await user.click(button)
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/couldn't sync/i))
+    expect(screen.getByRole("button", { name: /enable notifications/i })).toBeInTheDocument()
+    expect(pushNotifications.unsubscribeFromPush).toHaveBeenCalled()
+  })
+
+  it("shows an error and rolls back when the subscription write succeeds but the preference write fails", async () => {
+    // A partial write, not a total failure — the subscription PUT
+    // succeeds and only the notification-preference PUT rejects. Confirms
+    // the rollback path triggers from *either* awaited write failing, not
+    // just from every request failing together.
+    const user = userEvent.setup()
+    vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
+    const subscription = { endpoint: "https://fcm.example.com/x", keys: { p256dh: "p", auth: "a" } }
+    vi.mocked(pushNotifications.subscribeToPush).mockResolvedValue(subscription)
+    vi.mocked(apiClient.apiRequest).mockImplementation(async (path: unknown) => {
+      const p = String(path)
+      if (p.endsWith("/credential")) return { clientId: "c1", clientSecret: "secret" }
+      if (p.endsWith("/push-subscription")) return undefined
+      if (p.endsWith("/notification-preference")) throw new Error("network error")
+      return undefined
+    })
+
+    render(<NotificationToggle />)
+    const button = await screen.findByRole("button", { name: /enable notifications/i })
+    await user.click(button)
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/couldn't sync/i))
+    expect(screen.getByRole("button", { name: /enable notifications/i })).toBeInTheDocument()
+    expect(pushNotifications.unsubscribeFromPush).toHaveBeenCalled()
+  })
+
+  it("disables the button while a sync is in flight so a second click can't start an overlapping operation", async () => {
+    const user = userEvent.setup()
+    vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
+    let resolveSubscribe: (value: unknown) => void = () => {}
+    vi.mocked(pushNotifications.subscribeToPush).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSubscribe = resolve
+        }),
+    )
+
+    render(<NotificationToggle />)
+    const button = await screen.findByRole("button", { name: /enable notifications/i })
+    await user.click(button)
+
+    expect(button).toBeDisabled()
+
+    resolveSubscribe(null)
+    await waitFor(() => expect(button).not.toBeDisabled())
+  })
+
+  it("shows an error but still reflects the real unsubscribed state when a backend sync fails while disabling", async () => {
+    const user = userEvent.setup()
+    vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("subscribed")
+    vi.mocked(pushNotifications.unsubscribeFromPush).mockResolvedValue(true)
+    vi.mocked(apiClient.apiRequest).mockRejectedValue(new Error("network error"))
+
+    render(<NotificationToggle />)
+    const button = await screen.findByRole("button", { name: /notifications on/i })
+    await user.click(button)
+
+    // The browser is genuinely unsubscribed already, so status must not
+    // lie and claim "on" just because the backend sync failed.
+    expect(screen.getByRole("button", { name: /enable notifications/i })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/couldn't sync/i))
+  })
 })

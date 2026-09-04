@@ -4,6 +4,8 @@ import json
 import pytest
 
 import api_handler
+import client_credential_api
+import client_credential_store
 import heartbeat_api
 import heartbeat_store
 import notification_dispatch
@@ -178,6 +180,24 @@ def test_post_heartbeat_rejects_non_json_body():
     assert response["statusCode"] == 400
 
 
+def test_post_heartbeat_rejects_malformed_base64_as_a_clean_400_not_500():
+    """base64.b64decode raises binascii.Error (a ValueError) for bad
+    padding; it must be caught by _json_body's own try block, not escape as
+    an unhandled exception that lambda_handler's catch-all turns into a
+    500 without the documented malformed-request response."""
+    response = lambda_handler(_event("POST /heartbeat", body="not-valid-base64!!!", is_base64=True), None)
+
+    assert response["statusCode"] == 400
+
+
+def test_post_heartbeat_rejects_base64_that_decodes_to_non_utf8_bytes():
+    non_utf8 = base64.b64encode(b"\xff\xfe\xfd").decode("ascii")
+
+    response = lambda_handler(_event("POST /heartbeat", body=non_utf8, is_base64=True), None)
+
+    assert response["statusCode"] == 400
+
+
 def test_post_heartbeat_rejects_a_non_object_json_body():
     response = lambda_handler(_event("POST /heartbeat", body=json.dumps([1, 2, 3])), None)
 
@@ -223,6 +243,17 @@ def admin_key(monkeypatch):
     """Configure the admin API key so admin-protected route tests can supply a matching header."""
     monkeypatch.setenv("YOBI_ADMIN_API_KEY", "s3cret")
     return "s3cret"
+
+
+@pytest.fixture
+def client_secret(monkeypatch):
+    """Register a client secret for clientId 'c1' so client-scoped route tests can supply a matching X-Client-Secret header."""
+    secret = "c1-secret"
+    stored_hash = client_credential_api.hash_secret(secret)
+    monkeypatch.setattr(
+        client_credential_store, "get_secret_hash", lambda client_id: stored_hash if client_id == "c1" else None
+    )
+    return secret
 
 
 def test_post_remote_config_persists_the_record_and_returns_it(monkeypatch, admin_key):
@@ -348,17 +379,60 @@ def test_post_heartbeat_does_not_require_an_admin_key(monkeypatch):
     assert response["statusCode"] == 200
 
 
-# --- GET /remote-config ------------------------------------------------------
+# --- POST /clients/{clientId}/credential (registration; issues an X-Client-Secret) ---
 
 
-def test_get_remote_config_with_a_key_returns_a_single_item_list(monkeypatch):
+def test_post_client_credential_issues_a_secret_and_persists_only_its_hash(monkeypatch):
+    # No enrollment/attestation check before issuing — this is the
+    # deliberate first-claimant trust model _handle_post_client_credential
+    # documents, not a gap this test is meant to close.
+    stored = {}
+    monkeypatch.setattr(
+        client_credential_store,
+        "create_secret",
+        lambda client_id, secret_hash: stored.update(clientId=client_id, secretHash=secret_hash) or True,
+    )
+
+    response = lambda_handler(_event("POST /clients/{clientId}/credential", path={"clientId": "c1"}), None)
+
+    assert response["statusCode"] == 200
+    body = _body(response)
+    assert body["clientId"] == "c1"
+    assert isinstance(body["clientSecret"], str) and len(body["clientSecret"]) > 20
+    assert stored["clientId"] == "c1"
+    # The stored value is a hash, not the raw secret returned to the caller.
+    assert stored["secretHash"] != body["clientSecret"]
+    assert stored["secretHash"] == client_credential_api.hash_secret(body["clientSecret"])
+
+
+def test_post_client_credential_rejects_a_clientid_that_already_has_one(monkeypatch):
+    monkeypatch.setattr(client_credential_store, "create_secret", lambda client_id, secret_hash: False)
+
+    response = lambda_handler(_event("POST /clients/{clientId}/credential", path={"clientId": "c1"}), None)
+
+    assert response["statusCode"] == 400
+
+
+def test_post_client_credential_rejects_a_missing_client_id():
+    response = lambda_handler(_event("POST /clients/{clientId}/credential", path={}), None)
+
+    assert response["statusCode"] == 400
+
+
+# --- GET /remote-config (client-scoped: requires X-Client-Secret) ------------
+
+
+def test_get_remote_config_with_a_key_returns_a_single_item_list(monkeypatch, client_secret):
     monkeypatch.setattr(
         remote_config_store,
         "get_remote_config",
         lambda client_id, key: {"clientId": client_id, "key": key, "value": True, "updatedAt": "t"},
     )
 
-    response = lambda_handler(_event("GET /remote-config", query={"clientId": "c1", "key": "enabled"}), None)
+    response = lambda_handler(
+        _event("GET /remote-config", query={"clientId": "c1", "key": "enabled"}, headers={"x-client-secret": client_secret}),
+        None,
+    )
 
     assert response["statusCode"] == 200
     assert _body(response) == {
@@ -367,32 +441,37 @@ def test_get_remote_config_with_a_key_returns_a_single_item_list(monkeypatch):
     }
 
 
-def test_get_remote_config_with_an_unset_key_returns_an_empty_list(monkeypatch):
+def test_get_remote_config_with_an_unset_key_returns_an_empty_list(monkeypatch, client_secret):
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
 
-    response = lambda_handler(_event("GET /remote-config", query={"clientId": "c1", "key": "enabled"}), None)
+    response = lambda_handler(
+        _event("GET /remote-config", query={"clientId": "c1", "key": "enabled"}, headers={"x-client-secret": client_secret}),
+        None,
+    )
 
     assert response["statusCode"] == 200
     assert _body(response) == {"clientId": "c1", "configs": []}
 
 
-def test_get_remote_config_without_a_key_returns_every_stored_key(monkeypatch):
+def test_get_remote_config_without_a_key_returns_every_stored_key(monkeypatch, client_secret):
     monkeypatch.setattr(
         remote_config_store,
         "list_remote_config",
         lambda client_id: [{"clientId": client_id, "key": "enabled", "value": True, "updatedAt": "t"}],
     )
 
-    response = lambda_handler(_event("GET /remote-config", query={"clientId": "c1"}), None)
+    response = lambda_handler(
+        _event("GET /remote-config", query={"clientId": "c1"}, headers={"x-client-secret": client_secret}), None
+    )
 
     assert response["statusCode"] == 200
     assert _body(response)["configs"] == [{"clientId": "c1", "key": "enabled", "value": True, "updatedAt": "t"}]
 
 
-def test_get_remote_config_without_a_key_excludes_the_push_subscription_entry(monkeypatch):
-    """A generic 'every stored key' read is reachable by anyone who knows a
-    clientId (self-service, no admin key) — it must not hand back the Web
-    Push subscription's own endpoint/encryption material alongside it."""
+def test_get_remote_config_without_a_key_excludes_the_push_subscription_entry(monkeypatch, client_secret):
+    """A generic 'every stored key' read must not hand back the Web Push
+    subscription's own endpoint/encryption material alongside it, even from
+    the owning client itself (see api_handler._handle_get_remote_config)."""
     monkeypatch.setattr(
         remote_config_store,
         "list_remote_config",
@@ -407,21 +486,30 @@ def test_get_remote_config_without_a_key_excludes_the_push_subscription_entry(mo
         ],
     )
 
-    response = lambda_handler(_event("GET /remote-config", query={"clientId": "c1"}), None)
+    response = lambda_handler(
+        _event("GET /remote-config", query={"clientId": "c1"}, headers={"x-client-secret": client_secret}), None
+    )
 
     assert response["statusCode"] == 200
     configs = _body(response)["configs"]
     assert [record["key"] for record in configs] == ["enabled"]
 
 
-def test_get_remote_config_with_an_explicit_push_subscription_key_still_returns_it(monkeypatch):
+def test_get_remote_config_with_an_explicit_push_subscription_key_still_returns_it(monkeypatch, client_secret):
     monkeypatch.setattr(
         remote_config_store,
         "get_remote_config",
         lambda client_id, key: {"clientId": client_id, "key": key, "value": {"endpoint": "https://fcm.googleapis.com/x"}, "updatedAt": "t"},
     )
 
-    response = lambda_handler(_event("GET /remote-config", query={"clientId": "c1", "key": "pushSubscription"}), None)
+    response = lambda_handler(
+        _event(
+            "GET /remote-config",
+            query={"clientId": "c1", "key": "pushSubscription"},
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
 
     assert response["statusCode"] == 200
     assert _body(response)["configs"][0]["key"] == "pushSubscription"
@@ -433,20 +521,48 @@ def test_get_remote_config_rejects_a_missing_client_id():
     assert response["statusCode"] == 400
 
 
-# --- PUT/DELETE /clients/{clientId}/push-subscription (self-service, no admin key) ---
+def test_get_remote_config_without_a_client_secret_header_returns_403(client_secret):
+    response = lambda_handler(_event("GET /remote-config", query={"clientId": "c1"}), None)
+
+    assert response["statusCode"] == 403
+
+
+def test_get_remote_config_with_a_wrong_client_secret_returns_403(client_secret):
+    response = lambda_handler(
+        _event("GET /remote-config", query={"clientId": "c1"}, headers={"x-client-secret": "wrong"}), None
+    )
+
+    assert response["statusCode"] == 403
+
+
+def test_get_remote_config_for_a_clientid_with_no_registered_credential_returns_403(monkeypatch):
+    monkeypatch.setattr(client_credential_store, "get_secret_hash", lambda client_id: None)
+
+    response = lambda_handler(
+        _event("GET /remote-config", query={"clientId": "never-registered"}, headers={"x-client-secret": "anything"}), None
+    )
+
+    assert response["statusCode"] == 403
+
+
+# --- PUT/DELETE /clients/{clientId}/push-subscription (client-scoped: requires X-Client-Secret) ---
 
 
 def _subscription_body():
     return {"endpoint": "https://fcm.googleapis.com/fcm/send/abc", "keys": {"p256dh": "p256dh-key", "auth": "auth-key"}}
 
 
-def test_put_push_subscription_does_not_require_an_admin_key(monkeypatch):
+def test_put_push_subscription_persists_it_with_a_valid_client_secret(monkeypatch, client_secret):
     stored = {}
     monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: stored.update(record))
-    monkeypatch.delenv("YOBI_ADMIN_API_KEY", raising=False)
 
     response = lambda_handler(
-        _event("PUT /clients/{clientId}/push-subscription", path={"clientId": "c1"}, body=json.dumps(_subscription_body())),
+        _event(
+            "PUT /clients/{clientId}/push-subscription",
+            path={"clientId": "c1"},
+            body=json.dumps(_subscription_body()),
+            headers={"x-client-secret": client_secret},
+        ),
         None,
     )
 
@@ -456,32 +572,64 @@ def test_put_push_subscription_does_not_require_an_admin_key(monkeypatch):
     assert stored["value"]["endpoint"] == _subscription_body()["endpoint"]
 
 
-def test_put_push_subscription_rejects_a_malformed_subscription(monkeypatch):
+def test_put_push_subscription_without_a_client_secret_returns_403(monkeypatch, client_secret):
+    def _boom(record):
+        raise AssertionError("should never persist a subscription without a valid client secret")
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = lambda_handler(
+        _event("PUT /clients/{clientId}/push-subscription", path={"clientId": "c1"}, body=json.dumps(_subscription_body())),
+        None,
+    )
+
+    assert response["statusCode"] == 403
+
+
+def test_put_push_subscription_rejects_a_malformed_subscription(monkeypatch, client_secret):
     def _boom(record):
         raise AssertionError("should never persist an invalid subscription")
 
     monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
 
     response = lambda_handler(
-        _event("PUT /clients/{clientId}/push-subscription", path={"clientId": "c1"}, body=json.dumps({"endpoint": "not-https"})),
+        _event(
+            "PUT /clients/{clientId}/push-subscription",
+            path={"clientId": "c1"},
+            body=json.dumps({"endpoint": "not-https"}),
+            headers={"x-client-secret": client_secret},
+        ),
         None,
     )
 
     assert response["statusCode"] == 400
 
 
-def test_delete_push_subscription_does_not_require_an_admin_key(monkeypatch):
+def test_delete_push_subscription_with_a_valid_client_secret(monkeypatch, client_secret):
     deleted = {}
     monkeypatch.setattr(remote_config_store, "delete_remote_config", lambda client_id, key: deleted.update(clientId=client_id, key=key))
-    monkeypatch.delenv("YOBI_ADMIN_API_KEY", raising=False)
 
-    response = lambda_handler(_event("DELETE /clients/{clientId}/push-subscription", path={"clientId": "c1"}), None)
+    response = lambda_handler(
+        _event("DELETE /clients/{clientId}/push-subscription", path={"clientId": "c1"}, headers={"x-client-secret": client_secret}),
+        None,
+    )
 
     assert response["statusCode"] == 200
     assert deleted == {"clientId": "c1", "key": "pushSubscription"}
 
 
-# --- PUT /clients/{clientId}/notification-preference (self-service, no admin key) ---
+def test_delete_push_subscription_without_a_client_secret_returns_403(monkeypatch, client_secret):
+    def _boom(client_id, key):
+        raise AssertionError("should never delete a subscription without a valid client secret")
+
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", _boom)
+
+    response = lambda_handler(_event("DELETE /clients/{clientId}/push-subscription", path={"clientId": "c1"}), None)
+
+    assert response["statusCode"] == 403
+
+
+# --- PUT /clients/{clientId}/notification-preference (client-scoped: requires X-Client-Secret) ---
 
 
 def _preference_body():
@@ -493,16 +641,16 @@ def _preference_body():
     }
 
 
-def test_put_notification_preference_does_not_require_an_admin_key(monkeypatch):
+def test_put_notification_preference_persists_it_with_a_valid_client_secret(monkeypatch, client_secret):
     stored = {}
     monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: stored.update(record))
-    monkeypatch.delenv("YOBI_ADMIN_API_KEY", raising=False)
 
     response = lambda_handler(
         _event(
             "PUT /clients/{clientId}/notification-preference",
             path={"clientId": "c1"},
             body=json.dumps(_preference_body()),
+            headers={"x-client-secret": client_secret},
         ),
         None,
     )
@@ -513,7 +661,25 @@ def test_put_notification_preference_does_not_require_an_admin_key(monkeypatch):
     assert stored["value"]["enabled"] is True
 
 
-def test_put_notification_preference_rejects_a_malformed_preference(monkeypatch):
+def test_put_notification_preference_without_a_client_secret_returns_403(monkeypatch, client_secret):
+    def _boom(record):
+        raise AssertionError("should never persist a preference without a valid client secret")
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/notification-preference",
+            path={"clientId": "c1"},
+            body=json.dumps(_preference_body()),
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 403
+
+
+def test_put_notification_preference_rejects_a_malformed_preference(monkeypatch, client_secret):
     def _boom(record):
         raise AssertionError("should never persist an invalid preference")
 
@@ -524,6 +690,7 @@ def test_put_notification_preference_rejects_a_malformed_preference(monkeypatch)
             "PUT /clients/{clientId}/notification-preference",
             path={"clientId": "c1"},
             body=json.dumps({"enabled": "not-a-bool"}),
+            headers={"x-client-secret": client_secret},
         ),
         None,
     )

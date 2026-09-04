@@ -101,21 +101,30 @@ def test_delivers_a_due_event_to_a_subscribed_eligible_client(monkeypatch):
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
     monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
-    marked = {}
-    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: marked.update(client_id=client_id, video_id=video_id))
+    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
+    confirmed = {}
+    monkeypatch.setattr(
+        notification_delivery_log_store,
+        "confirm_delivered",
+        lambda client_id, video_id, delivered_at: confirmed.update(client_id=client_id, video_id=video_id),
+    )
     monkeypatch.setattr(push_sender, "send_push_notification", lambda *a, **kw: PushResult(sent=True, subscription_expired=False))
 
     response = lambda_handler({}, None)
 
     assert response == {"statusCode": 200, "checked": 1, "delivered": 1}
-    assert marked == {"client_id": "c1", "video_id": "v1"}
+    assert confirmed == {"client_id": "c1", "video_id": "v1"}
 
 
 def test_does_not_redeliver_an_already_delivered_event(monkeypatch):
     now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
     monkeypatch.setattr(
-        notification_events_store, "list_events_for_date", lambda event_date: [_event_item()] if event_date == "2026-09-03" else []
+        notification_events_store,
+        "list_events_for_date",
+        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
+        if event_date == "2026-09-02"
+        else [],
     )
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
@@ -123,6 +132,35 @@ def test_does_not_redeliver_an_already_delivered_event(monkeypatch):
 
     def _boom(*a, **kw):
         raise AssertionError("should never send a push for an already-delivered event")
+
+    monkeypatch.setattr(push_sender, "send_push_notification", _boom)
+
+    response = lambda_handler({}, None)
+
+    assert response == {"statusCode": 200, "checked": 1, "delivered": 0}
+
+
+def test_a_lost_delivery_claim_race_does_not_send_a_push(monkeypatch):
+    """Two overlapping dispatcher runs can both pass already_delivered()'s
+    cheap pre-check before either has written anything — mark_delivered's
+    atomic conditional write is the actual race gate. Simulates the loser:
+    the claim call itself returns False, so this run must not send."""
+    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
+    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
+    monkeypatch.setattr(
+        notification_events_store,
+        "list_events_for_date",
+        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
+        if event_date == "2026-09-02"
+        else [],
+    )
+    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
+    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
+    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: False)
+
+    def _boom(*a, **kw):
+        raise AssertionError("should never send a push after losing the atomic delivery claim")
 
     monkeypatch.setattr(push_sender, "send_push_notification", _boom)
 
@@ -160,7 +198,11 @@ def test_suppressed_client_is_skipped_without_sending(monkeypatch):
     now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
     monkeypatch.setattr(
-        notification_events_store, "list_events_for_date", lambda event_date: [_event_item()] if event_date == "2026-09-03" else []
+        notification_events_store,
+        "list_events_for_date",
+        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
+        if event_date == "2026-09-02"
+        else [],
     )
     monkeypatch.setattr(
         remote_config_store,
@@ -217,25 +259,65 @@ def test_client_with_an_invalid_stored_preference_is_skipped(monkeypatch):
     assert response == {"statusCode": 200, "checked": 0, "delivered": 0}
 
 
-def test_expired_subscription_is_not_marked_delivered(monkeypatch):
+def test_expired_subscription_releases_its_delivery_claim(monkeypatch):
+    """A claim is taken before sending (the atomicity fix); an expired
+    subscription means the send didn't actually happen, so the claim must
+    be released rather than left standing as a phantom delivered record."""
     now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
     monkeypatch.setattr(
-        notification_events_store, "list_events_for_date", lambda event_date: [_event_item()] if event_date == "2026-09-03" else []
+        notification_events_store,
+        "list_events_for_date",
+        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
+        if event_date == "2026-09-02"
+        else [],
     )
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
     monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
+    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
+    released = {}
+    monkeypatch.setattr(
+        notification_delivery_log_store,
+        "release_claim",
+        lambda client_id, video_id: released.update(client_id=client_id, video_id=video_id),
+    )
     monkeypatch.setattr(push_sender, "send_push_notification", lambda *a, **kw: PushResult(sent=False, subscription_expired=True))
-
-    def _boom(*a, **kw):
-        raise AssertionError("should not mark delivered when the subscription is expired")
-
-    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", _boom)
 
     response = lambda_handler({}, None)
 
     assert response == {"statusCode": 200, "checked": 1, "delivered": 0}
+    assert released == {"client_id": "c1", "video_id": "v1"}
+
+
+def test_a_failed_send_releases_its_delivery_claim(monkeypatch):
+    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
+    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
+    monkeypatch.setattr(
+        notification_events_store,
+        "list_events_for_date",
+        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
+        if event_date == "2026-09-02"
+        else [],
+    )
+    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
+    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
+    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
+    released = {}
+    monkeypatch.setattr(
+        notification_delivery_log_store,
+        "release_claim",
+        lambda client_id, video_id: released.update(client_id=client_id, video_id=video_id),
+    )
+    monkeypatch.setattr(
+        push_sender, "send_push_notification", lambda *a, **kw: PushResult(sent=False, subscription_expired=False, error="network")
+    )
+
+    response = lambda_handler({}, None)
+
+    assert response == {"statusCode": 200, "checked": 1, "delivered": 0}
+    assert released == {"client_id": "c1", "video_id": "v1"}
 
 
 def _frozen_datetime(fixed_now: datetime) -> type[datetime]:

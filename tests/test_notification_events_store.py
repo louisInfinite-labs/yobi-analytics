@@ -1,5 +1,6 @@
 import boto3
 import pytest
+from botocore.exceptions import EndpointConnectionError
 from moto import mock_aws
 
 from notification_events_store import (
@@ -93,3 +94,21 @@ def test_record_raises_store_error_when_table_is_missing(aws_credentials):
     with mock_aws():
         with pytest.raises(NotificationEventsStoreError):
             record_new_video_events([_video()])
+
+
+def test_a_botocore_error_is_also_converted_to_the_store_error(notification_events_table, monkeypatch):
+    """EndpointConnectionError (and other BotoCoreError subclasses) are a
+    separate exception family from ClientError — catching only ClientError
+    would let this escape record_new_video_events() as a raw exception,
+    bypassing main.py's NotificationEventsStoreError-only best-effort catch
+    and failing an otherwise-successful collection run."""
+    import notification_events_store
+
+    class _FakeTable:
+        def batch_writer(self):
+            raise EndpointConnectionError(endpoint_url="https://dynamodb.example.invalid")
+
+    monkeypatch.setattr(notification_events_store, "_resource", lambda: type("R", (), {"Table": lambda self, name: _FakeTable()})())
+
+    with pytest.raises(NotificationEventsStoreError):
+        record_new_video_events([_video()])

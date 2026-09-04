@@ -51,4 +51,18 @@ describe("getOrCreateClientId", () => {
     expect(() => getOrCreateClientId(storage)).not.toThrow()
     expect(getOrCreateClientId(storage)).toMatch(UUID_PATTERN)
   })
+
+  it("returns the same fallback id across repeated calls while storage keeps throwing", () => {
+    // A fresh UUID per call (instead of one cached fallback) would let two
+    // calls in the same page session — e.g. NotificationToggle's enable
+    // then disable — silently act on two different "clients".
+    const storage = memoryStorage()
+    storage.getItem = () => {
+      throw new Error("SecurityError")
+    }
+    const first = getOrCreateClientId(storage)
+    const second = getOrCreateClientId(storage)
+    expect(second).toBe(first)
+    expect(first).toMatch(UUID_PATTERN)
+  })
 })
