@@ -192,6 +192,45 @@ describe("NotificationToggle", () => {
     expect(pushNotifications.unsubscribeFromPush).toHaveBeenCalled()
   })
 
+  it("best-effort reconciles the backend after an enable failure, in case a write actually committed", async () => {
+    // The subscription PUT and preference PUT can each commit server-side
+    // even though this call's own promise rejects (e.g. its response was
+    // lost after the server already processed it) — the enable failure
+    // path must try to clean up any such orphaned state with the same
+    // secret, not just roll back the local browser subscription.
+    const user = userEvent.setup()
+    vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
+    const subscription = { endpoint: "https://fcm.example.com/x", keys: { p256dh: "p", auth: "a" } }
+    vi.mocked(pushNotifications.subscribeToPush).mockResolvedValue(subscription)
+    const calls: Array<{ path: string; method: string | undefined }> = []
+    vi.mocked(apiClient.apiRequest).mockImplementation(async (path: unknown, options?: { method?: string }) => {
+      const p = String(path)
+      calls.push({ path: p, method: options?.method })
+      if (p.endsWith("/credential")) return { clientId: "c1", clientSecret: "secret" }
+      if (p.endsWith("/push-subscription") && options?.method === "PUT") return undefined
+      if (p.endsWith("/notification-preference") && calls.filter((c) => c.path === p).length === 1) {
+        throw new Error("network error")
+      }
+      return undefined
+    })
+
+    render(<NotificationToggle />)
+    const button = await screen.findByRole("button", { name: /enable notifications/i })
+    await user.click(button)
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/couldn't sync/i))
+
+    const subscriptionCalls = calls.filter((c) => c.path.endsWith("/push-subscription"))
+    const preferenceCalls = calls.filter((c) => c.path.endsWith("/notification-preference"))
+    expect(subscriptionCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: "PUT" }),
+        expect.objectContaining({ method: "DELETE" }),
+      ]),
+    )
+    expect(preferenceCalls.length).toBeGreaterThanOrEqual(2)
+  })
+
   it("disables the button while a sync is in flight so a second click can't start an overlapping operation", async () => {
     const user = userEvent.setup()
     vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")

@@ -131,21 +131,37 @@ export function NotificationToggle() {
         setStatus("unsubscribed")
         return
       }
+      // Declared outside the try so the catch below can still use it for
+      // best-effort reconciliation (see catch's own comment) even when
+      // the failure happened partway through, after a secret was obtained.
+      let clientSecret: string | null = null
       try {
         // Same partial-write safety note as the disable path above.
-        const clientSecret = await getOrCreateClientSecret(clientId)
+        clientSecret = await getOrCreateClientSecret(clientId)
         await syncSubscriptionToBackend(clientId, clientSecret, subscription)
         await syncNotificationEnabledToBackend(clientId, clientSecret, true)
         setStatus("subscribed")
       } catch {
-        // Neither backend write is confirmed, so the dispatcher has no
-        // reliable (subscription, enabled preference) pair for this
-        // client — undo the local browser subscription too rather than
-        // showing "on" for a subscription the backend doesn't actually
-        // know about.
+        // Neither backend write is confirmed from this call's own point of
+        // view, so undo the local browser subscription rather than
+        // showing "on" for a subscription the backend might not actually
+        // have. But "not confirmed here" isn't the same as "didn't
+        // happen": a write can commit server-side even though this call's
+        // own promise rejected (e.g. its response was lost after the
+        // server already processed it) — the AND-gate safety note above
+        // only holds if a partial failure doesn't quietly leave *both*
+        // pieces present. Best-effort clean up any such orphaned state
+        // with the same secret, rather than leaving a possibly-enabled
+        // preference/subscription pair stored indefinitely; a failure
+        // here changes nothing further, since the UI already reflects
+        // "off" and the user can retry.
         await unsubscribeFromPush()
         setStatus("unsubscribed")
         setSyncError(true)
+        if (clientSecret) {
+          await syncSubscriptionToBackend(clientId, clientSecret, null).catch(() => {})
+          await syncNotificationEnabledToBackend(clientId, clientSecret, false).catch(() => {})
+        }
       }
     } finally {
       setIsSyncing(false)

@@ -47,12 +47,55 @@ describe("getOrCreateClientSecret", () => {
 
   it("returns an already-stored secret unchanged rather than registering a new one", async () => {
     const storage = memoryStorage()
-    storage.setItem("yobi-analytics-client-secret", "existing-secret")
+    storage.setItem("yobi-analytics-client-secret:c1", "existing-secret")
 
     const secret = await getOrCreateClientSecret("c1", storage)
 
     expect(secret).toBe("existing-secret")
     expect(apiClient.apiRequest).not.toHaveBeenCalled()
+  })
+
+  it("retains an independent credential per clientId across a c1 -> c2 -> c1 sequence", async () => {
+    // A PR #18 CodeRabbit follow-up: a single shared storage key could
+    // only ever remember the most recently registered clientId's secret —
+    // switching clientId and back (e.g. clientId.ts's own storage-failure
+    // fallback minting a different id on some calls) would then try to
+    // re-register the earlier clientId, which the backend refuses since
+    // it's already registered, permanently 403ing that id.
+    const storage = memoryStorage()
+    vi.mocked(apiClient.apiRequest)
+      .mockResolvedValueOnce({ clientId: "c1", clientSecret: "c1-secret" })
+      .mockResolvedValueOnce({ clientId: "c2", clientSecret: "c2-secret" })
+
+    const first = await getOrCreateClientSecret("c1", storage)
+    const second = await getOrCreateClientSecret("c2", storage)
+    const third = await getOrCreateClientSecret("c1", storage)
+
+    expect(first).toBe("c1-secret")
+    expect(second).toBe("c2-secret")
+    expect(third).toBe("c1-secret")
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(2)
+  })
+
+  it("returns null instead of throwing when window.localStorage itself throws on access", async () => {
+    // Some strict privacy modes throw on merely *accessing* the
+    // localStorage getter, not just on calling getItem/setItem — this
+    // must still degrade to the same "no credential" outcome as any other
+    // storage failure, not an unhandled rejection.
+    const originalDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage")
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("SecurityError")
+      },
+    })
+    vi.mocked(apiClient.apiRequest).mockRejectedValue(new Error("network error"))
+
+    try {
+      await expect(getOrCreateClientSecret("c-window-storage-test")).resolves.toBeNull()
+    } finally {
+      if (originalDescriptor) Object.defineProperty(window, "localStorage", originalDescriptor)
+    }
   })
 
   it("returns null instead of throwing when registration fails", async () => {
@@ -74,6 +117,25 @@ describe("getOrCreateClientSecret", () => {
     const secret = await getOrCreateClientSecret("c1", storage)
 
     expect(secret).toBe("fresh-secret")
+  })
+
+  it("caches in the fallback map when setItem silently no-ops instead of throwing", async () => {
+    // Some private-browsing configurations let setItem return normally
+    // without actually persisting anything — a bare "didn't throw" isn't
+    // proof of a real write, so this must be caught by reading back what
+    // was just written, not only by the exception path.
+    vi.mocked(apiClient.apiRequest).mockResolvedValue({ clientId: "c-silent-noop-test", clientSecret: "noop-secret" })
+    const storage = memoryStorage()
+    storage.setItem = () => {
+      // Silently does nothing — no throw, no actual write.
+    }
+
+    const first = await getOrCreateClientSecret("c-silent-noop-test", storage)
+    const second = await getOrCreateClientSecret("c-silent-noop-test", storage)
+
+    expect(first).toBe("noop-secret")
+    expect(second).toBe("noop-secret")
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
   })
 
   it("reuses an in-memory fallback secret across calls when getItem returns null but setItem always throws", async () => {

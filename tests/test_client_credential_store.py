@@ -1,7 +1,9 @@
 import boto3
 import pytest
+from botocore.exceptions import EndpointConnectionError
 from moto import mock_aws
 
+import client_credential_store
 from client_credential_store import (
     CLIENT_CREDENTIALS_TABLE,
     ClientCredentialStoreError,
@@ -72,3 +74,21 @@ def test_get_secret_hash_raises_store_error_when_table_is_missing(aws_credential
     with mock_aws():
         with pytest.raises(ClientCredentialStoreError):
             get_secret_hash("c1")
+
+
+def test_create_secret_converts_a_botocore_error_too(monkeypatch):
+    """EndpointConnectionError (and other BotoCoreError subclasses) are a
+    separate exception family from ClientError and can be raised by
+    _resource().Table(...) itself or put_item's own setup — catching only
+    ClientError would let this escape as a raw exception instead."""
+    monkeypatch.setattr(client_credential_store, "_resource", lambda: (_ for _ in ()).throw(EndpointConnectionError(endpoint_url="https://dynamodb.example.invalid")))
+
+    with pytest.raises(ClientCredentialStoreError):
+        create_secret("c1", "hash-of-secret")
+
+
+def test_get_secret_hash_converts_a_botocore_error_too(monkeypatch):
+    monkeypatch.setattr(client_credential_store, "_resource", lambda: (_ for _ in ()).throw(EndpointConnectionError(endpoint_url="https://dynamodb.example.invalid")))
+
+    with pytest.raises(ClientCredentialStoreError):
+        get_secret_hash("c1")

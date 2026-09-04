@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 CLIENT_CREDENTIALS_TABLE = os.environ.get("YOBI_CLIENT_CREDENTIALS_TABLE") or "YobiClientCredentials"
 
@@ -54,8 +54,8 @@ def create_secret(client_id: str, secret_hash: str) -> bool:
     into a clean 4xx instead of ever returning a second raw secret for the
     same clientId.
     """
-    table = _resource().Table(CLIENT_CREDENTIALS_TABLE)
     try:
+        table = _resource().Table(CLIENT_CREDENTIALS_TABLE)
         table.put_item(
             Item={
                 "clientId": client_id,
@@ -69,13 +69,20 @@ def create_secret(client_id: str, secret_hash: str) -> bool:
         if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
             return False
         raise ClientCredentialStoreError(f"Failed to write to {CLIENT_CREDENTIALS_TABLE}: {exc}") from exc
+    except BotoCoreError as exc:
+        # A separate exception family from ClientError (e.g.
+        # EndpointConnectionError, NoCredentialsError, NoRegionError) that
+        # _resource().Table(...) or put_item's own setup can raise before
+        # ever reaching AWS — left uncaught, this would escape as a raw
+        # exception instead of ClientCredentialStoreError.
+        raise ClientCredentialStoreError(f"Failed to write to {CLIENT_CREDENTIALS_TABLE}: {exc}") from exc
 
 
 def get_secret_hash(client_id: str) -> str | None:
     """Return the stored secret hash for client_id, or None if it has never registered one."""
-    table = _resource().Table(CLIENT_CREDENTIALS_TABLE)
     try:
+        table = _resource().Table(CLIENT_CREDENTIALS_TABLE)
         item = table.get_item(Key={"clientId": client_id}).get("Item")
-    except ClientError as exc:
+    except (ClientError, BotoCoreError) as exc:
         raise ClientCredentialStoreError(f"Failed to read {CLIENT_CREDENTIALS_TABLE}: {exc}") from exc
     return item["secretHash"] if item else None
