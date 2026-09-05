@@ -13,6 +13,7 @@ import { detectDeviceTimeZone } from "../lib/timezone"
 import type { Period } from "../types/domain"
 import { AnimatedRingChart } from "./AnimatedRingChart"
 import { ClassificationFilterBar } from "./filters/ClassificationFilterBar"
+import { DashboardFooter } from "./DashboardFooter"
 import { DashboardHeader } from "./DashboardHeader"
 import { GrowthBarChart } from "./GrowthBarChart"
 import { InsightCard } from "./InsightCard"
@@ -156,6 +157,8 @@ export function DashboardPage() {
           <StaleDataNotice lastUpdatedAt={lastUpdatedAt} />
         </div>
       )}
+
+      <DashboardFooter />
     </div>
   )
 }

@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from video_master import Video, VideoMasterError, load_video_ids_for_creator, load_videos, upsert_videos
+from video_master import Video, VideoMasterError, get_videos_by_creator, load_video_ids_for_creator, load_videos, upsert_videos
 
 
 def test_upsert_removes_temp_file_when_replace_fails(tmp_path, monkeypatch):
@@ -59,6 +59,20 @@ def test_upsert_deduplicates_by_video_id(tmp_path):
     loaded = load_videos(path)
     assert len(loaded) == 1
     assert loaded[0].title == "New Title"
+
+
+def test_get_videos_by_creator_filters_by_creator(tmp_path):
+    """Only Video records belonging to the requested creator are returned."""
+    path = tmp_path / "video_master.json"
+    upsert_videos(
+        [
+            Video(video_id="v1", creator_id="aizawa_ema", title="A", published_at="2026-08-20T00:00:00Z"),
+            Video(video_id="v2", creator_id="other_creator", title="B", published_at="2026-08-20T00:00:00Z"),
+        ],
+        path,
+    )
+
+    assert [video.video_id for video in get_videos_by_creator("aizawa_ema", path)] == ["v1"]
 
 
 def test_load_video_ids_for_creator_filters_by_creator(tmp_path):

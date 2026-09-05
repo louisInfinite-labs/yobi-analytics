@@ -33,4 +33,9 @@ describe("DashboardPage", () => {
 
     expect(await screen.findByText("No videos match the current filters.")).toBeInTheDocument()
   })
+
+  it("reserves the Holodex attribution footer slot ahead of Phase 9", () => {
+    renderDashboard()
+    expect(screen.getByTestId("holodex-attribution-slot")).toBeInTheDocument()
+  })
 })

@@ -690,6 +690,16 @@ Safari's Web Push support shipped with Safari 16.1 alongside macOS Ventura; any 
 
 ---
 
+## API Design Principles
+
+- **Design every public read endpoint around what the frontend actually displays, never around "return everything."** A page can only ever render a bounded number of rows (pagination, or an infinite-scroll batch) — an endpoint that computes or returns an unbounded result "in case the client wants it all" does real work no UI ever needed. `GET /organizations/{organization}/trending` learned this the hard way on 2026-09-05: an unbounded request against real production data (126k+ Video Master items) maxed out a Lambda's full 1024MB memory and still timed out, because the endpoint computed a full ranked list before any page size was ever applied.
+- Every list-shaped response takes an explicit, server-enforced maximum `limit` (see `read_api.MAX_LIMIT`) — never an unbounded default.
+- A ranking/trending endpoint may approximate: bounding the candidate pool before ranking (most-recently-active first, then a size ceiling) trades a theoretical, unmeasurable loss of perfect exhaustiveness for a request that no longer scales with total catalog size. No real user pages deep enough to notice.
+- **Operational discipline, not just tests**: a local test suite (even one exercising tens of thousands of mock rows) cannot reproduce a real Lambda's actual memory ceiling or real production data volume. Any change to trending/ranking computation must be verified against CloudWatch's own `Max Memory Used` and `Duration` for that Lambda after deploying, not just against passing tests.
+- Prefer precomputing expensive aggregate/ranked results once (during collection, off the request path) over computing them live on every read — a cache read should always be cheaper than the computation it replaces, and its cost should never scale with catalog size the way the live computation does.
+
+---
+
 ## Security Principles
 
 The project should follow these rules:

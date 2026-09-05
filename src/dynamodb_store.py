@@ -13,16 +13,20 @@ record are both just a dict of the same camelCase attributes, so the only
 DynamoDB-specific step is converting the two velocity floats to/from
 Decimal (DynamoDB's Number type has no native float support).
 
-This module loads the whole Video Master table via Scan rather than a
-targeted GSI query on (activityState, nextCheckAt) — at the current catalog
-size (~10^5 videos, small items) a daily full Scan costs a few cents of
-on-demand RCU. Roadmap 2.3's "no full-table scan" guidance is a scaling
-concern for well beyond this size; a nextCheckAt GSI is a deliberate later
-optimization, not implemented here.
+`load_videos()` still loads the whole Video Master table via Scan — fine for
+the collector's own offline batch work (main.py/tracking_schedule.py
+legitimately needs every video), but at real scale (126k+ items as of
+2026-09-05) that Scan alone took over a minute, enough to exceed a public
+Lambda's own function timeout. `get_videos_by_creator()` queries the
+`creatorId-index` GSI instead for read_api.py's per-creator/per-organization
+trending routes, which never need more than one creator's videos at a time.
+A `nextCheckAt` GSI for the collector's own scheduling remains a deliberate
+later optimization, not implemented here.
 """
 
 from __future__ import annotations
 
+import json
 import math
 import threading
 from datetime import date
@@ -31,6 +35,7 @@ from typing import Any
 
 import boto3
 import os
+from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from snapshot_store import (
@@ -48,6 +53,8 @@ from video_master import _parse_video as _parse_video_raw
 from video_master import _to_raw as _video_to_raw
 
 VIDEO_MASTER_TABLE = os.environ.get("YOBI_VIDEO_MASTER_TABLE") or "YobiVideoMaster"
+CREATOR_ID_INDEX = "creatorId-index"
+TRENDING_CACHE_TABLE = os.environ.get("YOBI_TRENDING_CACHE_TABLE") or "YobiTrendingCache"
 SNAPSHOTS_TABLE = os.environ.get("YOBI_SNAPSHOTS_TABLE") or "YobiSnapshots"
 RUN_SUMMARIES_TABLE = os.environ.get("YOBI_RUN_SUMMARIES_TABLE") or "YobiRunSummaries"
 
@@ -83,10 +90,13 @@ def _resource():
     the calls themselves — while giving every thread its own Resource
     instance rather than sharing one.
 
-    max_pool_connections is raised from botocore's own default of 10 so one
-    thread's own resource has enough headroom for _SNAPSHOT_FETCH_WORKERS'
-    per-thread concurrency (currently sequential per resource, but sized
-    with the same margin as before this per-thread split).
+    max_pool_connections is raised from botocore's own default of 10 to 110
+    — comfortably above read_api.py's _SNAPSHOT_FETCH_WORKERS (100) — so a
+    Lambda-wide surge of concurrent per-thread resources never has to queue
+    on connection-pool exhaustion during a large organization's trending
+    request (2026-09-05: a 32-creator organization's own back-catalog alone
+    ran into the tens of thousands of videos, which is what pushed the
+    worker count up from its original 20).
 
     No region_name override: locally this resolves via `aws configure`'s
     saved config, and on Lambda via the execution environment's own region —
@@ -95,7 +105,7 @@ def _resource():
     resource = getattr(_thread_local, "dynamodb_resource", None)
     if resource is None:
         session = boto3.session.Session()
-        resource = session.resource("dynamodb", config=Config(max_pool_connections=30))
+        resource = session.resource("dynamodb", config=Config(max_pool_connections=110))
         _thread_local.dynamodb_resource = resource
     return resource
 
@@ -113,6 +123,71 @@ def load_videos() -> list[Video]:
     except ClientError as exc:
         raise VideoMasterError(f"Failed to scan {VIDEO_MASTER_TABLE}: {exc}") from exc
     return [_item_to_video(item) for item in items]
+
+
+# Hard ceiling on how many raw items get_videos_by_creator ever collects
+# for one creator, independent of any cap a caller applies afterward.
+# 2026-09-05 CodeRabbit finding: the creatorId-index GSI has no sort key,
+# so a DynamoDB Query can't ask for "the best N" directly — every caller's
+# own cap (read_api._rank_and_cap_candidates/_PER_CREATOR_CANDIDATE_CAP)
+# was applied only after this function already paged through a creator's
+# *entire* catalog (a single prolific creator's Initial-Discovery
+# back-catalog can run into the thousands), so read/memory/time here still
+# scaled with total catalog size. Stopping pagination once this many items
+# are collected trades a small chance of missing a genuinely-better
+# candidate among the untouched remainder for a read that can never grow
+# unboundedly — the same trade-off _rank_and_cap_candidates itself already
+# makes one step later in the pipeline.
+_MAX_ITEMS_PER_CREATOR_QUERY = 500
+
+
+def get_videos_by_creator(creator_id: str) -> list[Video]:
+    """Return one creator's videos via the creatorId-index GSI (capped at _MAX_ITEMS_PER_CREATOR_QUERY), never a full-table Scan."""
+    table = _resource().Table(VIDEO_MASTER_TABLE)
+    items: list[dict] = []
+    try:
+        response = table.query(IndexName=CREATOR_ID_INDEX, KeyConditionExpression=Key("creatorId").eq(creator_id))
+        items.extend(response.get("Items", []))
+        while "LastEvaluatedKey" in response and len(items) < _MAX_ITEMS_PER_CREATOR_QUERY:
+            response = table.query(
+                IndexName=CREATOR_ID_INDEX,
+                KeyConditionExpression=Key("creatorId").eq(creator_id),
+                ExclusiveStartKey=response["LastEvaluatedKey"],
+            )
+            items.extend(response.get("Items", []))
+    except ClientError as exc:
+        raise VideoMasterError(f"Failed to query {VIDEO_MASTER_TABLE} by creatorId: {exc}") from exc
+    return [_item_to_video(item) for item in items[:_MAX_ITEMS_PER_CREATOR_QUERY]]
+
+
+class TrendingCacheError(Exception):
+    """Raised when YobiTrendingCache can't be read or written."""
+
+
+def get_cached_trending(cache_key: str) -> dict[str, Any] | None:
+    """Return one precomputed trending response by its cache key, or None on a cache miss.
+
+    The stored `payload` attribute is the exact response dict trending_precompute.py
+    built for this scope/period/rankingType/reportDate/timeZone combination —
+    already ranked, already capped at MAX_LIMIT — serialized as a JSON string
+    so Decimal round-tripping is never a concern for arbitrary nested response
+    fields the way it is for Video Master's own typed attributes.
+    """
+    table = _resource().Table(TRENDING_CACHE_TABLE)
+    try:
+        item = table.get_item(Key={"cacheKey": cache_key}).get("Item")
+    except ClientError as exc:
+        raise TrendingCacheError(f"Failed to read {TRENDING_CACHE_TABLE}: {exc}") from exc
+    return json.loads(item["payload"]) if item else None
+
+
+def put_cached_trending(cache_key: str, payload: dict[str, Any], *, computed_at: str) -> None:
+    """Write (or overwrite) one precomputed trending response under cache_key."""
+    table = _resource().Table(TRENDING_CACHE_TABLE)
+    try:
+        table.put_item(Item={"cacheKey": cache_key, "payload": json.dumps(payload), "computedAt": computed_at})
+    except ClientError as exc:
+        raise TrendingCacheError(f"Failed to write {TRENDING_CACHE_TABLE}: {exc}") from exc
 
 
 def get_video(video_id: str) -> Video | None:

@@ -122,6 +122,16 @@
   clip-path: polygon(30% 0, 100% 0, 70% 100%, 0 100%);
 }
 
+/* ============ Footer ============ */
+
+.dashboard-footer {
+  padding-top: var(--space-2);
+}
+
+.dashboard-footer__attribution:empty {
+  display: none;
+}
+
 /* ============ Section header ============ */
 
 .section-header {

@@ -7,11 +7,17 @@ import pytest
 from moto import mock_aws
 
 from dynamodb_store import (
+    CREATOR_ID_INDEX,
     RUN_SUMMARIES_TABLE,
     SNAPSHOTS_TABLE,
+    TRENDING_CACHE_TABLE,
     VIDEO_MASTER_TABLE,
+    _MAX_ITEMS_PER_CREATOR_QUERY,
+    get_cached_trending,
     get_snapshot,
+    get_videos_by_creator,
     load_videos,
+    put_cached_trending,
     save_daily_collection,
     save_run_summary,
     upsert_videos,
@@ -39,8 +45,18 @@ def dynamodb_tables(aws_credentials):
         client = boto3.client("dynamodb", region_name=AWS_REGION)
         client.create_table(
             TableName=VIDEO_MASTER_TABLE,
-            AttributeDefinitions=[{"AttributeName": "videoId", "AttributeType": "S"}],
+            AttributeDefinitions=[
+                {"AttributeName": "videoId", "AttributeType": "S"},
+                {"AttributeName": "creatorId", "AttributeType": "S"},
+            ],
             KeySchema=[{"AttributeName": "videoId", "KeyType": "HASH"}],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": CREATOR_ID_INDEX,
+                    "KeySchema": [{"AttributeName": "creatorId", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                }
+            ],
             BillingMode="PAY_PER_REQUEST",
         )
         client.create_table(
@@ -59,6 +75,12 @@ def dynamodb_tables(aws_credentials):
             TableName=RUN_SUMMARIES_TABLE,
             AttributeDefinitions=[{"AttributeName": "snapshotDate", "AttributeType": "S"}],
             KeySchema=[{"AttributeName": "snapshotDate", "KeyType": "HASH"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        client.create_table(
+            TableName=TRENDING_CACHE_TABLE,
+            AttributeDefinitions=[{"AttributeName": "cacheKey", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "cacheKey", "KeyType": "HASH"}],
             BillingMode="PAY_PER_REQUEST",
         )
         yield
@@ -180,6 +202,67 @@ def test_load_videos_returns_every_upserted_video(dynamodb_tables):
     loaded = load_videos()
 
     assert {video.video_id for video in loaded} == {video.video_id for video in videos}
+
+
+def test_get_videos_by_creator_returns_only_that_creators_videos(dynamodb_tables):
+    """The GSI query never leaks another creator's videos into the result."""
+    upsert_videos(
+        [
+            Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z"),
+            Video(video_id="v2", creator_id="c1", title="B", published_at="2026-08-20T00:00:00Z"),
+            Video(video_id="v3", creator_id="c2", title="C", published_at="2026-08-20T00:00:00Z"),
+        ]
+    )
+
+    assert {video.video_id for video in get_videos_by_creator("c1")} == {"v1", "v2"}
+    assert {video.video_id for video in get_videos_by_creator("c2")} == {"v3"}
+
+
+def test_get_videos_by_creator_returns_empty_list_for_unknown_creator(dynamodb_tables):
+    """A creator with no videos yet returns [], not an error."""
+    assert get_videos_by_creator("no_such_creator") == []
+
+
+def test_get_videos_by_creator_stops_at_the_cap_for_a_prolific_creator(dynamodb_tables):
+    """A creator with more videos than _MAX_ITEMS_PER_CREATOR_QUERY never returns more than
+    that many — 2026-09-05 CodeRabbit finding: this function used to page through a
+    creator's *entire* catalog before any caller-side cap was ever applied."""
+    videos = [
+        Video(video_id=f"v{i}", creator_id="prolific", title=f"Video {i}", published_at="2026-08-20T00:00:00Z")
+        for i in range(_MAX_ITEMS_PER_CREATOR_QUERY + 50)
+    ]
+    upsert_videos(videos)
+
+    result = get_videos_by_creator("prolific")
+
+    assert len(result) == _MAX_ITEMS_PER_CREATOR_QUERY
+
+
+# --- Trending cache ---------------------------------------------------------
+
+
+def test_get_cached_trending_returns_none_for_a_missing_key(dynamodb_tables):
+    """An unpopulated cache key is a clean miss, not an error."""
+    assert get_cached_trending("no-such-key") is None
+
+
+def test_put_then_get_cached_trending_round_trips_the_payload(dynamodb_tables):
+    """A cached payload — including nested lists/dicts — survives the JSON round trip unchanged."""
+    payload = {"organization": "vspo", "results": [{"rank": 1, "videoId": "v1", "value": 12.5}]}
+
+    put_cached_trending("org:vspo:1d:daily_trending:2026-09-01:Asia/Tokyo", payload, computed_at="2026-09-01T18:00:00+09:00")
+
+    assert get_cached_trending("org:vspo:1d:daily_trending:2026-09-01:Asia/Tokyo") == payload
+
+
+def test_put_cached_trending_overwrites_an_existing_key(dynamodb_tables):
+    """Re-running the precompute job for the same key replaces yesterday's cached entry, not duplicates it."""
+    key = "creator:aizawa_ema:1d:daily_trending:2026-09-01:Asia/Tokyo"
+    put_cached_trending(key, {"results": ["old"]}, computed_at="2026-09-01T18:00:00+09:00")
+
+    put_cached_trending(key, {"results": ["new"]}, computed_at="2026-09-02T18:00:00+09:00")
+
+    assert get_cached_trending(key) == {"results": ["new"]}
 
 
 # --- Snapshots + run summaries --------------------------------------------
