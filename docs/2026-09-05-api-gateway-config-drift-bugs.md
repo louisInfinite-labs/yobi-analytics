@@ -12,17 +12,19 @@
 
 ### 2. 現家咁有咩問題
 
-`aws apigatewayv2 get-stages` 查到 `ThrottlingBurstLimit`/`ThrottlingRateLimit` 都係 `null`——即係話依家呢個 API 對住任何數量嘅請求都冇任何 Gateway 層面嘅節流。一個惡意/意外嘅流量爆發(scraper、重複重試嘅壞 client、單純多咗人用)可以毫無阻攔咁直達 Lambda,再直達 DynamoDB。Lambda 自己雖然有 reserved concurrency 可以設(依家未設),DynamoDB on-demand 都有自己嘅彈性上限,但 **Gateway 呢一層本身應該係第一道防線**,而家形同虛設。
+`aws apigatewayv2 get-stages` 查到 `ThrottlingBurstLimit`/`ThrottlingRateLimit` 都係 `null`——**準確啲講,呢個係「冇設 API 專屬嘅 throttle」,唔係「完全冇任何節流」**:AWS 帳戶層面本身有一個俾成個帳戶所有 API 共用嘅預設 regional throttle(數值好高,對一個細專案嚟講形同虛設)。即係話呢個 API 冇自己專屬、貼身嘅上限,淨係靠緊帳戶層面嗰個好闊嘅預設值頂住。一個惡意/意外嘅流量爆發(scraper、重複重試嘅壞 client、單純多咗人用)可以幾乎毫無阻攔咁直達 Lambda,再直達 DynamoDB。Lambda 自己雖然有 reserved concurrency 可以設(依家未設),DynamoDB on-demand 都有自己嘅彈性上限,但 **Gateway 呢一層本身應該係第一道專屬防線**,而家形同虛設。
 
 ### 3. 點解決
 
 幫 `$default` stage 加返 `ThrottlingBurstLimit`/`ThrottlingRateLimit`:
 
 ```bash
-aws apigatewayv2 update-stage --api-id k76ct6q0j0 --stage-name "$default" \
+aws apigatewayv2 update-stage --api-id k76ct6q0j0 --stage-name '$default' \
   --default-route-settings ThrottlingBurstLimit=20,ThrottlingRateLimit=10 \
   --region ap-northeast-1
 ```
+
+（如果個 stage 係 `ApiGatewayManaged: true`,`update-stage` 會拒絕修改——遇到呢種情況要改用一個 customer-managed stage 先做得到自訂 throttle。今次呢個 `$default` stage 唔屬於呢種情況,`update-stage` 直接生效。）
 
 數值(瞬間 20、每秒 10)按專案現時規模(Roadmap 6 初始目標受眾係 ~500 人嘅 Discord 群組)訂,留有餘裕俾一個用戶打開 dashboard 一次過發嘅幾個 API call,同時遠低於任何真正濫用嘅流量級數。
 

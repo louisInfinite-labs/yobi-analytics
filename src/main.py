@@ -333,7 +333,7 @@ def run_discovery() -> int:
                 break
             except YouTubeAPIError as exc:
                 print(f"Warning: discovery failed for {creator.display_name} ({creator.organization}): {exc}")
-    except YouTubeAPIError as exc:
+    except (YouTubeAPIError, VideoMasterError) as exc:
         print(f"Error: {exc}")
         return 1
 

@@ -56,9 +56,11 @@ aws --version
 5. Click「Create group」,group name 打 `yobi-analytics-admins`,search 加 `PowerUserAccess` 呢個 policy
 6. 剔選啱啱開嘅 group,Next → Create user
 
-**`PowerUserAccess` 係乜:** 一個 AWS managed policy,俾你幾乎所有 AWS 服務嘅權(Lambda、DynamoDB 等等),**但刻意完全唔包 IAM**(唔可以開新 user、role、改權限)。呢個係故意留低嘅安全邊界。
+**`PowerUserAccess` 係乜:** 一個 AWS managed policy,俾你幾乎所有 AWS 服務嘅權(Lambda、DynamoDB 等等),**但唔畀一般嘅 IAM user/role 管理權**(冇 `iam:CreateRole`,開唔到新 role;`iam:CreateUser`/`iam:AttachUserPolicy` 呢類都冇)。留意佢**唔係完全冇任何 IAM action**——`iam:CreateServiceLinkedRole`、`iam:ListRoles` 呢類其實包咗喺入面,淨係將「開一般 role/user、改權限」呢類刻意剔走,留低做安全邊界。
 
 ### 1.6 攞 Access Key + `aws configure`
+
+⚠️ **呢個做法(長期 access key,寫死落 `aws configure`)淨係啱 bootstrap/開發初期用。** 日常操作應該用 IAM Identity Center 或者 assumed role 嘅臨時憑證,唔應該長期靠一條永久有效嘅 access key。如果好似依家咁保留咗長期 key,務必做埋定期輪換、監察使用記錄、一有懷疑就即刻 revoke。
 
 1. 入返 `yobi-analytics-cli` 個 user → 「Security credentials」tab → 「Create access key」
 2. 用途揀「Command Line Interface (CLI)」
@@ -139,6 +141,8 @@ DATA_DIR = Path(os.environ.get("YOBI_DATA_DIR") or str(Path(__file__).parent))
 
 本機開發預設冇 set 呢個環境變數,行為完全不變;Lambda 部署時 set 做 `/tmp`(Lambda 入面唯一寫得嘅地方)。`video_master.json`、`snapshots/` 跟呢個做。
 
+⚠️ **`YOBI_DATA_DIR=/tmp` 淨係呢一節(2.2)測試部署用嘅權宜之計,唔係正式生產環境嘅做法。** `/tmp` 係 Lambda 執行環境自己嘅暫存空間,cold start 之後隨時會清空,用嚟存 `video_master.json`/`snapshots/` 呢類需要長期保留嘅追蹤狀態,一旦 cold start 就有機會令追蹤歷史/去重複狀態被重置。真正生產環境收集數據之前,一定要換用 2.3 嘅 DynamoDB(`YOBI_STORAGE_BACKEND=dynamodb`),唔可以停留喺呢個 `/tmp` 方案。
+
 **留意:`creators.json` 特登冇跟呢個機制**——因為佢係固定參考資料,冇任何地方會喺 runtime 寫佢,所以佢繼續讀 package path(Lambda 讀得,淨係唔寫得)。試過將佢都 redirect 去 `/tmp`,發現係個真 bug:`/tmp/creators.json` 喺 Lambda 度根本唔存在(冇 bootstrap 步驟 copy 個 file 過去),結果 `load_creators()` 靜靜雞回傳空 list,`main()` 會 exit 0 印「No active creators.」,實際上一條片都冇收集到,而且完全冇 error 提示。
 
 ### 2.2 寫 Lambda entry point
@@ -217,6 +221,39 @@ Lambda function 本身執行 code 嗰陣,唔係用緊「你」嘅身份——佢
 3. Create policy
 4. IAM → User groups → `yobi-analytics-admins` → Permissions → Add permissions → Attach policies → 剔選 `YobiLambdaRoleScopedAccess`
 
+🔴 **2026-09-05 CodeRabbit 搵到嘅 Critical 缺口(⚠️ 待實際喺 AWS 執行,呢份文件已經記錄低要點做):** 上面條 `iam:AttachRolePolicy` 冇限制邊條 policy 先俾 attach——即係話 `yobi-analytics-cli` 理論上可以將**任何** managed policy(包括 `AdministratorAccess`)attach 落 `yobi-analytics-lambda-role`,再叫 Lambda 用嗰個身份運行,變相繞過咗「Lambda role 應該收窄」呢個原意,係一條特權提升(privilege escalation)嘅路。修復方法係加一個 `iam:PolicyARN` condition,淨係俾實際用緊嗰條 policy 嘅 ARN:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageYobiLambdaExecutionRoleOnly",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:GetRole",
+        "iam:PassRole"
+      ],
+      "Resource": "arn:aws:iam::189461315571:role/yobi-analytics-lambda-role"
+    },
+    {
+      "Sid": "AttachOnlyTheRequiredManagedPolicy",
+      "Effect": "Allow",
+      "Action": "iam:AttachRolePolicy",
+      "Resource": "arn:aws:iam::189461315571:role/yobi-analytics-lambda-role",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        }
+      }
+    }
+  ]
+}
+```
+
+呢個改動要去 IAM → Policies → `YobiLambdaRoleScopedAccess` → Edit policy 手動套用,唔會因為改咗呢份文件就自動生效——如果之後真係要幫呢個 role attach 多一條唔同嘅 managed policy,記得同步將條 ARN 加落 `ArnEquals` 度。
+
 **點解要分開兩樣嘢,唔係淨係 `PowerUserAccess` 就夠:**
 
 - `PowerUserAccess` 管嘅係「**你**(CLI user)可以喺 AWS 度做咩」,刻意唔包 IAM
@@ -250,6 +287,8 @@ aws lambda update-function-configuration --function-name yobi-analytics-collecto
 - `--query` 嘅過濾發生喺 AWS CLI **自己部機度**(用 jmespath library),原始 response 有 key,但經過呢個 query 建構出嚟嘅新 object 結構上就唔會有 `Environment` 呢個 key,唔係「碰彩冇揀中」。
 - `update-function-configuration` 呢類**寫入**指令(唔止查詢),output 一樣會 echo 返個新值,一律唔好貼、自己喺 terminal 睇完就算。
 - 換 key 唔使驚會整壞/整封 Google 帳戶——開/刪 API key 係正常帳戶管理操作,冇「換得太密會封鎖」嘅機制,一個 project 預設可以開到幾百條。
+
+⚠️ **更根本嘅改法(已知缺口,見 [`docs/phase5-0-5.1-baseline-and-authority-audit.zh-TW.md`](phase5-0-5.1-baseline-and-authority-audit.zh-TW.md)):** 就算之後查詢一律加咗 `--query` 過濾,`YOUTUBE_API_KEY` 本身依然係**明文存喺 Lambda 環境變數**——任何攞到 `lambda:GetFunctionConfiguration` 權限嘅身份都睇到。將呢類 command-line value 改成「Lambda 淨係存一個 Secrets Manager 嘅 ARN reference,runtime 先向 Secrets Manager 攞真正個值」,先可以連呢個風險都收埋——呢個屬於 Roadmap 5.2/5.3 嘅 secret management 範疇,記錄做已知待辦,唔喺呢份 2.2 部署筆記入面即刻做。
 
 ### 2.8 手動 Invoke——CLI Read-Timeout 陷阱
 
@@ -290,7 +329,7 @@ $startTime = [DateTimeOffset]::UtcNow.AddMinutes(-10).ToUnixTimeMilliseconds()
 aws logs filter-log-events --log-group-name /aws/lambda/yobi-analytics-collector --region ap-northeast-1 --start-time $startTime --filter-pattern "not valid"
 ```
 
-`events: []` 就代表冇搵到任何相關 error。`-10` 分鐘嘅選擇係為咗啱啱好覆蓋返「最新一次完整 run」嘅時間範圍——太短會漏咗 run 開頭部分,太長就會撈埋更早、已經處理過嘅舊 run(例如之前撞 timeout 嗰次)嘅 log,混淆判斷。
+`events: []` 淨係代表「呢個 filter pattern、呢個時間窗入面搵唔到相關字眼」,**唔代表呢次 invocation 一定乾淨**——`--filter-pattern` 淨係搵緊一個特定字眼(例如 `"not valid"`),搵唔到唔代表冇 `FunctionError`/`Task timed out`/`Unhandled error` 呢類其他形式嘅問題,亦都唔代表個時間窗冚啱咗真正嗰次 invocation。要真正確認一次 invoke 乾淨,仲要:1) 睇返 `aws lambda invoke` 自己個 response(有冇 `FunctionError` 欄位),2) 用 `--filter-pattern "REPORT"` 或者直接攞成段 log 睇下有冇 `Status: timeout`/`Status: error` 呢類字眼,3) 確認個時間窗真係覆蓋咗嗰次 invocation 嘅實際區間。`-10` 分鐘嘅選擇係為咗啱啱好覆蓋返「最新一次完整 run」嘅時間範圍——太短會漏咗 run 開頭部分,太長就會撈埋更早、已經處理過嘅舊 run(例如之前撞 timeout 嗰次)嘅 log,混淆判斷。
 
 呢個 command 純粹讀 CloudWatch 已經存低嘅 log,唔會再打 YouTube API,唔會再食 YouTube quota。
 
@@ -306,4 +345,4 @@ Definition of Done 全部達成:
 - [x] 手動 invoke work(排除 CLI read-timeout 假象之後確認)
 - [x] CloudWatch 有清晰、有用嘅 log(真實 video 資料,冇殘留 error)
 
-之後仲有 2.3(DynamoDB Storage)、2.4(EventBridge Daily Schedule),詳情見 [`Roadmap.md`](../Roadmap.md)。
+**更新(2026-09-05):2.3(DynamoDB Storage)同 2.4(EventBridge Daily Schedule)都已經完成部署,唔再係「之後先做」嘅未來工作。** `src/dynamodb_store.py` 早已實現並且部署緊(`YOBI_STORAGE_BACKEND=dynamodb`),8 張生產表(`YobiVideoMaster`/`YobiSnapshots` 等)全部已建立,`yobi-analytics-collector` 亦已經完全靠 DynamoDB 運作,唔再用返呢節講嘅 `/tmp` 過渡方案。EventBridge 排程方面,已經有 4 條實際運行緊嘅 schedule:主收集(18:00 JST)、discovery-only(00:00 JST)、trending precompute(19:00/20:00/21:00 JST,分 1d/7d/30d 三個 period)、notification dispatch(每 15 分鐘)。詳情見 [`Roadmap.md`](../Roadmap.md)。

@@ -125,14 +125,30 @@ def load_videos() -> list[Video]:
     return [_item_to_video(item) for item in items]
 
 
+# Hard ceiling on how many raw items get_videos_by_creator ever collects
+# for one creator, independent of any cap a caller applies afterward.
+# 2026-09-05 CodeRabbit finding: the creatorId-index GSI has no sort key,
+# so a DynamoDB Query can't ask for "the best N" directly — every caller's
+# own cap (read_api._rank_and_cap_candidates/_PER_CREATOR_CANDIDATE_CAP)
+# was applied only after this function already paged through a creator's
+# *entire* catalog (a single prolific creator's Initial-Discovery
+# back-catalog can run into the thousands), so read/memory/time here still
+# scaled with total catalog size. Stopping pagination once this many items
+# are collected trades a small chance of missing a genuinely-better
+# candidate among the untouched remainder for a read that can never grow
+# unboundedly — the same trade-off _rank_and_cap_candidates itself already
+# makes one step later in the pipeline.
+_MAX_ITEMS_PER_CREATOR_QUERY = 500
+
+
 def get_videos_by_creator(creator_id: str) -> list[Video]:
-    """Return every video for one creator via the creatorId-index GSI, never a full-table Scan."""
+    """Return one creator's videos via the creatorId-index GSI (capped at _MAX_ITEMS_PER_CREATOR_QUERY), never a full-table Scan."""
     table = _resource().Table(VIDEO_MASTER_TABLE)
     items: list[dict] = []
     try:
         response = table.query(IndexName=CREATOR_ID_INDEX, KeyConditionExpression=Key("creatorId").eq(creator_id))
         items.extend(response.get("Items", []))
-        while "LastEvaluatedKey" in response:
+        while "LastEvaluatedKey" in response and len(items) < _MAX_ITEMS_PER_CREATOR_QUERY:
             response = table.query(
                 IndexName=CREATOR_ID_INDEX,
                 KeyConditionExpression=Key("creatorId").eq(creator_id),
@@ -141,7 +157,7 @@ def get_videos_by_creator(creator_id: str) -> list[Video]:
             items.extend(response.get("Items", []))
     except ClientError as exc:
         raise VideoMasterError(f"Failed to query {VIDEO_MASTER_TABLE} by creatorId: {exc}") from exc
-    return [_item_to_video(item) for item in items]
+    return [_item_to_video(item) for item in items[:_MAX_ITEMS_PER_CREATOR_QUERY]]
 
 
 class TrendingCacheError(Exception):

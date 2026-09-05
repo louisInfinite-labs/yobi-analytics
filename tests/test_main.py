@@ -140,3 +140,16 @@ def test_run_discovery_returns_1_when_api_key_is_missing(monkeypatch):
     monkeypatch.setattr(main_module, "get_api_key", _boom)
 
     assert main_module.run_discovery() == 1
+
+
+def test_run_discovery_returns_1_when_the_initial_video_master_read_fails(monkeypatch):
+    """load_videos() raising VideoMasterError (e.g. a DynamoDB scan failure) must return 1,
+    not propagate — the outer handler only caught YouTubeAPIError before this regression test."""
+    monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator()])
+
+    def _boom():
+        raise VideoMasterError("simulated DynamoDB scan failure")
+
+    monkeypatch.setattr(main_module, "load_videos", _boom)
+
+    assert main_module.run_discovery() == 1

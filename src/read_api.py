@@ -262,7 +262,18 @@ def _cached_trending(
     cached = get_cached_trending(key)
     if cached is None:
         return None
-    return {**cached, "results": cached["results"][:limit]}
+    # The cached payload's own top-level lastUpdatedAt is the oldest
+    # timestamp across all MAX_LIMIT cached rows — after truncating to the
+    # caller's own limit, that aggregate can point at a row no longer in
+    # results, so it must be recomputed from just the rows actually
+    # returned (matching the live path's own _aggregate_last_updated_at).
+    results = cached["results"][:limit]
+    timestamps = [row["lastUpdatedAt"] for row in results if row.get("lastUpdatedAt") is not None]
+    return {
+        **cached,
+        "results": results,
+        "lastUpdatedAt": min(timestamps, key=datetime.fromisoformat) if timestamps else None,
+    }
 
 
 def get_creator_trending(query: dict[str, Any]) -> dict[str, Any]:

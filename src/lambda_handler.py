@@ -86,6 +86,8 @@ def _run_trending_precompute(period: str | None) -> dict[str, Any]:
     report_date = datetime.now(_PRECOMPUTE_TIMEZONE).date()
     periods = (period,) if period else trending_precompute._PERIODS
     stats = trending_precompute.run(report_date, periods=periods)
+    if stats["scopes_written"] == 0 and stats["scopes_failed"] > 0:
+        raise RuntimeError(f"Trending precompute failed for every scope; see the log above for details. {stats}")
     if stats["scopes_failed"] > 0:
         print(f"Warning: trending precompute finished with {stats['scopes_failed']} failed scope(s): {stats}")
     return {"statusCode": 200, "body": stats}

@@ -339,6 +339,30 @@ def test_get_creator_trending_serves_a_cache_hit_without_touching_live_storage(m
     assert response["results"] == [{"rank": 1, "videoId": "v1"}]
 
 
+def test_get_creator_trending_recomputes_last_updated_at_after_cache_truncation(monkeypatch):
+    """A cache hit's top-level lastUpdatedAt must reflect only the rows actually
+    returned after truncating to `limit`, not the oldest row across the full
+    cached (up to MAX_LIMIT) set — otherwise a cache hit and a live computation
+    of the same request could report different freshness for the same data."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    cached_payload = {
+        "organization": None,
+        "lastUpdatedAt": "2026-08-01T00:00:00+00:00",  # the oldest row's timestamp, from a row NOT kept below
+        "results": [
+            {"rank": 1, "videoId": "v1", "lastUpdatedAt": "2026-09-01T00:00:00+00:00"},
+            {"rank": 2, "videoId": "v2", "lastUpdatedAt": "2026-08-01T00:00:00+00:00"},
+        ],
+    }
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: cached_payload)
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "1"}
+    )
+
+    assert [entry["videoId"] for entry in response["results"]] == ["v1"]
+    assert response["lastUpdatedAt"] == "2026-09-01T00:00:00+00:00"
+
+
 def test_get_creator_trending_ignores_cache_when_limit_is_absent(monkeypatch):
     """An unbounded request (no limit) never serves a cache entry that only ever holds MAX_LIMIT rows."""
     _trending_fixture(

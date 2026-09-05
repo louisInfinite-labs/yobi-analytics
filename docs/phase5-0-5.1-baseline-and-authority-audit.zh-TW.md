@@ -107,6 +107,11 @@ Roadmap 5.1 冇獨立 exit gate(合埋喺 Phase 5 Exit Gate 一齊審),但按上
 
   呢條範本本身都仲未做到「read/collector/dispatcher 分開 role」呢個更完整嘅目標(3 個 Lambda 依然共用一條 role,淨係頂住咗 FullAccess 呢個立即嘅高風險缺口),但即刻攔截咗最嚴重嗰部分——`DeleteTable`/PITR 停用/任意 table 嘅權限。如果想一步到位分開三條 role,可以之後再做,唔急住同呢個 fix 綁埋一齊。
 
+  **CodeRabbit review 補充(2026-09-05):**
+
+  1. **上面條範本本身有個漏洞,已經喺實際套用嗰陣搵到並修正咗**——`Resource` 淨係得表本身嘅 ARN,冇包埋 GSI 嘅 `.../index/creatorId-index` ARN。DynamoDB 嘅 IAM 權限入面,一張表同佢自己嘅 GSI 係兩個獨立 resource,淨係俾表 ARN 唔夠俾 `Query` 一個 index。呢個問題喺同一晚稍後(加 `creatorId-index` GSI 嗰陣)真係撞到 `AccessDeniedException`,即場加多一條 `arn:.../table/YobiVideoMaster/index/*` 落 `Resource` 先解決——**即係話你依家實際套用咗嘅 policy,已經包埋呢條 index ARN,唔係停留喺上面呢個舊版範本嘅狀態。**
+  2. **「將呢條有寫入權嘅 policy 掛落三個 Lambda 共用嘅 role」本身確實有風險**,CodeRabbit 建議應該先分開 role,先至掛呢類政策。呢個取捨係刻意做嘅:即刻換走 `AmazonDynamoDBFullAccess`(帳戶層面、無限制嘅高風險)相比起「三個 Lambda 共用一條收窄咗嘅 role」,已經係大幅收窄咗嘅 blast radius,而分 3 條 role 係一個規模大好多嘅獨立任務——上面已經記低咗做已知、有意識延後嘅項目,唔係漏做,係刻意分先後緩急處理。
+
 最新一輪三個 Lambda 現況(`aws lambda list-functions`,2026-09-05):
 
 | Function | 最後更新 | Execution Role |
