@@ -272,8 +272,10 @@ Handler 格式係 `<檔名>.<function名>`——`src/lambda_handler.py` 入面�
 
 **呢步一定要自己喺 terminal 打,唔會假手於人:**
 
+⚠️ `--environment` 嘅 `Variables` 係**整個覆蓋**,唔係 merge——漏咗邊個現存變數,個變數就即刻冧咗,唔會保留返舊值。跑之前用 `aws lambda get-function-configuration --function-name yobi-analytics-collector --region ap-northeast-1 --query "sort(keys(Environment.Variables))"` 睇清楚而家實際有邊啲 key(呢個 `--query` 淨係揀 key 名,唔會印出任何值),確保新指令入面齊晒。
+
 ```bash
-aws lambda update-function-configuration --function-name yobi-analytics-collector --region ap-northeast-1 --environment "Variables={YOUTUBE_API_KEY_SECRET_NAME=yobi-analytics/youtube-api-key,YOBI_DATA_DIR=/tmp}"
+aws lambda update-function-configuration --function-name yobi-analytics-collector --region ap-northeast-1 --environment "Variables={YOUTUBE_API_KEY_SECRET_NAME=yobi-analytics/youtube-api-key,YOBI_DATA_DIR=/tmp,YOBI_STORAGE_BACKEND=dynamodb}"
 ```
 
 **事故記錄:** 第一次做呢步嗰陣,`update-function-configuration`/`get-function` 嘅 output **內建就會夾住個環境變數嘅真實值**,冇加任何過濾嘅話,個 command 自己就會將完整 key 印晒出嚟。連續兩次唔為意咁將成份 output 貼咗去對話框,導致條 key 曝光兩次,要分別去 Google Cloud Console 換過新 key。
