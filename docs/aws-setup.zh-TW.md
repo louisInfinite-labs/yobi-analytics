@@ -345,4 +345,4 @@ Definition of Done 全部達成:
 - [x] 手動 invoke work(排除 CLI read-timeout 假象之後確認)
 - [x] CloudWatch 有清晰、有用嘅 log(真實 video 資料,冇殘留 error)
 
-**更新(2026-09-05):2.3(DynamoDB Storage)同 2.4(EventBridge Daily Schedule)都已經完成部署,唔再係「之後先做」嘅未來工作。** `src/dynamodb_store.py` 早已實現並且部署緊(`YOBI_STORAGE_BACKEND=dynamodb`),8 張生產表(`YobiVideoMaster`/`YobiSnapshots` 等)全部已建立,`yobi-analytics-collector` 亦已經完全靠 DynamoDB 運作,唔再用返呢節講嘅 `/tmp` 過渡方案。EventBridge 排程方面,已經有 4 條實際運行緊嘅 schedule:主收集(18:00 JST)、discovery-only(00:00 JST)、trending precompute(19:00/20:00/21:00 JST,分 1d/7d/30d 三個 period)、notification dispatch(每 15 分鐘)。詳情見 [`Roadmap.md`](../Roadmap.md)。
+**更新(2026-09-05):2.3(DynamoDB Storage)同 2.4(EventBridge Daily Schedule)都已經完成部署,唔再係「之後先做」嘅未來工作。** `src/dynamodb_store.py` 早已實現並且部署緊(`YOBI_STORAGE_BACKEND=dynamodb`),8 張生產表(`YobiVideoMaster`/`YobiSnapshots` 等)全部已建立,`yobi-analytics-collector` 亦已經完全靠 DynamoDB 運作,唔再用返呢節講嘅 `/tmp` 過渡方案。EventBridge 排程方面,已經有 6 條實際運行緊嘅 schedule:主收集(18:00 JST)、discovery-only(00:00 JST)、trending precompute 三條(19:00/20:00/21:00 JST,分別對應 1d/7d/30d 三個 period)、notification dispatch(每 15 分鐘)。詳情見 [`Roadmap.md`](../Roadmap.md)。

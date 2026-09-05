@@ -346,7 +346,12 @@ def test_get_creator_trending_recomputes_last_updated_at_after_cache_truncation(
     of the same request could report different freshness for the same data."""
     monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
     cached_payload = {
-        "organization": None,
+        "creatorId": "aizawa_ema",
+        "reportDate": "2026-09-01",
+        "comparisonDate": "2026-08-31",
+        "period": "1d",
+        "rankingType": "daily_trending",
+        "timeZone": "Asia/Tokyo",
         "lastUpdatedAt": "2026-08-01T00:00:00+00:00",  # the oldest row's timestamp, from a row NOT kept below
         "results": [
             {"rank": 1, "videoId": "v1", "lastUpdatedAt": "2026-09-01T00:00:00+00:00"},
@@ -361,6 +366,14 @@ def test_get_creator_trending_recomputes_last_updated_at_after_cache_truncation(
 
     assert [entry["videoId"] for entry in response["results"]] == ["v1"]
     assert response["lastUpdatedAt"] == "2026-09-01T00:00:00+00:00"
+    # Every other top-level field from the cached payload must pass through
+    # unchanged — only `results` and `lastUpdatedAt` are meant to be touched.
+    assert response["creatorId"] == "aizawa_ema"
+    assert response["reportDate"] == "2026-09-01"
+    assert response["comparisonDate"] == "2026-08-31"
+    assert response["period"] == "1d"
+    assert response["rankingType"] == "daily_trending"
+    assert response["timeZone"] == "Asia/Tokyo"
 
 
 def test_get_creator_trending_ignores_cache_when_limit_is_absent(monkeypatch):
