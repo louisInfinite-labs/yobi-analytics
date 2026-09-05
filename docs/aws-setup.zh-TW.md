@@ -268,12 +268,14 @@ aws lambda create-function --function-name yobi-analytics-collector --runtime py
 
 Handler 格式係 `<檔名>.<function名>`——`src/lambda_handler.py` 入面個 `lambda_handler` function,所以係 `lambda_handler.lambda_handler`。IAM role 啱啱開好可能要等幾秒先生效,見到「role cannot be assumed」等一陣重試就得。
 
-### 2.7 Set 環境變數——⚠️ Key 洩漏事故同教訓
+### 2.7 Set 環境變數——⚠️ Key 洩漏事故同教訓(**已修復,見底部**)
 
 **呢步一定要自己喺 terminal 打,唔會假手於人:**
 
+⚠️ `--environment` 嘅 `Variables` 係**整個覆蓋**,唔係 merge——漏咗邊個現存變數,個變數就即刻冧咗,唔會保留返舊值。跑之前用 `aws lambda get-function-configuration --function-name yobi-analytics-collector --region ap-northeast-1 --query "sort(keys(Environment.Variables))"` 睇清楚而家實際有邊啲 key(呢個 `--query` 淨係揀 key 名,唔會印出任何值),確保新指令入面齊晒。
+
 ```bash
-aws lambda update-function-configuration --function-name yobi-analytics-collector --region ap-northeast-1 --environment "Variables={YOUTUBE_API_KEY=<你嘅key>,YOBI_DATA_DIR=/tmp}"
+aws lambda update-function-configuration --function-name yobi-analytics-collector --region ap-northeast-1 --environment "Variables={YOUTUBE_API_KEY_SECRET_NAME=yobi-analytics/youtube-api-key,YOBI_DATA_DIR=/tmp,YOBI_STORAGE_BACKEND=dynamodb}"
 ```
 
 **事故記錄:** 第一次做呢步嗰陣,`update-function-configuration`/`get-function` 嘅 output **內建就會夾住個環境變數嘅真實值**,冇加任何過濾嘅話,個 command 自己就會將完整 key 印晒出嚟。連續兩次唔為意咁將成份 output 貼咗去對話框,導致條 key 曝光兩次,要分別去 Google Cloud Console 換過新 key。
@@ -288,7 +290,7 @@ aws lambda update-function-configuration --function-name yobi-analytics-collecto
 - `update-function-configuration` 呢類**寫入**指令(唔止查詢),output 一樣會 echo 返個新值,一律唔好貼、自己喺 terminal 睇完就算。
 - 換 key 唔使驚會整壞/整封 Google 帳戶——開/刪 API key 係正常帳戶管理操作,冇「換得太密會封鎖」嘅機制,一個 project 預設可以開到幾百條。
 
-⚠️ **更根本嘅改法(已知缺口,見 [`docs/phase5-0-5.1-baseline-and-authority-audit.zh-TW.md`](phase5-0-5.1-baseline-and-authority-audit.zh-TW.md)):** 就算之後查詢一律加咗 `--query` 過濾,`YOUTUBE_API_KEY` 本身依然係**明文存喺 Lambda 環境變數**——任何攞到 `lambda:GetFunctionConfiguration` 權限嘅身份都睇到。將呢類 command-line value 改成「Lambda 淨係存一個 Secrets Manager 嘅 ARN reference,runtime 先向 Secrets Manager 攞真正個值」,先可以連呢個風險都收埋——呢個屬於 Roadmap 5.2/5.3 嘅 secret management 範疇,記錄做已知待辦,唔喺呢份 2.2 部署筆記入面即刻做。
+✅ **已修復(Build Day 2,2026-09-05)**:`YOUTUBE_API_KEY` 已經搬去 **AWS Secrets Manager**(secret name `yobi-analytics/youtube-api-key`),`yobi-analytics-collector` 嘅環境變數而家淨係存 `YOUTUBE_API_KEY_SECRET_NAME` 呢個 secret 名(唔係真正個 key),runtime 由 [`src/config.py`](../src/config.py) 嘅 `get_api_key()` 向 Secrets Manager 攞返真正個值,cache 喺 module 層面。`yobi-analytics-lambda-role` 加咗一條新嘅 inline policy `YobiSecretsAccess`,淨係俾 `secretsmanager:GetSecretValue`,鎖死喺呢一個 secret 嘅 ARN。即使而家 `Environment` 俾人查到都唔會再見到明文 key。本地開發唔受影響,`.env` 嘅 `YOUTUBE_API_KEY` 繼續做 fallback。
 
 ### 2.8 手動 Invoke——CLI Read-Timeout 陷阱
 
