@@ -281,6 +281,77 @@ def main() -> int:
     return 0
 
 
+def run_discovery() -> int:
+    """Discovery-only run (JST 00:00 trigger): find and persist new videos for every active
+    creator, without collecting statistics.
+
+    A separate, lighter invocation from main()'s own 18:00 run, so a new
+    video's notification (record_new_video_events) can fire hours earlier
+    than waiting for the heavier statistics-collection run to also handle
+    discovery, and so the collector's daily YouTube API/DynamoDB load is
+    spread across two smaller windows instead of one long one. Deliberately
+    duplicates main()'s own discovery-loop shape (accepting the small
+    repetition) rather than extracting a shared helper, so this additive
+    change carries no risk of altering main()'s own already-relied-upon
+    control flow.
+    """
+    try:
+        api_key = get_api_key()
+    except MissingAPIKeyError as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    active_creators = get_active_creators()
+    if not active_creators:
+        print("No active creators.")
+        return 0
+
+    discovered_at = datetime.now(COLLECTION_TIMEZONE).isoformat()
+    newly_discovered: list[Video] = []
+    quota_exhausted = False
+
+    try:
+        youtube = build_youtube_client(api_key)
+        known_videos = load_videos()
+
+        for creator in active_creators:
+            if not creator.discovery_enabled:
+                continue
+            known_ids = load_video_ids_for_creator(creator.creator_id, videos=known_videos)
+            try:
+                new_video_ids, new_videos = _discover_creator(
+                    youtube, creator, known_ids, discovered_at=discovered_at
+                )
+                print(f"{creator.display_name} ({creator.organization}): {len(new_video_ids)} new video(s) discovered")
+                newly_discovered.extend(new_videos)
+            except QuotaExhaustedError as exc:
+                # Matches main()'s own Roadmap 2.5 handling: stop issuing new
+                # requests immediately, but persist whatever earlier creators
+                # already found (below) rather than losing it.
+                print(f"Error: YouTube quota exhausted during discovery: {exc}")
+                quota_exhausted = True
+                break
+            except YouTubeAPIError as exc:
+                print(f"Warning: discovery failed for {creator.display_name} ({creator.organization}): {exc}")
+    except YouTubeAPIError as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    if newly_discovered:
+        try:
+            upsert_videos(newly_discovered)
+        except VideoMasterError as exc:
+            print(f"Error: failed to persist discovered videos: {exc}")
+            return 1
+        _record_new_video_events_best_effort(newly_discovered)
+
+    if quota_exhausted:
+        return 1
+
+    print(f"Discovery complete: {len(newly_discovered)} new video(s) found across {len(active_creators)} creator(s)")
+    return 0
+
+
 def _record_new_video_events_best_effort(newly_discovered: list[Video]) -> None:
     """Record a Roadmap 4.6 notification event for each newly discovered video.
 

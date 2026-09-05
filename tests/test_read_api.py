@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
 import pytest
@@ -5,8 +6,13 @@ import pytest
 import read_api
 from creator_master import Creator
 from read_api import (
+    _MAX_TRENDING_CANDIDATES,
+    _PER_CREATOR_CANDIDATE_CAP,
     ClientError,
     VideoNotFoundError,
+    _compute_growth_results,
+    _load_videos_for_creators,
+    _rank_and_cap_candidates,
     get_creator_trending,
     get_organization_trending,
     get_video_growth,
@@ -290,17 +296,122 @@ def test_parse_limit_rejects_non_positive_or_non_integer_values(bad_value):
         parse_limit(bad_value)
 
 
+def test_parse_limit_accepts_the_max_limit_exactly():
+    assert parse_limit(read_api.MAX_LIMIT) == read_api.MAX_LIMIT
+
+
+def test_parse_limit_rejects_a_value_above_max_limit():
+    with pytest.raises(ClientError):
+        parse_limit(read_api.MAX_LIMIT + 1)
+
+
+# --- trending cache ----------------------------------------------------
+
+
+def test_trending_cache_key_is_stable_and_dimension_sensitive():
+    """Two requests that differ in any one dimension must never collide on the same cache key."""
+    base = dict(scope_type="creator", scope_value="c1", period="1d", ranking_type="daily_trending", report_date=date(2026, 9, 1))
+    key = read_api.trending_cache_key(**base)
+
+    assert key == read_api.trending_cache_key(**base)
+    assert key != read_api.trending_cache_key(**{**base, "scope_value": "c2"})
+    assert key != read_api.trending_cache_key(**{**base, "period": "7d"})
+    assert key != read_api.trending_cache_key(**{**base, "ranking_type": "fastest_growing"})
+    assert key != read_api.trending_cache_key(**{**base, "report_date": date(2026, 9, 2)})
+
+
+def test_get_creator_trending_serves_a_cache_hit_without_touching_live_storage(monkeypatch):
+    """A cache hit must short-circuit before get_videos_by_creator/get_snapshot are ever called."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("live storage should not be touched on a cache hit")
+
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+    cached_payload = {"organization": None, "results": [{"rank": 1, "videoId": "v1"}, {"rank": 2, "videoId": "v2"}]}
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: cached_payload)
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "1"}
+    )
+
+    assert response["results"] == [{"rank": 1, "videoId": "v1"}]
+
+
+def test_get_creator_trending_ignores_cache_when_limit_is_absent(monkeypatch):
+    """An unbounded request (no limit) never serves a cache entry that only ever holds MAX_LIMIT rows."""
+    _trending_fixture(
+        monkeypatch,
+        creators=[_creator()],
+        videos=[_video(video_id="v1", creator_id="aizawa_ema")],
+        snapshots={
+            ("v1", "2026-09-01"): _snapshot("2026-09-01", 110, video_id="v1"),
+            ("v1", "2026-08-31"): _snapshot("2026-08-31", 100, video_id="v1"),
+        },
+    )
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: {"results": []})
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d"}
+    )
+
+    assert [entry["videoId"] for entry in response["results"]] == ["v1"]
+
+
+def test_get_creator_trending_ignores_cache_for_a_non_canonical_time_zone(monkeypatch):
+    """A request outside the precompute job's own time zone always computes live."""
+    _trending_fixture(
+        monkeypatch,
+        creators=[_creator()],
+        videos=[_video(video_id="v1", creator_id="aizawa_ema")],
+        snapshots={
+            ("v1", "2026-09-01"): _snapshot("2026-09-01", 110, video_id="v1"),
+            ("v1", "2026-08-31"): _snapshot("2026-08-31", 100, video_id="v1"),
+        },
+    )
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: {"results": []})
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d", "limit": "5"}
+    )
+
+    assert [entry["videoId"] for entry in response["results"]] == ["v1"]
+
+
+def test_get_creator_trending_falls_back_to_live_computation_on_cache_miss(monkeypatch):
+    """A cache miss (None) still returns a correct live-computed response."""
+    _trending_fixture(
+        monkeypatch,
+        creators=[_creator()],
+        videos=[_video(video_id="v1", creator_id="aizawa_ema")],
+        snapshots={
+            ("v1", "2026-09-01"): _snapshot("2026-09-01", 110, video_id="v1"),
+            ("v1", "2026-08-31"): _snapshot("2026-08-31", 100, video_id="v1"),
+        },
+    )
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
+    )
+
+    assert [entry["videoId"] for entry in response["results"]] == ["v1"]
+
+
 # --- get_creator_trending --------------------------------------------------
 
 
 def _trending_fixture(monkeypatch, *, creators, videos, snapshots):
-    """Wire load_creators/load_videos/get_video/get_snapshot for a trending test.
+    """Wire load_creators/get_videos_by_creator/get_video/get_snapshot for a trending test.
 
     `snapshots` maps (video_id, snapshot_date_iso) -> Snapshot.
     """
     videos_by_id = {video.video_id: video for video in videos}
     monkeypatch.setattr(read_api, "load_creators", lambda: creators)
-    monkeypatch.setattr(read_api, "load_videos", lambda: videos)
+    monkeypatch.setattr(
+        read_api, "get_videos_by_creator", lambda creator_id: [v for v in videos if v.creator_id == creator_id]
+    )
     monkeypatch.setattr(read_api, "get_video", lambda video_id: videos_by_id.get(video_id))
     monkeypatch.setattr(
         read_api,
@@ -454,6 +565,156 @@ def test_get_creator_trending_respects_limit(monkeypatch):
     assert response["results"][0]["videoId"] == "v2"
 
 
+def test_get_creator_trending_excludes_cold_videos(monkeypatch):
+    """A Cold video is skipped entirely — never fetched, never ranked — even
+    if its raw snapshot data would otherwise show the largest growth."""
+    _trending_fixture(
+        monkeypatch,
+        creators=[_creator()],
+        videos=[
+            _video(video_id="v1", creator_id="aizawa_ema", activity_state="Warm"),
+            _video(video_id="v_cold", creator_id="aizawa_ema", activity_state="Cold"),
+        ],
+        snapshots={
+            ("v1", "2026-09-01"): _snapshot("2026-09-01", 110, video_id="v1"),
+            ("v1", "2026-08-31"): _snapshot("2026-08-31", 100, video_id="v1"),
+            ("v_cold", "2026-09-01"): _snapshot("2026-09-01", 999999, video_id="v_cold"),
+            ("v_cold", "2026-08-31"): _snapshot("2026-08-31", 1, video_id="v_cold"),
+        },
+    )
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d"}
+    )
+
+    assert [entry["videoId"] for entry in response["results"]] == ["v1"]
+
+
+def test_rank_and_cap_candidates_orders_hot_before_warm_before_unknown():
+    """Activity-state tier wins over recency: an old Hot video still outranks a freshly-checked Unknown one."""
+    hot = _video(video_id="hot", activity_state="Hot", last_checked_at="2026-01-01T00:00:00Z")
+    warm = _video(video_id="warm", activity_state="Warm", last_checked_at="2026-09-01T00:00:00Z")
+    unknown = _video(video_id="unknown", activity_state="Unknown", last_checked_at="2026-09-02T00:00:00Z")
+
+    ranked = _rank_and_cap_candidates([unknown, warm, hot])
+
+    assert [video.video_id for video in ranked] == ["hot", "warm", "unknown"]
+
+
+def test_rank_and_cap_candidates_breaks_ties_by_most_recently_checked_first():
+    """Within the same activity_state tier, the most recently checked video sorts first."""
+    older = _video(video_id="older", activity_state="Warm", last_checked_at="2026-08-01T00:00:00Z")
+    newer = _video(video_id="newer", activity_state="Warm", last_checked_at="2026-09-01T00:00:00Z")
+    never_checked = _video(video_id="never_checked", activity_state="Warm", last_checked_at=None)
+
+    ranked = _rank_and_cap_candidates([older, never_checked, newer])
+
+    assert [video.video_id for video in ranked] == ["newer", "older", "never_checked"]
+
+
+def test_rank_and_cap_candidates_never_exceeds_the_cap():
+    """However many candidates come in, at most _MAX_TRENDING_CANDIDATES come out."""
+    videos = [
+        _video(video_id=f"v{i}", activity_state="Warm", last_checked_at=f"2026-01-01T00:00:{i % 60:02d}Z")
+        for i in range(_MAX_TRENDING_CANDIDATES + 50)
+    ]
+
+    ranked = _rank_and_cap_candidates(videos)
+
+    assert len(ranked) == _MAX_TRENDING_CANDIDATES
+
+
+def test_load_videos_for_creators_caps_each_creator_before_combining(monkeypatch):
+    """Peak combined memory must scale with creator count, not any one
+    creator's total catalog size — each creator is capped before the next
+    creator's videos are even fetched, never held all-at-once."""
+    huge_catalog = {
+        "c1": [_video(video_id=f"c1_v{i}", creator_id="c1", activity_state="Warm") for i in range(10_000)],
+        "c2": [_video(video_id=f"c2_v{i}", creator_id="c2", activity_state="Warm") for i in range(10_000)],
+    }
+    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: huge_catalog[creator_id])
+
+    combined = _load_videos_for_creators({"c1", "c2"})
+
+    assert len(combined) == 2 * _PER_CREATOR_CANDIDATE_CAP
+
+
+def test_load_videos_for_creators_excludes_cold_before_capping(monkeypatch):
+    """A creator's Cold videos never occupy one of that creator's own capped slots."""
+    videos = [_video(video_id="hot", creator_id="c1", activity_state="Hot")] + [
+        _video(video_id=f"cold_{i}", creator_id="c1", activity_state="Cold") for i in range(10)
+    ]
+    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
+
+    combined = _load_videos_for_creators({"c1"})
+
+    assert [video.video_id for video in combined] == ["hot"]
+
+
+def test_compute_growth_results_uses_a_caller_supplied_executor_when_given(monkeypatch):
+    """trending_precompute.py shares one executor across hundreds of calls (2026-09-05 leak
+    fix) — passing one in must skip creating (and tearing down) a fresh pool per call."""
+    created_pools = []
+    real_executor_cls = ThreadPoolExecutor
+
+    class _CountingExecutor(real_executor_cls):
+        def __init__(self, *args, **kwargs):
+            created_pools.append(self)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(read_api, "ThreadPoolExecutor", _CountingExecutor)
+    monkeypatch.setattr(read_api, "get_snapshot", lambda video_id, snapshot_date: None)
+    shared_executor = real_executor_cls(max_workers=2)
+
+    try:
+        _compute_growth_results(
+            [_video(video_id="v1")], report_date=date(2026, 9, 1), period="1d", executor=shared_executor
+        )
+        _compute_growth_results(
+            [_video(video_id="v2")], report_date=date(2026, 9, 1), period="1d", executor=shared_executor
+        )
+    finally:
+        shared_executor.shutdown()
+
+    assert created_pools == []
+
+
+def test_compute_growth_results_creates_its_own_executor_when_none_given(monkeypatch):
+    """The live request path (get_creator_trending/get_organization_trending) never passes
+    executor= — it must keep self-managing one call's own pool exactly as before."""
+    monkeypatch.setattr(read_api, "get_snapshot", lambda video_id, snapshot_date: None)
+
+    results = _compute_growth_results([_video(video_id="v1")], report_date=date(2026, 9, 1), period="1d")
+
+    assert len(results) == 1
+
+
+def test_get_creator_trending_never_fetches_snapshots_beyond_the_candidate_cap(monkeypatch):
+    """A creator with more non-Cold videos than the cap still returns a valid response,
+    without _compute_growth_results ever fetching a snapshot for every single one of them."""
+    videos = [
+        _video(video_id=f"v{i}", creator_id="aizawa_ema", activity_state="Warm", last_checked_at="2026-09-01T00:00:00Z")
+        for i in range(_MAX_TRENDING_CANDIDATES + 50)
+    ]
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
+
+    fetch_calls = []
+
+    def _counting_get_snapshot(video_id, snapshot_date):
+        fetch_calls.append(video_id)
+        return None
+
+    monkeypatch.setattr(read_api, "get_snapshot", _counting_get_snapshot)
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d"}
+    )
+
+    assert response["creatorId"] == "aizawa_ema"
+    assert len({video_id for video_id in fetch_calls}) == _MAX_TRENDING_CANDIDATES
+
+
 def test_get_creator_trending_raises_for_unknown_creator_id(monkeypatch):
     monkeypatch.setattr(read_api, "load_creators", lambda: [])
 
@@ -468,7 +729,7 @@ def test_get_creator_trending_rejects_malformed_report_date_before_touching_stor
         raise AssertionError("storage should not be touched for an invalid request")
 
     monkeypatch.setattr(read_api, "load_creators", _boom)
-    monkeypatch.setattr(read_api, "load_videos", _boom)
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
 
     with pytest.raises(ClientError):
         get_creator_trending(
@@ -522,7 +783,7 @@ def test_get_organization_trending_rejects_a_ranking_type_period_mismatch_before
         raise AssertionError("storage should not be touched for an invalid request")
 
     monkeypatch.setattr(read_api, "load_creators", _boom)
-    monkeypatch.setattr(read_api, "load_videos", _boom)
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
 
     with pytest.raises(ClientError):
         get_organization_trending(

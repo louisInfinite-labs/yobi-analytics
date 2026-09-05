@@ -1234,6 +1234,8 @@ The dashboard renders available organizations as Hololive/VSPO, available branch
 
 Video content classification is separate from Creator Master's `groupKey`. The frontend-first mock taxonomy uses topic tags `valorant`, `sf6`, `karaoke`, `chat`, `gaming`, `collab`, `announcement`, `3d_live`, `clip`, and `translation`, plus formats `shorts`, `live_archive`, `normal_video`, `live_upcoming`, `live_now`, `premiere`, and `unknown`. `Ranking` is an analytics result/view, not a content tag. Phase 3.5 may demonstrate these filters with realistic mock data and an extensible adapter, but automatic classification, title/metadata enrichment, and production `contentTags`/`contentFormat` API fields remain future work. This does not expand Phase 2.3 or authorize changes to snapshots, DynamoDB migration, the collector, or infrastructure.
 
+**Holodex attribution placeholder.** Phase 9 adds Holodex-sourced live-status data (live/upcoming badges, pre-live reminders) to this Dashboard. Holodex's API terms require visible attribution wherever their data is shown publicly — a footer credit line and/or an About/Credits page linking back to Holodex. Reserve a small, permanent spot for this in the shared layout now (e.g. a footer slot) so Phase 9 doesn't have to retrofit the design; the credit itself only needs to render once Holodex data is actually surfaced.
+
 The shared responsive layout is:
 
 ```text
@@ -1243,6 +1245,7 @@ DashboardHeader
 → eight-column GrowthBarChart + four-column contribution ring/ranking area
 → two or three concise InsightCards
 → full-width VideoStatsTable with search, filters, sorting, and pagination
+→ footer: Holodex attribution slot (reserved now, populated in Phase 9)
 ```
 
 On tablet, KPIs become two columns and charts become full width. On mobile, use one column, stack controls, and render the table as compact cards or deliberate horizontal scrolling. Implement complete loading, empty, error, pending-update, and stale-data states. Motion must remain short and data-oriented, support `prefers-reduced-motion`, and never block keyboard use or readable chart alternatives.
@@ -1306,6 +1309,7 @@ AWS-provided URLs are acceptable for development.
 - The selector and request model support valid IANA zones beyond Japan and Hong Kong, including daylight-saving zones such as `Europe/London`.
 - The Dashboard, charts, tables, and rankings share one classification filter state and correctly distinguish member/group/staff plus active/pre-debut/graduated/retired; pre-debut channels never enter active-member rankings by mistake.
 - Multi-membership and graduation filters use the documented OR-within/AND-across semantics; graduation never erases generation/unit group keys, and one creator is not duplicated when multiple selected group keys match.
+- The shared layout reserves a footer attribution slot for Holodex credit ahead of Phase 9.
 
 #### Out of Scope
 
@@ -1372,7 +1376,7 @@ Provide normalized analytics data to both clients — the Dashboard and Yobi.exe
 
 **Implemented** (`src/read_api.py`): `get_creator_trending` and `get_organization_trending`, mirroring the endpoints below. Both validate `creatorId`/`organization`, `reportDate`, `timeZone`, `period`, and the optional `rankingType`/`limit` the same way `get_video_growth` (3.4) validates its own query — a malformed or adversarial value is rejected with `ClientError` before any lookup, and an unknown `creatorId`/`organization` (one with zero matching Creator Master records) is also a clean `ClientError`, not a crash or a silent empty result. `rankingType` defaults to the period-trending type matching the requested `period` (e.g. `period=7d` alone returns the 7-day growth trending list, matching the endpoint examples below, which carry no separate ranking selector) and is rejected if an explicitly-passed period-trending type doesn't match the requested period — that combination can never produce a ranked result, since 3.2/3.3's `rank_videos` filters by each result's own `period`. Every ranked result row carries the same `organization`/`branch`/`groupKey`/`channelType`/`lifecycleStage` fields as 3.4's single-video response, joined live from Creator Master. **Also implemented** (`src/api_handler.py`): the API Gateway Lambda proxy entry point that routes `GET /videos/{videoId}/growth`, `GET /creators/{creatorId}/trending`, and `GET /organizations/{organization}/trending` to `read_api.py`'s functions above, mapping `VideoNotFoundError`→404 and every module's own `ClientError`→400. Unit-tested against synthetic API Gateway HTTP API v2 proxy events. **Not implemented / deferred**: actually creating the API Gateway resource and deploying this Lambda — code-complete, blocked on AWS console access, not a coding task.
 
-**Client-secret hardening, implemented** (`src/client_credential_api.py`, `src/client_credential_store.py`, wired via `src/api_handler.py`; PR #18 CodeRabbit finding): a Roadmap 4.3 clientId is a browser-generated UUID with no cryptographic binding to whoever holds it, so `api_handler.py`'s client-scoped routes originally trusted a caller-supplied clientId as proof of ownership — anyone who learned or guessed one could read or overwrite that client's stored data. `POST /clients/{clientId}/credential` now issues a random 256-bit secret the first time a clientId registers (`client_credential_api.generate_secret`), persists only its SHA-256 hash (`client_credential_store.create_secret`, a conditional write so a clientId can't be re-issued a second secret), and returns the raw value to the caller exactly once — never stored, never returned again. `GET /remote-config` and the push-subscription/notification-preference PUT/DELETE routes (4.5/4.6) now require a matching `X-Client-Secret` header (`api_handler._require_client_secret`, constant-time comparison), returning 403 for a missing/wrong secret or a clientId with no registered credential at all. `POST /heartbeat` and `GET /heartbeat/{clientId}/status` (4.4) are deliberately unaffected — a heartbeat is low-sensitivity liveness reporting, not authored state, and a route can't require a credential to obtain one. Dashboard side: `frontend/dashboard/src/lib/clientCredential.ts`'s `getOrCreateClientSecret` mirrors `clientId.ts`'s own cache-in-`localStorage` pattern (with an in-memory fallback cache, keyed by clientId, for when storage itself is unavailable — without it, a broken store would let the first registration succeed but forget the result, silently breaking every call after it for the rest of the page session; `window.localStorage` resolution itself lives inside the same protected path, since merely accessing the getter can throw in strict privacy modes), registering once and reusing the cached secret afterward; `NotificationToggle.tsx`'s backend syncs (4.6) now attach it, guarded against a double-click starting a second overlapping sync before the first settles. Storage is keyed per clientId (`yobi-analytics-client-secret:{clientId}`, not one shared key) so a browser that has ever held more than one clientId — e.g. `clientId.ts`'s own storage-failure fallback minting a different id on some calls — keeps each one's credential independently retrievable (fixed after two PR #18 follow-up findings in sequence: first, an unbound single stored secret would keep being sent for whatever clientId asked, 403ing forever once `clientId.ts` produced a different id; then, binding it via an embedded field under one shared key still only remembered the *most recent* clientId, so a c1 → c2 → c1 sequence tried to re-register c1 and got refused, since it already had a credential — the per-clientId key resolves both by construction). The enable-failure path also best-effort reconciles the backend (deletes the subscription, disables the preference) with the same secret before giving up, since a write can commit server-side even though its own response was lost client-side — leaving the AND-gate safety note above (dispatcher requires both pieces present) as a backstop, not the only defense. **Deliberate limitation, documented in `_handle_post_client_credential`'s own docstring**: registration is first-claimant trust with no enrollment/attestation check — acceptable only because Roadmap 4.3's clientId is itself anonymous-by-design (no accounts), and a clientId is never transmitted anywhere until its own browser registers it, so claiming one first requires the same "already learned or guessed this specific UUID" precondition every other route in this hardening already accepts as unlikely. Yobi.exe: not implemented — needs the equivalent local-storage-and-registration flow in the separate Unity codebase before it can call any of these routes.
+**Client-secret hardening, implemented** (`src/client_credential_api.py`, `src/client_credential_store.py`, wired via `src/api_handler.py`; PR #18 CodeRabbit finding): a Roadmap 4.3 clientId is a browser-generated UUID with no cryptographic binding to whoever holds it, so `api_handler.py`'s client-scoped routes originally trusted a caller-supplied clientId as proof of ownership — anyone who learned or guessed one could read or overwrite that client's stored data. `POST /clients/{clientId}/credential` now issues a random 256-bit secret the first time a clientId registers (`client_credential_api.generate_secret`), persists only its SHA-256 hash (`client_credential_store.create_secret`, a conditional write so a clientId can't be re-issued a second secret), and returns the raw value to the caller exactly once — never stored, never returned again. `GET /remote-config` and the push-subscription/notification-preference PUT/DELETE routes (4.5/4.6) now require a matching `X-Client-Secret` header (`api_handler._require_client_secret`, constant-time comparison), returning 403 for a missing/wrong secret or a clientId with no registered credential at all. `POST /heartbeat` and `GET /heartbeat/{clientId}/status` (4.4) are deliberately unaffected — a heartbeat is low-sensitivity liveness reporting, not authored state, and a route can't require a credential to obtain one. Dashboard side: `frontend/dashboard/src/lib/clientCredential.ts`'s `getOrCreateClientSecret` mirrors `clientId.ts`'s own cache-in-`localStorage` pattern (with an in-memory fallback cache, keyed by clientId, for when storage itself is unavailable — without it, a broken store would let the first registration succeed but forget the result, silently breaking every call after it for the rest of the page session), registering once and reusing the cached secret afterward; `NotificationToggle.tsx`'s backend syncs (4.6) now attach it, guarded against a double-click starting a second overlapping sync before the first settles. **Deliberate limitation, documented in `_handle_post_client_credential`'s own docstring**: registration is first-claimant trust with no enrollment/attestation check — acceptable only because Roadmap 4.3's clientId is itself anonymous-by-design (no accounts), and a clientId is never transmitted anywhere until its own browser registers it, so claiming one first requires the same "already learned or guessed this specific UUID" precondition every other route in this hardening already accepts as unlikely. Yobi.exe: not implemented — needs the equivalent local-storage-and-registration flow in the separate Unity codebase before it can call any of these routes.
 
 #### Architecture
 
@@ -1666,427 +1670,300 @@ AWS request fails
 
 ---
 
-## Phase 5 — Production, Automation and Intelligence
+## Phase 5 — Production Safety and Data-Readiness Gate
 
-### 5.1 GitHub Actions CI/CD
+### 5.0 Two Clocks and Release Policy
 
-#### Goal
-
-Automate Lambda deployment after manual deployment becomes stable.
-
-#### Flow
+Phase 1–4 are already complete. Development of this revised plan starts on 2026-09-04; completed Phase 1–4 work is not scheduled again.
 
 ```text
-Claude Code
-→ Commit
-→ Pull Request
-→ CodeRabbit
-→ Merge main
-→ GitHub Actions
-→ AWS OIDC
-→ Deploy Lambda
+Data Day 1   = 2026-08-30
+Data Day 6   = 2026-09-04 = Build Day 1
+Data Day 30  = 2026-09-28 = Build Day 25
 ```
 
-Prefer AWS OIDC.
+September 28 is the first MVP release gate, not an unconditional deadline and not the completion date for every feature in Phases 5–12. Data collection continues on schedule even if the website release is held. If security, recovery, cost, or data-integrity gates fail, public release moves to the first safe date without resetting the data clock.
 
-Do not store long-lived AWS access keys in GitHub where avoidable.
+Thirty daily buckets from August 30 through September 28 contain only 29 complete day-to-day intervals. Any metric that requires a full elapsed 30-day delta must use an earlier verified baseline; otherwise the UI must show the actual covered duration and must not fabricate YouTube history.
 
-#### Definition of Done
+### 5.1 Threat Model and Authority Boundary
 
-- Merge to `main` can safely deploy Lambda.
-- No long-lived AWS secret is committed.
+Treat every public browser as untrusted. Accidental clicks, monkey input, replayed requests, modified JavaScript, stolen client secrets, or a fully compromised user computer must not provide AWS administrative authority.
 
-#### Out of Scope Initially
+```text
+public frontend → no AWS credentials, admin key, or delete capability
+public read API → allowlisted, bounded reads only
+client preference API → only that client's low-risk state; authenticated and rate-limited
+admin API → separate route, origin, and strong human authentication
+collector role → write only required collection records
+read role → read only required indexes and attributes
+deployment role → infrastructure deployment only, using temporary credentials
+root user → emergency/account tasks only; never used by code or Claude Code
+```
 
-- Automatic deployment before manual deployment is proven stable.
+AWS root has phishing-resistant MFA where possible, no access keys, protected recovery details, and no routine use. Human operators use temporary credentials through IAM Identity Center or assumed roles. Claude Code may prepare configuration and checks but never receives or stores root credentials.
+
+### 5.2 Data Protection and Recovery
+
+- Enable DynamoDB deletion protection and point-in-time recovery on production tables.
+- Deny `DeleteTable`, backup/PITR disabling, and destructive infrastructure actions to runtime roles.
+- Separate development and production names, roles, stages, and credentials.
+- Require an explicit human break-glass role for destructive production work.
+- Keep infrastructure in reviewed, version-controlled IaC and detect drift.
+- Create a pre-launch backup and complete a restore drill into a new non-production table.
+- Keep public clients away from table-level delete authority; required item deletes use validation and audit records.
+
+### 5.3 Cost and Abuse Containment
+
+No single AWS control is a perfect spending cap, so independent limits are required:
+
+- API Gateway route/stage throttles with small burst limits.
+- Strict pagination, maximum date range, maximum IDs, payload-size limits, validation, and timeouts before database work.
+- Low Lambda reserved concurrency and finite timeouts for public handlers.
+- DynamoDB on-demand maximum read/write throughput for every production table and GSI.
+- Cached identical public analytics responses where safe; no arbitrary public scans.
+- AWS Budgets warning/high-severity alerts, Cost Anomaly Detection, and service alarms.
+- An incident switch that disables public traffic without stopping collection.
+- Paid WAF rules only when exposure justifies the cost; application and native service limits remain mandatory.
+
+API keys and usage plans identify callers but are not authentication, and their throttles are best-effort. They are never the only cost or abuse control.
+
+### 5.4 Collection Continuity and Data Quality
+
+- Public traffic never starts collection, discovery, historical recomputation, or unbounded YouTube API work.
+- Run IDs and idempotency keys prevent duplicate snapshots and duplicate cost.
+- Discovery and statistics collection retain separate retry boundaries.
+- Every JST day records expected, attempted, succeeded, failed, deferred, quota used, and completion status.
+- Missing or partial data is explicit; successful batches are not repeated.
+- Catch-up work obeys the same YouTube and AWS limits.
+- User-facing analytics use only verified, qualified snapshots.
+
+### Phase 5 Exit Gate
+
+Phase 5 passes only when root/IAM boundaries, deletion protection, recovery, cost containment, collector idempotency, and data-quality evidence are reviewed. Failure holds public release but does not stop collection.
 
 ---
 
-### 5.2 Production AWS Security
+## Phase 6 — Bounded Public API and Calm Frontend Foundation
 
-#### Goal
+### Goal
 
-Harden AWS services before wider public use.
+Deliver the smallest safe read experience and a reusable visual foundation.
 
-#### Scope
+### Scope
 
-- IAM least privilege
-- API authentication
-- rate limiting
-- monitoring
-- cost alerts
-- HTTPS
-- secret management
-- abuse protection
-- logging hygiene
+- Read-only public routes with allowlisted fields, filters, sort keys, periods, and page sizes.
+- Cursor pagination and server-controlled response/date-range bounds.
+- Approved production origins only; clean 4xx/429 responses and no internal details.
+- No DynamoDB expressions, table/index names, URLs, code, or arbitrary queries from clients.
+- No privileged secrets in JavaScript, local storage, source maps, builds, or responses.
+- React and TypeScript with a free/open-source component foundation such as shadcn/ui.
+- Body text of at least 16px, comfortable line height, clear focus states, WCAG AA contrast, neutral surfaces, and one muted accent colour.
+- No poster-like oversized headings, glow effects, or decorative high-contrast gradients.
+- Shared loading, empty, error, stale-data, and offline states.
 
-#### Definition of Done
+### Exit Gate
 
-- Public-facing AWS services have appropriate security controls.
-- Sensitive credentials are not exposed to clients.
+The default dashboard is readable on desktop, tablet, and mobile; the API has bounded work and passes malformed, replay, burst, and oversized-input tests.
 
----
-
-### 5.3 Google OAuth Subscription Import
-
-#### Goal
-
-Allow optional import of a user's YouTube subscriptions.
-
-#### Flow
-
-```text
-User
-→ Google OAuth
-→ subscriptions.list
-→ User-to-Creator Mapping
-```
-
-Google OAuth is optional.
-
-Basic Yobi functionality should not require Google login.
-
-Google identity must not be used as Yobi device identity.
-
-#### Definition of Done
-
-- User can import supported subscriptions.
-- OAuth quota usage is understood.
-- Google-specific data is separated from anonymous client identity.
+**Validated 2026-09-05, ahead of this phase's own build day**, by a real incident: `GET /organizations/{organization}/trending`, called without a page size against real production data (126k+ Video Master items), maxed out its Lambda's full 1024MB memory and still timed out — because ranking work happened before any page size was ever applied. Fixed with a server-enforced maximum `limit` (`read_api.MAX_LIMIT`), a bounded/prioritized candidate pool before ranking, and a precomputed trending cache (`trending_precompute.py`) populated once per collection cycle rather than computed live per request — see README.md's "API Design Principles". This phase's own page-size/cursor-pagination work should build on that design, not reintroduce an unbounded default.
 
 ---
 
-### 5.4 Shared Creator Pool / Quota Deduplication
+## Phase 7 — Widget-Based User Interface v1
 
-#### Goal
+### Goal
 
-Avoid duplicate public-data API requests across multiple users.
+Let each user arrange an approved set of modules without forcing the developer's personal layout on everyone.
 
-#### Concept
-
-```text
-User A follows Ema
-User B follows Ema
-User C follows Ema
-
-↓
-One unique Creator record
-↓
-Collect Ema public data once
-↓
-Share result across users
-```
-
-Architecture:
+### Widget and Layout Contract
 
 ```text
-Users
-→ User-to-Creator mappings
-→ Unique Creator Pool
-→ Shared Public Creator Data
+widget type + immutable instance ID
+widget/config schema version
+title, description, size limits, permissions, settings schema
+renderer + migration function
+
+layoutVersion + profile ID/name + breakpoint
+widget instance/type/version + x/y/w/h + settings + updatedAt
 ```
 
-#### Definition of Done
+### Required v1 Behaviour
 
-- Multiple users following the same creator do not cause duplicate public collection.
-- User mappings remain separate from global creator data.
+- A widget library/tray opens from the dashboard.
+- Users drag widgets into the main grid and see valid drop positions, like mobile home-screen widgets.
+- Explicit Edit Layout mode enables move, resize, configure, and remove; normal mode locks the layout.
+- Save, cancel, undo, reset-to-default, and unsaved-change warnings are available.
+- New modules appear in the library but never overwrite or force-insert into saved layouts.
+- Unknown or retired widgets show a safe placeholder and cannot crash the page.
+- Desktop/tablet layouts are independent; mobile has a simple one-column reorder flow.
+- Keyboard controls provide alternatives to pointer dragging and resizing.
+- v1 may store layouts locally. Optional remote sync uses only the scoped preference API.
+- Recommended free foundation: GridStack.js for the grid and dnd-kit for tray/list interactions.
+
+### Safety Boundary
+
+“Mod packages” are developer-reviewed modules compiled with the application. Users may arrange and configure approved widgets but cannot upload JavaScript, HTML, URLs, SQL, DynamoDB expressions, or executable packages.
 
 ---
 
-### 5.5 Twitch Integration
+## Phase 8 — Admin Operations and MVP Release Gate
 
-#### Goal
+### Goal
 
-Add Twitch as another creator platform.
+Provide a fixed, separate admin surface for operational clarity and complete the first safe-release decision.
 
-#### Scope
+### Scope
 
-Twitch platform identities are managed explicitly in Creator Master. A person does not enter the initial Hololive/VSPO YouTube tracking roster merely because they collaborated with a VTuber; future non-VTuber Twitch collaborators may be added only as intentional platform records when the product needs their schedules or notifications.
+- Stronger admin authentication than anonymous client identity.
+- Separate backend authorization and least-privilege roles for sensitive writes.
+- Collection health, missing-day review, freshness, quota, cost, failure, and audit views.
+- Validation, diff, and dry-run preview before high-risk changes.
+- No web controls for table deletion, root/account recovery, IAM escape, or backup disabling.
+- Server-side authorization even when UI buttons are hidden.
+- Narrow, auditable, and reversible emergency procedures.
+- Security regression, cost/attack simulation, recovery rehearsal, rollback, user acceptance, and compatibility checks.
+- Deploy and validate the Web Push (FCM/VAPID) notification pipeline built in 4.5/4.6 (subscription storage, preference routes, dispatcher, `push_sender.py`) as part of the MVP surface — this is the piece still blocked on AWS console access, not a coding task. **Known limitation, to document rather than silently ship**: a Web Push subscription and its Service Worker are bound to one specific browser profile, not the user's device or account. If the browser is fully closed at delivery time, or the user opens a different browser than the one that subscribed (e.g. subscribed in Chrome, later using Firefox), the notification silently never arrives — the backend has no way to detect this in advance or warn the user. Ship Web Push as a best-effort convenience channel only, never as the sole promised delivery path for time-critical alerts (a live-starting-soon reminder), and say so in the opt-in UI copy itself.
 
-Support:
+### MVP Release Gate
 
-```text
-LIVE
-UPCOMING where schedule exists
-NONE
-Go-live notification
-```
+Release the MVP only if all of the following pass:
 
-Creator model should allow:
+- The collector continues when the public site is disabled.
+- A compromised public browser cannot gain AWS, admin, collector, deployment, backup, or delete authority.
+- Public-request cost is bounded at the route, function, database, and query-shape layers.
+- Production data has deletion protection, PITR, a backup, and a tested restore procedure.
+- The default UI is readable and the widget editor cannot change another user's layout.
+- Admin and public/client authorization paths are separate.
+- Rollback does not delete collected data.
+- The Web Push notification pipeline is live and its browser-profile-binding limitation is documented in the opt-in UI copy, not left as a silent gap.
 
-```text
-Creator
-├── YouTube
-└── Twitch
-```
+September 28 is the first evaluation date. Any failed gate delays release while collection continues.
 
-#### Definition of Done
+### Daily Claude Code Targets
 
-- A creator can have multiple platform identities.
-- Twitch status can be normalized for Yobi.
+Each build day has one primary target. Completion requires implementation, tests, documentation, and a reviewable commit or pull request. A failed safety gate takes priority over the next feature.
 
----
-
-### 5.6 AI Creator Discovery
-
-#### Goal
-
-Help users discover related creators and streamers.
-
-#### Example
-
-```text
-VTuber
-→ Collaboration Relationship
-→ Streamer
-→ Twitch Account
-```
-
-Possible future features:
-
-- Japanese natural-language creator search
-- Alias matching
-- Collaboration graph
-- Game-based creator discovery
-- VTuber → streamer recommendations
-
-#### AI Principle
-
-AI should help interpret/search/rank.
-
-Structured creator/platform/relationship data should remain the source of truth where possible.
-
-#### Definition of Done
-
-- AI can interpret creator-discovery queries.
-- Reliable structured data is used for factual account matching.
+| Build day | Date / data day | Primary target | Exit criteria |
+| --- | --- | --- | --- |
+| 1 | Sep 4 / Data Day 6 | Confirm completed Phase 1–4 state and re-baseline | Contracts, deployed resources, current snapshot coverage, gaps, and MVP/post-launch scope recorded. |
+| 2 | Sep 5 / Day 7 | Root, IAM, and secret audit | No root keys or client secrets; runtime/read/deploy/break-glass roles and temporary human access documented. |
+| 3 | Sep 6 / Day 8 | IaC and environment separation | Development/production resources and roles are separated; destructive changes require review. |
+| 4 | Sep 7 / Day 9 | DynamoDB protection | Deletion protection, PITR, runtime deny rules, and pre-launch backup configured. |
+| 5 | Sep 8 / Day 10 | Recovery drill | A backup/PITR point restores to a new test table; validation and cleanup steps are documented. |
+| 6 | Sep 9 / Day 11 | Cost guardrails | Budgets, anomaly alerts, concurrency/timeouts, throughput maxima, and alarms have reviewed values. |
+| 7 | Sep 10 / Day 12 | Public API containment + Web Push (FCM) deployment | Read/admin/write paths are separated; validation, pagination, CORS, size, and period limits work; the 4.5/4.6 push-subscription and notification-preference routes go live on AWS, and the browser-binding limitation is documented in the opt-in UI copy. |
+| 8 | Sep 11 / Day 13 | Abuse and monkey-input tests | Burst, replay, malformed, and oversized requests fail predictably without leaked internals or unbounded work. |
+| 9 | Sep 12 / Day 14 | Collector idempotency and partial retry | Duplicate invocations cannot duplicate records; failed units retry without repeating successful work. |
+| 10 | Sep 13 / Day 15 | Run-health and data-quality evidence | Daily expected/success/failed/deferred/quota status and missing/duplicate checks are visible. |
+| 11 | Sep 14 / Day 16 | Analytics correctness | Time zones, sparse data, daily/7-day/covered-period windows, and incomplete labels are tested. |
+| 12 | Sep 15 / Day 17 | Read API performance | Required indexes and cache policy are verified; public routes perform no unbounded scans. |
+| 13 | Sep 16 / Day 18 | Calm design system | Type, colour, spacing, responsive shell, focus, and loading/empty/error/stale components are complete. |
+| 14 | Sep 17 / Day 19 | Widget registry and schemas | Versioned definitions, validation, renderer registry, migration hooks, and safe placeholders work. |
+| 15 | Sep 18 / Day 20 | Layout persistence | Versioned local layouts, breakpoint storage, migration, reset, and import/export tests pass. |
+| 16 | Sep 19 / Day 21 | Widget tray and drop zones | Dragging from the tray shows valid positions and predictable collision behaviour. |
+| 17 | Sep 20 / Day 22 | Edit-mode safety | Normal mode is locked; save/cancel/undo, resize handles, and unsaved-change protection work. |
+| 18 | Sep 21 / Day 23 | Core widgets | KPI, trend, ranking, chart, and table widgets handle loading, empty, error, and stale states. |
+| 19 | Sep 22 / Day 24 | Widget settings and independence | Per-widget settings work; new modules do not mutate existing layouts. |
+| 20 | Sep 23 / Day 25 | Mobile and accessibility | One-column reorder, touch, keyboard alternatives, focus, and screen-reader labels pass. |
+| 21 | Sep 24 / Day 26 | Admin shell and authorization | Fixed admin views work; sensitive routes enforce server authorization and dry-run previews. |
+| 22 | Sep 25 / Day 27 | Security regression | Credential exposure, privilege, CORS, IDOR, injection, replay, secret-log, and error-leak tests pass. |
+| 23 | Sep 26 / Day 28 | Cost, attack, and recovery simulation | Limits, incident switch, restore, rollback, and credential-revocation procedures are demonstrated. |
+| 24 | Sep 27 / Day 29 | User acceptance and pre-release audit | Supported devices/browsers and default/custom layouts pass; unresolved blockers are documented. |
+| 25 | Sep 28 / Data Day 30 | Validate data and decide release | Thirty daily buckets are verified. Release only if every MVP gate passes; otherwise record blockers and continue collection. |
 
 ---
 
-### 5.7 Future SQL Migration
+## Phase 9 — Notification Automation and Personalization
 
-#### Goal
+### Goal
 
-Keep a migration path if analytics eventually becomes too complex for DynamoDB.
+Add time-sensitive and personal features after the stable read experience, without coupling them to collection.
 
-#### Possible Flow
+### Scope
 
-```text
-DynamoDB
-→ Export
-→ Transform
-→ MySQL / PostgreSQL
-```
+- CI/CD using short-lived AWS deployment credentials, protected environments, approvals, tests, and rollback.
+- Holodex live-status ingestion, pre-live reminders, and Discord delivery. Data comes from Holodex's own public API (not YouTube page scraping), but Holodex's terms still apply: one API key per application, no excessive/adverse request volume, no charging a premium for Holodex-derived content, and visible attribution (a link back to Holodex) wherever this data is shown publicly — populate the footer/About-page attribution slot reserved in 3.5 as part of this work, and treat the API as unreliable-by-design (no uptime guarantee) with graceful degradation when it's unavailable.
+- Dispatcher deduplication, claims/leases, bounded retry, quiet hours, and delivery windows.
+- Watchlists and per-user content/event notification preferences.
+- Optional Google OAuth subscription import with minimum scopes; Twitch behind a provider-neutral adapter.
+- Optional cross-device preference/layout sync with scoped client ownership.
+- Complements to close Phase 8's Web Push browser-binding gap: (1) an ICS/webcal calendar feed of scheduled pre-live times, for subscription in Windows Calendar / macOS Calendar / Outlook / Google Calendar — reference/visibility only, since subscribed external calendars generally ignore an embedded feed's `VALARM`/reminder overrides and fall back to the client's own default reminder setting; and (2) Yobi.exe's own native OS notification (Windows Toast / macOS `UNUserNotificationCenter`) once it exists as a genuine background service independent of any browser. User-defined custom lead time (`leadMinutes`) stays on Push/Discord, where the backend controls the trigger directly — never on the calendar feed, since per-event reminder overrides are not reliably honored by subscribed calendars.
 
-SQL may become useful for:
+### Boundary
 
-```text
-JOIN
-GROUP BY
-Complex relational analytics
-Ad-hoc exploration
-```
-
-#### Definition of Done
-
-Only migrate when a real requirement exists.
-
-DynamoDB data should remain migration-friendly from the beginning.
+Public clients never invoke collection or fan-out. A stolen client credential can modify only that client's low-risk state and grants no admin or AWS authority. Holodex remains a supplementary, best-effort data source — never a replacement for the Phase 1 YouTube Data API collector, and never assumed to be always available.
 
 ---
 
-## Phase 6 — Live Notifications and Fan Engagement
+## Phase 10 — Classification, Search, and Operational Observability
 
-### Prerequisite
+### Goal
 
-Do not start any Phase 6 sub-section until Phase 5 (Production, Automation and Intelligence) is complete — specifically 5.1's CI/CD deploy and 5.2's production AWS hardening — so the Dashboard/collector is actually deployed and running in production, not just local dev, before fan-facing notification features are built on top of it. The practical signal that this condition is met is real people beyond the developer actually using the deployed Dashboard (the ~500-person VSPO group, per Phase 6's stated initial audience).
+Add explainable discovery features and make collection, APIs, notifications, cost, and failures operable.
 
-### 6.1 Holodex Live Status Notifications
+### Scope
 
-#### Goal
+- Versioned classification taxonomy and rule-based classifier with rationale/confidence.
+- Audited manual overrides and bounded, resumable, idempotent reclassification.
+- Search/filter API using allowlisted fields and bounded results.
+- Coverage, unknown, conflict, and override metrics.
+- Collection health, quota forecast, API latency/error/throttle/cache, dispatcher, and classifier dashboards.
+- Dry-run console, privileged-change audit events, incident severity, ownership, and recovery objectives.
 
-Notify users when a tracked creator goes live, as a new event type alongside 4.6's existing new-video notifications, without adding to the YouTube Data API quota the view-growth collector already depends on.
+### Boundary
 
-#### Why Holodex Instead of the YouTube Data API
-
-`search.list` with `eventType=live` costs 100 units per call. Polling roughly 70 tracked creators individually for live status would consume most of the 10,000-units/day project quota on live checks alone, competing directly with the existing collector's `playlistItems.list`/`videos.list` calls (Phase 1/2). Holodex aggregates live/upcoming status for the tracked Hololive/VSPO roster from a single org-scoped `/live` call and runs on its own separate API and quota system — it does not consume or touch the project's YouTube Data API quota.
-
-#### Flow
-
-```text
-Holodex API (own key, own quota)
-→ live / upcoming status per creator
-→ Creator/Video Master: liveStatus, nextScheduledAt (new fields, independent of view-count data)
-
-Existing YOUTUBE_API_KEY
-→ unchanged: view-count snapshot collection only (Phase 1/2 collector)
-```
-
-#### Scope
-
-- New env var `HOLODEX_API_KEY`, stored the same way as `YOUTUBE_API_KEY` (local `.env`, gitignored; AWS Secrets Manager/Lambda env var once deployed). This is a distinct provider with its own quota, not a second YouTube key — it does not require a second Google Cloud project and does not raise the YouTube API ToS's quota-circumvention concerns discussed for multiple YouTube keys/projects.
-- Live status is a new `goLive` event type, separate from the `newVideo` event type Phase 4.6 already dispatches. `notification_dispatch.py`'s `NotificationPreference`/`creatorOverride` must be able to target the two independently — a user may want a new-video digest without live pings, or vice versa.
-- Coverage caveat: confirm VSPO channels are present and timely in Holodex before relying on it as the sole live-status source; Hololive coverage is well established there.
-
-#### Definition of Done
-
-- A tracked creator going live triggers a `goLive` notification, gated by the same per-client suppression rules as 4.6 (creator override, temporary mute, quiet hours), with zero additional YouTube Data API quota usage.
-- Holodex integration uses its own API key/quota, fully independent of `YOUTUBE_API_KEY` and the view-growth collector.
-- Users can independently enable/disable `goLive` vs `newVideo` notifications per creator.
-- `liveStatus`/`nextScheduledAt` are stored separately from view-count/growth fields in Creator/Video Master, never blended into the same fields.
-
-#### Out of Scope Initially
-
-- Twitch live status (already tracked separately under Phase 5.5).
-- Merging live schedule and video-growth data into one unified content calendar UI (candidate future Phase 6 sub-section).
+AI classifications remain suggestions until quality gates pass. Logs contain no API keys, client secrets, OAuth tokens, full push endpoints, or sensitive payloads.
 
 ---
 
-### 6.2 Pre-Live Reminders and Discord Delivery
+## Phase 11 — Widget Platform v2 and Continuous Security
 
-#### Goal
+### Goal
 
-Fix the specific low-usefulness problem with the existing Discord live-notification bot the target community already uses: it only fires once a stream has already started. Deliver an earlier, more actionable signal, and deliver it where this product's actual initial audience (a ~500-person private VSPO fan Discord group) already is, rather than only inside the Dashboard's own Web Push.
+Evolve the v1 dashboard without breaking saved layouts, while rechecking security for every new exposure.
 
-#### Why
+### Scope
 
-Holodex's live-status data includes a scheduled/upcoming start time, not just "is live now" — 6.1 only used the "is live now" half. A reminder fired when a stream is scheduled (e.g. N minutes before `scheduledStart`) is strictly more useful than a same-moment or after-the-fact "went live" ping, and is not something the community's current bot or Holodex/YouTube/ChatGPT already deliver to this specific audience. Requiring a user to visit the Dashboard and grant browser Notification permission is also friction the initial audience does not need to pay: they already live in one Discord server.
+- Multiple named layout profiles and optional cross-device conflict resolution.
+- Widget discovery, search, previews, compatibility metadata, migrations, and retirement notices.
+- Controlled light/dark/high-contrast themes and richer detail widgets.
+- Shareable configuration-only layout templates; no executable code or secrets.
+- Threat-model updates for each public write path and external integration.
+- IAM Access Analyzer, unused permission/credential, root/MFA/recovery, CloudTrail, alert, and secret-rotation reviews.
+- Privacy inventory, retention rules, client reset/unsubscribe/preference deletion, and evidence-based release checklists.
 
-#### Scope
+### Boundary
 
-```text
-Holodex scheduled/upcoming status
-→ goLiveSoon event (new, distinct from 6.1's goLive)
-→ Discord webhook delivery (new channel, alongside 4.6's Web Push)
-```
-
-- `goLiveSoon` is a third event type alongside 4.6's `newVideo` and 6.1's `goLive` — reminder lead time (e.g. 15 minutes before `scheduledStart`) should be configurable, not hardcoded, since different communities/creators may want different lead times.
-- A Discord webhook is a new delivery mechanism alongside 4.6's Web Push, targeting a Discord channel rather than one `clientId`. It reuses 6.1's Holodex data and 4.6's suppression concepts (mute/quiet hours) where they still make sense at server-channel granularity, but is not itself a `clientId`-scoped preference — a webhook posts to a shared channel the whole group sees, not one subscriber.
-- Initial deployment target is the one private ~500-person VSPO group; a public/multi-server Discord bot (install flow, per-server config, OAuth) is out of scope here — see Phase-6-general note on commercial/public readiness being deferred while the audience stays private.
-
-#### Definition of Done
-
-- A scheduled stream produces a `goLiveSoon` reminder before `actualStart`, using Holodex's scheduled-start data.
-- The reminder reaches the group's Discord channel via webhook without requiring any per-member Dashboard visit or Web Push permission grant.
-- `goLiveSoon` remains distinguishable from `newVideo` (4.6) and `goLive` (6.1) so future per-event controls are possible.
-
-#### Out of Scope Initially
-
-- Public/multi-server Discord bot installation flow.
-- Per-member (as opposed to per-channel) mute/quiet-hours control over Discord-delivered reminders.
+AWS Budgets are detection, not a guaranteed hard cap. Unknown destructive permissions, backup state, credential exposure, recovery readiness, or worst-case cost blocks release.
 
 ---
 
-### 6.3 In-Group Trending Leaderboard and Milestone Celebrations
+## Phase 12 — Scaling and Architecture Evolution
 
-#### Prerequisite
+### Goal
 
-In addition to Phase 6's own prerequisite above: do not build this until 6.1 and 6.2 are themselves already live and delivering to the real ~500-person group. A trending leaderboard and milestone celebrations only have discussion value once there is a real active audience already receiving go-live/pre-live pings and a real stream of view-count data to rank/celebrate — built earlier, against no live audience, it is unverifiable and wasted effort. This is a build-order gate, not a difficulty ranking: it stays listed after 6.1/6.2 in priority discussion, but must not start before that condition is met, regardless of how the rest of Phase 6 is sequenced.
+Scale only from measured bottlenecks and real access patterns.
 
-#### Goal
+### Scope
 
-Give the private fan group's Discord channel recurring, discussion-worthy content beyond individual go-live/new-video/pre-live pings, prioritized ahead of other Future Candidates (below) because it maximizes return-visit/engagement value for the smallest additional build cost: it reuses 6.2's Discord webhook delivery and Phase 3's already-implemented ranking math, rather than requiring any new personalization or account system.
-
-#### Scope
-
-```text
-Trending leaderboard (periodic, e.g. weekly)
-→ trending.py's rank_videos(..., FASTEST_GROWING or 7d_trending)
-   over the tracked Hololive/VSPO roster (already implemented, Roadmap 3.2/3.3)
-→ top-N formatted as one message
-→ Discord webhook (6.2)
-
-Milestone celebration (event-driven)
-→ a tracked creator/video's totalViews crosses a round-number threshold
-   (e.g. 1M / 5M / 10M)
-→ dedup check: has this (creatorId or videoId, threshold) already fired?
-→ Discord webhook (6.2)
-```
-
-- Leaderboard: no new ranking logic needed — `rank_videos` with `FASTEST_GROWING` or a period-based type (`7d_trending`) already computes exactly this; the new work is a scheduled job to run it periodically and format the top N for a Discord message, reusing 6.2's webhook.
-- Milestone celebration needs one new piece of state: a small dedup store recording which `(creatorId or videoId, threshold)` pairs have already been announced, so the same milestone is never posted twice — the same shape of problem 4.6's deferred delivered-event dedup already describes for `newVideo`, applied here to a different trigger condition.
-- Threshold list (1M/5M/10M, etc.) should be configurable, not hardcoded, so it can be tuned per creator scale without a code change.
-
-#### Definition of Done
-
-- A periodic leaderboard post reaches the group's Discord channel via 6.2's webhook, built from `trending.py`'s existing ranking output with no new ranking math.
-- A tracked creator/video crossing a configured view-count threshold triggers exactly one celebration post — never duplicated on a later run.
-- Both reuse 6.2's webhook delivery; neither requires a user account, `clientId`-level preference, or new personalization system.
-
-#### Out of Scope Initially
-
-- Per-user opt-out of leaderboard/milestone posts (channel-wide content, not an individual notification preference, unlike 4.6/6.1/6.2).
-- Subscriber-count milestones (only view-count data is currently collected; subscriber counts are not yet part of the collector's data model).
-
----
-
-### Future Candidates for Phase 6 (not yet scoped)
-
-Discussed as differentiators beyond LLM features and beyond what YouTube/Google/ChatGPT/Holodex/the community's current Discord bot already offer this audience; not yet written up as sub-sections:
+- Load and dispatcher stress tests; DynamoDB access-pattern, hot-partition, item-size, and GSI review.
+- Precomputed analytics and daily materialized summaries while retaining source snapshots.
+- S3 export/archive where cost-effective.
+- Evaluate OpenSearch, PostgreSQL, Athena, or ClickHouse only when measured needs justify them.
+- Introduce queue fan-out or separated read/write/dispatch/aggregate workers only when required.
+- AI creator discovery produces reviewable proposals and never writes directly to production collections.
+- Every major change defines migration triggers, cost estimate, rollback, and dual-read/write plans.
 
 ```text
-Per-user watchlist with growth-anomaly / view-milestone notifications
-Per-video historical growth timeline ("since upload" replay)
-Shareable growth report card (image/link) for social sharing
-Collab detection (tracked creator appearing in another creator's video/stream)
-Personalized "my oshi" home view (default-filtered to a user's followed members)
+Keep the current serverless architecture until measured cost, latency,
+query capability, reliability, or scale demonstrates a real constraint.
 ```
 
-Deferred until the audience moves beyond one private fan group (public/commercial readiness — not yet scoped as Phase 6 sub-sections):
-
-```text
-User accounts / cross-device sync (beyond 4.3's anonymous clientId)
-Privacy Policy / Terms of Service, YouTube API branding/display compliance
-Public status page / SLA for collector freshness
-Application-layer abuse protection on public push/API endpoints
-```
+Do not add Kubernetes, always-on servers, multiple databases, a public executable-widget marketplace, or autonomous AI writes merely for hypothetical future scale.
 
 ---
 
 ## Current Priority
 
-Phase 1 (Local Data Collection Foundation, sections 1.1–1.6) is implemented and running locally against the real YouTube API.
-
-The immediate priority is:
-
-> Move collection onto AWS (Phase 2) so it runs on a daily schedule without a local machine staying on.
-
-Initial target creator groups:
-
-```text
-Hololive
-VSPO
-```
-
-Recommended implementation order:
-
-```text
-Phase 1
-→ Phase 2
-→ Phase 3
-→ Phase 4
-→ Phase 5
-→ Phase 6
-```
-
-Implementation must proceed one numbered sub-section at a time.
-
-Example:
-
-```text
-Implement 1.1 only.
-↓
-Test
-↓
-Commit
-↓
-Pull Request
-↓
-CodeRabbit Review
-↓
-Merge
-↓
-Then start 1.2
-```
-
-Do not implement later numbered sections unless explicitly approved.
+Start Phase 5 on 2026-09-04 as Build Day 1 and Data Day 6. Work toward the September 28 MVP gate through Phases 5–8. Phases 9–12 are post-MVP by default and may be pulled forward only when explicitly approved and when they do not threaten collection continuity or the safety-critical path.

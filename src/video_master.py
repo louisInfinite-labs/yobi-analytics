@@ -64,6 +64,11 @@ def load_videos(path: Path = DEFAULT_VIDEO_MASTER_PATH) -> list[Video]:
     return [_parse_video(raw) for raw in raw_videos]
 
 
+def get_videos_by_creator(creator_id: str, path: Path = DEFAULT_VIDEO_MASTER_PATH) -> list[Video]:
+    """Return every video for one creator — the local-JSON counterpart to dynamodb_store's GSI-backed query."""
+    return [video for video in load_videos(path) if video.creator_id == creator_id]
+
+
 def load_video_ids_for_creator(
     creator_id: str, path: Path = DEFAULT_VIDEO_MASTER_PATH, *, videos: list[Video] | None = None
 ) -> set[str]:

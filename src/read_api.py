@@ -49,10 +49,18 @@ from view_growth_analytics import (
 )
 
 if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
-    from dynamodb_store import get_snapshot, get_video, load_videos
+    from dynamodb_store import get_cached_trending, get_snapshot, get_video, get_videos_by_creator
 else:
     from snapshot_store import get_snapshot
-    from video_master import get_video, load_videos
+    from video_master import get_video, get_videos_by_creator
+
+    get_cached_trending = None  # no cache table in local/JSON dev — always compute live
+
+# trending_precompute.py runs once per collection cycle, in this zone, and
+# only ever caches results keyed to it — a request in any other time zone
+# always falls back to a live computation rather than risk serving a cache
+# entry for the wrong day boundary.
+_CANONICAL_CACHE_TIME_ZONE = "Asia/Tokyo"
 
 # Reverse of trending.py's private period->ranking-type map (Roadmap 3.2/3.3):
 # a period-trending ranking type only ranks GrowthResults computed for its
@@ -172,8 +180,14 @@ def parse_ranking_type(raw: Any, *, period: str) -> str:
     return raw
 
 
+# No real page of trending results is ever this deep (Roadmap 5.3's
+# "bounded reads only" for public routes) — a caller asking for more is
+# almost certainly a mistake or a probe, not a legitimate UI need.
+MAX_LIMIT = 100
+
+
 def parse_limit(raw: Any) -> int | None:
-    """Validate an optional limit query parameter is a positive integer, or None if absent."""
+    """Validate an optional limit query parameter is a positive integer at most MAX_LIMIT, or None if absent."""
     if raw is None or raw == "":
         return None
     try:
@@ -182,6 +196,8 @@ def parse_limit(raw: Any) -> int | None:
         raise ClientError(f"limit must be a positive integer, got {raw!r}") from None
     if isinstance(raw, bool) or value <= 0:
         raise ClientError(f"limit must be a positive integer, got {raw!r}")
+    if value > MAX_LIMIT:
+        raise ClientError(f"limit must be at most {MAX_LIMIT}, got {value!r}")
     return value
 
 
@@ -216,6 +232,39 @@ def get_video_growth(query: dict[str, Any]) -> dict[str, Any]:
     return _to_response(result, video=video, creator=_find_creator(video.creator_id), time_zone=time_zone)
 
 
+def trending_cache_key(*, scope_type: str, scope_value: str, period: str, ranking_type: str, report_date: date) -> str:
+    """Build YobiTrendingCache's cacheKey for one scope/period/rankingType/reportDate.
+
+    Always keyed to _CANONICAL_CACHE_TIME_ZONE — shared with trending_precompute.py
+    so a write there and a read here always agree on the same key shape.
+    """
+    return f"{scope_type}:{scope_value}:{period}:{ranking_type}:{report_date.isoformat()}:{_CANONICAL_CACHE_TIME_ZONE}"
+
+
+def _cached_trending(
+    *, scope_type: str, scope_value: str, report_date: date, time_zone: str, period: str, ranking_type: str, limit: int | None
+) -> dict[str, Any] | None:
+    """Return a cached trending response if one exists and can satisfy this exact request, else None.
+
+    Only ever serves a hit for a *bounded* request (`limit` given) in the
+    canonical cache time zone — trending_precompute.py's own cached payload
+    holds at most MAX_LIMIT entries for _CANONICAL_CACHE_TIME_ZONE's day
+    boundary, so an unbounded request (limit=None, "give me everything") or
+    a request in any other time zone always falls through to a live,
+    already-bounded computation instead of silently truncating a request
+    that expected more than the cache can ever hold.
+    """
+    if get_cached_trending is None or limit is None or time_zone != _CANONICAL_CACHE_TIME_ZONE:
+        return None
+    key = trending_cache_key(
+        scope_type=scope_type, scope_value=scope_value, period=period, ranking_type=ranking_type, report_date=report_date
+    )
+    cached = get_cached_trending(key)
+    if cached is None:
+        return None
+    return {**cached, "results": cached["results"][:limit]}
+
+
 def get_creator_trending(query: dict[str, Any]) -> dict[str, Any]:
     """Validate a trending query for one creator and return a ranked Roadmap 4.1/3.2 response.
 
@@ -234,7 +283,19 @@ def get_creator_trending(query: dict[str, Any]) -> dict[str, Any]:
     if creator is None:
         raise ClientError(f"No creator found for creatorId {creator_id!r}")
 
-    videos = [video for video in load_videos() if video.creator_id == creator_id]
+    cached = _cached_trending(
+        scope_type="creator",
+        scope_value=creator_id,
+        report_date=report_date,
+        time_zone=time_zone,
+        period=period,
+        ranking_type=ranking_type,
+        limit=limit,
+    )
+    if cached is not None:
+        return cached
+
+    videos = get_videos_by_creator(creator_id)
     ranked = rank_videos(
         _compute_growth_results(videos, report_date=report_date, period=period), ranking_type, limit=limit
     )
@@ -267,7 +328,19 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
     if not creator_ids:
         raise ClientError(f"No creators found for organization {organization!r}")
 
-    videos = [video for video in load_videos() if video.creator_id in creator_ids]
+    cached = _cached_trending(
+        scope_type="org",
+        scope_value=organization,
+        report_date=report_date,
+        time_zone=time_zone,
+        period=period,
+        ranking_type=ranking_type,
+        limit=limit,
+    )
+    if cached is not None:
+        return cached
+
+    videos = _load_videos_for_creators(creator_ids)
     ranked = rank_videos(
         _compute_growth_results(videos, report_date=report_date, period=period), ranking_type, limit=limit
     )
@@ -282,6 +355,27 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+# How many of one creator's own candidates _load_videos_for_creators keeps
+# before moving to the next creator_id, so an organization with dozens of
+# creators never holds every creator's entire back-catalog in memory at
+# once. 2026-09-05: an uncapped combine across a 32-creator organization
+# (each creator's own Initial Discovery back-catalog running into the
+# thousands) pushed a single request to this Lambda's full 1024MB memory
+# ceiling — capping per creator bounds peak memory by the organization's
+# creator count instead of its total video count, which is the dimension
+# that was actually still growing unboundedly.
+_PER_CREATOR_CANDIDATE_CAP = 60
+
+
+def _load_videos_for_creators(creator_ids: set[str]) -> list[Video]:
+    """Return each creator's own top candidates (see _PER_CREATOR_CANDIDATE_CAP), one GSI query per creator_id."""
+    videos: list[Video] = []
+    for creator_id in creator_ids:
+        creator_videos = [video for video in get_videos_by_creator(creator_id) if video.activity_state != "Cold"]
+        videos.extend(_rank_and_cap_candidates(creator_videos, cap=_PER_CREATOR_CANDIDATE_CAP))
+    return videos
+
+
 # Bounds how many concurrent DynamoDB GetItem calls _compute_growth_results
 # fans out for one trending request. Each video needs two independent
 # snapshot lookups (report_date, comparison_date) with no ordering
@@ -291,18 +385,96 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
 # timeout; a bounded thread pool (I/O-bound network calls, not CPU-bound
 # work, so the GIL is not a limiting factor here) brings that well under it
 # without needing a schema change to Video Master.
-_SNAPSHOT_FETCH_WORKERS = 20
+#
+# Raised from 20 to 100 on 2026-09-05: get_organization_trending's own
+# creatorId-index GSI query (Roadmap 5's timeout fix) still has to fan
+# _compute_growth_results out over every non-Cold video across every
+# creator_id in the organization, and a real 32-creator organization's
+# combined back-catalog reached the tens of thousands of videos — at
+# 20-way concurrency that alone exceeded this Lambda's own 60-second
+# function timeout even after the GSI removed the full-table Scan.
+_SNAPSHOT_FETCH_WORKERS = 100
+
+# Hard ceiling on how many videos _compute_growth_results ever fetches
+# snapshots for, independent of how large Video Master grows. 2026-09-05:
+# even after the creatorId-index GSI (no more full-table Scan) and Cold
+# exclusion, a real 32-creator organization's non-Cold candidate pool was
+# still large enough that a direct, uncapped run against production took
+# 256 seconds end to end — because at this project's age (~1 week),
+# MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE means most of Initial Discovery's
+# back-catalog hasn't had the chance to reach Cold yet, so "exclude Cold"
+# alone shrinks the candidate pool far less than it eventually will once
+# the catalog matures. A candidate pool this large will keep recurring
+# indefinitely as more creators/videos are onboarded, so the fix has to be
+# a size ceiling, not a smarter filter that still scales with catalog size.
+# _rank_and_cap_candidates below is what enforces it — a video excluded
+# here is one that has no realistic chance of winning a ranked trending
+# result anyway (see its own docstring for why).
+_MAX_TRENDING_CANDIDATES = 500
+
+# Hot ranks first (checked daily, most likely to actually be trending),
+# then Warm, then Unknown (still gathering its first few observations).
+# Cold is never in this dict — _compute_growth_results filters it out
+# before this ordering is ever applied.
+_ACTIVITY_STATE_PRIORITY = {"Hot": 0, "Warm": 1, "Unknown": 2}
 
 
-def _compute_growth_results(videos: list[Video], *, report_date: date, period: str) -> list[GrowthResult]:
-    """Compute one GrowthResult per video for the same (report_date, period) comparison window."""
+def _rank_and_cap_candidates(videos: list[Video], *, cap: int = _MAX_TRENDING_CANDIDATES) -> list[Video]:
+    """Return at most `cap` videos, most-likely-to-trend first.
+
+    Ordered by activity_state tier (Hot, then Warm, then Unknown) and, within
+    a tier, by most-recently-checked first — the same signal
+    tracking_schedule.py itself uses to decide a video is still worth
+    checking often. A video that is both Cold-adjacent in priority (Unknown,
+    rarely checked) and old is exactly the video a growth-based trending
+    ranking would never surface anyway, so capping here trades an
+    unmeasurable, purely theoretical loss of perfect exhaustiveness for a
+    request duration that no longer scales with total catalog size — the
+    same "bounded candidate pool, then re-rank" trade-off any trending/search
+    system at this scale makes. `cap` defaults to _MAX_TRENDING_CANDIDATES
+    (the final org-wide ceiling); _load_videos_for_creators calls this again
+    with a smaller per-creator `cap` before that final ceiling is applied.
+    """
+    by_recency = sorted(videos, key=lambda video: video.last_checked_at or "", reverse=True)
+    by_state_then_recency = sorted(by_recency, key=lambda video: _ACTIVITY_STATE_PRIORITY.get(video.activity_state, 99))
+    return by_state_then_recency[:cap]
+
+
+def _compute_growth_results(
+    videos: list[Video], *, report_date: date, period: str, executor: ThreadPoolExecutor | None = None
+) -> list[GrowthResult]:
+    """Compute one GrowthResult per candidate video for the same (report_date, period) comparison window.
+
+    Excludes Cold videos, then bounds the remainder to at most
+    _MAX_TRENDING_CANDIDATES via _rank_and_cap_candidates — see that
+    function's own docstring for why a size ceiling, not just a state
+    filter, is required to keep this bounded regardless of catalog size.
+
+    `executor`: a live request handler (get_creator_trending/
+    get_organization_trending) calls this once per request and leaves this
+    None, so a fresh, self-managed pool is created and torn down here.
+    trending_precompute.py's run() calls this hundreds of times in one
+    Lambda invocation and passes its own single shared executor instead —
+    2026-09-05: creating a fresh 100-worker ThreadPoolExecutor (each worker
+    lazily creating its own thread-local boto3 DynamoDB resource and
+    connection pool, dynamodb_store._resource) on every one of ~342 calls,
+    then tearing it all down, accumulated enough abandoned thread/connection
+    state across the run to exhaust the Lambda's own 1024MB and still time
+    out at 900s — reusing one pool for the whole run keeps that resource
+    creation bounded by worker count, not by call count.
+    """
+    non_cold = [video for video in videos if video.activity_state != "Cold"]
+    candidates = _rank_and_cap_candidates(non_cold)
     comp_date = comparison_date(report_date, period)
 
     def _fetch_snapshot_pair(video: Video) -> tuple[Any, Any]:
         return get_snapshot(video.video_id, report_date), get_snapshot(video.video_id, comp_date)
 
-    with ThreadPoolExecutor(max_workers=_SNAPSHOT_FETCH_WORKERS) as executor:
-        snapshot_pairs = list(executor.map(_fetch_snapshot_pair, videos))
+    if executor is not None:
+        snapshot_pairs = list(executor.map(_fetch_snapshot_pair, candidates))
+    else:
+        with ThreadPoolExecutor(max_workers=_SNAPSHOT_FETCH_WORKERS) as owned_executor:
+            snapshot_pairs = list(owned_executor.map(_fetch_snapshot_pair, candidates))
 
     return [
         calculate_growth(
@@ -313,7 +485,7 @@ def _compute_growth_results(videos: list[Video], *, report_date: date, period: s
             comparison_snapshot=comparison_snapshot,
             earliest_available_date=_earliest_available_date_for(video),
         )
-        for video, (latest_snapshot, comparison_snapshot) in zip(videos, snapshot_pairs)
+        for video, (latest_snapshot, comparison_snapshot) in zip(candidates, snapshot_pairs)
     ]
 
 
