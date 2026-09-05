@@ -49,15 +49,17 @@ Roadmap 要求嘅 authority table,逐行對比現狀(根據 [`docs/aws-setup.zh-
 
 **`YOUTUBE_API_KEY` 用 plaintext Lambda 環境變數存,唔係 AWS Secrets Manager。** [`docs/aws-setup.zh-TW.md` §2.7](aws-setup.zh-TW.md) 記低咗一次真實事故:第一次 set 環境變數嗰陣,`aws lambda update-function-configuration`/`get-function` 嘅 output 內建夾住個環境變數真實值,連續兩次冇過濾就貼晒出嚟,condition 導致個 key 曝光兩次,要去 Google Cloud Console 換新 key。雖然已經 fix 咗「以後查詢一律加 `--query` 剔走 `Environment` field」呢個操作習慣,但**個 key 本身依然係 plaintext 存喺 Lambda config**——任何攞到 `lambda:GetFunctionConfiguration` 權限嘅身份(包括依家嘅 `yobi-analytics-cli`)都睇到晒。呢個屬於 Roadmap 5.2/5.3(Data Protection/Cost Containment)嘅 secret management 範疇,建議之後做 5.2 嗰陣一拼將 `YOUTUBE_API_KEY`(同將來嘅 `HOLODEX_API_KEY`)搬去 Secrets Manager,Lambda 淨係存個 ARN reference。
 
+✅ **已修復(Build Day 2,2026-09-05)**:`YOUTUBE_API_KEY` 已經搬咗去 Secrets Manager(secret name `yobi-analytics/youtube-api-key`),Lambda 環境變數而家淨係存 `YOUTUBE_API_KEY_SECRET_NAME`。詳細見 [`docs/aws-setup.zh-TW.md` §2.7](aws-setup.zh-TW.md) 同 [`src/config.py`](../src/config.py) 嘅 `get_api_key()`。
+
 ---
 
 ## 總結:5.1 Exit Gate 現狀
 
 Roadmap 5.1 冇獨立 exit gate(合埋喺 Phase 5 Exit Gate 一齊審),但按上面張表:
 
-- ✅ 3 項已符合(public frontend 冇憑證、public read API bounded、root MFA+key 已停用)
-- ⚠️ 5 項已確認差距,唔急住做,暫時唔阻塞 Sep 28 gate(admin 分離留俾 Phase 8、deployment role 長期 key、root 日常做 IAM、YOUTUBE_API_KEY plaintext、三個 Lambda 共用一條 execution role)
-- 🔴 1 項高風險,**建議喺 Sep 28 gate 之前處理**:`yobi-analytics-lambda-role` 掛咗 `AmazonDynamoDBFullAccess`,對公眾開放嘅 read API 同 collector/dispatcher 共用呢條 role,任何一個俾人打穿都可以刪表/閂 PITR(見下面更新同建議修復)
+- ✅ 4 項已符合(public frontend 冇憑證、public read API bounded、root MFA+key 已停用〔root key 2026-09-05 深夜已由「停用」變成直接刪除〕、`YOUTUBE_API_KEY` 已搬去 Secrets Manager)
+- ⚠️ 4 項已確認差距,唔急住做,暫時唔阻塞 Sep 28 gate(admin 分離留俾 Phase 8、deployment role 長期 key、root 日常做 IAM、三個 Lambda 共用一條 execution role)
+- ✅ 1 項原本嘅高風險**已修復**:`yobi-analytics-lambda-role` 原本掛咗 `AmazonDynamoDBFullAccess`,已經拎走換做 scoped 嘅 `YobiPhase4TablesAccess`(見下面更新)。2026-09-05 深夜再截圖核實過一次,`AmazonDynamoDBFullAccess` 確認唔喺個 role 度
 
 **2026-09-05 更新:兩條 ❓ 都清咗——一條靠 CLI read-only 查到,一條你自己用 root Console 睇咗個 Permissions policies tab 影低。第二條揭發咗一個 🔴 高風險嘅實際差距,唔止「未知」咁簡單。**
 

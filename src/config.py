@@ -17,13 +17,39 @@ class MissingVapidCredentialsError(RuntimeError):
     """Raised when no usable VAPID private key/claims are configured."""
 
 
+_cached_api_key: str | None = None
+
+
 def get_api_key() -> str:
+    """Return the YouTube Data API key, preferring Secrets Manager over the plaintext env var fallback.
+
+    YOUTUBE_API_KEY_SECRET_NAME (deployed Lambda) takes priority over
+    YOUTUBE_API_KEY (local .env) so the key is never stored in plaintext
+    Lambda configuration, where it previously leaked twice via unfiltered
+    `aws lambda` CLI output (docs/aws-setup.zh-TW.md). Cached at module level
+    so repeat calls within a warm Lambda container, or the two call sites in
+    main.py, don't each pay for a separate Secrets Manager request.
+    """
+    global _cached_api_key
+    if _cached_api_key:
+        return _cached_api_key
+
+    secret_name = os.getenv("YOUTUBE_API_KEY_SECRET_NAME")
+    if secret_name:
+        import boto3
+
+        client = boto3.client("secretsmanager")
+        _cached_api_key = client.get_secret_value(SecretId=secret_name)["SecretString"]
+        return _cached_api_key
+
     api_key = os.getenv("YOUTUBE_API_KEY")
     if not api_key:
         raise MissingAPIKeyError(
-            "YOUTUBE_API_KEY is not set. Copy .env.example to .env and add your key."
+            "Neither YOUTUBE_API_KEY_SECRET_NAME nor YOUTUBE_API_KEY is set. "
+            "Copy .env.example to .env and add your key for local development."
         )
-    return api_key
+    _cached_api_key = api_key
+    return _cached_api_key
 
 
 def get_vapid_credentials() -> tuple[str, dict[str, str]]:
