@@ -39,13 +39,19 @@ interface TrendingResponse {
  * gets this same placeholder rather than a guessed value, so the content
  * tag/format filters visibly show "no data" for live rows instead of
  * fabricating a match. */
-function toDailyVideoStat(row: TrendingResultRow, reportDate: string): DailyVideoStat {
+const DEFAULT_BRANCH_BY_ORGANIZATION: Record<OrganizationKey, DailyVideoStat["branch"]> = {
+  hololive: "holo_jp",
+  vspo: "vspo_jp",
+}
+
+function toDailyVideoStat(row: TrendingResultRow, reportDate: string, requestOrganization: OrganizationKey): DailyVideoStat {
+  const organization = (row.organization ?? requestOrganization) as OrganizationKey
   return {
     date: reportDate,
     channelId: row.creatorId ?? "",
     channelName: row.channelName ?? "Unknown channel",
-    organization: (row.organization ?? "hololive") as OrganizationKey,
-    branch: (row.branch ?? "holo_jp") as DailyVideoStat["branch"],
+    organization,
+    branch: (row.branch ?? DEFAULT_BRANCH_BY_ORGANIZATION[organization]) as DailyVideoStat["branch"],
     groupKey: row.groupKey ? [row.groupKey] : [],
     channelType: (row.channelType ?? "member") as DailyVideoStat["channelType"],
     lifecycleStage: (row.lifecycleStage ?? "active") as DailyVideoStat["lifecycleStage"],
@@ -87,7 +93,9 @@ export async function fetchLiveAnalytics(
     ),
   )
 
-  const results = responses.flatMap((response) => response.results.map((row) => toDailyVideoStat(row, reportDate)))
+  const results = responses.flatMap((response, index) =>
+    response.results.map((row) => toDailyVideoStat(row, reportDate, LIVE_ORGANIZATIONS[index])),
+  )
   const comparisonDate = responses[0]?.comparisonDate ?? reportDate
   const lastUpdatedTimestamps = responses.map((r) => r.results[0]?.lastUpdatedAt).filter((v): v is string => v != null)
   const lastUpdatedAt = lastUpdatedTimestamps.length > 0 ? lastUpdatedTimestamps.sort()[0] : null

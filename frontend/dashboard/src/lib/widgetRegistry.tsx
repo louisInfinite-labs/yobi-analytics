@@ -152,3 +152,10 @@ export function renderWidget(type: WidgetTypeId, data: DashboardWidgetData): Rea
 }
 
 export const ALL_WIDGET_TYPES = Object.keys(WIDGET_REGISTRY) as WidgetTypeId[]
+
+/** Guards a persisted layout's widget.type before it reaches getWidgetDefinition/
+ * renderWidget, which index WIDGET_REGISTRY directly and would throw on an
+ * unregistered type (e.g. a retired widget from an older layoutVersion). */
+export function isKnownWidgetType(type: string): type is WidgetTypeId {
+  return Object.hasOwn(WIDGET_REGISTRY, type)
+}

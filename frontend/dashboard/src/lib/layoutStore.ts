@@ -1,4 +1,4 @@
-import { ALL_WIDGET_TYPES, getWidgetDefinition } from "./widgetRegistry"
+import { ALL_WIDGET_TYPES, getWidgetDefinition, isKnownWidgetType } from "./widgetRegistry"
 import { CURRENT_LAYOUT_VERSION, type Breakpoint, type LayoutProfile, type WidgetInstance } from "../types/widget"
 
 const STORAGE_PREFIX = "yobi-analytics-layout"
@@ -34,13 +34,22 @@ export function buildDefaultLayout(profileId: string, breakpoint: Breakpoint): L
     profileId,
     profileName: "Default",
     breakpoint,
+    // Non-overlapping by construction: growth-bar-chart/contribution-ring
+    // (rows 1-5) share the row range but not columns; ranking (rows 5-9)
+    // starts only after contribution-ring, its own column's occupant, ends —
+    // the original y=3 put it 2 rows into contribution-ring's own space,
+    // same x range. insights/video-stats-table are full-width, so each
+    // starts only after every column above it (not just the widest one) has
+    // cleared. GridStack's own grid.load() collision resolution masks a
+    // wrong y at render time, so this doesn't fail visually — it's still
+    // wrong data to persist and diff against.
     widgets: [
       at("kpi-summary", 0, 0),
       at("growth-bar-chart", 0, 1),
       at("contribution-ring", 8, 1),
-      at("ranking", 8, 3),
-      at("insights", 0, 5),
-      at("video-stats-table", 0, 6),
+      at("ranking", 8, 5),
+      at("insights", 0, 9),
+      at("video-stats-table", 0, 10),
     ],
   }
 }
@@ -58,6 +67,7 @@ function isValidLayoutProfile(value: unknown): value is LayoutProfile {
     return (
       typeof widget.instanceId === "string" &&
       typeof widget.type === "string" &&
+      isKnownWidgetType(widget.type) &&
       typeof widget.schemaVersion === "number" &&
       typeof widget.x === "number" &&
       typeof widget.y === "number" &&

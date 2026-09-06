@@ -9,18 +9,43 @@ interface VideoPlayerModalProps {
 
 /** Centered, medium-sized YouTube player over a dimmed backdrop. Closes on
  * a backdrop click, the close button, or Escape — never on a click inside
- * the player itself. */
+ * the player itself. Traps Tab/Shift+Tab between the close button and the
+ * iframe (the panel's only two focusable elements) and restores focus to
+ * whatever opened it on close, so keyboard users never land on background
+ * controls while the modal is open. */
 export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const openerRef = useRef<Element | null>(document.activeElement)
 
   useEffect(() => {
     closeButtonRef.current?.focus()
+    const opener = openerRef.current
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose()
+      if (event.key === "Escape") {
+        onClose()
+        return
+      }
+      if (event.key !== "Tab") return
+
+      const first = closeButtonRef.current
+      const last = iframeRef.current
+      if (!first || !last) return
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener("keydown", handleKeyDown)
-    return () => document.removeEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown)
+      if (opener instanceof HTMLElement) opener.focus()
+    }
   }, [onClose])
 
   return (
@@ -37,6 +62,7 @@ export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalPr
         </button>
         <div className="video-player-modal__frame">
           <iframe
+            ref={iframeRef}
             src={`https://www.youtube.com/embed/${videoId}?autoplay=1`}
             title={title}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

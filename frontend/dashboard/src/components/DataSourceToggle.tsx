@@ -6,7 +6,8 @@ const STORAGE_KEY = "yobi:dataSource"
 
 function readStoredDataSource(): DataSource {
   try {
-    return localStorage.getItem(STORAGE_KEY) === "live" ? "live" : "mock"
+    const hasLiveEndpoint = Boolean(import.meta.env.VITE_API_BASE_URL)
+    return hasLiveEndpoint && localStorage.getItem(STORAGE_KEY) === "live" ? "live" : "mock"
   } catch {
     return "mock"
   }

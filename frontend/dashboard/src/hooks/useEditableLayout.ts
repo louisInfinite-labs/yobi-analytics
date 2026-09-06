@@ -49,8 +49,8 @@ export function useEditableLayout(profileId: string, breakpoint: Breakpoint): Us
     if (writeLayout(draftLayout)) {
       setSavedLayout(draftLayout)
       showSaveConfirmation()
+      setEditMode(false)
     }
-    setEditMode(false)
   }, [draftLayout, showSaveConfirmation])
 
   const resetToDefault = useCallback(() => {

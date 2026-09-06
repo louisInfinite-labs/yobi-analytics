@@ -136,33 +136,35 @@ export function VideoStatsTable({ stats, timeZone }: VideoStatsTableProps) {
                 {pageRows.map((video) => (
                   <tr key={video.videoId}>
                     <td data-label="Channel">{video.channelName}</td>
-                    <td
-                      data-label="Video Title"
-                      className="video-table__title-cell"
-                      title={video.videoTitle}
-                      onClick={() => setPlayingVideo(video)}
-                    >
-                      <div className="video-table__title-row">
-                        <img
-                          className="video-table__thumbnail"
-                          src={`https://i.ytimg.com/vi/${video.videoId}/mqdefault.jpg`}
-                          alt=""
-                          loading="lazy"
-                          width={120}
-                          height={68}
-                        />
-                        <div>
-                          {video.videoTitle}
-                          <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
-                            <span className="video-table__format-badge">{CONTENT_FORMAT_LABELS[video.contentFormat]}</span>
-                            {video.contentTags.slice(0, 2).map((tag) => (
-                              <span key={tag} className="video-table__format-badge">
-                                {CONTENT_TAG_LABELS[tag]}
-                              </span>
-                            ))}
+                    <td data-label="Video Title">
+                      <button
+                        type="button"
+                        className="video-table__title-cell"
+                        title={video.videoTitle}
+                        onClick={() => setPlayingVideo(video)}
+                      >
+                        <div className="video-table__title-row">
+                          <img
+                            className="video-table__thumbnail"
+                            src={`https://i.ytimg.com/vi/${video.videoId}/mqdefault.jpg`}
+                            alt=""
+                            loading="lazy"
+                            width={120}
+                            height={68}
+                          />
+                          <div>
+                            {video.videoTitle}
+                            <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                              <span className="video-table__format-badge">{CONTENT_FORMAT_LABELS[video.contentFormat]}</span>
+                              {video.contentTags.slice(0, 2).map((tag) => (
+                                <span key={tag} className="video-table__format-badge">
+                                  {CONTENT_TAG_LABELS[tag]}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      </button>
                     </td>
                     <td data-label="Published">{video.publishedAt ? formatTimeInZone(video.publishedAt, timeZone) : "—"}</td>
                     <td data-label="Total Views" className="video-table__numeric">

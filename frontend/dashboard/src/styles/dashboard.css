@@ -553,6 +553,19 @@
   white-space: nowrap;
 }
 
+button.video-table__title-cell {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .video-table__format-badge {
   display: inline-block;
   padding: 2px 8px;

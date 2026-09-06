@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react"
 import { MOCK_REPORT_DATE, mockVideoStats } from "../data/mockVideoStats"
 import { mockDailySeries } from "../data/mockDailySeries"
 import type { CacheEntry } from "../lib/analyticsCache"
+import { useBreakpoint } from "../hooks/useBreakpoint"
 import { useCachedDashboardData } from "../hooks/useCachedDashboardData"
 import { useEditableLayout } from "../hooks/useEditableLayout"
 import { useFilterState } from "../hooks/useFilterState"
@@ -69,6 +70,7 @@ export function DashboardPage() {
   const [timeZone, setTimeZone] = useState(detectDeviceTimeZone)
   const filters = useFilterState()
   const [dataSource, setDataSource] = useDataSource()
+  const breakpoint = useBreakpoint()
   const {
     layout,
     editMode,
@@ -81,7 +83,7 @@ export function DashboardPage() {
     updateWidgetPositions,
     addWidget,
     removeWidget,
-  } = useEditableLayout(LAYOUT_PROFILE_ID, "desktop")
+  } = useEditableLayout(LAYOUT_PROFILE_ID, breakpoint)
 
   const fetchFn = useCallback(() => {
     const fetchPromise =
