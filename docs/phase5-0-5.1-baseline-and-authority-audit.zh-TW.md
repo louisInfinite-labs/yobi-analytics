@@ -6,7 +6,7 @@
 
 ---
 
-## 5.0 — Two Clocks and Release Policy(Build Day 1 baseline)
+## 5.0 — Two Clocks and Release Policy(Build Day 2 baseline)
 
 ```text
 Data Day 1   = 2026-08-30
