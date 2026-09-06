@@ -10,7 +10,7 @@
 
 ```text
 Data Day 1   = 2026-08-30
-Data Day 7   = 2026-09-05（今日,Build Day 2)
+Data Day 7   = 2026-09-05（Build Day 2 當日基準,截至 2026-09-06 更新)
 Data Day 30  = 2026-09-28 = Build Day 25
 ```
 
@@ -129,8 +129,8 @@ Roadmap 5.1 冇獨立 exit gate(合埋喺 Phase 5 Exit Gate 一齊審),但按上
 準備幫三個 Lambda 分開 execution role 嗰陣(逐個 Lambda 查證實際用緊邊張表),搵到呢個獨立、同 role 分離無關嘅 production 缺口:
 
 - [`src/client_credential_store.py:21`](../src/client_credential_store.py):`CLIENT_CREDENTIALS_TABLE = os.environ.get("YOBI_CLIENT_CREDENTIALS_TABLE") or "YobiClientCredentials"`——冇設 env var 就預設用 `YobiClientCredentials` 呢個表名
-- **Read-only 查證**:`aws lambda get-function-configuration --function-name yobi-analytics-api --query "sort(keys(Environment.Variables))"` 顯示現存 env var 淨係 `YOBI_ADMIN_API_KEY`、`YOBI_STORAGE_BACKEND`,**冇 `YOBI_CLIENT_CREDENTIALS_TABLE`**——即係實際用緊個預設表名
-- **`aws dynamodb list-tables` 確認成個帳戶得返 8 張表**(`YobiHeartbeat`、`YobiNotificationDeliveryLog`、`YobiNotificationEvents`、`YobiRemoteConfig`、`YobiRunSummaries`、`YobiSnapshots`、`YobiTrendingCache`、`YobiVideoMaster`),**`YobiClientCredentials` 唔存在**
+- **Read-only 查證**:`aws lambda get-function-configuration --function-name yobi-analytics-api --region ap-northeast-1 --query "sort(keys(Environment.Variables))"` 顯示現存 env var 淨係 `YOBI_ADMIN_API_KEY`、`YOBI_STORAGE_BACKEND`,**冇 `YOBI_CLIENT_CREDENTIALS_TABLE`**——即係實際用緊個預設表名
+- **`aws dynamodb list-tables --region ap-northeast-1` 確認成個帳戶得返 8 張表**(`YobiHeartbeat`、`YobiNotificationDeliveryLog`、`YobiNotificationEvents`、`YobiRemoteConfig`、`YobiRunSummaries`、`YobiSnapshots`、`YobiTrendingCache`、`YobiVideoMaster`),**`YobiClientCredentials` 唔存在**
 
 **影響範圍**:`_require_client_secret()`([`src/api_handler.py:326`](../src/api_handler.py))守住每一個 client-scoped 路由(`GET /remote-config?key=...`、`PUT/DELETE .../push-subscription`、`PUT .../notification-preference`),同埋 `POST /clients/{clientId}/credential` 呢個註冊路由本身。淨係要有 client 真係打呢啲路由,`client_credential_store.get_secret_hash()`/`create_secret()` 就會撞到 DynamoDB 嘅 `ResourceNotFoundException`,包裝做 `ClientCredentialStoreError` 抛出,`api_handler.py` 冇喺呢一層 catch 佢(睇咗 [`src/api_handler.py:326-342`](../src/api_handler.py) 冇 try/except),會一路 propagate 上去,估計去到最頂層嘅 generic exception handler 變 500——**fail-closed,唔係 fail-open**(唔會誤將「查表失敗」當做「驗證通過」放行,所以唔算安全漏洞,純粹係成個功能用唔到)。
 
@@ -145,6 +145,12 @@ aws dynamodb create-table \
   --attribute-definitions AttributeName=clientId,AttributeType=S \
   --key-schema AttributeName=clientId,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST
+
+aws dynamodb wait table-exists \
+  --table-name YobiClientCredentials \
+  --region ap-northeast-1
 ```
+
+`wait table-exists` 會 block 到張表真正 `ACTIVE` 先返,建議一定要等呢步做完先去驗證 client-scoped 路由,唔好見到 `create-table` 冇報錯就以為即刻用得——on-demand table 由 `CREATING` 變 `ACTIVE` 通常要幾秒到十幾秒。
 
 建立完之後,記得跟返今晚 Part 1 嘅做法幫呢張新表都設 on-demand throughput 上限(`MaxReadRequestUnits=200,MaxWriteRequestUnits=100`),同埋喺 `yobi-analytics-api` 依家用緊嗰條共用 role(或者之後分開嗰條 `yobi-analytics-api-role`)加返 `GetItem`/`PutItem` 呢張表嘅權限——依家兩條 role 都未有呢張表嘅權限,因為表都未建過。
