@@ -84,8 +84,30 @@ def _ranking_types_for_period(period: str) -> list[str]:
     return [period_trending_type, *other_types]
 
 
-def run(report_date: date, periods: tuple[str, ...] = _PERIODS) -> dict[str, int]:
-    """Compute and cache trending for every creator, every organization, for each period in `periods`.
+def _creators_for_batch(creators: list[Any], *, batch_index: int, batch_count: int) -> list[Any]:
+    """Deterministically partition creators across `batch_count` invocations.
+
+    Sorted by creator_id first so the assignment is stable across runs
+    (creators.json's own ordering isn't a stable partition key — an
+    unrelated reordering there must not reshuffle which batch a creator
+    falls into and cause a period to skip/duplicate one). Slicing by
+    `i % batch_count` rather than contiguous chunks spreads creators with
+    similar catalog sizes evenly across batches instead of one batch
+    accidentally getting all the largest back-catalogs.
+    """
+    ordered = sorted(creators, key=lambda c: c.creator_id)
+    return [creator for i, creator in enumerate(ordered) if i % batch_count == batch_index]
+
+
+def run(
+    report_date: date,
+    periods: tuple[str, ...] = _PERIODS,
+    *,
+    batch_index: int = 0,
+    batch_count: int = 1,
+    include_org_scope: bool = True,
+) -> dict[str, int]:
+    """Compute and cache trending for a slice of creators, every organization, for each period in `periods`.
 
     `periods` defaults to all three (1d/7d/30d) but a caller may pass just
     one — 2026-09-05: running all three in a single invocation (342
@@ -94,6 +116,26 @@ def run(report_date: date, periods: tuple[str, ...] = _PERIODS) -> dict[str, int
     precompute-mode dispatch now takes an event-level `period` and three
     separate EventBridge schedules each cover one period, spreading the
     same total work across three smaller windows instead of one long one.
+
+    2026-09-06: splitting by period alone stopped being enough once the
+    roster reached 112 creators averaging ~1,131 videos each — every
+    creator-scope iteration calls get_videos_by_creator, which fetches up
+    to 500 full Video objects *before* this module's own candidate cap
+    (above) ever applies, and holding that many for 112 creators processed
+    sequentially in one invocation is what was driving repeated
+    Runtime.OutOfMemory/900s-timeout failures even for a single period
+    (confirmed via CloudWatch: DynamoDB RCU consumption on both
+    YobiVideoMaster and YobiSnapshots was near-zero for most of a failed
+    invocation's wall-clock time, pointing at Python-side memory pressure,
+    not a DynamoDB-side bottleneck). `batch_index`/`batch_count` split the
+    creator-scope loop itself (see `_creators_for_batch`) across that many
+    separate invocations/schedules, each holding only its own slice's
+    Video objects at a time. Org-scope reads a bounded pool regardless of
+    creator count (each creator's contribution is already capped at
+    _PER_CREATOR_CANDIDATE_CAP before the org-wide _MAX_TRENDING_CANDIDATES
+    ceiling), so it was never the source of the failures above and is
+    deliberately NOT split — `include_org_scope` just lets the schedules
+    for batch_index != 0 skip redoing it.
 
     Best-effort per scope: one creator/organization's failure (a transient
     DynamoDB error, say) is logged and skipped rather than aborting the
@@ -111,8 +153,9 @@ def run(report_date: date, periods: tuple[str, ...] = _PERIODS) -> dict[str, int
     count.
     """
     computed_at = datetime.now().isoformat()
-    creators = load_creators()
-    organizations = sorted({creator.organization for creator in creators})
+    all_creators = load_creators()
+    batch_creators = _creators_for_batch(all_creators, batch_index=batch_index, batch_count=batch_count)
+    organizations = sorted({creator.organization for creator in all_creators})
     scopes_written = 0
     scopes_failed = 0
 
@@ -120,7 +163,7 @@ def run(report_date: date, periods: tuple[str, ...] = _PERIODS) -> dict[str, int
         for period in periods:
             ranking_types = _ranking_types_for_period(period)
 
-            for creator in creators:
+            for creator in batch_creators:
                 try:
                     # Capped the same way _load_videos_for_organization caps
                     # each creator's contribution below (MAX_LIMIT, not the
@@ -154,9 +197,12 @@ def run(report_date: date, periods: tuple[str, ...] = _PERIODS) -> dict[str, int
                     print(f"Warning: trending precompute failed for creator {creator.creator_id!r}: {exc}")
                     scopes_failed += 1
 
+            if not include_org_scope:
+                continue
+
             for organization in organizations:
                 try:
-                    creator_ids = {creator.creator_id for creator in creators if creator.organization == organization}
+                    creator_ids = {creator.creator_id for creator in all_creators if creator.organization == organization}
                     videos = _load_videos_for_organization(creator_ids)
                     growth_results = _compute_growth_results(
                         videos, report_date=report_date, period=period, executor=executor

@@ -52,7 +52,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     mode = (event or {}).get("mode")
 
     if mode == "precompute_trending":
-        return _run_trending_precompute((event or {}).get("period"))
+        return _run_trending_precompute(
+            (event or {}).get("period"),
+            batch_index=(event or {}).get("batchIndex", 0),
+            batch_count=(event or {}).get("batchCount", 1),
+            include_org_scope=(event or {}).get("includeOrgScope", True),
+        )
 
     if mode == "discovery_only":
         exit_code = run_discovery()
@@ -66,7 +71,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     return {"statusCode": 200}
 
 
-def _run_trending_precompute(period: str | None) -> dict[str, Any]:
+def _run_trending_precompute(
+    period: str | None, *, batch_index: int = 0, batch_count: int = 1, include_org_scope: bool = True
+) -> dict[str, Any]:
     """Populate YobiTrendingCache for today so read_api.py's public trending routes serve a cache hit.
 
     `period`: one of "1d"/"7d"/"30d" to precompute just that period (each of
@@ -74,6 +81,11 @@ def _run_trending_precompute(period: str | None) -> dict[str, Any]:
     run's own docstring for why running all three in one invocation doesn't
     fit this Lambda's budget), or None to run every period in one call
     (kept for local/manual testing convenience, not used by any schedule).
+
+    `batch_index`/`batch_count`/`include_org_scope`: passed straight through
+    to trending_precompute.run() — see its own docstring for why the
+    creator-scope loop is split across multiple schedules per period rather
+    than running the full roster in one invocation.
 
     Imported lazily (not at module load time) since this path — and its
     dynamodb_store/read_api dependencies — is only ever exercised when
@@ -85,7 +97,13 @@ def _run_trending_precompute(period: str | None) -> dict[str, Any]:
 
     report_date = datetime.now(_PRECOMPUTE_TIMEZONE).date()
     periods = (period,) if period else trending_precompute._PERIODS
-    stats = trending_precompute.run(report_date, periods=periods)
+    stats = trending_precompute.run(
+        report_date,
+        periods=periods,
+        batch_index=batch_index,
+        batch_count=batch_count,
+        include_org_scope=include_org_scope,
+    )
     if stats["scopes_written"] == 0 and stats["scopes_failed"] > 0:
         raise RuntimeError(f"Trending precompute failed for every scope; see the log above for details. {stats}")
     if stats["scopes_failed"] > 0:
