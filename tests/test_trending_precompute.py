@@ -16,6 +16,7 @@ from dynamodb_store import (
     save_daily_collection,
     upsert_videos,
 )
+from read_api import MAX_LIMIT
 from snapshot_store import Snapshot, SnapshotRunSummary
 from video_master import Video
 
@@ -173,6 +174,40 @@ def test_run_caches_an_organizations_trending_scoped_to_its_own_creators(dynamod
 
     cached = get_cached_trending("org:vspo:1d:daily_trending:2026-09-01:Asia/Tokyo")
     assert [entry["videoId"] for entry in cached["results"]] == ["v1"]
+
+
+def test_run_caps_a_single_creators_candidates_at_max_limit(dynamodb_tables, monkeypatch):
+    """A creator with far more non-Cold videos than MAX_LIMIT must not have all of them
+    fed into _compute_growth_results — that was the uncapped per-creator DynamoDB fan-out
+    (up to 500 candidates x 2 snapshot fetches, per creator, sequentially) behind this job's
+    repeated real-world OOM/timeout failures. Capping at MAX_LIMIT matches what a creator's
+    own trending page ever returns anyway (_cache_one ranks with limit=MAX_LIMIT)."""
+    entries = [(f"v{i}", "aizawa_ema", 100, 150) for i in range(MAX_LIMIT + 20)]
+    monkeypatch.setattr(
+        "trending_precompute.load_creators",
+        lambda: [_FakeCreator(creator_id="aizawa_ema", organization="vspo")],
+    )
+    _seed_videos_and_snapshots(entries)
+
+    import trending_precompute
+
+    real_compute_growth_results = trending_precompute._compute_growth_results
+    seen_candidate_counts: list[int] = []
+
+    def _spy_compute_growth_results(videos, **kwargs):
+        seen_candidate_counts.append(len(videos))
+        return real_compute_growth_results(videos, **kwargs)
+
+    monkeypatch.setattr("trending_precompute._compute_growth_results", _spy_compute_growth_results)
+
+    stats = trending_precompute.run(date(2026, 9, 1), periods=("1d",))
+
+    assert stats["scopes_failed"] == 0
+    # First call is this creator's own scope (what this test targets); the
+    # second is the pre-existing, already-bounded org-scope aggregation for
+    # the one organization this creator belongs to — not what's under test
+    # here, just confirming the creator-scope cap didn't come at its expense.
+    assert seen_candidate_counts[0] == MAX_LIMIT
 
 
 def test_run_continues_past_one_creators_failure(dynamodb_tables, monkeypatch):

@@ -122,7 +122,19 @@ def run(report_date: date, periods: tuple[str, ...] = _PERIODS) -> dict[str, int
 
             for creator in creators:
                 try:
-                    videos = get_videos_by_creator(creator.creator_id)
+                    # Capped the same way _load_videos_for_organization caps
+                    # each creator's contribution below (MAX_LIMIT, not the
+                    # full _MAX_TRENDING_CANDIDATES=500 _compute_growth_results
+                    # would otherwise use by default) — a creator's own
+                    # trending page never returns more than MAX_LIMIT results
+                    # anyway (_cache_one ranks with limit=MAX_LIMIT), so
+                    # fetching 5x that many snapshot pairs per creator was
+                    # pure wasted DynamoDB I/O. With ~100 creators run
+                    # sequentially in one precompute invocation, that was the
+                    # dominant cost behind this job's repeated OOM/timeout
+                    # failures (see run()'s own docstring).
+                    creator_videos = [v for v in get_videos_by_creator(creator.creator_id) if v.activity_state != "Cold"]
+                    videos = _rank_and_cap_candidates(creator_videos, cap=MAX_LIMIT)
                     growth_results = _compute_growth_results(
                         videos, report_date=report_date, period=period, executor=executor
                     )
