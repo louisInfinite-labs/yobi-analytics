@@ -2,45 +2,51 @@
 
 from __future__ import annotations
 
+import functools
 import os
 
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
 class MissingAPIKeyError(RuntimeError):
-    """Raised when YOUTUBE_API_KEY is not set."""
+    """Raised when YOUTUBE_API_KEY is not set, or the Secrets Manager alternative can't be read."""
 
 
 class MissingVapidCredentialsError(RuntimeError):
     """Raised when no usable VAPID private key/claims are configured."""
 
 
-_cached_api_key: str | None = None
-
-
+@functools.cache
 def get_api_key() -> str:
     """Return the YouTube Data API key, preferring Secrets Manager over the plaintext env var fallback.
 
     YOUTUBE_API_KEY_SECRET_NAME (deployed Lambda) takes priority over
     YOUTUBE_API_KEY (local .env) so the key is never stored in plaintext
     Lambda configuration, where it previously leaked twice via unfiltered
-    `aws lambda` CLI output (docs/aws-setup.zh-TW.md). Cached at module level
-    so repeat calls within a warm Lambda container, or the two call sites in
-    main.py, don't each pay for a separate Secrets Manager request.
+    `aws lambda` CLI output (docs/aws-setup.zh-TW.md). @functools.cache keeps
+    repeat calls within a warm Lambda container, or the two call sites in
+    main.py, from each paying for a separate Secrets Manager request — it
+    only memoizes a successful return, never a raised exception, so a
+    transient failure doesn't get "cached" as permanent. Every failure mode
+    (unreadable secret, wrong secret shape, missing env var) raises
+    MissingAPIKeyError, matching what main.py's call sites already catch.
     """
-    global _cached_api_key
-    if _cached_api_key:
-        return _cached_api_key
-
     secret_name = os.getenv("YOUTUBE_API_KEY_SECRET_NAME")
     if secret_name:
-        import boto3
-
-        client = boto3.client("secretsmanager")
-        _cached_api_key = client.get_secret_value(SecretId=secret_name)["SecretString"]
-        return _cached_api_key
+        try:
+            secret_value = boto3.client("secretsmanager").get_secret_value(SecretId=secret_name).get("SecretString")
+        except (ClientError, BotoCoreError) as exc:
+            raise MissingAPIKeyError(f"Could not read secret {secret_name!r} from Secrets Manager: {exc}") from exc
+        if not secret_value:
+            raise MissingAPIKeyError(
+                f"Secret {secret_name!r} has no SecretString value "
+                "(it was likely created as SecretBinary instead of plaintext)."
+            )
+        return secret_value
 
     api_key = os.getenv("YOUTUBE_API_KEY")
     if not api_key:
@@ -48,8 +54,7 @@ def get_api_key() -> str:
             "Neither YOUTUBE_API_KEY_SECRET_NAME nor YOUTUBE_API_KEY is set. "
             "Copy .env.example to .env and add your key for local development."
         )
-    _cached_api_key = api_key
-    return _cached_api_key
+    return api_key
 
 
 def get_vapid_credentials() -> tuple[str, dict[str, str]]:
