@@ -7,16 +7,6 @@ from heartbeat_store import HEARTBEAT_TABLE, HeartbeatStoreError, get_heartbeat,
 AWS_REGION = "ap-northeast-1"
 
 
-@pytest.fixture(autouse=True)
-def aws_credentials(monkeypatch):
-    """moto still requires boto3 to resolve *some* credentials; these never reach real AWS."""
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
-    monkeypatch.setenv("AWS_SECURITY_TOKEN", "testing")
-    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", AWS_REGION)
-
-
 @pytest.fixture
 def heartbeat_table(aws_credentials):
     """Create the production-shaped Heartbeat table inside moto's fully mocked DynamoDB."""

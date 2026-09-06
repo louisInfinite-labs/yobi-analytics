@@ -21,16 +21,6 @@ def reset_cache_and_env(monkeypatch):
     config._cached_api_key = None
 
 
-@pytest.fixture(autouse=True)
-def aws_credentials(monkeypatch):
-    """moto still requires boto3 to resolve *some* credentials; these never reach real AWS."""
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
-    monkeypatch.setenv("AWS_SECURITY_TOKEN", "testing")
-    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", AWS_REGION)
-
-
 def test_reads_from_secrets_manager_when_secret_name_is_set(monkeypatch):
     monkeypatch.setenv("YOUTUBE_API_KEY_SECRET_NAME", SECRET_NAME)
     with mock_aws():
