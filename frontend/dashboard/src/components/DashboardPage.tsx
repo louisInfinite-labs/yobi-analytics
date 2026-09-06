@@ -8,11 +8,13 @@ import { useHeartbeat } from "../hooks/useHeartbeat"
 import { deriveChannelContribution, deriveKpis } from "../lib/deriveAnalytics"
 import { deriveInsights } from "../lib/deriveInsights"
 import { matchesClassification, matchesContent } from "../lib/filterState"
+import { fetchLiveAnalytics } from "../lib/liveAnalytics"
 import { comparisonDateFor, scaleStatsForPeriod } from "../lib/period"
 import { detectDeviceTimeZone } from "../lib/timezone"
 import type { Period } from "../types/domain"
 import { AnimatedRingChart } from "./AnimatedRingChart"
 import { ClassificationFilterBar } from "./filters/ClassificationFilterBar"
+import { useDataSource } from "./DataSourceToggle"
 import { DashboardFooter } from "./DashboardFooter"
 import { DashboardHeader } from "./DashboardHeader"
 import { GrowthBarChart } from "./GrowthBarChart"
@@ -25,16 +27,8 @@ import { EmptyState } from "./states/EmptyState"
 import { ErrorState } from "./states/ErrorState"
 import { LoadingState } from "./states/LoadingState"
 
-/**
- * Stands in for the future Roadmap 3.4 Read API call — currently resolves
- * the mock fixture after a short delay so the cache-then-refresh flow
- * (Roadmap 3.6) is real, not simulated away. Swapping this for an actual
- * fetch() is the only change 3.4's wiring needs to make here — a real
- * Read API call already returns period-specific growth values directly, so
- * scaleStatsForPeriod (a mock-only stand-in for that) goes away too, not
- * just this setTimeout.
- */
-function fetchAnalytics(reportDate: string, period: Period): Promise<CacheEntry> {
+/** Mock fixture path (Roadmap 3.6's cache-then-refresh flow, real not simulated). */
+function fetchMockAnalytics(reportDate: string, period: Period): Promise<CacheEntry> {
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve({
@@ -49,6 +43,22 @@ function fetchAnalytics(reportDate: string, period: Period): Promise<CacheEntry>
   })
 }
 
+/** Real Read API path (Roadmap 3.4) — merges every organization's trending
+ * results (see lib/liveAnalytics.ts for why this is more than one request)
+ * into the same CacheEntry shape the mock path returns, so nothing
+ * downstream of fetchAnalytics needs to know which source it came from. */
+async function fetchRealAnalytics(reportDate: string, period: Period, timeZone: string): Promise<CacheEntry> {
+  const { results, comparisonDate } = await fetchLiveAnalytics(reportDate, period, timeZone)
+  return {
+    timeZone: "",
+    reportDate,
+    comparisonDate,
+    period,
+    fetchedAt: new Date().toISOString(),
+    results,
+  }
+}
+
 /** Top-level composition: wires cache-backed data, filters, and every
  * KPI/chart/ranking/table view together behind one shared filter state. */
 export function DashboardPage() {
@@ -56,12 +66,19 @@ export function DashboardPage() {
   const [period, setPeriod] = useState<Period>("1d")
   const [timeZone, setTimeZone] = useState(detectDeviceTimeZone)
   const filters = useFilterState()
+  const [dataSource, setDataSource] = useDataSource()
 
-  const fetchFn = useCallback(
-    () => fetchAnalytics(MOCK_REPORT_DATE, period).then((entry) => ({ ...entry, timeZone })),
-    [period, timeZone],
+  const fetchFn = useCallback(() => {
+    const fetchPromise =
+      dataSource === "live"
+        ? fetchRealAnalytics(MOCK_REPORT_DATE, period, timeZone)
+        : fetchMockAnalytics(MOCK_REPORT_DATE, period)
+    return fetchPromise.then((entry) => ({ ...entry, timeZone }))
+  }, [period, timeZone, dataSource])
+  const { entry, loading, error } = useCachedDashboardData(
+    { timeZone, reportDate: MOCK_REPORT_DATE, period, dataSource },
+    fetchFn,
   )
-  const { entry, loading, error } = useCachedDashboardData({ timeZone, reportDate: MOCK_REPORT_DATE, period }, fetchFn)
 
   const allStats = useMemo(() => entry?.results ?? [], [entry])
   const filteredStats = useMemo(
@@ -90,7 +107,15 @@ export function DashboardPage() {
 
   return (
     <div className="dashboard-page">
-      <DashboardHeader lastUpdatedAt={lastUpdatedAt} timeZone={timeZone} onTimeZoneChange={setTimeZone} period={period} onPeriodChange={setPeriod} />
+      <DashboardHeader
+        lastUpdatedAt={lastUpdatedAt}
+        timeZone={timeZone}
+        onTimeZoneChange={setTimeZone}
+        period={period}
+        onPeriodChange={setPeriod}
+        dataSource={dataSource}
+        onDataSourceChange={setDataSource}
+      />
 
       <ClassificationFilterBar
         state={filters.state}

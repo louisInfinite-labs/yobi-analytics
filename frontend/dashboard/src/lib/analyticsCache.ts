@@ -4,11 +4,14 @@ const CACHE_PREFIX = "yobi-analytics-cache"
 
 /** Cache identity must include (timeZone, reportDate, period) — Roadmap 3.6 —
  * so e.g. Tokyo's and Hong Kong's different calendar-date results for the
- * "same" moment can never overwrite or masquerade as each other. */
+ * "same" moment can never overwrite or masquerade as each other. dataSource
+ * is included for the same reason: a mock-fixture result and a real Read
+ * API result must never overwrite or masquerade as each other either. */
 export interface CacheKey {
   timeZone: string
   reportDate: string
   period: Period
+  dataSource: "mock" | "live"
 }
 
 export interface CacheEntry {
@@ -22,7 +25,7 @@ export interface CacheEntry {
 
 /** Build the localStorage key for one (timeZone, reportDate, period) cache slot. */
 function cacheKeyString(key: CacheKey): string {
-  return `${CACHE_PREFIX}:${key.timeZone}:${key.reportDate}:${key.period}`
+  return `${CACHE_PREFIX}:${key.timeZone}:${key.reportDate}:${key.period}:${key.dataSource}`
 }
 
 /** Read a cached entry for this exact (timeZone, reportDate, period), or

@@ -4,6 +4,7 @@ import type { DailyVideoStat } from "../types/domain"
 import { CONTENT_FORMAT_LABELS, CONTENT_TAG_LABELS } from "../types/domain"
 import { formatFullNumber, formatTimeInZone } from "../lib/format"
 import { GrowthBadge } from "./GrowthBadge"
+import { VideoPlayerModal } from "./VideoPlayerModal"
 import { EmptyState } from "./states/EmptyState"
 
 type SortKey = "channelName" | "videoTitle" | "publishedAt" | "totalViews" | "dailyIncrease" | "growthPercent" | "sevenDayAverage" | "collectedAt"
@@ -38,6 +39,7 @@ export function VideoStatsTable({ stats, timeZone }: VideoStatsTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("dailyIncrease")
   const [sortDesc, setSortDesc] = useState(true)
   const [page, setPage] = useState(0)
+  const [playingVideo, setPlayingVideo] = useState<DailyVideoStat | null>(null)
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -134,15 +136,32 @@ export function VideoStatsTable({ stats, timeZone }: VideoStatsTableProps) {
                 {pageRows.map((video) => (
                   <tr key={video.videoId}>
                     <td data-label="Channel">{video.channelName}</td>
-                    <td data-label="Video Title" className="video-table__title-cell" title={video.videoTitle}>
-                      {video.videoTitle}
-                      <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
-                        <span className="video-table__format-badge">{CONTENT_FORMAT_LABELS[video.contentFormat]}</span>
-                        {video.contentTags.slice(0, 2).map((tag) => (
-                          <span key={tag} className="video-table__format-badge">
-                            {CONTENT_TAG_LABELS[tag]}
-                          </span>
-                        ))}
+                    <td
+                      data-label="Video Title"
+                      className="video-table__title-cell"
+                      title={video.videoTitle}
+                      onClick={() => setPlayingVideo(video)}
+                    >
+                      <div className="video-table__title-row">
+                        <img
+                          className="video-table__thumbnail"
+                          src={`https://i.ytimg.com/vi/${video.videoId}/mqdefault.jpg`}
+                          alt=""
+                          loading="lazy"
+                          width={120}
+                          height={68}
+                        />
+                        <div>
+                          {video.videoTitle}
+                          <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                            <span className="video-table__format-badge">{CONTENT_FORMAT_LABELS[video.contentFormat]}</span>
+                            {video.contentTags.slice(0, 2).map((tag) => (
+                              <span key={tag} className="video-table__format-badge">
+                                {CONTENT_TAG_LABELS[tag]}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td data-label="Published">{video.publishedAt ? formatTimeInZone(video.publishedAt, timeZone) : "—"}</td>
@@ -177,6 +196,10 @@ export function VideoStatsTable({ stats, timeZone }: VideoStatsTableProps) {
             </button>
           </div>
         </>
+      )}
+
+      {playingVideo && (
+        <VideoPlayerModal videoId={playingVideo.videoId} title={playingVideo.videoTitle} onClose={() => setPlayingVideo(null)} />
       )}
     </div>
   )
