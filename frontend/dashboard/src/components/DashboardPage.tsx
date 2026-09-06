@@ -3,6 +3,7 @@ import { MOCK_REPORT_DATE, mockVideoStats } from "../data/mockVideoStats"
 import { mockDailySeries } from "../data/mockDailySeries"
 import type { CacheEntry } from "../lib/analyticsCache"
 import { useCachedDashboardData } from "../hooks/useCachedDashboardData"
+import { useEditableLayout } from "../hooks/useEditableLayout"
 import { useFilterState } from "../hooks/useFilterState"
 import { useHeartbeat } from "../hooks/useHeartbeat"
 import { deriveChannelContribution, deriveKpis } from "../lib/deriveAnalytics"
@@ -12,20 +13,21 @@ import { fetchLiveAnalytics } from "../lib/liveAnalytics"
 import { comparisonDateFor, scaleStatsForPeriod } from "../lib/period"
 import { detectDeviceTimeZone } from "../lib/timezone"
 import type { Period } from "../types/domain"
-import { AnimatedRingChart } from "./AnimatedRingChart"
+import type { DashboardWidgetData } from "../lib/widgetRegistry"
 import { ClassificationFilterBar } from "./filters/ClassificationFilterBar"
 import { useDataSource } from "./DataSourceToggle"
 import { DashboardFooter } from "./DashboardFooter"
+import { DashboardGrid } from "./DashboardGrid"
 import { DashboardHeader } from "./DashboardHeader"
-import { GrowthBarChart } from "./GrowthBarChart"
-import { InsightCard } from "./InsightCard"
-import { KpiCard } from "./KpiCard"
-import { RankingCard } from "./RankingCard"
+import { EditModeToolbar } from "./EditModeToolbar"
+import { SaveToast } from "./SaveToast"
 import { StaleDataNotice } from "./StaleDataNotice"
-import { VideoStatsTable } from "./VideoStatsTable"
+import { WidgetTray } from "./WidgetTray"
 import { EmptyState } from "./states/EmptyState"
 import { ErrorState } from "./states/ErrorState"
 import { LoadingState } from "./states/LoadingState"
+
+const LAYOUT_PROFILE_ID = "default"
 
 /** Mock fixture path (Roadmap 3.6's cache-then-refresh flow, real not simulated). */
 function fetchMockAnalytics(reportDate: string, period: Period): Promise<CacheEntry> {
@@ -67,6 +69,19 @@ export function DashboardPage() {
   const [timeZone, setTimeZone] = useState(detectDeviceTimeZone)
   const filters = useFilterState()
   const [dataSource, setDataSource] = useDataSource()
+  const {
+    layout,
+    editMode,
+    isDirty,
+    saveConfirmation,
+    enterEditMode,
+    cancelEditMode,
+    save,
+    resetToDefault,
+    updateWidgetPositions,
+    addWidget,
+    removeWidget,
+  } = useEditableLayout(LAYOUT_PROFILE_ID, "desktop")
 
   const fetchFn = useCallback(() => {
     const fetchPromise =
@@ -105,6 +120,17 @@ export function DashboardPage() {
     entry?.fetchedAt ||
     new Date().toISOString()
 
+  const widgetData: DashboardWidgetData = {
+    kpis,
+    contributions,
+    filteredStats,
+    insights,
+    byDay,
+    byChannel,
+    period,
+    timeZone,
+  }
+
   return (
     <div className="dashboard-page">
       <DashboardHeader
@@ -139,50 +165,33 @@ export function DashboardPage() {
       ) : filteredStats.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="dashboard-grid">
-          <div className="dashboard-grid__kpis">
-            <KpiCard label="Total Views" value={kpis.totalViews} />
-            <KpiCard label="Daily Gain" value={kpis.totalDailyIncrease} />
-            <KpiCard
-              label="Average Growth Rate"
-              value={kpis.averageGrowthPercent !== null ? `${kpis.averageGrowthPercent.toFixed(1)}%` : "N/A"}
-              formatAsCompactNumber={false}
-            />
-            <KpiCard
-              label="Top Performer"
-              value={kpis.topPerformer ? kpis.topPerformer.channelName : "—"}
-              formatAsCompactNumber={false}
-              sub={kpis.topPerformer ? <span className="kpi-card__performer">{kpis.topPerformer.videoTitle}</span> : undefined}
+        <>
+          <div className="dashboard-page__toolbar">
+            <EditModeToolbar
+              editMode={editMode}
+              isDirty={isDirty}
+              onEnterEditMode={enterEditMode}
+              onSave={save}
+              onCancel={cancelEditMode}
+              onResetToDefault={resetToDefault}
             />
           </div>
 
-          <div className="dashboard-grid__chart">
-            <div className="card" style={{ height: "100%" }}>
-              <GrowthBarChart byDay={byDay} byChannel={byChannel} />
-            </div>
-          </div>
+          {editMode && <WidgetTray onAddWidget={addWidget} />}
 
-          <div className="dashboard-grid__side">
-            <AnimatedRingChart contributions={contributions} period={period} />
-            <RankingCard stats={filteredStats} />
-          </div>
-
-          <div className="dashboard-grid__insights">
-            {insights.length === 0 ? (
-              <InsightCard text="Not enough data yet for an insight in this view." />
-            ) : (
-              insights.map((text, i) => <InsightCard key={i} text={text} />)
-            )}
-          </div>
-
-          <div className="dashboard-grid__table">
-            <VideoStatsTable stats={filteredStats} timeZone={timeZone} />
-          </div>
+          <DashboardGrid
+            widgets={layout.widgets}
+            editable={editMode}
+            data={widgetData}
+            onPositionsChange={updateWidgetPositions}
+            onRemoveWidget={removeWidget}
+          />
 
           <StaleDataNotice lastUpdatedAt={lastUpdatedAt} />
-        </div>
+        </>
       )}
 
+      <SaveToast visible={saveConfirmation} />
       <DashboardFooter />
     </div>
   )
