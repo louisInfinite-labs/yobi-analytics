@@ -16,9 +16,9 @@ def reset_cache_and_env(monkeypatch):
     """Each test starts with no cached key and neither env var set."""
     monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
     monkeypatch.delenv("YOUTUBE_API_KEY_SECRET_NAME", raising=False)
-    config._cached_api_key = None
+    get_api_key.cache_clear()
     yield
-    config._cached_api_key = None
+    get_api_key.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -63,3 +63,38 @@ def test_second_call_does_not_hit_secrets_manager_again(monkeypatch):
 
         assert first == second == "secret-key-value"
         spy.assert_called_once()
+
+
+def test_raises_missing_api_key_error_when_secret_does_not_exist(monkeypatch):
+    """A ClientError (e.g. ResourceNotFoundException) from Secrets Manager must surface as
+    MissingAPIKeyError, the only exception type main.py's call sites catch."""
+    monkeypatch.setenv("YOUTUBE_API_KEY_SECRET_NAME", SECRET_NAME)
+    with mock_aws():
+        with pytest.raises(MissingAPIKeyError):
+            get_api_key()
+
+
+def test_raises_missing_api_key_error_when_secret_has_no_secret_string(monkeypatch):
+    """A secret created as SecretBinary (or otherwise lacking SecretString) must not raise
+    a raw KeyError — it should fail the same clean way as every other missing-key case."""
+    monkeypatch.setenv("YOUTUBE_API_KEY_SECRET_NAME", SECRET_NAME)
+    with mock_aws():
+        client = boto3.client("secretsmanager", region_name=AWS_REGION)
+        client.create_secret(Name=SECRET_NAME, SecretBinary=b"not-a-string-secret")
+
+        with pytest.raises(MissingAPIKeyError):
+            get_api_key()
+
+
+def test_failure_does_not_get_cached(monkeypatch):
+    """A failed lookup must not be memoized — a later successful call (e.g. after the
+    secret is created) must not keep raising."""
+    monkeypatch.setenv("YOUTUBE_API_KEY_SECRET_NAME", SECRET_NAME)
+    with mock_aws():
+        with pytest.raises(MissingAPIKeyError):
+            get_api_key()
+
+        client = boto3.client("secretsmanager", region_name=AWS_REGION)
+        client.create_secret(Name=SECRET_NAME, SecretString="secret-key-value")
+
+        assert get_api_key() == "secret-key-value"
