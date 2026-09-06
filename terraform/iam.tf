@@ -8,8 +8,15 @@
 # strings avoids any IAM API call entirely. Policy content for these 3 roles
 # stays manually managed via root Console — out of this Terraform project's
 # scope, same as before.
+# Derived from the active credentials' own identity (sts:GetCallerIdentity,
+# which yobi-analytics-cli can call — unlike the IAM APIs above) rather than
+# a hardcoded default, so an apply under the wrong account's credentials
+# fails on a real "no such role" error instead of silently building ARNs
+# against a stale account ID.
+data "aws_caller_identity" "current" {}
+
 locals {
-  lambda_role_arn          = "arn:aws:iam::${var.aws_account_id}:role/yobi-analytics-lambda-role"
-  emergency_stop_role_arn  = "arn:aws:iam::${var.aws_account_id}:role/yobi-analytics-emergency-stop-role"
-  scheduler_role_arn       = "arn:aws:iam::${var.aws_account_id}:role/yobi-analytics-scheduler-role"
+  lambda_role_arn         = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/yobi-analytics-lambda-role"
+  emergency_stop_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/yobi-analytics-emergency-stop-role"
+  scheduler_role_arn      = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/yobi-analytics-scheduler-role"
 }

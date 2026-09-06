@@ -38,7 +38,7 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      YOBI_ADMIN_API_KEY   = "REPLACE_ME_NOT_MANAGED_HERE"
+      YOBI_ADMIN_API_KEY   = var.admin_api_key
       YOBI_STORAGE_BACKEND = "dynamodb"
     }
   }
@@ -59,8 +59,8 @@ resource "aws_lambda_function" "notification_dispatcher" {
 
   environment {
     variables = {
-      VAPID_CLAIMS_SUB  = "REPLACE_ME_NOT_MANAGED_HERE"
-      VAPID_PRIVATE_KEY = "REPLACE_ME_NOT_MANAGED_HERE"
+      VAPID_CLAIMS_SUB  = var.vapid_claims_sub
+      VAPID_PRIVATE_KEY = var.vapid_private_key
     }
   }
 
