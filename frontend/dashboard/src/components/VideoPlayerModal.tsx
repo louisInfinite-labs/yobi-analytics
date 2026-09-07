@@ -14,6 +14,7 @@ interface VideoPlayerModalProps {
  * whatever opened it on close, so keyboard users never land on background
  * controls while the modal is open. */
 export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const openerRef = useRef<Element | null>(document.activeElement)
@@ -41,9 +42,25 @@ export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalPr
         first.focus()
       }
     }
+    // handleKeyDown alone can't trap focus once it's inside the YouTube
+    // iframe — Tab events fired inside that cross-origin document never
+    // reach this document's keydown listener at all, so the browser's own
+    // tab order (unaware of the modal) can carry focus straight to a
+    // background control behind it. This document-level focusin handler
+    // catches that case instead: it can't see keystrokes inside the
+    // iframe, but it does see the moment focus successfully lands on an
+    // element outside the panel (in this same document), and pulls it back.
+    function handleFocusIn(event: FocusEvent) {
+      const panel = panelRef.current
+      if (panel && event.target instanceof Node && !panel.contains(event.target)) {
+        closeButtonRef.current?.focus()
+      }
+    }
     document.addEventListener("keydown", handleKeyDown)
+    document.addEventListener("focusin", handleFocusIn)
     return () => {
       document.removeEventListener("keydown", handleKeyDown)
+      document.removeEventListener("focusin", handleFocusIn)
       if (opener instanceof HTMLElement) opener.focus()
     }
   }, [onClose])
@@ -56,7 +73,7 @@ export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalPr
       aria-modal="true"
       aria-label={`Playing ${title}`}
     >
-      <div className="video-player-modal__panel" onClick={(e) => e.stopPropagation()}>
+      <div ref={panelRef} className="video-player-modal__panel" onClick={(e) => e.stopPropagation()}>
         <button type="button" ref={closeButtonRef} className="video-player-modal__close" onClick={onClose} aria-label="Close video player">
           <X size={18} aria-hidden="true" />
         </button>
