@@ -197,6 +197,30 @@ def test_creators_for_batch_partitions_every_creator_exactly_once():
     assert [[c.creator_id for c in b] for b in batches] == [[c.creator_id for c in b] for b in shuffled_batches]
 
 
+def test_creators_for_batch_rejects_batch_count_below_one():
+    """A misconfigured EventBridge input (e.g. batchCount=0) must raise a clear error,
+    not an opaque ZeroDivisionError from the modulo below."""
+    import trending_precompute
+
+    creators = [_FakeCreator(creator_id="c1", organization="vspo")]
+
+    with pytest.raises(ValueError, match="batch_count"):
+        trending_precompute._creators_for_batch(creators, batch_index=0, batch_count=0)
+
+
+def test_creators_for_batch_rejects_batch_index_out_of_range():
+    """batch_index >= batch_count (or negative) must raise rather than silently select
+    zero creators -- that would still let org-scope caches get written and return 200."""
+    import trending_precompute
+
+    creators = [_FakeCreator(creator_id="c1", organization="vspo")]
+
+    with pytest.raises(ValueError, match="batch_index"):
+        trending_precompute._creators_for_batch(creators, batch_index=2, batch_count=2)
+    with pytest.raises(ValueError, match="batch_index"):
+        trending_precompute._creators_for_batch(creators, batch_index=-1, batch_count=2)
+
+
 def test_run_with_batching_only_writes_its_own_slices_creator_scope(dynamodb_tables, monkeypatch):
     """batch_index/batch_count must scope the creator-scope loop to just that batch's
     creators -- another batch's creator must not get a cache entry from this run."""

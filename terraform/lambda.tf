@@ -43,8 +43,17 @@ resource "aws_lambda_function" "api" {
     }
   }
 
+  # `environment` is deliberately NOT in ignore_changes here (unlike
+  # collector/notification_dispatcher's original reasoning) -- CodeRabbit
+  # (PR #25) correctly pointed out that ignoring it meant `apply` could
+  # never actually push the *_SECRET_NAME migration to the live Lambda; the
+  # old plaintext values would keep being used by the runtime's fallback
+  # path forever. 2026-09-07: the live Lambda was already manually aligned
+  # to exactly this config via `aws lambda update-function-configuration`,
+  # so removing this is a no-op today (confirmed via `terraform plan`) and
+  # only changes what happens the next time this config changes.
   lifecycle {
-    ignore_changes = [filename, source_code_hash, environment]
+    ignore_changes = [filename, source_code_hash]
   }
 }
 
@@ -64,8 +73,9 @@ resource "aws_lambda_function" "notification_dispatcher" {
     }
   }
 
+  # See aws_lambda_function.api's own comment above -- same reasoning.
   lifecycle {
-    ignore_changes = [filename, source_code_hash, environment]
+    ignore_changes = [filename, source_code_hash]
   }
 }
 
