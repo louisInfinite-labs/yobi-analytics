@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { AdminPanel } from "./AdminPanel"
@@ -70,19 +70,40 @@ describe("AdminPanel", () => {
   })
 
   it("does not double-fetch when the debounced auto-load is preempted by an immediate manual click", async () => {
-    const user = userEvent.setup()
+    // fireEvent.change sets the whole value in one synchronous event,
+    // unlike user.type's real per-keystroke delay -- that delay is what let
+    // the 400ms debounce race the manual click on a slow CI worker (the
+    // auto-load could fire mid-typing, disabling the button before the
+    // click, or letting two requests through instead of the one this test
+    // asserts). A single synchronous change removes the race outright
+    // rather than trying to out-schedule it with a timer mock.
     vi.mocked(apiClient.apiRequest).mockResolvedValue({ totalClients: 5, onlineNow: 2 })
     render(<AdminPanel />)
 
-    await user.type(screen.getByLabelText(/admin api key/i), "my-key")
+    fireEvent.change(screen.getByLabelText(/admin api key/i), { target: { value: "my-key" } })
     // Clicking immediately, before the debounce timer elapses, should win
     // the race and make the pending auto-load a no-op.
-    await user.click(screen.getByRole("button", { name: /refresh stats/i }))
+    fireEvent.click(screen.getByRole("button", { name: /refresh stats/i }))
 
     await screen.findByText(/5 clients total/i)
     // Give the debounce timer (400ms) a chance to fire if it's going to.
     await new Promise((resolve) => setTimeout(resolve, 500))
     expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it("auto-loads again for a corrected key after the first key's auto-load failed", async () => {
+    vi.mocked(apiClient.apiRequest)
+      .mockRejectedValueOnce(new ApiError(403, "Missing or invalid admin API key"))
+      .mockResolvedValueOnce({ totalClients: 5, onlineNow: 2 })
+    render(<AdminPanel />)
+
+    fireEvent.change(screen.getByLabelText(/admin api key/i), { target: { value: "wrong-key" } })
+    expect(await screen.findByRole("alert")).toHaveTextContent("Missing or invalid admin API key")
+
+    fireEvent.change(screen.getByLabelText(/admin api key/i), { target: { value: "right-key" } })
+
+    expect(await screen.findByText(/5 clients total/i)).toBeInTheDocument()
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(2)
   })
 
   it("shows an error message when loading stats fails", async () => {

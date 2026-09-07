@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { ApiError, apiRequest, describeApiFailure } from "./apiClient"
+import { ApiError, ConfigError, apiRequest, describeApiFailure } from "./apiClient"
 
 describe("apiRequest", () => {
   beforeEach(() => {
@@ -85,11 +85,18 @@ describe("apiRequest", () => {
     await expect(apiRequest("/foo")).rejects.toThrow("Request failed with status 500")
   })
 
-  it("throws a plain Error when VITE_API_BASE_URL is not configured", async () => {
+  it("throws a ConfigError, not ApiError, when VITE_API_BASE_URL is not configured", async () => {
     vi.unstubAllEnvs()
     vi.stubEnv("VITE_API_BASE_URL", "")
 
     await expect(apiRequest("/foo")).rejects.toThrow("VITE_API_BASE_URL is not configured")
+    try {
+      await apiRequest("/foo")
+      expect.unreachable()
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError)
+      expect(error).not.toBeInstanceOf(ApiError)
+    }
   })
 
   it("retries a 429 and succeeds once the backend stops throttling", async () => {
@@ -130,6 +137,12 @@ describe("describeApiFailure", () => {
     const { code, description } = describeApiFailure(new TypeError("Failed to fetch"))
     expect(code).toBe("NETWORK")
     expect(description).toContain("網絡")
+  })
+
+  it("reports a ConfigError as a configuration problem, not a network problem", () => {
+    const { code, description } = describeApiFailure(new ConfigError("VITE_API_BASE_URL is not configured"))
+    expect(code).toBe("CONFIG")
+    expect(description).not.toContain("網絡")
   })
 
   it("reports an exhausted 429 as AWS-side throttling with the code visible", () => {

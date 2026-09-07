@@ -33,16 +33,20 @@ export function AdminPanel() {
   const [writeStatus, setWriteStatus] = useState<string | null>(null)
   const [writing, setWriting] = useState(false)
 
-  // True once any load of stats — auto or the manual "Refresh stats" click
-  // — has actually been requested. Set synchronously inside loadStats
-  // itself (not "once stats arrive"), so whichever fires first blocks the
-  // other: a manual click before the auto-load's debounce elapses cancels
-  // the auto-load's reason to fire at all, and the auto-load firing first
-  // never re-fires on a later keystroke.
-  const hasLoadedOnceRef = useRef(false)
+  // The admin key a load (auto or the manual "Refresh stats" click) has
+  // actually been requested for, or null before any request. Set
+  // synchronously inside loadStats itself (not "once stats arrive"), so
+  // whichever fires first blocks the other for *that* key: a manual click
+  // before the auto-load's debounce elapses cancels the auto-load's reason
+  // to fire at all, and the auto-load firing first never re-fires on a
+  // later keystroke of the same key. Keyed by value (not a plain boolean)
+  // so a failed request doesn't permanently block auto-load for every key
+  // typed afterward — replacing the key (e.g. correcting a typo) compares
+  // unequal and is free to trigger its own auto-load.
+  const loadedForKeyRef = useRef<string | null>(null)
 
   const loadStats = () => {
-    hasLoadedOnceRef.current = true
+    loadedForKeyRef.current = adminKey
     setStatsLoading(true)
     setStatsError(null)
     apiRequest<HeartbeatStats>("/admin/heartbeat-stats", { headers: { "X-Admin-Key": adminKey } })
@@ -51,14 +55,14 @@ export function AdminPanel() {
       .finally(() => setStatsLoading(false))
   }
 
-  // Auto-load once, a short debounce after the key stops changing (covers
-  // both pasting and character-by-character typing without firing on every
-  // keystroke), so stats show up without an extra manual "Refresh stats"
-  // click.
+  // Auto-load once per distinct key, a short debounce after the key stops
+  // changing (covers both pasting and character-by-character typing
+  // without firing on every keystroke), so stats show up without an extra
+  // manual "Refresh stats" click.
   useEffect(() => {
-    if (!adminKey || hasLoadedOnceRef.current) return
+    if (!adminKey || loadedForKeyRef.current === adminKey) return
     const timeoutId = window.setTimeout(() => {
-      if (!hasLoadedOnceRef.current) loadStats()
+      if (loadedForKeyRef.current !== adminKey) loadStats()
     }, 400)
     return () => window.clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps

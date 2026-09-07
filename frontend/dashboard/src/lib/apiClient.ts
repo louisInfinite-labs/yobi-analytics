@@ -12,6 +12,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Thrown when the app itself is misconfigured (e.g. `VITE_API_BASE_URL` is
+ * unset) — distinct from a plain `Error`/network failure so `describeApiFailure`
+ * doesn't tell a visitor to check their own connection for a deployment
+ * mistake that has nothing to do with them. */
+export class ConfigError extends Error {}
+
 interface ApiRequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE"
   body?: unknown
@@ -47,7 +53,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   // configured the moment this module first got imported.
   const baseUrl = import.meta.env.VITE_API_BASE_URL
   if (!baseUrl) {
-    throw new Error("VITE_API_BASE_URL is not configured")
+    throw new ConfigError("VITE_API_BASE_URL is not configured")
   }
 
   for (let attempt = 0; ; attempt++) {
@@ -88,6 +94,12 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
  * message that leaves the visitor unable to tell which side the problem is
  * on. */
 export function describeApiFailure(error: Error): { code: string; description: string } {
+  if (error instanceof ConfigError) {
+    // Never reached AWS, but not the visitor's fault either -- a deployment
+    // mistake (missing env var), not something a retry or a different
+    // network fixes.
+    return { code: "CONFIG", description: "應用程式設定錯誤,請聯絡管理員。" }
+  }
   if (!(error instanceof ApiError)) {
     // apiRequest only throws a plain Error when fetch itself never got a
     // response back (offline, DNS/CORS failure, VITE_API_BASE_URL
