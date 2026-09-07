@@ -39,7 +39,6 @@ from dynamodb_store import get_videos_by_creator, put_cached_trending
 from read_api import (
     _CANONICAL_CACHE_TIME_ZONE,
     _PER_CREATOR_CANDIDATE_CAP,
-    _SNAPSHOT_FETCH_WORKERS,
     MAX_LIMIT,
     _compute_growth_results,
     _rank_and_cap_candidates,
@@ -75,6 +74,23 @@ def _load_videos_for_organization(creator_ids: set[str]) -> list[Any]:
 # period (read_api.parse_ranking_type enforces the same rule on requests).
 _PERIOD_TRENDING_TYPE_BY_PERIOD = {"1d": "daily_trending", "7d": "7d_trending", "30d": "30d_trending"}
 _PERIODS = tuple(_PERIOD_TRENDING_TYPE_BY_PERIOD)
+
+# Deliberately its own, much smaller constant instead of reusing
+# read_api._SNAPSHOT_FETCH_WORKERS (100) — that value was tuned for a single
+# live request racing a 60-second Lambda timeout across a candidate pool up
+# to _MAX_TRENDING_CANDIDATES (500). 2026-09-06: confirmed via a
+# [mem-debug] instrumented invocation that this run's shared
+# ThreadPoolExecutor alone (lazily creating a lock-per-thread boto3
+# DynamoDB resource, dynamodb_store._resource, each with its own
+# max_pool_connections=110) drove memory to ~934MB out of 1024MB after
+# processing just the *first*, smallest creator's ≤100 candidates -- the
+# executor's own thread/connection standup cost, not accumulation across
+# many creators, is what was driving the repeated OOM. Precompute never
+# needs 100-way concurrency (each creator's own pool is capped at
+# MAX_LIMIT=100, org-scope at _MAX_TRENDING_CANDIDATES=500); a much smaller
+# pool still finishes each in a handful of rounds without paying for 100
+# standing threads/connections for the whole run.
+_PRECOMPUTE_EXECUTOR_WORKERS = 20
 
 
 def _ranking_types_for_period(period: str) -> list[str]:
@@ -117,40 +133,46 @@ def run(
     separate EventBridge schedules each cover one period, spreading the
     same total work across three smaller windows instead of one long one.
 
-    2026-09-06: splitting by period alone stopped being enough once the
-    roster reached 112 creators averaging ~1,131 videos each — every
-    creator-scope iteration calls get_videos_by_creator, which fetches up
-    to 500 full Video objects *before* this module's own candidate cap
-    (above) ever applies, and holding that many for 112 creators processed
-    sequentially in one invocation is what was driving repeated
-    Runtime.OutOfMemory/900s-timeout failures even for a single period
-    (confirmed via CloudWatch: DynamoDB RCU consumption on both
-    YobiVideoMaster and YobiSnapshots was near-zero for most of a failed
-    invocation's wall-clock time, pointing at Python-side memory pressure,
-    not a DynamoDB-side bottleneck). `batch_index`/`batch_count` split the
-    creator-scope loop itself (see `_creators_for_batch`) across that many
-    separate invocations/schedules, each holding only its own slice's
-    Video objects at a time. Org-scope reads a bounded pool regardless of
-    creator count (each creator's contribution is already capped at
-    _PER_CREATOR_CANDIDATE_CAP before the org-wide _MAX_TRENDING_CANDIDATES
-    ceiling), so it was never the source of the failures above and is
-    deliberately NOT split — `include_org_scope` just lets the schedules
-    for batch_index != 0 skip redoing it.
+    2026-09-06: period-splitting alone started failing again once the
+    roster reached 112 creators — repeated Runtime.OutOfMemory/900s-timeout
+    even for a single period. Initially suspected (and partly true, just
+    not the actual cause): unbounded per-creator fetch size, and creator
+    count itself accumulating memory across one invocation. Neither
+    explained the evidence once instrumented — a [mem-debug] per-creator
+    memory log showed usage already at ~934MB (of 1024MB) after processing
+    just the *first*, smallest creator, and flat thereafter regardless of
+    how many more creators followed. The real cause: this run's shared
+    ThreadPoolExecutor was using read_api._SNAPSHOT_FETCH_WORKERS (100)
+    workers — each lazily creating its own thread-local boto3 DynamoDB
+    resource (dynamodb_store._resource, max_pool_connections=110 each) on
+    first use, all ~100 of them standing up at once as soon as the first
+    _compute_growth_results call dispatched work across the pool. That
+    fixed startup cost, not accumulation across creators, was the actual
+    failure — confirmed by dropping to _PRECOMPUTE_EXECUTOR_WORKERS (20)
+    alone: memory stayed flat around 350-400MB for all 112 creators in one
+    unbatched, unsplit run (240s, well under the 900s budget).
+
+    `batch_index`/`batch_count` (splitting the creator-scope loop itself,
+    see `_creators_for_batch`) and `include_org_scope` (org-scope reads a
+    pool bounded independently of creator count, so was never part of the
+    failure) are kept as real, tested capability for further headroom as
+    the roster keeps growing, but the worker-count fix alone was enough to
+    resolve the actual incident — as of this writing nothing schedules a
+    batch_count > 1 run.
 
     Best-effort per scope: one creator/organization's failure (a transient
     DynamoDB error, say) is logged and skipped rather than aborting the
     whole run — most scopes still getting a fresh cache entry is strictly
     better than none of them getting one because of a single bad one.
 
-    Shares one ThreadPoolExecutor across every _compute_growth_results call
-    this run makes, rather than letting each call open and tear down its
-    own: a fresh 100-worker pool per call — each worker lazily creating its
-    own thread-local boto3 DynamoDB resource and connection pool
-    (dynamodb_store._resource) — accumulated enough abandoned thread/
-    connection state across ~342 calls to exhaust this Lambda's 1024MB on
-    its own, independently of the timeout above. One shared pool bounds
-    that resource creation by worker count for the whole run, not by call
-    count.
+    Shares one ThreadPoolExecutor (_PRECOMPUTE_EXECUTOR_WORKERS workers, see
+    that constant's own comment for why it's much smaller than
+    read_api._SNAPSHOT_FETCH_WORKERS) across every _compute_growth_results
+    call this run makes, rather than letting each call open and tear down
+    its own — each worker lazily creates its own thread-local boto3
+    DynamoDB resource and connection pool (dynamodb_store._resource), so a
+    fresh pool per call would keep recreating that state instead of reusing
+    it for the whole run.
     """
     computed_at = datetime.now().isoformat()
     all_creators = load_creators()
@@ -159,7 +181,7 @@ def run(
     scopes_written = 0
     scopes_failed = 0
 
-    with ThreadPoolExecutor(max_workers=_SNAPSHOT_FETCH_WORKERS) as executor:
+    with ThreadPoolExecutor(max_workers=_PRECOMPUTE_EXECUTOR_WORKERS) as executor:
         for period in periods:
             ranking_types = _ranking_types_for_period(period)
 
@@ -172,10 +194,9 @@ def run(
                     # trending page never returns more than MAX_LIMIT results
                     # anyway (_cache_one ranks with limit=MAX_LIMIT), so
                     # fetching 5x that many snapshot pairs per creator was
-                    # pure wasted DynamoDB I/O. With ~100 creators run
-                    # sequentially in one precompute invocation, that was the
-                    # dominant cost behind this job's repeated OOM/timeout
-                    # failures (see run()'s own docstring).
+                    # pure wasted DynamoDB I/O. A real, worthwhile trim, but
+                    # NOT what was actually causing the OOM/timeout — see
+                    # _PRECOMPUTE_EXECUTOR_WORKERS for the confirmed cause.
                     creator_videos = [v for v in get_videos_by_creator(creator.creator_id) if v.activity_state != "Cold"]
                     videos = _rank_and_cap_candidates(creator_videos, cap=MAX_LIMIT)
                     growth_results = _compute_growth_results(
