@@ -49,11 +49,11 @@ from __future__ import annotations
 import base64
 import hmac
 import json
-import os
 from typing import Any, Callable
 
 import client_credential_api
 import client_credential_store
+import config
 import heartbeat_api
 import heartbeat_store
 import notification_dispatch
@@ -301,15 +301,16 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
 def _check_admin_key(event: dict[str, Any]) -> dict[str, Any] | None:
     """Return an error response if this request's admin key is missing/wrong, else None.
 
-    Fails closed if YOBI_ADMIN_API_KEY itself isn't configured (503, not a
-    silently-open route) — an admin-protected route with no key configured
+    Fails closed if the admin key itself isn't configured/readable (503, not
+    a silently-open route) — an admin-protected route with no key configured
     is a deployment mistake, not "anyone may write". Uses a constant-time
     comparison so response timing can't be used to guess the key
     character-by-character.
     """
-    expected = os.environ.get("YOBI_ADMIN_API_KEY")
-    if not expected:
-        print("Warning: YOBI_ADMIN_API_KEY is not set; refusing this admin-protected route until it is configured")
+    try:
+        expected = config.get_admin_api_key()
+    except config.MissingAdminApiKeyError as exc:
+        print(f"Warning: admin API key is not configured/readable ({exc}); refusing this admin-protected route")
         return _json_response(503, {"error": "Admin write endpoint is not configured"})
 
     headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}

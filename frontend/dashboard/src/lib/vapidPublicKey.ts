@@ -6,4 +6,4 @@
  * must never be committed. Generated once via `py_vapid`; regenerating it
  * would invalidate every browser's existing subscription, since a
  * subscription is tied to the specific key pair it was created with. */
-export const VAPID_PUBLIC_KEY = "BFFTzbTVfPWaTIAjB8ztFUJj1dT9rM4OntbCj2ieYnG2dXEV87aonpwb-wOr_qn0rJHWaM1zzT2B3_on2LrvDVM"
+export const VAPID_PUBLIC_KEY = "BLAZ0cWlhwGBFR-Q9ofgkDOZ6OgYOe3r6ZlJC_74jS9Pw-OogxAi6nZPRZceIxevx6vvFSlgL6Va6970N13p2oA"

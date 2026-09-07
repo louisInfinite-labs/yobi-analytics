@@ -18,7 +18,13 @@
       "Write(**/credentials.json)",
       "Read(**/*serviceAccount*.json)",
       "Edit(**/*serviceAccount*.json)",
-      "Write(**/*serviceAccount*.json)"
+      "Write(**/*serviceAccount*.json)",
+      "Read(./terraform.tfvars)",
+      "Read(**/terraform.tfvars)",
+      "Edit(./terraform.tfvars)",
+      "Edit(**/terraform.tfvars)",
+      "Write(./terraform.tfvars)",
+      "Write(**/terraform.tfvars)"
     ]
   }
 }
