@@ -32,6 +32,22 @@ export function useEditableLayout(profileId: string, breakpoint: Breakpoint): Us
 
   const isDirty = draftLayout !== savedLayout
 
+  // Re-read this profile+breakpoint's own layout when either changes (e.g.
+  // the viewport crosses a breakpoint) -- the useState initializers above
+  // only ever run once, on mount, so without this a breakpoint change left
+  // `draftLayout` holding the *previous* breakpoint's layout, and `save`
+  // would write it under the new breakpoint's storage key, overwriting it
+  // with stale data. Any unsaved draft is discarded here rather than
+  // carried across profile/breakpoint boundaries — the same outcome
+  // `cancelEditMode` already produces, just triggered by the switch itself
+  // instead of an explicit Cancel click.
+  useEffect(() => {
+    const fresh = readLayout(profileId, breakpoint)
+    setSavedLayout(fresh)
+    setDraftLayout(fresh)
+    setEditMode(false)
+  }, [profileId, breakpoint])
+
   const enterEditMode = useCallback(() => setEditMode(true), [])
 
   const cancelEditMode = useCallback(() => {
