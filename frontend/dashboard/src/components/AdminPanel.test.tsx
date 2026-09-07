@@ -91,6 +91,42 @@ describe("AdminPanel", () => {
     expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
   })
 
+  it("does not let a slower, older request overwrite a newer key's result", async () => {
+    // Two deferred promises so the test controls resolution order directly,
+    // independent of real timing -- the bug this guards against is a race,
+    // so the test must be able to resolve the *older* request last.
+    let resolveOld!: (value: { totalClients: number; onlineNow: number }) => void
+    let resolveNew!: (value: { totalClients: number; onlineNow: number }) => void
+    const oldRequest = new Promise<{ totalClients: number; onlineNow: number }>((resolve) => {
+      resolveOld = resolve
+    })
+    const newRequest = new Promise<{ totalClients: number; onlineNow: number }>((resolve) => {
+      resolveNew = resolve
+    })
+    vi.mocked(apiClient.apiRequest).mockReturnValueOnce(oldRequest).mockReturnValueOnce(newRequest)
+    render(<AdminPanel />)
+
+    fireEvent.change(screen.getByLabelText(/admin api key/i), { target: { value: "old-key" } })
+    fireEvent.click(screen.getByRole("button", { name: /refresh stats/i }))
+    // The manual click above already started the old-key request and left
+    // the button disabled/"Loading…" -- a second click wouldn't even
+    // dispatch. Changing the key instead re-arms the auto-load guard
+    // (loadedForKeyRef no longer matches adminKey), so the debounced
+    // auto-load starts the second request on its own once it fires.
+    fireEvent.change(screen.getByLabelText(/admin api key/i), { target: { value: "new-key" } })
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(2)
+
+    // Resolve the newer request first, then the older, slower one.
+    resolveNew({ totalClients: 2, onlineNow: 1 })
+    expect(await screen.findByText(/2 clients total/i)).toBeInTheDocument()
+    resolveOld({ totalClients: 99, onlineNow: 99 })
+    await Promise.resolve()
+
+    expect(screen.getByText(/2 clients total/i)).toBeInTheDocument()
+    expect(screen.queryByText(/99 clients total/i)).not.toBeInTheDocument()
+  })
+
   it("auto-loads again for a corrected key after the first key's auto-load failed", async () => {
     vi.mocked(apiClient.apiRequest)
       .mockRejectedValueOnce(new ApiError(403, "Missing or invalid admin API key"))

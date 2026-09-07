@@ -46,13 +46,29 @@ export function AdminPanel() {
   const loadedForKeyRef = useRef<string | null>(null)
 
   const loadStats = () => {
-    loadedForKeyRef.current = adminKey
+    // Captured at request start, not read from adminKey again inside the
+    // callbacks below -- adminKey may have already changed (and a newer
+    // request already started) by the time this one resolves. Comparing
+    // against loadedForKeyRef.current (which the newer request's own
+    // loadStats call would have overwritten) lets a stale, slower response
+    // recognize itself and skip updating state instead of clobbering the
+    // newer key's result.
+    const requestKey = adminKey
+    loadedForKeyRef.current = requestKey
     setStatsLoading(true)
     setStatsError(null)
-    apiRequest<HeartbeatStats>("/admin/heartbeat-stats", { headers: { "X-Admin-Key": adminKey } })
-      .then((result) => setStats(result))
-      .catch((error: unknown) => setStatsError(error instanceof ApiError ? error.message : "Failed to load stats"))
-      .finally(() => setStatsLoading(false))
+    apiRequest<HeartbeatStats>("/admin/heartbeat-stats", { headers: { "X-Admin-Key": requestKey } })
+      .then((result) => {
+        if (loadedForKeyRef.current === requestKey) setStats(result)
+      })
+      .catch((error: unknown) => {
+        if (loadedForKeyRef.current === requestKey) {
+          setStatsError(error instanceof ApiError ? error.message : "Failed to load stats")
+        }
+      })
+      .finally(() => {
+        if (loadedForKeyRef.current === requestKey) setStatsLoading(false)
+      })
   }
 
   // Auto-load once per distinct key, a short debounce after the key stops
