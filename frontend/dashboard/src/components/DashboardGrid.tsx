@@ -72,7 +72,13 @@ export function DashboardGrid({ widgets, editable, data, onPositionsChange, onRe
 
     const nodes: Record<string, HTMLElement> = {}
     for (const widget of widgets) {
-      const el = containerRef.current?.querySelector<HTMLElement>(`[gs-id="${widget.instanceId}"] .grid-stack-item-content`)
+      // CSS.escape, not a raw template literal -- instanceId is a persisted
+      // value (layoutStore.ts), so a malformed one containing a quote or
+      // bracket would otherwise produce an invalid attribute selector and
+      // make querySelector throw, breaking the whole dashboard's render.
+      const el = containerRef.current?.querySelector<HTMLElement>(
+        `[gs-id="${CSS.escape(widget.instanceId)}"] .grid-stack-item-content`,
+      )
       if (el) nodes[widget.instanceId] = el
     }
     setContentNodes(nodes)
