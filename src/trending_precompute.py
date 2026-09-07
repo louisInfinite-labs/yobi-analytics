@@ -39,7 +39,6 @@ from dynamodb_store import get_videos_by_creator, put_cached_trending
 from read_api import (
     _CANONICAL_CACHE_TIME_ZONE,
     _PER_CREATOR_CANDIDATE_CAP,
-    _SNAPSHOT_FETCH_WORKERS,
     MAX_LIMIT,
     _compute_growth_results,
     _rank_and_cap_candidates,
@@ -76,6 +75,23 @@ def _load_videos_for_organization(creator_ids: set[str]) -> list[Any]:
 _PERIOD_TRENDING_TYPE_BY_PERIOD = {"1d": "daily_trending", "7d": "7d_trending", "30d": "30d_trending"}
 _PERIODS = tuple(_PERIOD_TRENDING_TYPE_BY_PERIOD)
 
+# Deliberately its own, much smaller constant instead of reusing
+# read_api._SNAPSHOT_FETCH_WORKERS (100) — that value was tuned for a single
+# live request racing a 60-second Lambda timeout across a candidate pool up
+# to _MAX_TRENDING_CANDIDATES (500). 2026-09-06: confirmed via a
+# [mem-debug] instrumented invocation that this run's shared
+# ThreadPoolExecutor alone (lazily creating a lock-per-thread boto3
+# DynamoDB resource, dynamodb_store._resource, each with its own
+# max_pool_connections=110) drove memory to ~934MB out of 1024MB after
+# processing just the *first*, smallest creator's ≤100 candidates -- the
+# executor's own thread/connection standup cost, not accumulation across
+# many creators, is what was driving the repeated OOM. Precompute never
+# needs 100-way concurrency (each creator's own pool is capped at
+# MAX_LIMIT=100, org-scope at _MAX_TRENDING_CANDIDATES=500); a much smaller
+# pool still finishes each in a handful of rounds without paying for 100
+# standing threads/connections for the whole run.
+_PRECOMPUTE_EXECUTOR_WORKERS = 20
+
 
 def _ranking_types_for_period(period: str) -> list[str]:
     """Every ranking type valid for this period: its own period-trending type plus the period-agnostic ones."""
@@ -84,8 +100,42 @@ def _ranking_types_for_period(period: str) -> list[str]:
     return [period_trending_type, *other_types]
 
 
-def run(report_date: date, periods: tuple[str, ...] = _PERIODS) -> dict[str, int]:
-    """Compute and cache trending for every creator, every organization, for each period in `periods`.
+def _creators_for_batch(creators: list[Any], *, batch_index: int, batch_count: int) -> list[Any]:
+    """Deterministically partition creators across `batch_count` invocations.
+
+    Sorted by creator_id first so the assignment is stable across runs
+    (creators.json's own ordering isn't a stable partition key — an
+    unrelated reordering there must not reshuffle which batch a creator
+    falls into and cause a period to skip/duplicate one). Slicing by
+    `i % batch_count` rather than contiguous chunks spreads creators with
+    similar catalog sizes evenly across batches instead of one batch
+    accidentally getting all the largest back-catalogs.
+
+    Validates its own bounds rather than trusting the caller — an
+    EventBridge schedule's `input` is just a JSON literal in Terraform, so a
+    typo'd `batchIndex`/`batchCount` reaching here would otherwise either
+    silently select zero creators (batch_index out of range, still returns
+    HTTP 200 with org-scope caches written and nothing to show for it) or
+    raise an opaque ZeroDivisionError (batch_count=0) instead of a clear
+    error naming what's actually wrong.
+    """
+    if batch_count < 1:
+        raise ValueError(f"batch_count must be at least 1, got {batch_count}")
+    if not 0 <= batch_index < batch_count:
+        raise ValueError(f"batch_index must be within [0, {batch_count}), got {batch_index}")
+    ordered = sorted(creators, key=lambda c: c.creator_id)
+    return [creator for i, creator in enumerate(ordered) if i % batch_count == batch_index]
+
+
+def run(
+    report_date: date,
+    periods: tuple[str, ...] = _PERIODS,
+    *,
+    batch_index: int = 0,
+    batch_count: int = 1,
+    include_org_scope: bool = True,
+) -> dict[str, int]:
+    """Compute and cache trending for a slice of creators, every organization, for each period in `periods`.
 
     `periods` defaults to all three (1d/7d/30d) but a caller may pass just
     one — 2026-09-05: running all three in a single invocation (342
@@ -95,32 +145,59 @@ def run(report_date: date, periods: tuple[str, ...] = _PERIODS) -> dict[str, int
     separate EventBridge schedules each cover one period, spreading the
     same total work across three smaller windows instead of one long one.
 
+    2026-09-06: period-splitting alone started failing again once the
+    roster reached 112 creators — repeated Runtime.OutOfMemory/900s-timeout
+    even for a single period. Initially suspected (and partly true, just
+    not the actual cause): unbounded per-creator fetch size, and creator
+    count itself accumulating memory across one invocation. Neither
+    explained the evidence once instrumented — a [mem-debug] per-creator
+    memory log showed usage already at ~934MB (of 1024MB) after processing
+    just the *first*, smallest creator, and flat thereafter regardless of
+    how many more creators followed. The real cause: this run's shared
+    ThreadPoolExecutor was using read_api._SNAPSHOT_FETCH_WORKERS (100)
+    workers — each lazily creating its own thread-local boto3 DynamoDB
+    resource (dynamodb_store._resource, max_pool_connections=110 each) on
+    first use, all ~100 of them standing up at once as soon as the first
+    _compute_growth_results call dispatched work across the pool. That
+    fixed startup cost, not accumulation across creators, was the actual
+    failure — confirmed by dropping to _PRECOMPUTE_EXECUTOR_WORKERS (20)
+    alone: memory stayed flat around 350-400MB for all 112 creators in one
+    unbatched, unsplit run (240s, well under the 900s budget).
+
+    `batch_index`/`batch_count` (splitting the creator-scope loop itself,
+    see `_creators_for_batch`) and `include_org_scope` (org-scope reads a
+    pool bounded independently of creator count, so was never part of the
+    failure) are kept as real, tested capability for further headroom as
+    the roster keeps growing, but the worker-count fix alone was enough to
+    resolve the actual incident — as of this writing nothing schedules a
+    batch_count > 1 run.
+
     Best-effort per scope: one creator/organization's failure (a transient
     DynamoDB error, say) is logged and skipped rather than aborting the
     whole run — most scopes still getting a fresh cache entry is strictly
     better than none of them getting one because of a single bad one.
 
-    Shares one ThreadPoolExecutor across every _compute_growth_results call
-    this run makes, rather than letting each call open and tear down its
-    own: a fresh 100-worker pool per call — each worker lazily creating its
-    own thread-local boto3 DynamoDB resource and connection pool
-    (dynamodb_store._resource) — accumulated enough abandoned thread/
-    connection state across ~342 calls to exhaust this Lambda's 1024MB on
-    its own, independently of the timeout above. One shared pool bounds
-    that resource creation by worker count for the whole run, not by call
-    count.
+    Shares one ThreadPoolExecutor (_PRECOMPUTE_EXECUTOR_WORKERS workers, see
+    that constant's own comment for why it's much smaller than
+    read_api._SNAPSHOT_FETCH_WORKERS) across every _compute_growth_results
+    call this run makes, rather than letting each call open and tear down
+    its own — each worker lazily creates its own thread-local boto3
+    DynamoDB resource and connection pool (dynamodb_store._resource), so a
+    fresh pool per call would keep recreating that state instead of reusing
+    it for the whole run.
     """
     computed_at = datetime.now().isoformat()
-    creators = load_creators()
-    organizations = sorted({creator.organization for creator in creators})
+    all_creators = load_creators()
+    batch_creators = _creators_for_batch(all_creators, batch_index=batch_index, batch_count=batch_count)
+    organizations = sorted({creator.organization for creator in all_creators})
     scopes_written = 0
     scopes_failed = 0
 
-    with ThreadPoolExecutor(max_workers=_SNAPSHOT_FETCH_WORKERS) as executor:
+    with ThreadPoolExecutor(max_workers=_PRECOMPUTE_EXECUTOR_WORKERS) as executor:
         for period in periods:
             ranking_types = _ranking_types_for_period(period)
 
-            for creator in creators:
+            for creator in batch_creators:
                 try:
                     # Capped the same way _load_videos_for_organization caps
                     # each creator's contribution below (MAX_LIMIT, not the
@@ -129,10 +206,9 @@ def run(report_date: date, periods: tuple[str, ...] = _PERIODS) -> dict[str, int
                     # trending page never returns more than MAX_LIMIT results
                     # anyway (_cache_one ranks with limit=MAX_LIMIT), so
                     # fetching 5x that many snapshot pairs per creator was
-                    # pure wasted DynamoDB I/O. With ~100 creators run
-                    # sequentially in one precompute invocation, that was the
-                    # dominant cost behind this job's repeated OOM/timeout
-                    # failures (see run()'s own docstring).
+                    # pure wasted DynamoDB I/O. A real, worthwhile trim, but
+                    # NOT what was actually causing the OOM/timeout — see
+                    # _PRECOMPUTE_EXECUTOR_WORKERS for the confirmed cause.
                     creator_videos = [v for v in get_videos_by_creator(creator.creator_id) if v.activity_state != "Cold"]
                     videos = _rank_and_cap_candidates(creator_videos, cap=MAX_LIMIT)
                     growth_results = _compute_growth_results(
@@ -154,9 +230,12 @@ def run(report_date: date, periods: tuple[str, ...] = _PERIODS) -> dict[str, int
                     print(f"Warning: trending precompute failed for creator {creator.creator_id!r}: {exc}")
                     scopes_failed += 1
 
+            if not include_org_scope:
+                continue
+
             for organization in organizations:
                 try:
-                    creator_ids = {creator.creator_id for creator in creators if creator.organization == organization}
+                    creator_ids = {creator.creator_id for creator in all_creators if creator.organization == organization}
                     videos = _load_videos_for_organization(creator_ids)
                     growth_results = _compute_growth_results(
                         videos, report_date=report_date, period=period, executor=executor
