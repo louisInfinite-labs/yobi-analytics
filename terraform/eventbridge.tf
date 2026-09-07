@@ -50,6 +50,15 @@ resource "aws_scheduler_schedule" "discovery_only" {
 #    roster continuing to grow (more agencies, more clip/highlight
 #    channels) well before any single invocation approaches the 900s
 #    Lambda timeout again.
+#
+# Each batch within a period is spaced 30 minutes apart (batch_index * 30)
+# -- exactly Lambda's own hard maximum single-invocation duration (900s =
+# 15 minutes), doubled. Even a future invocation that runs the full 900s
+# (the absolute worst case, not just today's ~120s) still finishes with
+# 15 minutes to spare before the next batch's scheduled start, so two
+# batches can never overlap and contend for a concurrency slot at once --
+# a tighter gap (the original 10 minutes) would only guarantee that at
+# today's much smaller duration, not as the roster keeps growing.
 locals {
   _PRECOMPUTE_BATCH_COUNT = 2
 
@@ -66,7 +75,7 @@ locals {
           key         = "${period}-${batch_index}"
           period      = period
           hour        = timing.hour
-          minute      = timing.base_minute + batch_index * 10
+          minute      = timing.base_minute + batch_index * 30
           batch_index = batch_index
         }
       ]
