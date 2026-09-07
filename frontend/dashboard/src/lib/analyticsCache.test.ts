@@ -29,7 +29,7 @@ function entry(overrides: Partial<CacheEntry> = {}): CacheEntry {
   }
 }
 
-const key: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d" }
+const key: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d", dataSource: "mock" }
 
 describe("readCache / writeCache", () => {
   it("returns null when nothing is cached", () => {
@@ -44,8 +44,8 @@ describe("readCache / writeCache", () => {
 
   it("keeps entries for different (timeZone, reportDate, period) combinations separate", () => {
     const storage = memoryStorage()
-    const tokyoKey: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-01", period: "1d" }
-    const hkKey: CacheKey = { timeZone: "Asia/Hong_Kong", reportDate: "2026-08-31", period: "1d" }
+    const tokyoKey: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-01", period: "1d", dataSource: "mock" }
+    const hkKey: CacheKey = { timeZone: "Asia/Hong_Kong", reportDate: "2026-08-31", period: "1d", dataSource: "mock" }
     writeCache(tokyoKey, entry({ timeZone: "Asia/Tokyo", reportDate: "2026-09-01" }), storage)
     writeCache(hkKey, entry({ timeZone: "Asia/Hong_Kong", reportDate: "2026-08-31" }), storage)
 
@@ -55,7 +55,7 @@ describe("readCache / writeCache", () => {
 
   it("readCache returns null for corrupt JSON rather than throwing", () => {
     const storage = memoryStorage()
-    storage.setItem("yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d", "{not json")
+    storage.setItem("yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d:mock", "{not json")
     expect(readCache(key, storage)).toBeNull()
   })
 
@@ -65,8 +65,8 @@ describe("readCache / writeCache", () => {
     // `as CacheEntry` type assertion would let this through unchecked.
     const storage = memoryStorage()
     storage.setItem(
-      "yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d",
-      JSON.stringify({ timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d" }),
+      "yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d:mock",
+      JSON.stringify({ timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d", dataSource: "mock" }),
     )
     expect(readCache(key, storage)).toBeNull()
   })
@@ -76,13 +76,13 @@ describe("readCache / writeCache", () => {
     // must reject the individual elements, not just the array shape.
     const storage = memoryStorage()
     storage.setItem(
-      "yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d",
+      "yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d:mock",
       JSON.stringify({ ...entry(), results: [null] }),
     )
     expect(readCache(key, storage)).toBeNull()
 
     storage.setItem(
-      "yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d",
+      "yobi-analytics-cache:Asia/Tokyo:2026-09-03:1d:mock",
       JSON.stringify({ ...entry(), results: [{}] }),
     )
     expect(readCache(key, storage)).toBeNull()

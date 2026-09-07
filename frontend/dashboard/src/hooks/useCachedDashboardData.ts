@@ -20,7 +20,7 @@ interface UseCachedDashboardDataResult {
  * hook doesn't know or care whether the data came from mocks or a real
  * network request. */
 export function useCachedDashboardData(key: CacheKey, fetchFn: () => Promise<CacheEntry>): UseCachedDashboardDataResult {
-  const keySignature = `${key.timeZone}:${key.reportDate}:${key.period}`
+  const keySignature = `${key.timeZone}:${key.reportDate}:${key.period}:${key.dataSource}`
 
   const [entry, setEntry] = useState<CacheEntry | null>(() => readCache(key))
   const [loading, setLoading] = useState(entry === null)

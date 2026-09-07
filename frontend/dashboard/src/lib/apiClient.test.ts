@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { ApiError, apiRequest } from "./apiClient"
+import { ApiError, ConfigError, apiRequest, describeApiFailure } from "./apiClient"
 
 describe("apiRequest", () => {
   beforeEach(() => {
@@ -85,10 +85,83 @@ describe("apiRequest", () => {
     await expect(apiRequest("/foo")).rejects.toThrow("Request failed with status 500")
   })
 
-  it("throws a plain Error when VITE_API_BASE_URL is not configured", async () => {
+  it("throws a ConfigError, not ApiError, when VITE_API_BASE_URL is not configured", async () => {
     vi.unstubAllEnvs()
     vi.stubEnv("VITE_API_BASE_URL", "")
 
     await expect(apiRequest("/foo")).rejects.toThrow("VITE_API_BASE_URL is not configured")
+    try {
+      await apiRequest("/foo")
+      expect.unreachable()
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError)
+      expect(error).not.toBeInstanceOf(ApiError)
+    }
+  })
+
+  it("retries a 429 and succeeds once the backend stops throttling", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({ error: "throttled" }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ hello: "world" }) })
+    vi.stubGlobal("fetch", fetchMock)
+    vi.stubGlobal("setTimeout", ((fn: () => void) => fn()) as unknown as typeof setTimeout)
+
+    const result = await apiRequest<{ hello: string }>("/foo")
+
+    expect(result).toEqual({ hello: "world" })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("gives up and throws ApiError after exhausting 429 retries", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 429, json: () => Promise.resolve({ error: "throttled" }) })
+    vi.stubGlobal("fetch", fetchMock)
+    vi.stubGlobal("setTimeout", ((fn: () => void) => fn()) as unknown as typeof setTimeout)
+
+    await expect(apiRequest("/foo")).rejects.toThrow("throttled")
+    // Initial attempt + MAX_429_RETRIES (2) retries = 3 total.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it("never retries a non-429 error status", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({ error: "boom" }) })
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(apiRequest("/foo")).rejects.toThrow("boom")
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("describeApiFailure", () => {
+  it("reports a plain (non-ApiError) failure as a network problem, not an AWS status code", () => {
+    const { code, description } = describeApiFailure(new TypeError("Failed to fetch"))
+    expect(code).toBe("NETWORK")
+    expect(description).toContain("網絡")
+  })
+
+  it("reports a ConfigError as a configuration problem, not a network problem", () => {
+    const { code, description } = describeApiFailure(new ConfigError("VITE_API_BASE_URL is not configured"))
+    expect(code).toBe("CONFIG")
+    expect(description).not.toContain("網絡")
+  })
+
+  it("reports an exhausted 429 as AWS-side throttling with the code visible", () => {
+    const { code, description } = describeApiFailure(new ApiError(429, "throttled"))
+    expect(code).toBe("429")
+    expect(description).toContain("429")
+  })
+
+  it("reports a 5xx as an AWS server error, explicitly telling the visitor it's not their network", () => {
+    const { code, description } = describeApiFailure(new ApiError(503, "unavailable"))
+    expect(code).toBe("503")
+    expect(description).toContain("503")
+    expect(description).toContain("並非你的網絡問題")
+  })
+
+  it("reports a 4xx with its own status code and the backend's message", () => {
+    const { code, description } = describeApiFailure(new ApiError(403, "Missing or invalid admin API key"))
+    expect(code).toBe("403")
+    expect(description).toContain("403")
+    expect(description).toContain("Missing or invalid admin API key")
   })
 })

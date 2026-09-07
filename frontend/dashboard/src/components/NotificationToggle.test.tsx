@@ -234,10 +234,10 @@ describe("NotificationToggle", () => {
   it("disables the button while a sync is in flight so a second click can't start an overlapping operation", async () => {
     const user = userEvent.setup()
     vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
-    let resolveSubscribe: (value: unknown) => void = () => {}
+    let resolveSubscribe: (value: PushSubscriptionJSON | null) => void = () => {}
     vi.mocked(pushNotifications.subscribeToPush).mockImplementation(
       () =>
-        new Promise((resolve) => {
+        new Promise<PushSubscriptionJSON | null>((resolve) => {
           resolveSubscribe = resolve
         }),
     )

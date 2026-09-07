@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { FormEvent } from "react"
 import { ApiError, apiRequest } from "../lib/apiClient"
 
@@ -33,14 +33,56 @@ export function AdminPanel() {
   const [writeStatus, setWriteStatus] = useState<string | null>(null)
   const [writing, setWriting] = useState(false)
 
+  // The admin key a load (auto or the manual "Refresh stats" click) has
+  // actually been requested for, or null before any request. Set
+  // synchronously inside loadStats itself (not "once stats arrive"), so
+  // whichever fires first blocks the other for *that* key: a manual click
+  // before the auto-load's debounce elapses cancels the auto-load's reason
+  // to fire at all, and the auto-load firing first never re-fires on a
+  // later keystroke of the same key. Keyed by value (not a plain boolean)
+  // so a failed request doesn't permanently block auto-load for every key
+  // typed afterward — replacing the key (e.g. correcting a typo) compares
+  // unequal and is free to trigger its own auto-load.
+  const loadedForKeyRef = useRef<string | null>(null)
+
   const loadStats = () => {
+    // Captured at request start, not read from adminKey again inside the
+    // callbacks below -- adminKey may have already changed (and a newer
+    // request already started) by the time this one resolves. Comparing
+    // against loadedForKeyRef.current (which the newer request's own
+    // loadStats call would have overwritten) lets a stale, slower response
+    // recognize itself and skip updating state instead of clobbering the
+    // newer key's result.
+    const requestKey = adminKey
+    loadedForKeyRef.current = requestKey
     setStatsLoading(true)
     setStatsError(null)
-    apiRequest<HeartbeatStats>("/admin/heartbeat-stats", { headers: { "X-Admin-Key": adminKey } })
-      .then((result) => setStats(result))
-      .catch((error: unknown) => setStatsError(error instanceof ApiError ? error.message : "Failed to load stats"))
-      .finally(() => setStatsLoading(false))
+    apiRequest<HeartbeatStats>("/admin/heartbeat-stats", { headers: { "X-Admin-Key": requestKey } })
+      .then((result) => {
+        if (loadedForKeyRef.current === requestKey) setStats(result)
+      })
+      .catch((error: unknown) => {
+        if (loadedForKeyRef.current === requestKey) {
+          setStatsError(error instanceof ApiError ? error.message : "Failed to load stats")
+        }
+      })
+      .finally(() => {
+        if (loadedForKeyRef.current === requestKey) setStatsLoading(false)
+      })
   }
+
+  // Auto-load once per distinct key, a short debounce after the key stops
+  // changing (covers both pasting and character-by-character typing
+  // without firing on every keystroke), so stats show up without an extra
+  // manual "Refresh stats" click.
+  useEffect(() => {
+    if (!adminKey || loadedForKeyRef.current === adminKey) return
+    const timeoutId = window.setTimeout(() => {
+      if (loadedForKeyRef.current !== adminKey) loadStats()
+    }, 400)
+    return () => window.clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminKey])
 
   const handleWrite = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

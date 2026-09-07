@@ -1,5 +1,6 @@
 import type { Period } from "../types/domain"
 import { formatTimeInZone } from "../lib/format"
+import { DataSourceToggle, type DataSource } from "./DataSourceToggle"
 import { DateRangeTabs } from "./DateRangeTabs"
 import { NotificationToggle } from "./NotificationToggle"
 import { ThemeSelector } from "./ThemeSelector"
@@ -11,10 +12,20 @@ interface DashboardHeaderProps {
   onTimeZoneChange: (zone: string) => void
   period: Period
   onPeriodChange: (period: Period) => void
+  dataSource: DataSource
+  onDataSourceChange: (next: DataSource) => void
 }
 
 /** Page title, last-updated time, and the period/time-zone/theme controls. */
-export function DashboardHeader({ lastUpdatedAt, timeZone, onTimeZoneChange, period, onPeriodChange }: DashboardHeaderProps) {
+export function DashboardHeader({
+  lastUpdatedAt,
+  timeZone,
+  onTimeZoneChange,
+  period,
+  onPeriodChange,
+  dataSource,
+  onDataSourceChange,
+}: DashboardHeaderProps) {
   return (
     <header className="dashboard-header">
       <div className="dashboard-header__title-group">
@@ -28,6 +39,7 @@ export function DashboardHeader({ lastUpdatedAt, timeZone, onTimeZoneChange, per
       <div className="dashboard-header__controls">
         <DateRangeTabs value={period} onChange={onPeriodChange} />
         <TimeZoneSelector value={timeZone} onChange={onTimeZoneChange} />
+        <DataSourceToggle value={dataSource} onChange={onDataSourceChange} />
         <ThemeSelector />
         <NotificationToggle />
       </div>

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 import { writeCache, type CacheEntry, type CacheKey } from "../lib/analyticsCache"
 import { useCachedDashboardData } from "./useCachedDashboardData"
 
-const key: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d" }
+const key: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d", dataSource: "mock" }
 
 /** Build a minimal CacheEntry for a test, overriding only the given fields. */
 function entry(overrides: Partial<CacheEntry> = {}): CacheEntry {
@@ -58,8 +58,8 @@ describe("useCachedDashboardData", () => {
   })
 
   it("switches to the new key's own cached entry immediately when key changes, never showing the old key's stale entry", () => {
-    const keyA: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d" }
-    const keyB: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "7d" }
+    const keyA: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d", dataSource: "mock" }
+    const keyB: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "7d", dataSource: "mock" }
     writeCache(keyA, entry({ period: "1d", fetchedAt: "2026-09-03T10:00:00.000Z" }))
     writeCache(keyB, entry({ period: "7d", fetchedAt: "2026-09-03T09:00:00.000Z" }))
     const fetchFn = vi.fn(() => new Promise<CacheEntry>(() => {})) // never resolves

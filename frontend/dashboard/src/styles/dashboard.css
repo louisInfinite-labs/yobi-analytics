@@ -553,6 +553,19 @@
   white-space: nowrap;
 }
 
+button.video-table__title-cell {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .video-table__format-badge {
   display: inline-block;
   padding: 2px 8px;
@@ -629,6 +642,11 @@
 
 .state-panel--error {
   color: var(--negative);
+}
+
+.state-panel__error-code {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
 .skeleton {
@@ -727,4 +745,211 @@
 .notification-toggle__error {
   color: var(--negative);
   font-size: 0.85em;
+}
+
+.data-source-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.data-source-toggle__option[aria-pressed="true"] {
+  background: var(--theme-primary-soft);
+  border-color: var(--theme-primary);
+  color: var(--theme-text-accent);
+}
+
+.video-table__title-cell {
+  cursor: pointer;
+}
+
+.video-table__title-cell:hover .video-table__title-row > div:last-child {
+  text-decoration: underline;
+  text-decoration-color: var(--theme-primary);
+}
+
+.video-table__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.video-table__thumbnail {
+  flex-shrink: 0;
+  width: 120px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+}
+
+.video-player-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 24, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-5);
+}
+
+.video-player-modal__panel {
+  position: relative;
+  width: min(720px, 100%);
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.video-player-modal__frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #000;
+}
+
+.video-player-modal__frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.video-player-modal__close {
+  position: absolute;
+  top: calc(-1 * var(--space-3));
+  right: calc(-1 * var(--space-3));
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.video-player-modal__close:hover {
+  background: var(--surface-hover);
+}
+
+.video-player-modal__title {
+  color: var(--text-secondary);
+  font-size: 0.9em;
+}
+
+.edit-mode-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.edit-mode-toolbar__label {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  margin-right: var(--space-2);
+}
+
+.edit-mode-toolbar__save[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.widget-tray {
+  margin-bottom: var(--space-4);
+}
+
+.widget-tray__list {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+
+.widget-tray__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  max-width: 220px;
+}
+
+.widget-tray__item-title {
+  font-weight: 600;
+}
+
+.widget-tray__item-description {
+  color: var(--text-secondary);
+  font-size: 0.82em;
+}
+
+.dashboard-grid-v2 {
+  margin-top: var(--space-4);
+}
+
+.grid-stack {
+  background: transparent;
+}
+
+.grid-stack-item-content {
+  inset: 0 !important;
+  overflow: visible !important;
+}
+
+.widget-shell {
+  position: relative;
+  height: 100%;
+}
+
+.widget-shell__body {
+  height: 100%;
+  overflow: auto;
+}
+
+.widget-shell__remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.widget-shell__remove:hover {
+  background: var(--negative-soft);
+  color: var(--negative);
+}
+
+.save-toast {
+  position: fixed;
+  left: var(--space-5);
+  bottom: var(--space-5);
+  background: var(--text-primary);
+  color: var(--surface-card);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-size: 0.9em;
+  z-index: 1100;
 }
