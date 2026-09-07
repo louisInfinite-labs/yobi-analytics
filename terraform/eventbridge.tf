@@ -32,6 +32,18 @@ resource "aws_sqs_queue_policy" "scheduler_dlq_allow_scheduler_role" {
   })
 }
 
+# CodeRabbit (PR #25) correctly points out that AWS's own docs describe the
+# DLQ grant as belonging on the *execution role's own identity policy*, not
+# (only) a resource-based queue policy like the one above -- same-account
+# access generally works with either, but this is the officially documented
+# shape. `sqs:SendMessage` on this queue's ARN has been added directly to
+# `yobi-analytics-scheduler-role` via root Console (2026-09-07,
+# `AllowSchedulerDlqSendMessage`, matching this project's existing
+# `InvokeYobiCollector`/`InvokeYobiNotificationDispatcher` naming) -- not
+# reflected here because IAM role policy content is out of this Terraform
+# project's scope entirely (see iam.tf's own note: yobi-analytics-cli has no
+# IAM access at all, not even read).
+
 resource "aws_scheduler_schedule" "daily_collection" {
   name                          = "yobi-analytics-daily-collection"
   group_name                    = "default"
