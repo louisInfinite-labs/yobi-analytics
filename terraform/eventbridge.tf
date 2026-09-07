@@ -2,6 +2,36 @@
 # (see the note there — yobi-analytics-cli has no IAM access, so its policy
 # stays manually managed via root Console, not Terraform).
 
+# 2026-09-07 CodeRabbit PR #25 finding: every schedule below omitted
+# dead_letter_config, so a target invocation that exhausts EventBridge
+# Scheduler's own retries just vanished — no durable record that a day's
+# collection/precompute/notification run never actually happened. One
+# shared queue (not one per schedule) keeps this simple; a failed message
+# still carries which schedule/input produced it, so failures remain
+# distinguishable without needing six separate queues. Granted via a queue
+# policy naming the existing scheduler role directly, rather than editing
+# that role's own IAM policy (out of this Terraform project's scope — see
+# iam.tf).
+resource "aws_sqs_queue" "scheduler_dlq" {
+  name                      = "yobi-analytics-scheduler-dlq"
+  message_retention_seconds = 1209600 # 14 days (SQS max) -- long enough to notice and investigate a failure
+}
+
+resource "aws_sqs_queue_policy" "scheduler_dlq_allow_scheduler_role" {
+  queue_url = aws_sqs_queue.scheduler_dlq.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { AWS = local.scheduler_role_arn }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.scheduler_dlq.arn
+      }
+    ]
+  })
+}
+
 resource "aws_scheduler_schedule" "daily_collection" {
   name                          = "yobi-analytics-daily-collection"
   group_name                    = "default"
@@ -15,6 +45,10 @@ resource "aws_scheduler_schedule" "daily_collection" {
   target {
     arn      = aws_lambda_function.collector.arn
     role_arn = local.scheduler_role_arn
+
+    dead_letter_config {
+      arn = aws_sqs_queue.scheduler_dlq.arn
+    }
   }
 }
 
@@ -32,6 +66,10 @@ resource "aws_scheduler_schedule" "discovery_only" {
     arn      = aws_lambda_function.collector.arn
     role_arn = local.scheduler_role_arn
     input    = jsonencode({ mode = "discovery_only" })
+
+    dead_letter_config {
+      arn = aws_sqs_queue.scheduler_dlq.arn
+    }
   }
 }
 
@@ -105,6 +143,10 @@ resource "aws_scheduler_schedule" "trending_precompute_batches" {
       batchCount      = local._PRECOMPUTE_BATCH_COUNT
       includeOrgScope = each.value.batch_index == 0
     })
+
+    dead_letter_config {
+      arn = aws_sqs_queue.scheduler_dlq.arn
+    }
   }
 }
 
@@ -121,5 +163,9 @@ resource "aws_scheduler_schedule" "notification_dispatch" {
   target {
     arn      = aws_lambda_function.notification_dispatcher.arn
     role_arn = local.scheduler_role_arn
+
+    dead_letter_config {
+      arn = aws_sqs_queue.scheduler_dlq.arn
+    }
   }
 }

@@ -1,10 +1,12 @@
 # Copy this file to terraform.tfvars (gitignored — real secrets, never commit)
-# and fill in the real values already deployed to yobi-analytics-api /
-# yobi-analytics-notification-dispatcher. Terraform's own `ignore_changes` on
-# each Lambda's `environment` means these values are never actually pushed to
-# the already-imported resources by a normal plan/apply — they only matter if
-# one of these Lambdas is ever destroyed and recreated from scratch.
+# and fill in the real value. Terraform's own `ignore_changes` on
+# notification_dispatcher's `environment` means this value is never actually
+# pushed to the already-imported resource by a normal plan/apply — it only
+# matters if that Lambda is ever destroyed and recreated from scratch.
+#
+# admin_api_key and vapid_private_key used to be required here too, but were
+# moved to Secrets Manager (see secrets.tf's `admin_api_key`/`vapid_private_key`
+# data sources and lambda.tf's `_SECRET_NAME` environment variables) — there is
+# no Terraform variable for either anymore.
 
-admin_api_key      = "REPLACE_WITH_REAL_YOBI_ADMIN_API_KEY"
-vapid_claims_sub    = "REPLACE_WITH_REAL_VAPID_CLAIMS_SUB"
-vapid_private_key   = "REPLACE_WITH_REAL_VAPID_PRIVATE_KEY"
+vapid_claims_sub = "REPLACE_WITH_REAL_VAPID_CLAIMS_SUB"
