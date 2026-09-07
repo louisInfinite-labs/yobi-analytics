@@ -110,7 +110,19 @@ def _creators_for_batch(creators: list[Any], *, batch_index: int, batch_count: i
     `i % batch_count` rather than contiguous chunks spreads creators with
     similar catalog sizes evenly across batches instead of one batch
     accidentally getting all the largest back-catalogs.
+
+    Validates its own bounds rather than trusting the caller — an
+    EventBridge schedule's `input` is just a JSON literal in Terraform, so a
+    typo'd `batchIndex`/`batchCount` reaching here would otherwise either
+    silently select zero creators (batch_index out of range, still returns
+    HTTP 200 with org-scope caches written and nothing to show for it) or
+    raise an opaque ZeroDivisionError (batch_count=0) instead of a clear
+    error naming what's actually wrong.
     """
+    if batch_count < 1:
+        raise ValueError(f"batch_count must be at least 1, got {batch_count}")
+    if not 0 <= batch_index < batch_count:
+        raise ValueError(f"batch_index must be within [0, {batch_count}), got {batch_index}")
     ordered = sorted(creators, key=lambda c: c.creator_id)
     return [creator for i, creator in enumerate(ordered) if i % batch_count == batch_index]
 
