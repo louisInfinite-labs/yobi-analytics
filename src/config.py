@@ -101,16 +101,18 @@ def get_vapid_credentials() -> tuple[str, dict[str, str]]:
     return private_key, {"sub": subject}
 
 
-@functools.cache
 def get_admin_api_key() -> str:
     """Return the shared admin API key, preferring Secrets Manager over the plaintext env var fallback.
 
     YOBI_ADMIN_API_KEY_SECRET_NAME (deployed Lambda) takes priority over
     YOBI_ADMIN_API_KEY (local .env / older plaintext Lambda config) so the
     key is never stored in plaintext Lambda configuration, the same pattern
-    as get_api_key() above. @functools.cache only memoizes a successful
-    return, never a raised exception, so a transient Secrets Manager failure
-    doesn't get "cached" as permanent.
+    as get_api_key() above. Deliberately NOT @functools.cache'd unlike
+    get_api_key() — this key is compared against every admin-protected
+    request, so a rotated key (e.g. after an exposure) must take effect on
+    the very next request, not only once a warm Lambda container happens to
+    recycle. YOUTUBE_API_KEY has no such requirement (it's never compared
+    against caller input), so caching it stays safe.
     """
     secret_name = os.getenv("YOBI_ADMIN_API_KEY_SECRET_NAME")
     if secret_name:
