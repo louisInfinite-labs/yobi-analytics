@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { AdminPanel } from "./AdminPanel"
 import { ApiError } from "../lib/apiClient"
 import * as apiClient from "../lib/apiClient"
@@ -11,6 +11,15 @@ vi.mock("../lib/apiClient", async () => {
 })
 
 describe("AdminPanel", () => {
+  // The mocked apiRequest is a single module-level vi.fn() shared by every
+  // test in this file (vi.mock's factory runs once) -- without clearing its
+  // call history between tests, an assertion like toHaveBeenCalledTimes(1)
+  // would count calls left over from earlier tests, not just this test's own.
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+
   it("keeps the admin key input empty and stats unloaded on a fresh page load", () => {
     render(<AdminPanel />)
 
@@ -47,6 +56,33 @@ describe("AdminPanel", () => {
     expect(await screen.findByText(/5 clients total/i)).toBeInTheDocument()
     expect(screen.getByText(/2 online now/i)).toBeInTheDocument()
     expect(apiClient.apiRequest).toHaveBeenCalledWith("/admin/heartbeat-stats", { headers: { "X-Admin-Key": "my-key" } })
+  })
+
+  it("auto-loads stats once, a short debounce after a key has been typed, without a button click", async () => {
+    const user = userEvent.setup()
+    vi.mocked(apiClient.apiRequest).mockResolvedValue({ totalClients: 5, onlineNow: 2 })
+    render(<AdminPanel />)
+
+    await user.type(screen.getByLabelText(/admin api key/i), "my-key")
+
+    expect(await screen.findByText(/5 clients total/i)).toBeInTheDocument()
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not double-fetch when the debounced auto-load is preempted by an immediate manual click", async () => {
+    const user = userEvent.setup()
+    vi.mocked(apiClient.apiRequest).mockResolvedValue({ totalClients: 5, onlineNow: 2 })
+    render(<AdminPanel />)
+
+    await user.type(screen.getByLabelText(/admin api key/i), "my-key")
+    // Clicking immediately, before the debounce timer elapses, should win
+    // the race and make the pending auto-load a no-op.
+    await user.click(screen.getByRole("button", { name: /refresh stats/i }))
+
+    await screen.findByText(/5 clients total/i)
+    // Give the debounce timer (400ms) a chance to fire if it's going to.
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
   })
 
   it("shows an error message when loading stats fails", async () => {

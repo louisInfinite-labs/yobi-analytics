@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react"
 import { MOCK_REPORT_DATE, mockVideoStats } from "../data/mockVideoStats"
 import { mockDailySeries } from "../data/mockDailySeries"
 import type { CacheEntry } from "../lib/analyticsCache"
+import { describeApiFailure } from "../lib/apiClient"
 import { useBreakpoint } from "../hooks/useBreakpoint"
 import { useCachedDashboardData } from "../hooks/useCachedDashboardData"
 import { useEditableLayout } from "../hooks/useEditableLayout"
@@ -162,7 +163,10 @@ export function DashboardPage() {
         </div>
       ) : error && entry === null ? (
         <div className="card">
-          <ErrorState message="Could not load analytics data." />
+          {(() => {
+            const { code, description } = describeApiFailure(error)
+            return <ErrorState message={description} code={code} />
+          })()}
         </div>
       ) : filteredStats.length === 0 ? (
         <EmptyState />

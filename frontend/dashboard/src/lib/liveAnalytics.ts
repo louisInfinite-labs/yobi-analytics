@@ -69,6 +69,19 @@ function toDailyVideoStat(row: TrendingResultRow, reportDate: string, requestOrg
 
 const LIVE_ORGANIZATIONS: OrganizationKey[] = ["hololive", "vspo"]
 
+// Small, deliberate stagger between the per-organization requests below —
+// this account's Lambda concurrency quota is a shared, low ceiling (a
+// support case to raise it is pending), so one visitor's own page load
+// firing 2 fully-simultaneous requests doubles their contribution to a
+// concurrency spike for no real benefit (both organizations' cards render
+// together regardless, a few hundred ms later makes no visible
+// difference). Deliberately not zero and not a `Promise.all` down.
+const ORGANIZATION_FETCH_STAGGER_MS = 150
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 /** Fetch real trending data for every organization and merge it into one
  * list shaped like the mock fixture, so the rest of the dashboard's
  * filter/derive pipeline needs no live-vs-mock branching downstream of this
@@ -81,16 +94,17 @@ export async function fetchLiveAnalytics(
   timeZone: string,
 ): Promise<{ results: DailyVideoStat[]; comparisonDate: string; lastUpdatedAt: string | null }> {
   const responses = await Promise.all(
-    LIVE_ORGANIZATIONS.map((organization) =>
-      apiRequest<TrendingResponse>(
+    LIVE_ORGANIZATIONS.map(async (organization, index) => {
+      if (index > 0) await sleep(ORGANIZATION_FETCH_STAGGER_MS * index)
+      return apiRequest<TrendingResponse>(
         `/organizations/${organization}/trending?${new URLSearchParams({
           reportDate,
           period,
           timeZone,
           limit: "100",
         })}`,
-      ),
-    ),
+      )
+    }),
   )
 
   const results = responses.flatMap((response, index) =>

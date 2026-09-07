@@ -644,6 +644,11 @@ button.video-table__title-cell {
   color: var(--negative);
 }
 
+.state-panel__error-code {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
 .skeleton {
   background: linear-gradient(90deg, var(--surface-hover) 25%, var(--surface-border) 37%, var(--surface-hover) 63%);
   background-size: 400% 100%;
