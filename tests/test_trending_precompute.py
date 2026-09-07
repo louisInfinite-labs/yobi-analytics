@@ -16,6 +16,7 @@ from dynamodb_store import (
     save_daily_collection,
     upsert_videos,
 )
+from read_api import MAX_LIMIT
 from snapshot_store import Snapshot, SnapshotRunSummary
 from video_master import Video
 
@@ -173,6 +174,101 @@ def test_run_caches_an_organizations_trending_scoped_to_its_own_creators(dynamod
 
     cached = get_cached_trending("org:vspo:1d:daily_trending:2026-09-01:Asia/Tokyo")
     assert [entry["videoId"] for entry in cached["results"]] == ["v1"]
+
+
+def test_creators_for_batch_partitions_every_creator_exactly_once():
+    """Every creator lands in exactly one batch, and the partition is stable regardless
+    of the input list's own order (creators.json's ordering isn't a stable partition key)."""
+    import trending_precompute
+
+    creators = [_FakeCreator(creator_id=f"creator_{i}", organization="vspo") for i in range(10)]
+    shuffled = [creators[i] for i in (7, 2, 9, 0, 5, 1, 8, 3, 6, 4)]
+
+    batches = [
+        trending_precompute._creators_for_batch(creators, batch_index=i, batch_count=4) for i in range(4)
+    ]
+    shuffled_batches = [
+        trending_precompute._creators_for_batch(shuffled, batch_index=i, batch_count=4) for i in range(4)
+    ]
+
+    all_assigned = [c.creator_id for batch in batches for c in batch]
+    assert sorted(all_assigned) == sorted(c.creator_id for c in creators)
+    assert len(all_assigned) == len(creators)
+    assert [[c.creator_id for c in b] for b in batches] == [[c.creator_id for c in b] for b in shuffled_batches]
+
+
+def test_run_with_batching_only_writes_its_own_slices_creator_scope(dynamodb_tables, monkeypatch):
+    """batch_index/batch_count must scope the creator-scope loop to just that batch's
+    creators -- another batch's creator must not get a cache entry from this run."""
+    monkeypatch.setattr(
+        "trending_precompute.load_creators",
+        lambda: [
+            _FakeCreator(creator_id="aizawa_ema", organization="vspo"),
+            _FakeCreator(creator_id="other_creator", organization="vspo"),
+        ],
+    )
+    _seed_videos_and_snapshots([("v1", "aizawa_ema", 100, 150), ("v_other", "other_creator", 1, 9999)])
+
+    import trending_precompute
+
+    # aizawa_ema sorts before other_creator, so batch_index=0 of 2 owns it.
+    stats = trending_precompute.run(date(2026, 9, 1), periods=("1d",), batch_index=0, batch_count=2)
+
+    assert stats["scopes_failed"] == 0
+    assert get_cached_trending("creator:aizawa_ema:1d:daily_trending:2026-09-01:Asia/Tokyo") is not None
+    assert get_cached_trending("creator:other_creator:1d:daily_trending:2026-09-01:Asia/Tokyo") is None
+
+
+def test_run_with_include_org_scope_false_skips_org_caching(dynamodb_tables, monkeypatch):
+    """A non-zero batch's schedule passes includeOrgScope=false so org-scope isn't
+    redundantly recomputed/re-cached by every batch."""
+    monkeypatch.setattr(
+        "trending_precompute.load_creators",
+        lambda: [_FakeCreator(creator_id="aizawa_ema", organization="vspo")],
+    )
+    _seed_videos_and_snapshots([("v1", "aizawa_ema", 100, 150)])
+
+    import trending_precompute
+
+    stats = trending_precompute.run(date(2026, 9, 1), periods=("1d",), include_org_scope=False)
+
+    assert stats["scopes_failed"] == 0
+    assert get_cached_trending("creator:aizawa_ema:1d:daily_trending:2026-09-01:Asia/Tokyo") is not None
+    assert get_cached_trending("org:vspo:1d:daily_trending:2026-09-01:Asia/Tokyo") is None
+
+
+def test_run_caps_a_single_creators_candidates_at_max_limit(dynamodb_tables, monkeypatch):
+    """A creator with far more non-Cold videos than MAX_LIMIT must not have all of them
+    fed into _compute_growth_results — that was the uncapped per-creator DynamoDB fan-out
+    (up to 500 candidates x 2 snapshot fetches, per creator, sequentially) behind this job's
+    repeated real-world OOM/timeout failures. Capping at MAX_LIMIT matches what a creator's
+    own trending page ever returns anyway (_cache_one ranks with limit=MAX_LIMIT)."""
+    entries = [(f"v{i}", "aizawa_ema", 100, 150) for i in range(MAX_LIMIT + 20)]
+    monkeypatch.setattr(
+        "trending_precompute.load_creators",
+        lambda: [_FakeCreator(creator_id="aizawa_ema", organization="vspo")],
+    )
+    _seed_videos_and_snapshots(entries)
+
+    import trending_precompute
+
+    real_compute_growth_results = trending_precompute._compute_growth_results
+    seen_candidate_counts: list[int] = []
+
+    def _spy_compute_growth_results(videos, **kwargs):
+        seen_candidate_counts.append(len(videos))
+        return real_compute_growth_results(videos, **kwargs)
+
+    monkeypatch.setattr("trending_precompute._compute_growth_results", _spy_compute_growth_results)
+
+    stats = trending_precompute.run(date(2026, 9, 1), periods=("1d",))
+
+    assert stats["scopes_failed"] == 0
+    # First call is this creator's own scope (what this test targets); the
+    # second is the pre-existing, already-bounded org-scope aggregation for
+    # the one organization this creator belongs to — not what's under test
+    # here, just confirming the creator-scope cap didn't come at its expense.
+    assert seen_candidate_counts[0] == MAX_LIMIT
 
 
 def test_run_continues_past_one_creators_failure(dynamodb_tables, monkeypatch):

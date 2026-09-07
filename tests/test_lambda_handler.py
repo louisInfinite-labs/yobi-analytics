@@ -29,7 +29,9 @@ def test_lambda_handler_dispatches_to_trending_precompute_in_precompute_mode(mon
         raise AssertionError("main() must not run for a precompute-mode event")
 
     monkeypatch.setattr(lambda_handler_module, "main", _main_should_not_run)
-    monkeypatch.setattr(trending_precompute, "run", lambda report_date, periods: {"scopes_written": 5, "scopes_failed": 0})
+    monkeypatch.setattr(
+        trending_precompute, "run", lambda report_date, periods, **kwargs: {"scopes_written": 5, "scopes_failed": 0}
+    )
 
     result = lambda_handler_module.lambda_handler({"mode": "precompute_trending"}, None)
 
@@ -42,7 +44,9 @@ def test_lambda_handler_precompute_mode_still_returns_200_when_some_scopes_faile
     import trending_precompute
 
     monkeypatch.setattr(lambda_handler_module, "main", lambda: (_ for _ in ()).throw(AssertionError))
-    monkeypatch.setattr(trending_precompute, "run", lambda report_date, periods: {"scopes_written": 4, "scopes_failed": 1})
+    monkeypatch.setattr(
+        trending_precompute, "run", lambda report_date, periods, **kwargs: {"scopes_written": 4, "scopes_failed": 1}
+    )
 
     result = lambda_handler_module.lambda_handler({"mode": "precompute_trending"}, None)
 
@@ -56,7 +60,7 @@ def test_lambda_handler_precompute_mode_passes_through_a_single_period(monkeypat
 
     captured = {}
 
-    def _fake_run(report_date, periods):
+    def _fake_run(report_date, periods, **kwargs):
         captured["periods"] = periods
         return {"scopes_written": 1, "scopes_failed": 0}
 
@@ -73,7 +77,7 @@ def test_lambda_handler_precompute_mode_defaults_to_every_period_when_absent(mon
 
     captured = {}
 
-    def _fake_run(report_date, periods):
+    def _fake_run(report_date, periods, **kwargs):
         captured["periods"] = periods
         return {"scopes_written": 1, "scopes_failed": 0}
 
@@ -82,6 +86,45 @@ def test_lambda_handler_precompute_mode_defaults_to_every_period_when_absent(mon
     lambda_handler_module.lambda_handler({"mode": "precompute_trending"}, None)
 
     assert captured["periods"] == trending_precompute._PERIODS
+
+
+def test_lambda_handler_precompute_mode_passes_through_batch_fields(monkeypatch):
+    """batchIndex/batchCount/includeOrgScope reach trending_precompute.run() -- each of the
+    per-batch EventBridge schedules relies on these to only touch its own slice of creators."""
+    import trending_precompute
+
+    captured = {}
+
+    def _fake_run(report_date, periods, **kwargs):
+        captured.update(kwargs)
+        return {"scopes_written": 1, "scopes_failed": 0}
+
+    monkeypatch.setattr(trending_precompute, "run", _fake_run)
+
+    lambda_handler_module.lambda_handler(
+        {"mode": "precompute_trending", "period": "1d", "batchIndex": 2, "batchCount": 4, "includeOrgScope": False},
+        None,
+    )
+
+    assert captured == {"batch_index": 2, "batch_count": 4, "include_org_scope": False}
+
+
+def test_lambda_handler_precompute_mode_batch_fields_default_to_single_unbatched_run(monkeypatch):
+    """Omitting batchIndex/batchCount/includeOrgScope (local/manual invocation) behaves as
+    one unbatched run covering every creator plus org-scope, matching the pre-batching default."""
+    import trending_precompute
+
+    captured = {}
+
+    def _fake_run(report_date, periods, **kwargs):
+        captured.update(kwargs)
+        return {"scopes_written": 1, "scopes_failed": 0}
+
+    monkeypatch.setattr(trending_precompute, "run", _fake_run)
+
+    lambda_handler_module.lambda_handler({"mode": "precompute_trending"}, None)
+
+    assert captured == {"batch_index": 0, "batch_count": 1, "include_org_scope": True}
 
 
 def test_lambda_handler_dispatches_to_discovery_only_in_discovery_only_mode(monkeypatch):
