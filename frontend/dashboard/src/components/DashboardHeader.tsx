@@ -5,6 +5,7 @@ import { DateRangeTabs } from "./DateRangeTabs"
 import { NotificationToggle } from "./NotificationToggle"
 import { ThemeSelector } from "./ThemeSelector"
 import { TimeZoneSelector } from "./TimeZoneSelector"
+import { UpcomingDisplaySettings } from "./UpcomingDisplaySettings"
 
 interface DashboardHeaderProps {
   lastUpdatedAt: string
@@ -41,6 +42,7 @@ export function DashboardHeader({
         <TimeZoneSelector value={timeZone} onChange={onTimeZoneChange} />
         <DataSourceToggle value={dataSource} onChange={onDataSourceChange} />
         <ThemeSelector />
+        <UpcomingDisplaySettings />
         <NotificationToggle />
       </div>
     </header>
