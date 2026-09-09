@@ -261,12 +261,8 @@ def test_run_with_include_org_scope_false_skips_org_caching(dynamodb_tables, mon
     assert get_cached_trending("org:vspo:1d:daily_trending:2026-09-01:Asia/Tokyo") is None
 
 
-def test_run_caps_a_single_creators_candidates_at_max_limit(dynamodb_tables, monkeypatch):
-    """A creator with far more non-Cold videos than MAX_LIMIT must not have all of them
-    fed into _compute_growth_results — that was the uncapped per-creator DynamoDB fan-out
-    (up to 500 candidates x 2 snapshot fetches, per creator, sequentially) behind this job's
-    repeated real-world OOM/timeout failures. Capping at MAX_LIMIT matches what a creator's
-    own trending page ever returns anyway (_cache_one ranks with limit=MAX_LIMIT)."""
+def test_run_considers_every_creator_video_before_top_n(dynamodb_tables, monkeypatch):
+    """Top-N bounds output, not the set of tracked videos eligible to rank."""
     entries = [(f"v{i}", "aizawa_ema", 100, 150) for i in range(MAX_LIMIT + 20)]
     monkeypatch.setattr(
         "trending_precompute.load_creators",
@@ -288,11 +284,7 @@ def test_run_caps_a_single_creators_candidates_at_max_limit(dynamodb_tables, mon
     stats = trending_precompute.run(date(2026, 9, 1), periods=("1d",))
 
     assert stats["scopes_failed"] == 0
-    # First call is this creator's own scope (what this test targets); the
-    # second is the pre-existing, already-bounded org-scope aggregation for
-    # the one organization this creator belongs to — not what's under test
-    # here, just confirming the creator-scope cap didn't come at its expense.
-    assert seen_candidate_counts[0] == MAX_LIMIT
+    assert seen_candidate_counts[0] == MAX_LIMIT + 20
 
 
 def test_run_continues_past_one_creators_failure(dynamodb_tables, monkeypatch):

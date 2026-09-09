@@ -12,7 +12,6 @@ from dynamodb_store import (
     SNAPSHOTS_TABLE,
     TRENDING_CACHE_TABLE,
     VIDEO_MASTER_TABLE,
-    _MAX_ITEMS_PER_CREATOR_QUERY,
     get_cached_trending,
     get_snapshot,
     get_videos_by_creator,
@@ -215,19 +214,17 @@ def test_get_videos_by_creator_returns_empty_list_for_unknown_creator(dynamodb_t
     assert get_videos_by_creator("no_such_creator") == []
 
 
-def test_get_videos_by_creator_stops_at_the_cap_for_a_prolific_creator(dynamodb_tables):
-    """A creator with more videos than _MAX_ITEMS_PER_CREATOR_QUERY never returns more than
-    that many — 2026-09-05 CodeRabbit finding: this function used to page through a
-    creator's *entire* catalog before any caller-side cap was ever applied."""
+def test_get_videos_by_creator_returns_every_video_for_a_prolific_creator(dynamodb_tables):
+    """Exact ranking must not lose later GSI pages before gain is known."""
     videos = [
         Video(video_id=f"v{i}", creator_id="prolific", title=f"Video {i}", published_at="2026-08-20T00:00:00Z")
-        for i in range(_MAX_ITEMS_PER_CREATOR_QUERY + 50)
+        for i in range(550)
     ]
     upsert_videos(videos)
 
     result = get_videos_by_creator("prolific")
 
-    assert len(result) == _MAX_ITEMS_PER_CREATOR_QUERY
+    assert len(result) == 550
 
 
 # --- Trending cache ---------------------------------------------------------

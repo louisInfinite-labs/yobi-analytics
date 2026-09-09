@@ -6,13 +6,10 @@ import pytest
 import read_api
 from creator_master import Creator
 from read_api import (
-    _MAX_TRENDING_CANDIDATES,
-    _PER_CREATOR_CANDIDATE_CAP,
     ClientError,
     VideoNotFoundError,
     _compute_growth_results,
     _load_videos_for_creators,
-    _rank_and_cap_candidates,
     get_creator_trending,
     get_organization_trending,
     get_video_growth,
@@ -602,9 +599,8 @@ def test_get_creator_trending_respects_limit(monkeypatch):
     assert response["results"][0]["videoId"] == "v2"
 
 
-def test_get_creator_trending_excludes_cold_videos(monkeypatch):
-    """A Cold video is skipped entirely — never fetched, never ranked — even
-    if its raw snapshot data would otherwise show the largest growth."""
+def test_get_creator_trending_includes_legacy_cold_videos(monkeypatch):
+    """Legacy activity state no longer excludes a tracked video from ranking."""
     _trending_fixture(
         monkeypatch,
         creators=[_creator()],
@@ -624,47 +620,11 @@ def test_get_creator_trending_excludes_cold_videos(monkeypatch):
         {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d"}
     )
 
-    assert [entry["videoId"] for entry in response["results"]] == ["v1"]
+    assert [entry["videoId"] for entry in response["results"]] == ["v_cold", "v1"]
 
 
-def test_rank_and_cap_candidates_orders_hot_before_warm_before_unknown():
-    """Activity-state tier wins over recency: an old Hot video still outranks a freshly-checked Unknown one."""
-    hot = _video(video_id="hot", activity_state="Hot", last_checked_at="2026-01-01T00:00:00Z")
-    warm = _video(video_id="warm", activity_state="Warm", last_checked_at="2026-09-01T00:00:00Z")
-    unknown = _video(video_id="unknown", activity_state="Unknown", last_checked_at="2026-09-02T00:00:00Z")
-
-    ranked = _rank_and_cap_candidates([unknown, warm, hot])
-
-    assert [video.video_id for video in ranked] == ["hot", "warm", "unknown"]
-
-
-def test_rank_and_cap_candidates_breaks_ties_by_most_recently_checked_first():
-    """Within the same activity_state tier, the most recently checked video sorts first."""
-    older = _video(video_id="older", activity_state="Warm", last_checked_at="2026-08-01T00:00:00Z")
-    newer = _video(video_id="newer", activity_state="Warm", last_checked_at="2026-09-01T00:00:00Z")
-    never_checked = _video(video_id="never_checked", activity_state="Warm", last_checked_at=None)
-
-    ranked = _rank_and_cap_candidates([older, never_checked, newer])
-
-    assert [video.video_id for video in ranked] == ["newer", "older", "never_checked"]
-
-
-def test_rank_and_cap_candidates_never_exceeds_the_cap():
-    """However many candidates come in, at most _MAX_TRENDING_CANDIDATES come out."""
-    videos = [
-        _video(video_id=f"v{i}", activity_state="Warm", last_checked_at=f"2026-01-01T00:00:{i % 60:02d}Z")
-        for i in range(_MAX_TRENDING_CANDIDATES + 50)
-    ]
-
-    ranked = _rank_and_cap_candidates(videos)
-
-    assert len(ranked) == _MAX_TRENDING_CANDIDATES
-
-
-def test_load_videos_for_creators_caps_each_creator_before_combining(monkeypatch):
-    """Peak combined memory must scale with creator count, not any one
-    creator's total catalog size — each creator is capped before the next
-    creator's videos are even fetched, never held all-at-once."""
+def test_load_videos_for_creators_returns_every_tracked_video(monkeypatch):
+    """Exact ranking cannot discard videos before their real gain is known."""
     huge_catalog = {
         "c1": [_video(video_id=f"c1_v{i}", creator_id="c1", activity_state="Warm") for i in range(10_000)],
         "c2": [_video(video_id=f"c2_v{i}", creator_id="c2", activity_state="Warm") for i in range(10_000)],
@@ -673,11 +633,10 @@ def test_load_videos_for_creators_caps_each_creator_before_combining(monkeypatch
 
     combined = _load_videos_for_creators({"c1", "c2"})
 
-    assert len(combined) == 2 * _PER_CREATOR_CANDIDATE_CAP
+    assert len(combined) == 20_000
 
 
-def test_load_videos_for_creators_excludes_cold_before_capping(monkeypatch):
-    """A creator's Cold videos never occupy one of that creator's own capped slots."""
+def test_load_videos_for_creators_ignores_legacy_activity_state(monkeypatch):
     videos = [_video(video_id="hot", creator_id="c1", activity_state="Hot")] + [
         _video(video_id=f"cold_{i}", creator_id="c1", activity_state="Cold") for i in range(10)
     ]
@@ -685,7 +644,7 @@ def test_load_videos_for_creators_excludes_cold_before_capping(monkeypatch):
 
     combined = _load_videos_for_creators({"c1"})
 
-    assert [video.video_id for video in combined] == ["hot"]
+    assert [video.video_id for video in combined] == ["hot", *[f"cold_{i}" for i in range(10)]]
 
 
 def test_compute_growth_results_uses_a_caller_supplied_executor_when_given(monkeypatch):
@@ -726,12 +685,10 @@ def test_compute_growth_results_creates_its_own_executor_when_none_given(monkeyp
     assert len(results) == 1
 
 
-def test_get_creator_trending_never_fetches_snapshots_beyond_the_candidate_cap(monkeypatch):
-    """A creator with more non-Cold videos than the cap still returns a valid response,
-    without _compute_growth_results ever fetching a snapshot for every single one of them."""
+def test_get_creator_trending_considers_every_tracked_video(monkeypatch):
     videos = [
         _video(video_id=f"v{i}", creator_id="aizawa_ema", activity_state="Warm", last_checked_at="2026-09-01T00:00:00Z")
-        for i in range(_MAX_TRENDING_CANDIDATES + 50)
+        for i in range(550)
     ]
     monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
     monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
@@ -749,7 +706,7 @@ def test_get_creator_trending_never_fetches_snapshots_beyond_the_candidate_cap(m
     )
 
     assert response["creatorId"] == "aizawa_ema"
-    assert len({video_id for video_id in fetch_calls}) == _MAX_TRENDING_CANDIDATES
+    assert len({video_id for video_id in fetch_calls}) == 550
 
 
 def test_get_creator_trending_raises_for_unknown_creator_id(monkeypatch):

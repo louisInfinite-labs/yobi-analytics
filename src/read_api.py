@@ -366,28 +366,15 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-# How many of one creator's own candidates _load_videos_for_creators keeps
-# before moving to the next creator_id, so an organization with dozens of
-# creators never holds every creator's entire back-catalog in memory at
-# once. 2026-09-05: an uncapped combine across a 32-creator organization
-# (each creator's own Initial Discovery back-catalog running into the
-# thousands) pushed a single request to this Lambda's full 1024MB memory
-# ceiling — capping per creator bounds peak memory by the organization's
-# creator count instead of its total video count, which is the dimension
-# that was actually still growing unboundedly.
-_PER_CREATOR_CANDIDATE_CAP = 60
-
-
 def _load_videos_for_creators(creator_ids: set[str]) -> list[Video]:
-    """Return each creator's own top candidates (see _PER_CREATOR_CANDIDATE_CAP), one GSI query per creator_id."""
+    """Return every tracked video for the creators, one GSI query per creator."""
     videos: list[Video] = []
     for creator_id in creator_ids:
-        creator_videos = [video for video in get_videos_by_creator(creator_id) if video.activity_state != "Cold"]
-        videos.extend(_rank_and_cap_candidates(creator_videos, cap=_PER_CREATOR_CANDIDATE_CAP))
+        videos.extend(get_videos_by_creator(creator_id))
     return videos
 
 
-# Bounds how many concurrent DynamoDB GetItem calls _compute_growth_results
+# Bounds how many concurrent legacy DynamoDB GetItem calls _compute_growth_results
 # fans out for one trending request. Each video needs two independent
 # snapshot lookups (report_date, comparison_date) with no ordering
 # dependency between them — fetching sequentially for an organization with
@@ -397,69 +384,15 @@ def _load_videos_for_creators(creator_ids: set[str]) -> list[Video]:
 # work, so the GIL is not a limiting factor here) brings that well under it
 # without needing a schema change to Video Master.
 #
-# Raised from 20 to 100 on 2026-09-05: get_organization_trending's own
-# creatorId-index GSI query (Roadmap 5's timeout fix) still has to fan
-# _compute_growth_results out over every non-Cold video across every
-# creator_id in the organization, and a real 32-creator organization's
-# combined back-catalog reached the tens of thousands of videos — at
-# 20-way concurrency that alone exceeded this Lambda's own 60-second
-# function timeout even after the GSI removed the full-table Scan.
 _SNAPSHOT_FETCH_WORKERS = 100
-
-# Hard ceiling on how many videos _compute_growth_results ever fetches
-# snapshots for, independent of how large Video Master grows. 2026-09-05:
-# even after the creatorId-index GSI (no more full-table Scan) and Cold
-# exclusion, a real 32-creator organization's non-Cold candidate pool was
-# still large enough that a direct, uncapped run against production took
-# 256 seconds end to end — because at this project's age (~1 week),
-# MIN_SNAPSHOTS_BEFORE_COLD_ELIGIBLE means most of Initial Discovery's
-# back-catalog hasn't had the chance to reach Cold yet, so "exclude Cold"
-# alone shrinks the candidate pool far less than it eventually will once
-# the catalog matures. A candidate pool this large will keep recurring
-# indefinitely as more creators/videos are onboarded, so the fix has to be
-# a size ceiling, not a smarter filter that still scales with catalog size.
-# _rank_and_cap_candidates below is what enforces it — a video excluded
-# here is one that has no realistic chance of winning a ranked trending
-# result anyway (see its own docstring for why).
-_MAX_TRENDING_CANDIDATES = 500
-
-# Hot ranks first (checked daily, most likely to actually be trending),
-# then Warm, then Unknown (still gathering its first few observations).
-# Cold is never in this dict — _compute_growth_results filters it out
-# before this ordering is ever applied.
-_ACTIVITY_STATE_PRIORITY = {"Hot": 0, "Warm": 1, "Unknown": 2}
-
-
-def _rank_and_cap_candidates(videos: list[Video], *, cap: int = _MAX_TRENDING_CANDIDATES) -> list[Video]:
-    """Return at most `cap` videos, most-likely-to-trend first.
-
-    Ordered by activity_state tier (Hot, then Warm, then Unknown) and, within
-    a tier, by most-recently-checked first — the same signal
-    tracking_schedule.py itself uses to decide a video is still worth
-    checking often. A video that is both Cold-adjacent in priority (Unknown,
-    rarely checked) and old is exactly the video a growth-based trending
-    ranking would never surface anyway, so capping here trades an
-    unmeasurable, purely theoretical loss of perfect exhaustiveness for a
-    request duration that no longer scales with total catalog size — the
-    same "bounded candidate pool, then re-rank" trade-off any trending/search
-    system at this scale makes. `cap` defaults to _MAX_TRENDING_CANDIDATES
-    (the final org-wide ceiling); _load_videos_for_creators calls this again
-    with a smaller per-creator `cap` before that final ceiling is applied.
-    """
-    by_recency = sorted(videos, key=lambda video: video.last_checked_at or "", reverse=True)
-    by_state_then_recency = sorted(by_recency, key=lambda video: _ACTIVITY_STATE_PRIORITY.get(video.activity_state, 99))
-    return by_state_then_recency[:cap]
-
-
 def _compute_growth_results(
     videos: list[Video], *, report_date: date, period: str, executor: ThreadPoolExecutor | None = None
 ) -> list[GrowthResult]:
     """Compute one GrowthResult per candidate video for the same (report_date, period) comparison window.
 
-    Excludes Cold videos, then bounds the remainder to at most
-    _MAX_TRENDING_CANDIDATES via _rank_and_cap_candidates — see that
-    function's own docstring for why a size ceiling, not just a state
-    filter, is required to keep this bounded regardless of catalog size.
+    This legacy fallback considers every supplied video. The scheduled S3
+    pipeline performs the same exact-anchor calculation shard-by-shard and
+    bounds only its final Top-N output.
 
     `executor`: a live request handler (get_creator_trending/
     get_organization_trending) calls this once per request and leaves this
@@ -474,8 +407,10 @@ def _compute_growth_results(
     out at 900s — reusing one pool for the whole run keeps that resource
     creation bounded by worker count, not by call count.
     """
-    non_cold = [video for video in videos if video.activity_state != "Cold"]
-    candidates = _rank_and_cap_candidates(non_cold)
+    # Architecture reset: exact ranking considers every successfully
+    # collected tracked video. Hot/Warm/Cold and approximate candidate caps
+    # no longer determine participation.
+    candidates = list(videos)
     comp_date = comparison_date(report_date, period)
 
     def _fetch_snapshot_pair(video: Video) -> tuple[Any, Any]:

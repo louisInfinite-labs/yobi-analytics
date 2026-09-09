@@ -1,16 +1,9 @@
-"""Daily trending precompute (2026-09-05 perf fix): runs once per collection
-cycle so live GET /trending requests almost always serve a cheap cache read
-instead of read_api.py's own bounded-but-still-real-time computation.
+"""Legacy DynamoDB trending precompute.
 
-Why this exists: read_api.py's get_organization_trending, even after adding
-the creatorId-index GSI, Cold exclusion, and a per-creator/per-request
-candidate cap (all 2026-09-05), still has to do real work — enumerate an
-organization's creators, fetch each one's top candidates, fetch two
-snapshots per candidate — inside one API request. That's a real, bounded
-amount of work now, but it is still work a public read endpoint has to do
-synchronously. Precomputing it once a day, offline, and having the read
-path serve a plain GetItem on a cache hit removes that work from the
-request path entirely for the common case.
+Kept as an explicit/manual compatibility path while the S3 architecture is
+introduced. Its EventBridge schedules are retired: the daily Step Functions
+workflow now computes exact shard-local rankings and a reducer writes the
+normal TrendingCache entries.
 
 Reuses read_api.py's existing (already Roadmap-5-hardened) video-loading and
 growth-computation helpers rather than duplicating that logic — this
@@ -20,12 +13,7 @@ YobiTrendingCache via dynamodb_store.put_cached_trending, keyed by
 read_api.trending_cache_key so a read-path cache lookup always agrees with
 what was written here.
 
-Runs inside the same collector Lambda invocation as main.py's own daily
-collection (main.py calls run() at the end, best-effort — a precompute
-failure never fails the collection run itself), so it needs no separate
-schedule or deployment target. Local/JSON development never calls this: no
-cache table exists there, and read_api.py's own get_cached_trending is None
-in that backend, so a live request always computes directly regardless.
+Local/JSON development never calls this module.
 """
 
 from __future__ import annotations
@@ -38,18 +26,15 @@ from creator_master import load_creators
 from dynamodb_store import get_videos_by_creator, put_cached_trending
 from read_api import (
     _CANONICAL_CACHE_TIME_ZONE,
-    _PER_CREATOR_CANDIDATE_CAP,
     MAX_LIMIT,
     _compute_growth_results,
-    _rank_and_cap_candidates,
     _trending_response,
     trending_cache_key,
 )
 from trending import RANKING_TYPES, rank_videos
 
-# Deliberately reimplements read_api._load_videos_for_creators's per-creator
-# capping here (via _rank_and_cap_candidates directly) rather than calling
-# that function itself: read_api._load_videos_for_creators calls whichever
+# Deliberately loads through the DynamoDB binding here rather than calling
+# read_api._load_videos_for_creators: that function calls whichever
 # get_videos_by_creator read_api.py bound at *its own* module-import time
 # (JSON-backed in local dev, DynamoDB-backed once YOBI_STORAGE_BACKEND=
 # dynamodb is set before read_api is first imported) — this module always
@@ -61,11 +46,10 @@ from trending import RANKING_TYPES, rank_videos
 
 
 def _load_videos_for_organization(creator_ids: set[str]) -> list[Any]:
-    """Each creator's own top candidates (read_api._PER_CREATOR_CANDIDATE_CAP), combined for one organization."""
+    """Every tracked video for the organization's creators."""
     videos = []
     for creator_id in creator_ids:
-        creator_videos = [video for video in get_videos_by_creator(creator_id) if video.activity_state != "Cold"]
-        videos.extend(_rank_and_cap_candidates(creator_videos, cap=_PER_CREATOR_CANDIDATE_CAP))
+        videos.extend(get_videos_by_creator(creator_id))
     return videos
 
 # trending.py's own period->ranking-type map is private; rebuilt here so
@@ -77,8 +61,7 @@ _PERIODS = tuple(_PERIOD_TRENDING_TYPE_BY_PERIOD)
 
 # Deliberately its own, much smaller constant instead of reusing
 # read_api._SNAPSHOT_FETCH_WORKERS (100) — that value was tuned for a single
-# live request racing a 60-second Lambda timeout across a candidate pool up
-# to _MAX_TRENDING_CANDIDATES (500). 2026-09-06: confirmed via a
+# live request racing a 60-second Lambda timeout. 2026-09-06: confirmed via a
 # [mem-debug] instrumented invocation that this run's shared
 # ThreadPoolExecutor alone (lazily creating a lock-per-thread boto3
 # DynamoDB resource, dynamodb_store._resource, each with its own
@@ -86,9 +69,7 @@ _PERIODS = tuple(_PERIOD_TRENDING_TYPE_BY_PERIOD)
 # processing just the *first*, smallest creator's ≤100 candidates -- the
 # executor's own thread/connection standup cost, not accumulation across
 # many creators, is what was driving the repeated OOM. Precompute never
-# needs 100-way concurrency (each creator's own pool is capped at
-# MAX_LIMIT=100, org-scope at _MAX_TRENDING_CANDIDATES=500); a much smaller
-# pool still finishes each in a handful of rounds without paying for 100
+# needs 100-way concurrency; a much smaller pool still avoids paying for 100
 # standing threads/connections for the whole run.
 _PRECOMPUTE_EXECUTOR_WORKERS = 20
 
@@ -199,18 +180,9 @@ def run(
 
             for creator in batch_creators:
                 try:
-                    # Capped the same way _load_videos_for_organization caps
-                    # each creator's contribution below (MAX_LIMIT, not the
-                    # full _MAX_TRENDING_CANDIDATES=500 _compute_growth_results
-                    # would otherwise use by default) — a creator's own
-                    # trending page never returns more than MAX_LIMIT results
-                    # anyway (_cache_one ranks with limit=MAX_LIMIT), so
-                    # fetching 5x that many snapshot pairs per creator was
-                    # pure wasted DynamoDB I/O. A real, worthwhile trim, but
-                    # NOT what was actually causing the OOM/timeout — see
-                    # _PRECOMPUTE_EXECUTOR_WORKERS for the confirmed cause.
-                    creator_videos = [v for v in get_videos_by_creator(creator.creator_id) if v.activity_state != "Cold"]
-                    videos = _rank_and_cap_candidates(creator_videos, cap=MAX_LIMIT)
+                    # Compatibility path only: every tracked video remains
+                    # eligible; rank_videos bounds the final cache payload.
+                    videos = get_videos_by_creator(creator.creator_id)
                     growth_results = _compute_growth_results(
                         videos, report_date=report_date, period=period, executor=executor
                     )

@@ -153,3 +153,78 @@ def test_run_discovery_returns_1_when_the_initial_video_master_read_fails(monkey
     monkeypatch.setattr(main_module, "load_videos", _boom)
 
     assert main_module.run_discovery() == 1
+
+
+def test_collection_requests_every_tracked_video_regardless_of_activity_state(monkeypatch):
+    tracked = [
+        Video(
+            video_id="cold-video",
+            creator_id="aizawa_ema",
+            title="Cold",
+            published_at="2020-01-01T00:00:00Z",
+            activity_state="Cold",
+        ),
+        Video(
+            video_id="warm-video",
+            creator_id="aizawa_ema",
+            title="Warm",
+            published_at="2020-01-01T00:00:00Z",
+            activity_state="Warm",
+        ),
+    ]
+    monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator(discovery_enabled=False)])
+    monkeypatch.setattr(main_module, "load_videos", lambda: tracked)
+    requested = []
+
+    def fake_statistics(youtube, video_ids):
+        requested.append(video_ids)
+        return (
+            [
+                {
+                    "videoId": video.video_id,
+                    "title": video.title,
+                    "publishedAt": video.published_at,
+                    "viewCount": 100,
+                }
+                for video in tracked
+            ],
+            {},
+        )
+
+    monkeypatch.setattr(main_module, "get_video_statistics", fake_statistics)
+    monkeypatch.setattr(main_module, "save_daily_collection", lambda *args: ("history", "summary"))
+    monkeypatch.setattr(
+        main_module,
+        "upsert_videos",
+        lambda videos: (_ for _ in ()).throw(AssertionError("daily collection must not rewrite VideoMaster")),
+    )
+
+    assert main_module.main() == 0
+    assert requested == [["cold-video", "warm-video"]]
+
+
+def test_successful_collection_does_not_rewrite_video_master_scheduler_state(monkeypatch):
+    tracked = [_video("v1")]
+    monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator(discovery_enabled=False)])
+    monkeypatch.setattr(main_module, "load_videos", lambda: tracked)
+    monkeypatch.setattr(
+        main_module,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [
+                {
+                    "videoId": "v1",
+                    "title": "Video v1",
+                    "publishedAt": tracked[0].published_at,
+                    "viewCount": 100,
+                }
+            ],
+            {},
+        ),
+    )
+    monkeypatch.setattr(main_module, "save_daily_collection", lambda *args: ("history", "summary"))
+    writes = []
+    monkeypatch.setattr(main_module, "upsert_videos", writes.append)
+
+    assert main_module.main() == 0
+    assert writes == []

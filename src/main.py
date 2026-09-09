@@ -15,17 +15,20 @@ from config import MissingAPIKeyError, get_api_key
 from creator_master import Creator, get_active_creators
 from googleapiclient.discovery import Resource
 from snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
-from tracking_schedule import classify_after_observation, is_due_today
+from tracking_manifest import (
+    S3TrackingManifestStore,
+    TrackingManifestError,
+    publish_tracking_manifest,
+)
 from video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
 from video_master import Video, VideoMasterError, load_video_ids_for_creator
 from youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_client, get_video_statistics
 
-# Local development keeps using the JSON file stores. Lambda sets
-# YOBI_STORAGE_BACKEND=dynamodb (Roadmap 2.3) because /tmp is wiped on cold
-# start and cannot durably hold scheduler state or snapshot history in
-# production; dynamodb_store exposes the same load_videos/upsert_videos/
-# save_daily_collection/save_run_summary signatures so nothing below this
-# needs to know which backend it's talking to.
+# Local/manual collection retains the existing JSON or DynamoDB adapter.
+# The scheduled production history path is now history_worker_handler:
+# manifest input and daily Parquet output in S3. This compatibility entry
+# point still shares discovery and run-summary behavior while no longer
+# applying adaptive eligibility or rewriting scheduler state.
 if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
     from dynamodb_store import load_videos, save_daily_collection, save_run_summary, upsert_videos
     from notification_events_store import NotificationEventsStoreError, record_new_video_events
@@ -67,10 +70,7 @@ def main() -> int:
         # Load Video Master once for the whole run rather than once per creator,
         # and write the accumulated new videos back once at the end.
         known_videos = load_videos()
-        known_video_by_id = {video.video_id: video for video in known_videos}
-        published_at_by_id = {video.video_id: video.published_at for video in known_videos}
         creator_id_by_video_id = {video.video_id: video.creator_id for video in known_videos}
-        activity_state_by_id = {video.video_id: video.activity_state for video in known_videos}
 
         tracking_universe: list[str] = []
         newly_discovered: list[Video] = []
@@ -94,7 +94,6 @@ def main() -> int:
                     f"{len(new_video_ids)} new video(s) discovered"
                 )
                 newly_discovered.extend(new_videos)
-                published_at_by_id.update({video.video_id: video.published_at for video in new_videos})
                 creator_id_by_video_id.update({video.video_id: video.creator_id for video in new_videos})
                 tracking_universe.extend(known_ids | set(new_video_ids))
             except QuotaExhaustedError as exc:
@@ -112,7 +111,8 @@ def main() -> int:
                 if newly_discovered:
                     try:
                         upsert_videos(newly_discovered)
-                    except VideoMasterError as upsert_exc:
+                        _publish_manifest_if_configured([*known_videos, *newly_discovered])
+                    except (VideoMasterError, TrackingManifestError) as upsert_exc:
                         print(f"Error: failed to persist discovered videos before stopping: {upsert_exc}")
                         return 1
                     _record_new_video_events_best_effort(newly_discovered)
@@ -125,22 +125,14 @@ def main() -> int:
         if newly_discovered:
             upsert_videos(newly_discovered)
             _record_new_video_events_best_effort(newly_discovered)
+        _publish_manifest_if_configured([*known_videos, *newly_discovered])
 
-        # Adaptive Tracking Frequency (Roadmap 1.5): every video is checked
-        # daily for its first 30 days regardless of activity_state; afterward
-        # Hot/Unknown/Warm/Cold governs the schedule. A newly discovered
-        # video always gets its first check today.
-        newly_discovered_ids = {video.video_id for video in newly_discovered}
-        today = collection_time.date()
-        due_today = [
-            video_id
-            for video_id in tracking_universe
-            if video_id in newly_discovered_ids
-            or is_due_today(
-                video_id, published_at_by_id[video_id], activity_state_by_id.get(video_id, "Unknown"), today
-            )
-        ]
-        print(f"Tracking universe: {len(tracking_universe)} video(s), {len(due_today)} due for a check today\n")
+        # Architecture reset: every tracked video is due every day. Legacy
+        # Hot/Warm/Cold fields remain readable for compatibility, but cannot
+        # suppress collection. Sorting makes batches deterministic and the
+        # set prevents duplicate requests if the catalog is malformed.
+        due_today = sorted(set(tracking_universe))
+        print(f"Tracking universe: {len(due_today)} video(s), all due for a check today\n")
 
         videos, skip_reasons = get_video_statistics(youtube, due_today)
     except QuotaExhaustedError as exc:
@@ -156,7 +148,7 @@ def main() -> int:
             **exc.partial_skip_reasons,
             **{video_id: f"YouTube quota exhausted: {exc}" for video_id in exc.remaining_video_ids},
         }
-    except (YouTubeAPIError, VideoMasterError) as exc:
+    except (YouTubeAPIError, VideoMasterError, TrackingManifestError) as exc:
         print(f"Error: {exc}")
         return 1
 
@@ -227,50 +219,6 @@ def main() -> int:
 
     print(f"Saved {len(snapshots)} snapshot(s) to {snapshot_path}")
     print(f"Saved run summary to {summary_path}\n")
-
-    # Update each successfully-checked video's Adaptive Tracking Frequency
-    # state (Roadmap 1.5) only after the snapshot itself is durably saved —
-    # save_daily_collection's exclusive-create rejects a duplicate same-day
-    # re-run, and scheduler state must not advance (snapshot_count, velocity,
-    # activity_state) for a snapshot that was never actually persisted.
-    # Videos that were due but skipped are deliberately left untouched here —
-    # a missing/incomplete snapshot must never count as a quiet observation
-    # or demote a video.
-    scheduler_updates = []
-    for video in videos:
-        video_id = video["videoId"]
-        existing = known_video_by_id.get(video_id)
-        result = classify_after_observation(
-            current_state=existing.activity_state if existing else "Unknown",
-            snapshot_count=existing.snapshot_count if existing else 0,
-            quiet_streak=existing.quiet_streak if existing else 0,
-            previous_view_count=existing.last_view_count if existing else None,
-            previous_checked_at=existing.last_checked_at if existing else None,
-            new_view_count=video["viewCount"],
-            observed_at=observed_at,
-        )
-        scheduler_updates.append(
-            Video(
-                video_id=video_id,
-                creator_id=creator_id_by_video_id[video_id],
-                title=video["title"],
-                published_at=video["publishedAt"],
-                activity_state=result.activity_state,
-                last_checked_at=observed_at,
-                last_view_count=video["viewCount"],
-                snapshot_count=result.snapshot_count,
-                quiet_streak=result.quiet_streak,
-                last_classification_reason=result.reason,
-                last_percent_growth_per_day=result.percent_per_day,
-                last_avg_views_per_day=result.avg_views_per_day,
-            )
-        )
-    if scheduler_updates:
-        try:
-            upsert_videos(scheduler_updates)
-        except VideoMasterError as exc:
-            print(f"Error: {exc}")
-            return 1
 
     for video in videos:
         print(
@@ -345,6 +293,12 @@ def run_discovery() -> int:
             return 1
         _record_new_video_events_best_effort(newly_discovered)
 
+    try:
+        _publish_manifest_if_configured([*known_videos, *newly_discovered])
+    except TrackingManifestError as exc:
+        print(f"Error: failed to publish tracking manifest: {exc}")
+        return 1
+
     if quota_exhausted:
         return 1
 
@@ -365,6 +319,20 @@ def _record_new_video_events_best_effort(newly_discovered: list[Video]) -> None:
         record_new_video_events(newly_discovered)
     except NotificationEventsStoreError as exc:
         print(f"Warning: failed to record notification events for {len(newly_discovered)} video(s): {exc}")
+
+
+def _publish_manifest_if_configured(videos: list[Video]) -> None:
+    """Publish the complete catalog only in the configured S3 architecture."""
+    bucket_name = os.environ.get("YOBI_HISTORY_BUCKET")
+    if not bucket_name:
+        return
+    # Last occurrence wins so a just-discovered record replaces an older
+    # master copy if the caller supplied both.
+    current = {video.video_id: video for video in videos}
+    publish_tracking_manifest(
+        list(current.values()),
+        S3TrackingManifestStore(bucket_name),
+    )
 
 
 def _discover_creator(

@@ -13,15 +13,11 @@ record are both just a dict of the same camelCase attributes, so the only
 DynamoDB-specific step is converting the two velocity floats to/from
 Decimal (DynamoDB's Number type has no native float support).
 
-`load_videos()` still loads the whole Video Master table via Scan — fine for
-the collector's own offline batch work (main.py/tracking_schedule.py
-legitimately needs every video), but at real scale (126k+ items as of
-2026-09-05) that Scan alone took over a minute, enough to exceed a public
-Lambda's own function timeout. `get_videos_by_creator()` queries the
-`creatorId-index` GSI instead for read_api.py's per-creator/per-organization
-trending routes, which never need more than one creator's videos at a time.
-A `nextCheckAt` GSI for the collector's own scheduling remains a deliberate
-later optimization, not implemented here.
+`load_videos()` remains for discovery/master compatibility and still scans
+the whole Video Master table. Scheduled daily collection no longer uses it:
+workers consume the sharded S3 tracking manifest. `get_videos_by_creator()`
+queries the creatorId GSI for the legacy read fallback and returns all pages
+so no tracked video is excluded before its actual growth is known.
 """
 
 from __future__ import annotations
@@ -125,30 +121,14 @@ def load_videos() -> list[Video]:
     return [_item_to_video(item) for item in items]
 
 
-# Hard ceiling on how many raw items get_videos_by_creator ever collects
-# for one creator, independent of any cap a caller applies afterward.
-# 2026-09-05 CodeRabbit finding: the creatorId-index GSI has no sort key,
-# so a DynamoDB Query can't ask for "the best N" directly — every caller's
-# own cap (read_api._rank_and_cap_candidates/_PER_CREATOR_CANDIDATE_CAP)
-# was applied only after this function already paged through a creator's
-# *entire* catalog (a single prolific creator's Initial-Discovery
-# back-catalog can run into the thousands), so read/memory/time here still
-# scaled with total catalog size. Stopping pagination once this many items
-# are collected trades a small chance of missing a genuinely-better
-# candidate among the untouched remainder for a read that can never grow
-# unboundedly — the same trade-off _rank_and_cap_candidates itself already
-# makes one step later in the pipeline.
-_MAX_ITEMS_PER_CREATOR_QUERY = 500
-
-
 def get_videos_by_creator(creator_id: str) -> list[Video]:
-    """Return one creator's videos via the creatorId-index GSI (capped at _MAX_ITEMS_PER_CREATOR_QUERY), never a full-table Scan."""
+    """Return every video for one creator via the creatorId-index GSI."""
     table = _resource().Table(VIDEO_MASTER_TABLE)
     items: list[dict] = []
     try:
         response = table.query(IndexName=CREATOR_ID_INDEX, KeyConditionExpression=Key("creatorId").eq(creator_id))
         items.extend(response.get("Items", []))
-        while "LastEvaluatedKey" in response and len(items) < _MAX_ITEMS_PER_CREATOR_QUERY:
+        while "LastEvaluatedKey" in response:
             response = table.query(
                 IndexName=CREATOR_ID_INDEX,
                 KeyConditionExpression=Key("creatorId").eq(creator_id),
@@ -157,7 +137,7 @@ def get_videos_by_creator(creator_id: str) -> list[Video]:
             items.extend(response.get("Items", []))
     except ClientError as exc:
         raise VideoMasterError(f"Failed to query {VIDEO_MASTER_TABLE} by creatorId: {exc}") from exc
-    return [_item_to_video(item) for item in items[:_MAX_ITEMS_PER_CREATOR_QUERY]]
+    return [_item_to_video(item) for item in items]
 
 
 class TrendingCacheError(Exception):
