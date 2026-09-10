@@ -373,6 +373,31 @@ def test_get_creator_trending_recomputes_last_updated_at_after_cache_truncation(
     assert response["timeZone"] == "Asia/Tokyo"
 
 
+def test_get_creator_trending_caps_a_cache_hit_at_max_limit_even_if_the_cached_payload_holds_more(monkeypatch):
+    """A cache hit must never return more than the caller's own (already-capped-at-MAX_LIMIT)
+    `limit` rows, even if the stored payload itself somehow holds more than MAX_LIMIT —
+    e.g. a future precompute bug, or a manually-edited cache row. `parse_limit` already
+    forbids a caller from asking for more than MAX_LIMIT, so requesting exactly MAX_LIMIT
+    against an oversized payload is the strictest real case to prove this against."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    oversized_payload = {
+        "results": [{"rank": i, "videoId": f"v{i}", "lastUpdatedAt": None} for i in range(1, read_api.MAX_LIMIT + 51)]
+    }
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: oversized_payload)
+
+    response = get_creator_trending(
+        {
+            "creatorId": "aizawa_ema",
+            "reportDate": "2026-09-01",
+            "timeZone": "Asia/Tokyo",
+            "period": "1d",
+            "limit": str(read_api.MAX_LIMIT),
+        }
+    )
+
+    assert len(response["results"]) == read_api.MAX_LIMIT
+
+
 def test_get_creator_trending_ignores_cache_when_limit_is_absent(monkeypatch):
     """An unbounded request (no limit) never serves a cache entry that only ever holds MAX_LIMIT rows."""
     _trending_fixture(
@@ -431,6 +456,165 @@ def test_get_creator_trending_falls_back_to_live_computation_on_cache_miss(monke
     )
 
     assert [entry["videoId"] for entry in response["results"]] == ["v1"]
+
+
+def test_get_creator_trending_refuses_an_oversized_cache_miss_instead_of_computing_it_live(monkeypatch):
+    """A cache miss for a scope beyond MAX_LIVE_FALLBACK_VIDEOS must be refused (503-worthy),
+    not computed live — an attacker forcing a miss (e.g. a non-canonical timeZone) against a
+    huge scope must not be able to fan out into thousands of snapshot reads per request."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("an oversized scope must be refused before touching snapshot storage")
+
+    videos = [_video(video_id=f"v{i}", creator_id="aizawa_ema") for i in range(read_api.MAX_LIVE_FALLBACK_VIDEOS + 1)]
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+
+    with pytest.raises(read_api.TrendingNotReadyError):
+        get_creator_trending(
+            {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
+        )
+
+
+def test_get_creator_trending_refuses_an_oversized_cache_miss_even_with_limit_1(monkeypatch):
+    """The guardrail must trip on the scope's own catalog size alone — a caller cannot dodge it
+    by asking for a tiny `limit`, since the expensive part is computing growth for every
+    candidate video, not the size of the final ranked response."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("an oversized scope must be refused regardless of the requested limit")
+
+    videos = [_video(video_id=f"v{i}", creator_id="aizawa_ema") for i in range(read_api.MAX_LIVE_FALLBACK_VIDEOS + 1)]
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+
+    with pytest.raises(read_api.TrendingNotReadyError):
+        get_creator_trending(
+            {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "1"}
+        )
+
+
+def test_get_creator_trending_still_computes_live_at_exactly_the_fallback_limit(monkeypatch):
+    """The boundary itself must still be servable live — only strictly over the limit is refused."""
+    videos = [_video(video_id=f"v{i}", creator_id="aizawa_ema") for i in range(read_api.MAX_LIVE_FALLBACK_VIDEOS)]
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
+    monkeypatch.setattr(read_api, "get_snapshot", lambda video_id, snapshot_date: None)
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
+    )
+
+    assert response["creatorId"] == "aizawa_ema"
+
+
+def test_get_organization_trending_refuses_an_oversized_cache_miss_instead_of_computing_it_live(monkeypatch):
+    """Same guardrail for the organization scope, where per-request amplification is worst:
+    many creators' catalogs are combined before ranking (see _load_videos_for_creators)."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("an oversized scope must be refused before touching snapshot storage")
+
+    huge_catalog = {
+        "c1": [_video(video_id=f"c1_v{i}", creator_id="c1") for i in range(read_api.MAX_LIVE_FALLBACK_VIDEOS)],
+        "c2": [_video(video_id=f"c2_v{i}", creator_id="c2") for i in range(2)],
+    }
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(creator_id="c1"), _creator(creator_id="c2")])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: huge_catalog[creator_id])
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+
+    with pytest.raises(read_api.TrendingNotReadyError):
+        get_organization_trending(
+            {"organization": "vspo", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
+        )
+
+
+# --- _reject_oversized_live_fallback ----------------------------------------
+
+
+def test_reject_oversized_live_fallback_error_does_not_leak_the_video_count():
+    """The 503 an unauthenticated caller receives must not reveal how large the real
+    catalog behind a scope is — that's server-side operational detail, not public
+    response data, even when the server is refusing the request."""
+    videos = [_video(video_id=f"v{i}") for i in range(read_api.MAX_LIVE_FALLBACK_VIDEOS + 1)]
+
+    with pytest.raises(read_api.TrendingNotReadyError) as exc_info:
+        read_api._reject_oversized_live_fallback(videos, scope={"creatorId": "aizawa_ema"})
+
+    message = str(exc_info.value)
+    assert str(len(videos)) not in message
+    assert "aizawa_ema" in message  # echoing the caller's own requested scope back is fine
+
+
+def test_reject_oversized_live_fallback_threshold_is_a_tunable_module_constant(monkeypatch):
+    """MAX_LIVE_FALLBACK_VIDEOS must be read fresh at call time (not baked into a closure),
+    so it can be overridden per-deployment via YOBI_MAX_TRENDING_LIVE_FALLBACK_VIDEOS
+    without a code change."""
+    monkeypatch.setattr(read_api, "MAX_LIVE_FALLBACK_VIDEOS", 3)
+
+    read_api._reject_oversized_live_fallback([_video(video_id=f"v{i}") for i in range(3)], scope={})
+
+    with pytest.raises(read_api.TrendingNotReadyError):
+        read_api._reject_oversized_live_fallback([_video(video_id=f"v{i}") for i in range(4)], scope={})
+
+
+# --- _bounded_live_limit -----------------------------------------------------
+
+
+def test_bounded_live_limit_passes_through_a_given_limit_unchanged():
+    assert read_api._bounded_live_limit(5) == 5
+
+
+def test_bounded_live_limit_defaults_an_absent_limit_to_max_limit():
+    assert read_api._bounded_live_limit(None) == read_api.MAX_LIMIT
+
+
+def test_get_creator_trending_live_fallback_caps_an_absent_limit_at_max_limit(monkeypatch):
+    """_bounded_live_limit must only change what the *live* path ranks down to — an
+    omitted `limit` must still return at most MAX_LIMIT rows once it falls through to
+    _compute_growth_results/rank_videos, not the unbounded "every rankable result"
+    rank_videos itself would default to."""
+    video_count = read_api.MAX_LIMIT + 50
+    assert video_count <= read_api.MAX_LIVE_FALLBACK_VIDEOS  # must stay under the other guardrail to reach ranking at all
+    videos = [_video(video_id=f"v{i}", creator_id="aizawa_ema") for i in range(video_count)]
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
+    monkeypatch.setattr(
+        read_api,
+        "get_snapshot",
+        lambda video_id, snapshot_date: _snapshot(snapshot_date.isoformat(), 100, video_id=video_id),
+    )
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d"}
+    )
+
+    assert len(response["results"]) == read_api.MAX_LIMIT
+
+
+def test_bounded_live_limit_is_never_applied_on_the_cache_hit_path(monkeypatch):
+    """_cached_trending must keep truncating to the caller's own raw `limit` — it must
+    never see _bounded_live_limit's substitute value, since an omitted limit (None) is
+    itself one of _cached_trending's own signals to never serve a cache hit at all
+    (see its docstring). Sets a cached payload larger than a 5-row limit but smaller
+    than MAX_LIMIT, so a MAX_LIMIT-substitution bug (instead of the caller's real
+    limit=5) would be caught by returning too many rows."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    cached_payload = {"results": [{"rank": i, "videoId": f"v{i}", "lastUpdatedAt": None} for i in range(1, 21)]}
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: cached_payload)
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
+    )
+
+    assert len(response["results"]) == 5
 
 
 # --- get_creator_trending --------------------------------------------------
@@ -731,6 +915,36 @@ def test_get_creator_trending_rejects_malformed_report_date_before_touching_stor
         )
 
 
+@pytest.mark.parametrize(
+    "bad_overrides",
+    [
+        {"timeZone": "Not/A_Real_Zone"},
+        {"period": "14d"},
+        {"rankingType": "not_a_real_type"},
+        {"reportDate": "2026-13-40"},
+        {"creatorId": "x" * (read_api.MAX_IDENTIFIER_LENGTH + 1)},
+    ],
+    ids=["bad_timeZone", "bad_period", "bad_rankingType", "bad_reportDate", "oversized_creatorId"],
+)
+def test_get_creator_trending_rejects_every_invalid_param_before_touching_storage(monkeypatch, bad_overrides):
+    """No malformed query parameter — timeZone, period, rankingType, reportDate, or an
+    oversized creatorId — may ever reach live storage (Creator Master or video lookup):
+    an attacker probing with garbage values must never trigger a DynamoDB read, let
+    alone the live-fallback ranking computation."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError(f"storage should not be touched for an invalid request: {bad_overrides}")
+
+    monkeypatch.setattr(read_api, "load_creators", _boom)
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+
+    query = {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d", **bad_overrides}
+
+    with pytest.raises(ClientError):
+        get_creator_trending(query)
+
+
 # --- get_organization_trending ----------------------------------------------
 
 
@@ -789,3 +1003,32 @@ def test_get_organization_trending_rejects_a_ranking_type_period_mismatch_before
                 "rankingType": "daily_trending",
             }
         )
+
+
+@pytest.mark.parametrize(
+    "bad_overrides",
+    [
+        {"timeZone": "Not/A_Real_Zone"},
+        {"period": "14d"},
+        {"rankingType": "not_a_real_type"},
+        {"reportDate": "2026-13-40"},
+        {"organization": "x" * (read_api.MAX_IDENTIFIER_LENGTH + 1)},
+    ],
+    ids=["bad_timeZone", "bad_period", "bad_rankingType", "bad_reportDate", "oversized_organization"],
+)
+def test_get_organization_trending_rejects_every_invalid_param_before_touching_storage(monkeypatch, bad_overrides):
+    """Same guarantee as the creator-scoped endpoint: no malformed parameter reaches
+    Creator Master or per-creator video lookups, which would otherwise be repeated
+    once per creator in the organization — a much larger amplification surface."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError(f"storage should not be touched for an invalid request: {bad_overrides}")
+
+    monkeypatch.setattr(read_api, "load_creators", _boom)
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+
+    query = {"organization": "vspo", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d", **bad_overrides}
+
+    with pytest.raises(ClientError):
+        get_organization_trending(query)

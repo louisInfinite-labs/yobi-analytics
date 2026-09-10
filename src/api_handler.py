@@ -124,6 +124,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         result = handler(event)
     except read_api.VideoNotFoundError as exc:
         return _json_response(404, {"error": str(exc)})
+    except read_api.ScopeNotFoundError as exc:
+        return _json_response(404, {"error": str(exc)})
+    except read_api.TrendingNotReadyError as exc:
+        return _json_response(503, {"error": str(exc)})
+    except read_api.RankingNotReadyError as exc:
+        return _json_response(503, {"error": str(exc), "code": "RANKING_NOT_READY"})
     except _ForbiddenError as exc:
         return _json_response(403, {"error": str(exc)})
     except _CLIENT_ERROR_TYPES as exc:
@@ -145,6 +151,14 @@ def _handle_get_creator_trending(event: dict[str, Any]) -> dict[str, Any]:
 
 def _handle_get_organization_trending(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_organization_trending(_merged_params(event))
+
+
+def _handle_get_creator_summary(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_creator_summary(_merged_params(event))
+
+
+def _handle_get_organization_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_organization_leaderboard(_merged_params(event))
 
 
 def _handle_post_heartbeat(event: dict[str, Any]) -> dict[str, Any]:
@@ -286,6 +300,8 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /videos/{videoId}/growth": _handle_get_video_growth,
     "GET /creators/{creatorId}/trending": _handle_get_creator_trending,
     "GET /organizations/{organization}/trending": _handle_get_organization_trending,
+    "GET /creators/{creatorId}/summary": _handle_get_creator_summary,
+    "GET /organizations/{organization}/leaderboard": _handle_get_organization_leaderboard,
     "POST /heartbeat": _handle_post_heartbeat,
     "GET /heartbeat/{clientId}/status": _handle_get_heartbeat_status,
     "POST /clients/{clientId}/credential": _handle_post_client_credential,

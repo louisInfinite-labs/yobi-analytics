@@ -27,8 +27,10 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from creator_master import Creator, load_creators
+from history_ranking import ALL_PERIOD, PERIODS as SUMMARY_PERIODS
 from trending import (
     DAILY_TRENDING,
     RANKING_TYPES,
@@ -36,6 +38,12 @@ from trending import (
     THIRTY_DAY_TRENDING,
     RankedEntry,
     rank_videos,
+)
+from trending_cache_keys import (
+    CANONICAL_CACHE_TIME_ZONE,
+    creator_summary_cache_key,
+    organization_leaderboard_cache_key,
+    trending_cache_key,
 )
 from video_master import Video
 from view_growth_analytics import (
@@ -55,12 +63,6 @@ else:
     from video_master import get_video, get_videos_by_creator
 
     get_cached_trending = None  # no cache table in local/JSON dev — always compute live
-
-# trending_precompute.py runs once per collection cycle, in this zone, and
-# only ever caches results keyed to it — a request in any other time zone
-# always falls back to a live computation rather than risk serving a cache
-# entry for the wrong day boundary.
-_CANONICAL_CACHE_TIME_ZONE = "Asia/Tokyo"
 
 # Reverse of trending.py's private period->ranking-type map (Roadmap 3.2/3.3):
 # a period-trending ranking type only ranks GrowthResults computed for its
@@ -87,6 +89,46 @@ class ClientError(ValueError):
 
 class VideoNotFoundError(ClientError):
     """Raised when the requested videoId does not exist in Video Master."""
+
+
+class TrendingNotReadyError(Exception):
+    """Raised instead of computing a trending ranking live when its scope is too large to compute on demand.
+
+    Deliberately not a ClientError subclass: the request itself can be
+    perfectly well-formed (a real, large organization) — this means the
+    server is choosing not to serve it live right now, not that the caller
+    did anything wrong. api_handler.py maps this to a 503 rather than a
+    4xx. See MAX_LIVE_FALLBACK_VIDEOS for why this exists.
+    """
+
+
+class ScopeNotFoundError(ClientError):
+    """Raised when a cache-only endpoint's creatorId/organization doesn't exist.
+
+    Checked against Creator Master (a bundled local file, not a DynamoDB
+    read — see get_creator_summary/get_organization_leaderboard) before
+    ever touching YobiTrendingCache, so an unknown scope gets a clean 404
+    instead of being indistinguishable from "this real scope just hasn't
+    been computed yet today" (RankingNotReadyError, 503).
+    """
+
+
+class RankingNotReadyError(Exception):
+    """Raised by a cache-only endpoint (get_creator_summary/get_organization_
+    leaderboard) on a genuine YobiTrendingCache miss for an otherwise valid,
+    existing scope/period/reportDate.
+
+    Deliberately not a ClientError subclass, the same reasoning as
+    TrendingNotReadyError: the request is well-formed and the scope is
+    real — the server just hasn't computed today's ranking for it yet (or
+    this reportDate is outside the pipeline's own retention). Never a
+    signal to fall back to live computation — these endpoints have no live
+    fallback at all. api_handler.py maps this to a 503 with a
+    machine-readable "code": "RANKING_NOT_READY", distinct from
+    TrendingNotReadyError's own plain 503 (a different endpoint family
+    with a different meaning: "too large to compute on demand" there,
+    "not computed yet" here).
+    """
 
 
 def parse_report_date(raw: Any) -> date:
@@ -128,15 +170,49 @@ def parse_period(raw: Any) -> str:
     return raw
 
 
+def parse_summary_period(raw: Any) -> str:
+    """Validate an optional period query parameter for the cache-only
+    creator-summary/organization-leaderboard endpoints.
+
+    A deliberately separate function from parse_period — not parse_period
+    widened to accept a 4th value — so the existing /trending endpoints'
+    own period whitelist (1d/7d/30d only) can never be accidentally loosened
+    to also accept "all" as a side effect of this one. Accepts
+    history_ranking.PERIODS (1d/7d/30d/all). Absent/empty defaults to
+    "all" — the one period that's always available from Day 1 of
+    collection (history_ranking.CreatorPeriodPartial.is_complete never
+    needs an anchor for it), a reasonable default for a caller that just
+    wants "this creator's/organization's overall standing" without
+    committing to a specific growth window.
+    """
+    if raw is None or raw == "":
+        return ALL_PERIOD
+    if not isinstance(raw, str) or raw not in SUMMARY_PERIODS:
+        raise ClientError(f"period must be one of {sorted(SUMMARY_PERIODS)}, got {raw!r}")
+    return raw
+
+
+# Roadmap 5.3's "abuse containment": every real videoId/creatorId/organization
+# value in this project is a short human- or YouTube-assigned identifier (a
+# YouTube video/channel ID is ~11-24 characters; a creator/org slug is
+# shorter still) — nothing legitimate is anywhere near this long. Rejecting
+# an oversized value here is cheap input hygiene against a client sending a
+# multi-kilobyte garbage string as one of these identifiers, before it can
+# reach a string comparison/log line/downstream lookup sized to it.
+MAX_IDENTIFIER_LENGTH = 128
+
+
 def parse_video_id(raw: Any) -> str:
-    """Validate a videoId query parameter is a non-empty string."""
+    """Validate a videoId query parameter is a non-empty string of a plausible length."""
     if not isinstance(raw, str) or not raw:
         raise ClientError("videoId is required and must be a non-empty string")
+    if len(raw) > MAX_IDENTIFIER_LENGTH:
+        raise ClientError(f"videoId must be at most {MAX_IDENTIFIER_LENGTH} characters, got {len(raw)}")
     return raw
 
 
 def parse_creator_id(raw: Any) -> str:
-    """Validate a creatorId query parameter is a non-empty string.
+    """Validate a creatorId query parameter is a non-empty string of a plausible length.
 
     Actual existence is checked against Creator Master by the caller (a
     syntactically valid but unknown creatorId is a separate ClientError),
@@ -144,11 +220,13 @@ def parse_creator_id(raw: Any) -> str:
     """
     if not isinstance(raw, str) or not raw:
         raise ClientError("creatorId is required and must be a non-empty string")
+    if len(raw) > MAX_IDENTIFIER_LENGTH:
+        raise ClientError(f"creatorId must be at most {MAX_IDENTIFIER_LENGTH} characters, got {len(raw)}")
     return raw
 
 
 def parse_organization(raw: Any) -> str:
-    """Validate an organization query parameter is a non-empty string.
+    """Validate an organization query parameter is a non-empty string of a plausible length.
 
     Not validated against a hardcoded {"hololive", "vspo"} set (Roadmap
     1.3: organizations are data, not business logic) — an organization with
@@ -156,6 +234,8 @@ def parse_organization(raw: Any) -> str:
     """
     if not isinstance(raw, str) or not raw:
         raise ClientError("organization is required and must be a non-empty string")
+    if len(raw) > MAX_IDENTIFIER_LENGTH:
+        raise ClientError(f"organization must be at most {MAX_IDENTIFIER_LENGTH} characters, got {len(raw)}")
     return raw
 
 
@@ -201,6 +281,69 @@ def parse_limit(raw: Any) -> int | None:
     return value
 
 
+# Roadmap 5.3's "cost and abuse containment": _compute_growth_results below
+# (the cache-miss live fallback) computes growth for every video in the
+# requested scope before ranking, no matter how small a `limit` the caller
+# asked for — its cost scales with the scope's own catalog size, not with
+# the response size. A cache miss is forced on every single request by
+# picking any non-canonical `timeZone` or omitting `limit` (see
+# _cached_trending's own docstring), so an organization with a large
+# catalog is a standing amplification target: one cheap request can still
+# fan out into thousands of paired DynamoDB snapshot reads. The scheduled
+# S3 pipeline (history_worker.py/ranking_reducer.py) populates
+# YobiTrendingCache for every real scope once a day, so a genuine miss
+# this large means either that pipeline hasn't run yet for a brand-new
+# scope, or the request itself is abusive — either way, silently computing
+# it live is the wrong response, and silently truncating the candidate
+# list would violate the exact-ranking guarantee (every tracked video must
+# be considered) instead of just refusing. Set well above the largest
+# single-creator catalog exercised in tests (550) so a real creator's own
+# live fallback is unaffected — this only ever trips for an
+# organization-scale (many-creator) request.
+#
+# This is a stopgap, not the end state: the long-term goal (per
+# local_tasks/phase1_architecture_reset.md.txt) is a cache-only trending
+# read (GET /trending reads YobiTrendingCache and nothing else), where this
+# guard — and the legacy live fallback it's guarding — no longer exist at
+# all. Kept env-overridable so it can be tuned in production without a code
+# change while that migration is still in progress.
+MAX_LIVE_FALLBACK_VIDEOS = int(os.environ.get("YOBI_MAX_TRENDING_LIVE_FALLBACK_VIDEOS") or 2000)
+
+
+def _reject_oversized_live_fallback(videos: list[Video], *, scope: dict[str, str]) -> None:
+    """Raise TrendingNotReadyError instead of computing growth for an oversized scope on a cache miss.
+
+    The exact catalog size is deliberately left out of the raised message
+    (and so out of the 503 response body an unauthenticated caller
+    receives) — how large a given scope's real catalog is isn't
+    information this public route should hand back to whoever asked, even
+    when refusing them. It's logged server-side instead, for operators.
+    """
+    video_count = len(videos)
+    if video_count > MAX_LIVE_FALLBACK_VIDEOS:
+        print(
+            f"Trending live-fallback refused for {scope}: {video_count} videos exceeds "
+            f"MAX_LIVE_FALLBACK_VIDEOS={MAX_LIVE_FALLBACK_VIDEOS}"
+        )
+        raise TrendingNotReadyError(
+            f"Trending for {scope} is not precomputed yet and is too large to compute on demand; "
+            "try again once the scheduled ranking pipeline has run for this scope."
+        )
+
+
+def _bounded_live_limit(limit: int | None) -> int:
+    """The limit to rank down to on the live-fallback path: the caller's own, or MAX_LIMIT if omitted.
+
+    `limit=None` must stay unbounded a moment longer, all the way into
+    _cached_trending (an omitted limit is one of its own signals to never
+    serve a cache hit, see that function's docstring) — but the live path
+    itself has no reason to ever return more rows than any cached response
+    ever could, so it's bounded here instead of trusting rank_videos'
+    own "None means every rankable result" default.
+    """
+    return limit if limit is not None else MAX_LIMIT
+
+
 def get_video_growth(query: dict[str, Any]) -> dict[str, Any]:
     """Validate a raw analytics query and return its normalized Roadmap 3.4 response.
 
@@ -232,15 +375,6 @@ def get_video_growth(query: dict[str, Any]) -> dict[str, Any]:
     return _to_response(result, video=video, creator=_find_creator(video.creator_id), time_zone=time_zone)
 
 
-def trending_cache_key(*, scope_type: str, scope_value: str, period: str, ranking_type: str, report_date: date) -> str:
-    """Build YobiTrendingCache's cacheKey for one scope/period/rankingType/reportDate.
-
-    Always keyed to _CANONICAL_CACHE_TIME_ZONE — shared with trending_precompute.py
-    so a write there and a read here always agree on the same key shape.
-    """
-    return f"{scope_type}:{scope_value}:{period}:{ranking_type}:{report_date.isoformat()}:{_CANONICAL_CACHE_TIME_ZONE}"
-
-
 def _cached_trending(
     *, scope_type: str, scope_value: str, report_date: date, time_zone: str, period: str, ranking_type: str, limit: int | None
 ) -> dict[str, Any] | None:
@@ -248,13 +382,13 @@ def _cached_trending(
 
     Only ever serves a hit for a *bounded* request (`limit` given) in the
     canonical cache time zone — trending_precompute.py's own cached payload
-    holds at most MAX_LIMIT entries for _CANONICAL_CACHE_TIME_ZONE's day
+    holds at most MAX_LIMIT entries for CANONICAL_CACHE_TIME_ZONE's day
     boundary, so an unbounded request (limit=None, "give me everything") or
     a request in any other time zone always falls through to a live,
     already-bounded computation instead of silently truncating a request
     that expected more than the cache can ever hold.
     """
-    if get_cached_trending is None or limit is None or time_zone != _CANONICAL_CACHE_TIME_ZONE:
+    if get_cached_trending is None or limit is None or time_zone != CANONICAL_CACHE_TIME_ZONE:
         return None
     key = trending_cache_key(
         scope_type=scope_type, scope_value=scope_value, period=period, ranking_type=ranking_type, report_date=report_date
@@ -307,8 +441,11 @@ def get_creator_trending(query: dict[str, Any]) -> dict[str, Any]:
         return cached
 
     videos = get_videos_by_creator(creator_id)
+    _reject_oversized_live_fallback(videos, scope={"creatorId": creator_id})
     ranked = rank_videos(
-        _compute_growth_results(videos, report_date=report_date, period=period), ranking_type, limit=limit
+        _compute_growth_results(videos, report_date=report_date, period=period),
+        ranking_type,
+        limit=_bounded_live_limit(limit),
     )
 
     return _trending_response(
@@ -352,8 +489,11 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
         return cached
 
     videos = _load_videos_for_creators(creator_ids)
+    _reject_oversized_live_fallback(videos, scope={"organization": organization})
     ranked = rank_videos(
-        _compute_growth_results(videos, report_date=report_date, period=period), ranking_type, limit=limit
+        _compute_growth_results(videos, report_date=report_date, period=period),
+        ranking_type,
+        limit=_bounded_live_limit(limit),
     )
 
     return _trending_response(
@@ -364,6 +504,90 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
         ranking_type=ranking_type,
         time_zone=time_zone,
     )
+
+
+def _today_in_canonical_time_zone() -> date:
+    """Today's date in the cache's own canonical time zone (Asia/Tokyo) —
+    the same "now in Asia/Tokyo" convention execution_lock.
+    canonicalize_report_date falls back to when a daily execution's own
+    input carries no explicit `date`, reused here for a reportDate query
+    parameter that was simply omitted."""
+    return datetime.now(ZoneInfo(CANONICAL_CACHE_TIME_ZONE)).date()
+
+
+def get_creator_summary(query: dict[str, Any]) -> dict[str, Any]:
+    """Cache-only creator summary (Roadmap 5.x): viewSum/coverage/topVideo/top10
+    for one creator/period/reportDate, read directly from YobiTrendingCache.
+
+    `query` needs `creatorId`; `period` defaults to "all" (see
+    parse_summary_period), `reportDate` defaults to today in
+    CANONICAL_CACHE_TIME_ZONE. Never falls back to live computation: a
+    genuine cache miss raises RankingNotReadyError (503), not a
+    recomputation — this endpoint has no history_worker.py/S3 dependency
+    at all, only Creator Master (a local file) and one YobiTrendingCache
+    GetItem.
+
+    creatorId existence is checked against Creator Master *before* ever
+    building a cache key or touching YobiTrendingCache, so an unknown
+    creatorId gets a clean 404 (ScopeNotFoundError) instead of being
+    indistinguishable from "this real creator just isn't cached yet today"
+    (RankingNotReadyError, 503).
+    """
+    creator_id = parse_creator_id(query.get("creatorId"))
+    period = parse_summary_period(query.get("period"))
+    raw_report_date = query.get("reportDate")
+    report_date = parse_report_date(raw_report_date) if raw_report_date else _today_in_canonical_time_zone()
+
+    if _find_creator(creator_id) is None:
+        raise ScopeNotFoundError(f"No creator found for creatorId {creator_id!r}")
+
+    if get_cached_trending is None:
+        raise RankingNotReadyError(
+            f"Creator summary for creatorId={creator_id!r} period={period!r} "
+            f"reportDate={report_date.isoformat()!r} is not yet computed"
+        )
+    key = creator_summary_cache_key(creator_id=creator_id, period=period, report_date=report_date)
+    cached = get_cached_trending(key)
+    if cached is None:
+        raise RankingNotReadyError(
+            f"Creator summary for creatorId={creator_id!r} period={period!r} "
+            f"reportDate={report_date.isoformat()!r} is not yet computed"
+        )
+    return cached
+
+
+def get_organization_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
+    """Cache-only organization leaderboard (Roadmap 5.x): byTotalViews/
+    byTopVideo/coverage for one organization/period/reportDate, read
+    directly from YobiTrendingCache.
+
+    Same cache-only contract as get_creator_summary — see its own
+    docstring. `organization` existence is checked the same way
+    get_organization_trending already does (any Creator Master record with
+    a matching organization), before ever touching YobiTrendingCache.
+    """
+    organization = parse_organization(query.get("organization"))
+    period = parse_summary_period(query.get("period"))
+    raw_report_date = query.get("reportDate")
+    report_date = parse_report_date(raw_report_date) if raw_report_date else _today_in_canonical_time_zone()
+
+    has_any_creator = any(creator.organization == organization for creator in load_creators())
+    if not has_any_creator:
+        raise ScopeNotFoundError(f"No creators found for organization {organization!r}")
+
+    if get_cached_trending is None:
+        raise RankingNotReadyError(
+            f"Organization leaderboard for organization={organization!r} period={period!r} "
+            f"reportDate={report_date.isoformat()!r} is not yet computed"
+        )
+    key = organization_leaderboard_cache_key(organization=organization, period=period, report_date=report_date)
+    cached = get_cached_trending(key)
+    if cached is None:
+        raise RankingNotReadyError(
+            f"Organization leaderboard for organization={organization!r} period={period!r} "
+            f"reportDate={report_date.isoformat()!r} is not yet computed"
+        )
+    return cached
 
 
 def _load_videos_for_creators(creator_ids: set[str]) -> list[Video]:

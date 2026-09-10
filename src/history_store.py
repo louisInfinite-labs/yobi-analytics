@@ -51,6 +51,42 @@ class HistoryStore(Protocol):
     def read_daily_shard(self, collection_date: date, shard: int) -> list[HistoryRow]:
         """Read one daily shard, returning an empty list when it is absent."""
 
+    def shard_exists(self, collection_date: date, shard: int) -> bool:
+        """Return whether this shard has already been written, regardless of row count.
+
+        Deliberately distinct from `read_daily_shard`'s own empty-list
+        result: a shard genuinely collected zero rows (every video in it
+        was unavailable that day) also reads back as `[]`, so a caller
+        cannot use "are there any rows" to tell "never collected" apart
+        from "collected, and there happened to be nothing". A retry/
+        duplicate-invocation idempotency check needs the real answer to
+        that question, not the row count.
+
+        Must return False only for a genuine "this object doesn't exist"
+        response — a permissions error, throttling, a timeout, or any other
+        failure must propagate instead of being coerced to False, since
+        this return value gates whether YouTube gets called at all: silently
+        treating an unrelated failure as "not collected yet" would be
+        wrong (skip a real safety check) and treating it as "already
+        collected" would be worse (silently skip real collection for the
+        day). See S3HistoryStore.shard_exists for the implementation this
+        contract is written against.
+
+        Known limitation, not fixed by this check: two Step Functions
+        executions running concurrently for the same (collection_date,
+        shard) — e.g. an operator manually re-running today's collection
+        while the scheduled run is still in flight — can both call
+        shard_exists before either has written, both see False, and both
+        proceed to call YouTube and write the shard (the second write just
+        overwrites the first; not a correctness bug, but not the
+        idempotency guarantee this method's name implies either). Closing
+        that race needs a real distributed lock/conditional-write claim
+        (e.g. a DynamoDB conditional PutItem), which is deliberately out of
+        scope here — this method only ever removes the *common* case of
+        redundant YouTube calls (retries, and a duplicate shard number
+        within one Map's own input), not concurrent-execution overlap.
+        """
+
 
 def shard_for_video(video_id: str, shard_count: int = HISTORY_SHARD_COUNT) -> int:
     """Map a video id to a stable shard without Python's randomized hash()."""
@@ -179,6 +215,23 @@ class S3HistoryStore:
                 return []
             raise HistoryStoreError(f"Failed to read s3://{self.bucket_name}/{key}: {exc}") from exc
         return deserialize_history_rows(body)
+
+    def shard_exists(self, collection_date: date, shard: int) -> bool:
+        key = daily_history_key(collection_date, shard)
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+        except ClientError as exc:
+            # HeadObject carries no body, so S3/botocore surface a missing
+            # key as a bare "404" (occasionally "NoSuchKey" or "NotFound"
+            # depending on botocore/endpoint version) rather than the
+            # richer error GetObject would return — every other code
+            # (403 Forbidden, 500/503, throttling like "SlowDown"/
+            # "RequestLimitExceeded", etc.) must re-raise, never be read as
+            # "doesn't exist".
+            if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404", "NotFound"}:
+                return False
+            raise HistoryStoreError(f"Failed to check s3://{self.bucket_name}/{key}: {exc}") from exc
+        return True
 
 
 def _validate_shard(shard: int) -> None:
