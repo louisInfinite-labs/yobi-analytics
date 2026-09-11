@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react"
 import { CreatorStatusList } from "./CreatorStatusList"
+import { useConfirmOshiSwitchPreference } from "../hooks/useConfirmOshiSwitchPreference"
 import { useCountdownLanguage } from "../hooks/useCountdownLanguage"
 import { useCreatorStatuses } from "../hooks/useCreatorStatuses"
 import { useFavoriteCreators } from "../hooks/useFavoriteCreators"
+import { useLocale } from "../hooks/useLocale"
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion"
+import { useSelectedCreator } from "../hooks/useSelectedCreator"
 import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
 import { formatCountdown, type CountdownLanguage } from "../lib/creatorStatusFormat"
 import type { CreatorStatus } from "../types/creatorStatus"
@@ -38,6 +41,9 @@ export function LiveScheduleDock() {
   const [language] = useCountdownLanguage()
   const { statuses, now } = useCreatorStatuses()
   const { favorites, toggleFavorite } = useFavoriteCreators()
+  const [, setSelectedCreatorId] = useSelectedCreator()
+  const [locale] = useLocale()
+  const [confirmOshiSwitch, setConfirmOshiSwitch] = useConfirmOshiSwitchPreference()
   const reducedMotion = usePrefersReducedMotion()
   const dockRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -98,6 +104,10 @@ export function LiveScheduleDock() {
                 query={query}
                 favorites={favorites}
                 onToggleFavorite={toggleFavorite}
+                onSelectCreator={setSelectedCreatorId}
+                locale={locale}
+                confirmOshiSwitch={confirmOshiSwitch}
+                onConfirmOshiSwitchChange={setConfirmOshiSwitch}
                 onSelectVideo={(video) => {
                   setEmbed(video)
                   setExpanded(false)

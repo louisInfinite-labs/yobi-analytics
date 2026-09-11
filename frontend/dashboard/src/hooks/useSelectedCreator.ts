@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react"
 import { mockCreators } from "../data/mockCreators"
+import { createSharedState, useSharedState } from "../lib/sharedState"
 
 const STORAGE_KEY = "yobi.home.selectedCreatorId"
 
@@ -17,22 +17,17 @@ function readSelectedCreator(): string {
   return mockCreators[0].channelId
 }
 
-/** The Home page's single "which creator's room is this" selection —
- * persisted like every other lightweight Home setting (localStorage), not
- * held in the shared Holodex/analytics state (spec's own state-boundary
- * table keeps "selected creator" in localStorage, separate from the shared
- * cache other views read). */
+// Module-scoped singleton (see lib/sharedState.ts) — every useSelectedCreator()
+// call in this tab shares this one store, so switching Oshi from any mounted
+// component (Dock, Home, ...) updates every other mounted consumer
+// immediately instead of only agreeing at each component's own mount time.
+const selectedCreatorStore = createSharedState(STORAGE_KEY, readSelectedCreator, (value) => value)
+
+/** The Home page's single "which creator's room is this" selection — shared
+ * app-wide (see selectedCreatorStore above) and persisted like every other
+ * lightweight Home setting (localStorage; spec's own state-boundary table
+ * keeps "selected creator" in localStorage, separate from the shared cache
+ * other views read). */
 export function useSelectedCreator() {
-  const [creatorId, setCreatorIdState] = useState<string>(readSelectedCreator)
-
-  const setCreatorId = useCallback((next: string) => {
-    setCreatorIdState(next)
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next)
-    } catch {
-      // Best-effort, matching every other Home setting's own reasoning.
-    }
-  }, [])
-
-  return [creatorId, setCreatorId] as const
+  return useSharedState(selectedCreatorStore)
 }

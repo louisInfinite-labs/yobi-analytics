@@ -97,7 +97,7 @@
   position: absolute;
   top: var(--space-1);
   left: var(--space-1);
-  background: #e5484d;
+  background: var(--live-red);
   color: #fff;
   font-size: 0.6rem;
   font-weight: 700;
@@ -496,7 +496,7 @@
 }
 
 .live-schedule-dock__dot--red {
-  background: #e5484d;
+  background: var(--live-red);
 }
 
 .live-schedule-dock__dot--grey {
@@ -565,59 +565,163 @@
   padding: var(--space-2) var(--space-3) var(--space-1);
 }
 
+/* Swipe-to-favorite wrapper: houses the reveal layer (behind) and the
+   draggable row (in front, same DOM order = on top, no z-index needed).
+   position: relative only -- no size/height changes (spec section 4/38). */
+.creator-status-list__swipe-row {
+  position: relative;
+}
+
+/* Static reveal layer behind the row (spec section 17: "must remain behind
+   the translated row content"). Uses the row's own dimensions via inset: 0
+   rather than any new size. */
+.creator-status-list__reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Noto Sans JP",
+    "Yu Gothic",
+    Meiryo,
+    sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transition: opacity 100ms ease-out;
+}
+
+.creator-status-list__reveal--left {
+  justify-content: flex-start;
+  padding-left: 18px;
+  background: rgba(27, 135, 150, 0.18);
+  color: #b4f1f9;
+}
+
+.creator-status-list__reveal--right {
+  justify-content: flex-end;
+  padding-right: 18px;
+  background: rgba(255, 255, 255, 0.075);
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .creator-status-list__row {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   padding-right: var(--space-2);
+  /* Opaque so the reveal layer behind only shows through the gap the drag
+     actually opens up, not through the whole row (it was transparent
+     before -- harmless at rest since it only ever sat over the same-toned
+     panel background, but swiping needs it to actually occlude). Same base
+     hue as both host panels' own rgba(20, 19, 24, .92/.95) background. */
+  background: #141318;
+  touch-action: pan-y;
+  user-select: none;
 }
 
-.creator-status-list__favorite-toggle {
-  flex: 0 0 auto;
-  width: 28px;
-  background: transparent;
-  border: none;
-  color: rgba(242, 240, 245, 0.45);
-  font-size: 0.9rem;
-  cursor: pointer;
-  padding: var(--space-2) 0;
+.creator-status-list__row--snapping {
+  transition: transform 180ms ease-out;
 }
 
-.creator-status-list__favorite-toggle--active {
-  color: #e5484d;
-}
-
-.creator-status-list__row-main {
+.creator-status-list__creator-button {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2);
   min-width: 0;
   background: transparent;
   border: none;
   color: inherit;
-  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  padding: var(--space-2) var(--space-2) var(--space-2) 0;
   font-size: 0.82rem;
   cursor: pointer;
   text-align: left;
 }
 
-.creator-status-list__row-main:not(:disabled):hover,
-.creator-status-list__row-main:not(:disabled):focus-visible {
+.creator-status-list__creator-button:hover,
+.creator-status-list__creator-button:focus-visible {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.creator-status-list__row-main:disabled {
-  cursor: default;
-  color: rgba(242, 240, 245, 0.45);
+/* 48px placeholder avatar (spec's own example size — no avatar existed in
+   the prior implementation to preserve the size of, see the completion
+   report's "與規格不同的地方"). Deterministic per-creator color reuses
+   getMemberAccent, whose own doc comment already names "avatars" as an
+   intended use. */
+.creator-status-list__avatar {
+  position: relative;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  overflow: visible;
 }
 
-.creator-status-list__row-status {
+/* Real YouTube channel avatar (spec: "USE REAL YOUTUBE CHANNEL AVATAR").
+   Only rendered when creator.avatarUrl is set and hasn't failed to load —
+   otherwise CreatorAvatar falls back to the colored-circle/initial. */
+.creator-status-list__avatar-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Display-only, favorited-only filled heart overlapping the avatar's
+   top-right corner (spec: 20.8%/-4.2%/-4.2% of avatar diameter ->
+   10px/-2px/-2px at 48px). #FF4D67, no outline-heart state, not clickable. */
+.creator-status-list__favorite-indicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  fill: var(--live-red);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+
+.creator-status-list__row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creator-status-list__status-button {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
   font-size: 0.72rem;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.creator-status-list__status-button:not(:disabled):hover,
+.creator-status-list__status-button:not(:disabled):focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.creator-status-list__status-button:disabled {
+  cursor: default;
+  color: rgba(242, 240, 245, 0.45);
 }
 
 .creator-status-list__dot {
@@ -629,7 +733,7 @@
 }
 
 .creator-status-list__dot--red {
-  background: #e5484d;
+  background: var(--live-red);
 }
 
 .creator-status-list__dot--grey {
@@ -653,4 +757,73 @@
   .live-schedule-dock__panel {
     width: 100%;
   }
+}
+
+/* ============ Oshi switch confirmation dialog ============ */
+
+.oshi-switch-confirm__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 24, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-5);
+}
+
+.oshi-switch-confirm__panel {
+  width: min(360px, 100%);
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  color: var(--text-primary);
+}
+
+.oshi-switch-confirm__message {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.oshi-switch-confirm__checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.oshi-switch-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.oshi-switch-confirm__cancel,
+.oshi-switch-confirm__confirm {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.oshi-switch-confirm__cancel {
+  background: transparent;
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
+}
+
+.oshi-switch-confirm__cancel:hover {
+  background: var(--surface-hover);
+}
+
+.oshi-switch-confirm__confirm {
+  background: var(--theme-primary);
+  border: 1px solid var(--theme-primary);
+  color: #fff;
 }

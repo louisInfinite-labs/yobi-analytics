@@ -62,7 +62,7 @@ export function HomePage() {
 
       <div className="home-page__upper">
         <RecentVideosSection creatorId={creatorId} />
-        <CreatorStatusPanel creatorId={creatorId} />
+        <CreatorStatusPanel creatorId={creatorId} onSelectCreator={setCreatorId} />
       </div>
 
       <div className="home-scene" ref={sceneRef}>

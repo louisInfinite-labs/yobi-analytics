@@ -30,4 +30,20 @@ describe("useFavoriteCreators", () => {
     act(() => result.current.toggleFavorite("ch_b"))
     expect([...result.current.favorites].sort()).toEqual(["ch_a", "ch_b"])
   })
+
+  it("updates an already-mounted consumer immediately when another mounted consumer toggles a favorite — no remount required", () => {
+    // Simulates a swipe-favorite gesture in one mounted CreatorStatusList
+    // (Task 2) needing the avatar heart / favorites view / live-offline
+    // counts in every OTHER already-mounted CreatorStatusList to update
+    // right away, not only the next time one happens to remount.
+    const dock = renderHook(() => useFavoriteCreators())
+    const home = renderHook(() => useFavoriteCreators())
+
+    act(() => {
+      dock.result.current.toggleFavorite("ch_aizawa_ema")
+    })
+
+    expect(dock.result.current.favorites.has("ch_aizawa_ema")).toBe(true)
+    expect(home.result.current.favorites.has("ch_aizawa_ema")).toBe(true)
+  })
 })

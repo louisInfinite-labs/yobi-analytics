@@ -1,14 +1,21 @@
 import { useEffect, useRef, useState } from "react"
 import { mockCreators } from "../../data/mockCreators"
+import { useConfirmOshiSwitchPreference } from "../../hooks/useConfirmOshiSwitchPreference"
 import { useCountdownLanguage } from "../../hooks/useCountdownLanguage"
 import { useCreatorStatuses } from "../../hooks/useCreatorStatuses"
 import { useFavoriteCreators } from "../../hooks/useFavoriteCreators"
+import { useLocale } from "../../hooks/useLocale"
 import { useUpcomingDisplayMode } from "../../hooks/useUpcomingDisplayMode"
 import { CreatorStatusList, countLiveAndOffline } from "../CreatorStatusList"
 import { VideoPlayerModal } from "../VideoPlayerModal"
 
 interface CreatorStatusPanelProps {
   creatorId: string
+  /** Avatar+name click in the shared list — switches Home's active Oshi.
+   * Passed down from HomePage's own useSelectedCreator instance rather than
+   * this component creating a second one, so the room updates immediately
+   * on select instead of only after a reload. */
+  onSelectCreator: (channelId: string) => void
 }
 
 type PanelSize = "top" | "half"
@@ -25,7 +32,7 @@ type ViewMode = "all" | "favorites"
  * open. Once expanded it has two sizes ("到畫面最頂"/"畫面一半"), defaulting
  * to the taller "top" one; collapsing back to the counts-only summary is
  * still via Esc/outside click, not a third size. */
-export function CreatorStatusPanel({ creatorId }: CreatorStatusPanelProps) {
+export function CreatorStatusPanel({ creatorId, onSelectCreator }: CreatorStatusPanelProps) {
   const [expanded, setExpanded] = useState(false)
   const [size, setSize] = useState<PanelSize>("top")
   const [viewMode, setViewMode] = useState<ViewMode>("all")
@@ -35,6 +42,8 @@ export function CreatorStatusPanel({ creatorId }: CreatorStatusPanelProps) {
   const [language] = useCountdownLanguage()
   const { statuses, now } = useCreatorStatuses()
   const { favorites, toggleFavorite } = useFavoriteCreators()
+  const [locale] = useLocale()
+  const [confirmOshiSwitch, setConfirmOshiSwitch] = useConfirmOshiSwitchPreference()
   const panelRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -130,6 +139,10 @@ export function CreatorStatusPanel({ creatorId }: CreatorStatusPanelProps) {
               favoriteOnlyIds={favoriteOnlyIds}
               favorites={favorites}
               onToggleFavorite={toggleFavorite}
+              onSelectCreator={onSelectCreator}
+              locale={locale}
+              confirmOshiSwitch={confirmOshiSwitch}
+              onConfirmOshiSwitchChange={setConfirmOshiSwitch}
               onSelectVideo={(video) => {
                 setEmbed(video)
                 setExpanded(false)

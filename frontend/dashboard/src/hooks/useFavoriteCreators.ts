@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react"
+import { useCallback } from "react"
+import { createSharedState, useSharedState } from "../lib/sharedState"
 
 const STORAGE_KEY = "yobi.favoriteCreatorIds"
 
@@ -13,30 +14,31 @@ function readFavorites(): Set<string> {
   }
 }
 
-function writeFavorites(favorites: Set<string>): void {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...favorites]))
-  } catch {
-    // Best-effort, matching every other Home/Dock setting's own reasoning.
-  }
+function serializeFavorites(favorites: Set<string>): string {
+  return JSON.stringify([...favorites])
 }
 
-/** "我的收藏" — the user's own hand-picked subset of creators they actually
- * want to keep an eye on, shared by every surface that lists creators
- * (global Dock, Home's ListStatus panel) via the same underlying set, not
- * a per-view favorites list. */
-export function useFavoriteCreators() {
-  const [favorites, setFavorites] = useState<Set<string>>(readFavorites)
+// Module-scoped singleton (see lib/sharedState.ts) — required before
+// swipe-to-favorite (Task 2): any component's toggle must be visible to
+// every other mounted CreatorStatusList (avatar heart, favorites view,
+// live/offline counts, ...) immediately, not just after a remount.
+const favoritesStore = createSharedState(STORAGE_KEY, readFavorites, serializeFavorites)
 
-  const toggleFavorite = useCallback((channelId: string) => {
-    setFavorites((prev) => {
-      const next = new Set(prev)
+/** "我的收藏" — the user's own hand-picked subset of creators they actually
+ * want to keep an eye on, shared app-wide (see favoritesStore above) via
+ * the same underlying store, not a per-view favorites list. */
+export function useFavoriteCreators() {
+  const [favorites, setFavorites] = useSharedState(favoritesStore)
+
+  const toggleFavorite = useCallback(
+    (channelId: string) => {
+      const next = new Set(favorites)
       if (next.has(channelId)) next.delete(channelId)
       else next.add(channelId)
-      writeFavorites(next)
-      return next
-    })
-  }, [])
+      setFavorites(next)
+    },
+    [favorites, setFavorites],
+  )
 
   return { favorites, toggleFavorite }
 }
