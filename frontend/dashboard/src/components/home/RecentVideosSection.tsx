@@ -205,7 +205,7 @@ function VideoSortDropdown({
       style={{ visibility: hidden ? "hidden" : "visible" }}
       value={value}
       onChange={(event) => onChange(event.target.value as VideoSortOption)}
-      aria-label="Sort videos"
+      aria-label={t(locale, "recentVideos.sortAriaLabel")}
       aria-hidden={hidden}
       tabIndex={hidden ? -1 : undefined}
     >
@@ -267,7 +267,11 @@ export function RecentVideosSection({ creatorId }: RecentVideosSectionProps) {
   }, [selectedTag, latestPool, streamPool])
 
   const emptyLabel =
-    selectedTag === "latestVideos" ? "No recent videos" : selectedTag === "latestLive" ? "No recent streams" : "No videos"
+    selectedTag === "latestVideos"
+      ? t(locale, "recentVideos.empty.latestVideos")
+      : selectedTag === "latestLive"
+        ? t(locale, "recentVideos.empty.latestLive")
+        : t(locale, "recentVideos.empty.other")
 
   // The toolbar (tag bar + sort dropdown) shrink-wraps to its own content
   // width (see .recent-videos__toolbar's `width: fit-content`). The sort
@@ -295,11 +299,13 @@ export function RecentVideosSection({ creatorId }: RecentVideosSectionProps) {
         <VideoSectionTagBar selected={selectedTag} onSelect={setSelectedTag} locale={locale} />
         <VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showSortDropdown} />
       </div>
-      {/* key={selectedTag}: a fresh VideoRow per tag, not a reused instance --
-          otherwise its scroll position/canScrollLeft/prefetch threshold from
-          the PREVIOUS tag would carry over onto the new tag's own videos. */}
+      {/* key includes creatorId, not just selectedTag: a fresh VideoRow per
+          tag AND per creator, not a reused instance -- otherwise switching
+          creator while the same tag stays selected would carry over the
+          PREVIOUS creator's scroll position/canScrollLeft/prefetch
+          threshold onto the new creator's own videos. */}
       <VideoRow
-        key={selectedTag}
+        key={`${creatorId}:${selectedTag}`}
         label={t(locale, VIDEO_SECTION_TAG_LABEL_KEYS[selectedTag])}
         videos={videos}
         emptyLabel={emptyLabel}

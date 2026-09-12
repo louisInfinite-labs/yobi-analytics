@@ -273,6 +273,18 @@
   max-width: none;
 }
 
+/* Below the breakpoint where .home-page__upper already stacks vertically,
+   the dock's own min(90vw,380px) width leaves too little room for the
+   flush-against-dock formula above to produce a usable scene width (it can
+   shrink to a few px on a narrow phone) -- revert to the normal 16:9/
+   max-width:100% sizing instead of chasing the dock's edge. */
+@media (max-width: 900px) {
+  .home-scene--dock-open {
+    width: auto;
+    max-width: 100%;
+  }
+}
+
 .home-scene__layer {
   position: absolute;
 }

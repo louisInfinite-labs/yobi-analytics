@@ -9,7 +9,7 @@ import { t } from "../../i18n/translations"
  * connection" apart from "AWS returned an error" instead of every failure
  * looking identical. */
 export function ErrorState({
-  message = "Something went wrong loading this data.",
+  message,
   code,
   onRetry,
 }: {
@@ -22,12 +22,12 @@ export function ErrorState({
     <div className="state-panel state-panel--error" role="alert">
       <AlertTriangle size={28} className="state-panel__icon" aria-hidden="true" />
       <p>
-        {message}
+        {message ?? t(locale, "errorState.defaultMessage")}
         {code && <span className="state-panel__error-code"> {t(locale, "errorState.code", { code })}</span>}
       </p>
       {onRetry && (
         <button type="button" className="soft-button" onClick={onRetry}>
-          Retry
+          {t(locale, "errorState.retry")}
         </button>
       )}
     </div>

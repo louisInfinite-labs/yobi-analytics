@@ -50,4 +50,9 @@ describe("selectLiveEmbedVideo", () => {
   it("treats undefined status (no data yet) the same as offline", () => {
     expect(selectLiveEmbedVideo(undefined, [archive(1)], now)?.videoId).toBe("archive_1")
   })
+
+  it("ignores an archive with a future publishedAt instead of treating its negative age as recent", () => {
+    const result = selectLiveEmbedVideo({ kind: "offline" }, [archive(-2), archive(23)], now)
+    expect(result?.videoId).toBe("archive_23")
+  })
 })

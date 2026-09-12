@@ -1,4 +1,5 @@
 import { mockCreators } from "../../data/mockCreators"
+import { resolvePlaybackVideoId } from "../../data/mockRecentVideos"
 import { useBreakpoint } from "../../hooks/useBreakpoint"
 import { useCountdownLanguage } from "../../hooks/useCountdownLanguage"
 import { useCreatorStatuses } from "../../hooks/useCreatorStatuses"
@@ -83,7 +84,7 @@ export function HomePage() {
   return (
     <div className="home-page">
       <div className={`home-scene${dockExpanded ? " home-scene--dock-open" : ""}`}>
-        {embed && <LiveEmbedPlayer videoId={embed.videoId} title={embed.title} autoplay={breakpoint !== "mobile"} />}
+        {embed && <LiveEmbedPlayer videoId={resolvePlaybackVideoId(embed.videoId)} title={embed.title} autoplay={breakpoint !== "mobile"} />}
         <SceneStatusLine creatorId={creatorId} />
       </div>
 

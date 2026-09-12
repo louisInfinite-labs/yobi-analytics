@@ -24,7 +24,10 @@ export function selectLiveEmbedVideo(
 
   const mostRecentArchive = streamVideos
     .filter((video) => video.contentFormat === "live_archive")
-    .filter((video) => now.getTime() - new Date(video.publishedAt).getTime() < RECENT_LIVE_WINDOW_MS)
+    .filter((video) => {
+      const age = now.getTime() - new Date(video.publishedAt).getTime()
+      return age >= 0 && age < RECENT_LIVE_WINDOW_MS
+    })
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())[0]
 
   return mostRecentArchive ? { videoId: mostRecentArchive.videoId, title: mostRecentArchive.title } : null

@@ -118,7 +118,7 @@ export function LiveScheduleDock() {
       type="button"
       className="live-schedule-dock__view-toggle"
       onClick={() => setViewMode((prev) => (prev === "all" ? "favorites" : "all"))}
-      aria-label={viewMode === "all" ? "Show only my favorites" : "Show all creators"}
+      aria-label={t(locale, viewMode === "all" ? "liveScheduleDock.viewToggle.showFavoritesAria" : "liveScheduleDock.viewToggle.showAllAria")}
       aria-pressed={viewMode === "favorites"}
       title={t(locale, viewMode === "all" ? "liveScheduleDock.viewToggle.allThenFavorites" : "liveScheduleDock.viewToggle.favoritesThenAll")}
     >
@@ -151,7 +151,7 @@ export function LiveScheduleDock() {
           <div
             className={`live-schedule-dock__panel${panelSize === "full" ? " live-schedule-dock__panel--full" : ""}`}
             role="dialog"
-            aria-label="Live schedule search"
+            aria-label={t(locale, "liveScheduleDock.panelAriaLabel")}
           >
             <div className="live-schedule-dock__header">
               {viewToggle}
@@ -167,7 +167,7 @@ export function LiveScheduleDock() {
                 type="button"
                 className="live-schedule-dock__resize"
                 onClick={() => setPanelSize((prev) => (prev === "full" ? "compact" : "full"))}
-                aria-label={panelSize === "full" ? "Shrink panel" : "Expand panel to full height"}
+                aria-label={t(locale, panelSize === "full" ? "liveScheduleDock.resize.shrinkAria" : "liveScheduleDock.resize.expandAria")}
                 aria-pressed={panelSize === "full"}
                 title={t(locale, panelSize === "full" ? "liveScheduleDock.resize.shrink" : "liveScheduleDock.resize.expand")}
               >
