@@ -105,6 +105,9 @@ export function useSwipeToFavorite(isFavorite: boolean, onCommit: () => void): U
 
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
     if (activePointerId.current !== null) return // spec: only one active pointer per row
+    // A gesture that produced no click (typical for touch pans) must not
+    // leave the guard armed and swallow the next genuine tap.
+    justSwiped.current = false
     activePointerId.current = event.pointerId
     startX.current = event.clientX
     startY.current = event.clientY

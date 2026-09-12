@@ -15,6 +15,12 @@ interface RecentVideosSectionProps {
  * that window. */
 const PREFETCH_AT_INDEX = 13
 
+const INITIAL_VISIBLE_COUNT = 20
+/** Both how many more slots `visibleCount` grows by per prefetch AND how far
+ * VideoRow's own next-prefetch threshold advances each time (see
+ * nextThresholdRef below) — one page's worth either way. */
+const VISIBLE_COUNT_STEP = 20
+
 /** The card's own thumbnail sits above its title (this session: "幫我增加
  * youtube的播放器到每個標題的上方") using YouTube's own thumbnail JPG
  * endpoint — no separate fetch, keyed only by videoId. mockRecentVideos'
@@ -52,10 +58,13 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
  * (this session: "靠左對齊改成 home scene 和 箭頭icon對齊"), not the
  * thumbnails themselves.
  *
- * `onNearEnd` fires (at most once per scroll gesture, via a ref latch) once
- * the leading visible card reaches PREFETCH_AT_INDEX, so the parent can
- * grow `visibleCount` and top up the underlying video pool before the user
- * actually scrolls off the end. */
+ * `onNearEnd` fires once the leading visible card reaches
+ * `nextThresholdRef` (starting at PREFETCH_AT_INDEX), which then advances
+ * by VISIBLE_COUNT_STEP so the row keeps prefetching every ~20 cards as the
+ * user keeps scrolling right, instead of firing once and never again
+ * (CodeRabbit: a plain fired-boolean latch only resets by scrolling back
+ * before card 14, so continuing to scroll forward past the first prefetch
+ * never requested a third or later page). */
 function VideoRow({
   label,
   videos,
@@ -70,7 +79,7 @@ function VideoRow({
   onNearEnd: () => void
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
-  const firedRef = useRef(false)
+  const nextThresholdRef = useRef(PREFETCH_AT_INDEX)
 
   function scrollByOneCard(direction: 1 | -1) {
     const track = trackRef.current
@@ -87,13 +96,9 @@ function VideoRow({
     const cardStep = card.offsetWidth + 12
     const leadingIndex = Math.floor(track.scrollLeft / cardStep)
 
-    if (leadingIndex >= PREFETCH_AT_INDEX) {
-      if (!firedRef.current) {
-        firedRef.current = true
-        onNearEnd()
-      }
-    } else {
-      firedRef.current = false
+    if (leadingIndex >= nextThresholdRef.current) {
+      nextThresholdRef.current += VISIBLE_COUNT_STEP
+      onNearEnd()
     }
   }
 
@@ -128,9 +133,6 @@ function VideoRow({
     </div>
   )
 }
-
-const INITIAL_VISIBLE_COUNT = 20
-const VISIBLE_COUNT_STEP = 20
 
 /** Home's upper section (this session's own spec): latest normal videos,
  * a gap, then livestream slots — currently-live + most recent completed

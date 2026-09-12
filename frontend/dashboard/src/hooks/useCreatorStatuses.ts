@@ -14,6 +14,10 @@ const TICK_MS = 30_000 // spec: countdown "updates at least once per minute" —
  * so only this file's internals need to change later, not its callers. */
 export function useCreatorStatuses(): { statuses: Record<string, CreatorStatus>; now: Date } {
   const [now, setNow] = useState(() => new Date())
+  // Fixed at mount, not regenerated per tick (CodeRabbit: getMockCreatorStatuses(now)
+  // built each "upcoming" timestamp as now + offset, so every tick pushed the
+  // schedule forward again and the countdown never reached zero/offline).
+  const [raw] = useState(() => getMockCreatorStatuses())
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), TICK_MS)
@@ -21,13 +25,12 @@ export function useCreatorStatuses(): { statuses: Record<string, CreatorStatus>;
   }, [])
 
   const statuses = useMemo(() => {
-    const raw = getMockCreatorStatuses(now)
     const reclassified: Record<string, CreatorStatus> = {}
     for (const [channelId, status] of Object.entries(raw)) {
       reclassified[channelId] = reclassifyIfPastSchedule(status, now)
     }
     return reclassified
-  }, [now])
+  }, [raw, now])
 
   return { statuses, now }
 }

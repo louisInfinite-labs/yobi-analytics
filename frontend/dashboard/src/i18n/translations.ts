@@ -12,6 +12,9 @@ export type TranslationKey =
   | "oshiSwitch.dontAskAgain"
   | "favorite.add"
   | "favorite.remove"
+  | "creatorStatusList.emptyFavorites"
+  | "creatorStatusList.emptySearch"
+  | "creatorStatusList.switchOshiTo"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -21,6 +24,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSwitch.dontAskAgain": "以後不再提示",
     "favorite.add": "加入收藏",
     "favorite.remove": "移除收藏",
+    "creatorStatusList.emptyFavorites": "尚未有收藏。",
+    "creatorStatusList.emptySearch": "找不到符合的創作者。",
+    "creatorStatusList.switchOshiTo": "切換推し為 {{creatorName}}",
   },
   en: {
     "common.cancel": "Cancel",
@@ -29,6 +35,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSwitch.dontAskAgain": "Don't ask again",
     "favorite.add": "Add Favorite",
     "favorite.remove": "Remove Favorite",
+    "creatorStatusList.emptyFavorites": "No favorites yet.",
+    "creatorStatusList.emptySearch": "No matching creator.",
+    "creatorStatusList.switchOshiTo": "Switch Oshi to {{creatorName}}",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -37,6 +46,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSwitch.dontAskAgain": "今後この確認を表示しない",
     "favorite.add": "お気に入りに追加",
     "favorite.remove": "お気に入りから削除",
+    "creatorStatusList.emptyFavorites": "まだお気に入りがありません。",
+    "creatorStatusList.emptySearch": "該当する配信者が見つかりません。",
+    "creatorStatusList.switchOshiTo": "推しを{{creatorName}}に切り替える",
   },
 }
 

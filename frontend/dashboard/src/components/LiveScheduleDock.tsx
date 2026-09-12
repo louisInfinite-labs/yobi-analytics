@@ -19,18 +19,25 @@ type ViewMode = "all" | "favorites"
  * already-shared statuses (spec: "Avoid refetching when the Dock opens").
  * Prefers a live count; falls back to the single nearest upcoming stream.
  * `statuses` is pre-filtered by the caller to the current view mode
- * (all/favorites), so this never needs to know about favorites itself. */
-function summarize(statuses: Record<string, CreatorStatus>, now: Date, language: CountdownLanguage): string {
+ * (all/favorites), so this never needs to know about favorites itself. The
+ * dot color travels with the text (red only for an actual live count;
+ * grey for an upcoming countdown or OFFLINE) instead of the dot always
+ * being red regardless of what the text says. */
+function summarize(
+  statuses: Record<string, CreatorStatus>,
+  now: Date,
+  language: CountdownLanguage,
+): { text: string; dotColor: "red" | "grey" } {
   const values = Object.values(statuses)
   const liveCount = values.filter((s) => s.kind === "live").length
-  if (liveCount > 0) return `${liveCount} LIVE`
+  if (liveCount > 0) return { text: `${liveCount} LIVE`, dotColor: "red" }
 
   const nextUpcoming = values
     .filter((s): s is Extract<CreatorStatus, { kind: "upcoming" }> => s.kind === "upcoming")
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart))[0]
-  if (nextUpcoming) return formatCountdown(nextUpcoming.scheduledStart, now, language)
+  if (nextUpcoming) return { text: formatCountdown(nextUpcoming.scheduledStart, now, language), dotColor: "grey" }
 
-  return "OFFLINE"
+  return { text: "OFFLINE", dotColor: "grey" }
 }
 
 /** Global Live Schedule Dock (spec section of the same name) — collapsed
@@ -66,6 +73,7 @@ export function LiveScheduleDock() {
   const summaryStatuses = favoriteOnlyIds
     ? Object.fromEntries(Object.entries(statuses).filter(([id]) => favoriteOnlyIds.has(id)))
     : statuses
+  const summary = summarize(summaryStatuses, now, language)
 
   useEffect(() => {
     if (!expanded) return
@@ -106,8 +114,8 @@ export function LiveScheduleDock() {
               ⇄
             </button>
             <button type="button" className="live-schedule-dock__summary-text" onClick={() => setExpanded(true)}>
-              <span className="live-schedule-dock__dot live-schedule-dock__dot--red" aria-hidden="true" />
-              {summarize(summaryStatuses, now, language)}
+              <span className={`live-schedule-dock__dot live-schedule-dock__dot--${summary.dotColor}`} aria-hidden="true" />
+              {summary.text}
             </button>
           </div>
         ) : (

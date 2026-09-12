@@ -99,7 +99,7 @@ function CreatorRow({
           type="button"
           className="creator-status-list__creator-button"
           onClick={swipe.guardClick(() => onCreatorButtonClick(creator))}
-          aria-label={`Switch Oshi to ${creator.channelName}`}
+          aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.channelName })}
         >
           <CreatorAvatar creator={creator} isFavorite={isFavorite} />
           <span className="creator-status-list__row-name">{creator.channelName}</span>
@@ -220,7 +220,9 @@ export function CreatorStatusList({
         </div>
       ))}
       {groups.length === 0 && (
-        <div className="creator-status-list__empty">{favoriteOnlyIds ? "No favorites yet." : "No matching creator."}</div>
+        <div className="creator-status-list__empty">
+          {favoriteOnlyIds ? t(locale, "creatorStatusList.emptyFavorites") : t(locale, "creatorStatusList.emptySearch")}
+        </div>
       )}
       {pendingSwitch && (
         <OshiSwitchConfirmDialog

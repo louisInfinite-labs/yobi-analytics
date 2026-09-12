@@ -48,7 +48,10 @@ function hololiveJpGroupRank(groupKey: string): number {
   if (numbered) return Number(numbered[1])
   const fixedIndex = HOLOLIVE_JP_FIXED_GROUP_ORDER.indexOf(groupKey)
   if (fixedIndex !== -1) return 1000 + fixedIndex
-  return Number.POSITIVE_INFINITY
+  // Finite sentinel: keeps rank subtraction well-defined when BOTH creators
+  // are unrecognized (Infinity - Infinity would be NaN, which sortHololiveJp's
+  // `rankDiff !== 0` treats as equal, silently skipping the kana tiebreak).
+  return Number.MAX_SAFE_INTEGER
 }
 
 /** Hololive JP: level 1 is the existing, unchanged generation/unit rank

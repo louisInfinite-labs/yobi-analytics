@@ -14,27 +14,27 @@ const videos: RecentVideo[] = [
 
 describe("selectLatestVideos", () => {
   it("returns only normal_video entries, newest first, capped at 2", () => {
-    expect(selectLatestVideos(videos).map((v) => v.videoId)).toEqual(["v2", "v1"])
+    expect(selectLatestVideos(videos, 2).map((v) => v.videoId)).toEqual(["v2", "v1"])
   })
 
   it("excludes shorts/live formats even if they're newer", () => {
-    const result = selectLatestVideos(videos)
+    const result = selectLatestVideos(videos, 2)
     expect(result.some((v) => v.videoId === "s1")).toBe(false)
   })
 })
 
 describe("selectLivestreamSlots", () => {
   it("without a live-now entry, returns the 2 most recent archives", () => {
-    expect(selectLivestreamSlots(videos).map((v) => v.videoId)).toEqual(["a1", "a2"])
+    expect(selectLivestreamSlots(videos, 2).map((v) => v.videoId)).toEqual(["a1", "a2"])
   })
 
   it("with a live-now entry, returns [live now, most recent archive] — not the 2nd archive", () => {
     const withLive: RecentVideo[] = [...videos, { videoId: "live1", title: "live", publishedAt: "2026-09-05T00:00:00Z", contentFormat: "live_now" }]
-    expect(selectLivestreamSlots(withLive).map((v) => v.videoId)).toEqual(["live1", "a1"])
+    expect(selectLivestreamSlots(withLive, 2).map((v) => v.videoId)).toEqual(["live1", "a1"])
   })
 
   it("returns fewer than 2 entries when there isn't enough data, rather than fabricating one", () => {
     const sparse: RecentVideo[] = [{ videoId: "only-archive", title: "t", publishedAt: "2026-09-01T00:00:00Z", contentFormat: "live_archive" }]
-    expect(selectLivestreamSlots(sparse).map((v) => v.videoId)).toEqual(["only-archive"])
+    expect(selectLivestreamSlots(sparse, 2).map((v) => v.videoId)).toEqual(["only-archive"])
   })
 })

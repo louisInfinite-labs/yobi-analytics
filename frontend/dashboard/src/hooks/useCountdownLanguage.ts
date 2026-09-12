@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { createSharedState, useSharedState } from "../lib/sharedState"
 import type { CountdownLanguage } from "../lib/creatorStatusFormat"
 
 const STORAGE_KEY = "yobi.countdownLanguage"
@@ -22,20 +22,17 @@ function readLanguage(): CountdownLanguage {
   return detectDefaultLanguage()
 }
 
+// Module-scoped singleton (see lib/sharedState.ts) — every useCountdownLanguage()
+// call in this tab shares this one store, so a language change from
+// UpcomingDisplaySettings updates every other already-mounted Home/Dock
+// consumer immediately instead of only agreeing at each one's own mount time
+// (CodeRabbit: per-instance useState left mounted consumers on the old
+// language after a change elsewhere).
+const countdownLanguageStore = createSharedState<CountdownLanguage>(STORAGE_KEY, readLanguage, (value) => value)
+
 /** The countdown label's own language — a separate setting from
  * UpcomingDisplayMode (absolute-vs-countdown); this only affects what the
  * countdown text reads once that mode is selected. */
 export function useCountdownLanguage() {
-  const [language, setLanguageState] = useState<CountdownLanguage>(readLanguage)
-
-  const setLanguage = useCallback((next: CountdownLanguage) => {
-    setLanguageState(next)
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next)
-    } catch {
-      // Best-effort, matching every other Home/Dock setting's own reasoning.
-    }
-  }, [])
-
-  return [language, setLanguage] as const
+  return useSharedState(countdownLanguageStore)
 }

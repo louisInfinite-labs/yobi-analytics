@@ -1,28 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { getRecentVideosForCreator, type RecentVideo } from "../data/mockRecentVideos"
 import { holodexChannelIdByCreatorId } from "../data/holodexChannelIds"
-import {
-  fetchArchivedStreamsFromHolodex,
-  fetchUploadedVideosFromHolodex,
-  HOLODEX_MAX_LIMIT,
-} from "../lib/holodexClient"
+import { fetchArchivedStreamsFromHolodex, fetchUploadedVideosFromHolodex, type HolodexPage } from "../lib/holodexClient"
 
 interface VideoPage {
   videos: RecentVideo[]
   loading: boolean
   error: Error | null
-  /** Fetches the next page (offset += HOLODEX_MAX_LIMIT) and appends it —
-   * a no-op for mock-backed creators (no pagination there) or once
-   * `hasMore` is false. Safe to call repeatedly; ignored while a page is
-   * already in flight. */
+  /** Fetches the next page and appends it — a no-op for mock-backed
+   * creators (no pagination there) or once `hasMore` is false. Safe to
+   * call repeatedly; ignored while a page is already in flight. */
   loadMore: () => void
-  /** False once a page comes back with fewer than HOLODEX_MAX_LIMIT items
-   * — the channel's history is exhausted, so further loadMore() calls are
-   * no-ops. Always false for mock-backed creators. */
+  /** False once the channel's raw history is exhausted — see each
+   * HolodexPage-returning fetcher's own `hasMore` docs for exactly what
+   * that means for it. Always false for mock-backed creators. */
   hasMore: boolean
 }
 
-type PageFetcher = (holodexChannelId: string, args: { offset: number }) => Promise<RecentVideo[]>
+type PageFetcher = (holodexChannelId: string, args: { offset: number }) => Promise<HolodexPage>
 
 /** One independently-paginated video pool — either "最新影片" (backed by
  * fetchUploadedVideosFromHolodex) or "最新直播" (fetchArchivedStreamsFromHolodex).
@@ -39,8 +34,17 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
   const [hasMore, setHasMore] = useState(false)
   const offsetRef = useRef(0)
   const loadingMoreRef = useRef(false)
+  // Bumped every time the initial-load effect below re-runs (i.e. creatorId
+  // or holodexChannelId changed). loadMore() captures the generation active
+  // when it was called and checks it again before touching state, so a
+  // loadMore() request still in flight from the PREVIOUS creator can't
+  // append its results (or advance offsetRef/hasMore) onto the new
+  // creator's pool once it finally resolves (CodeRabbit: "A pending
+  // loadMore() request is not scoped to creatorId").
+  const generationRef = useRef(0)
 
   useEffect(() => {
+    const generation = ++generationRef.current
     offsetRef.current = 0
     loadingMoreRef.current = false
 
@@ -52,29 +56,24 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
       return
     }
 
-    let cancelled = false
     setLoading(true)
     setError(null)
 
     fetcher(holodexChannelId, { offset: 0 })
       .then((result) => {
-        if (cancelled) return
-        setVideos(result)
-        setHasMore(result.length >= HOLODEX_MAX_LIMIT)
-        offsetRef.current = HOLODEX_MAX_LIMIT
+        if (generation !== generationRef.current) return
+        setVideos(result.videos)
+        setHasMore(result.hasMore)
+        offsetRef.current = result.nextOffset
         setLoading(false)
       })
       .catch((err: unknown) => {
-        if (cancelled) return
+        if (generation !== generationRef.current) return
         setError(err instanceof Error ? err : new Error(String(err)))
         setVideos(mockVideos)
         setHasMore(false)
         setLoading(false)
       })
-
-    return () => {
-      cancelled = true
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mockVideos is
     // stable per creatorId (same object each render for a given id, since
     // mockRecentVideos.ts's map is a static module-level constant); keying
@@ -84,22 +83,24 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
 
   const loadMore = useCallback(() => {
     if (!holodexChannelId || loadingMoreRef.current) return
+    const generation = generationRef.current
     loadingMoreRef.current = true
 
     fetcher(holodexChannelId, { offset: offsetRef.current })
-      .then((nextPage) => {
-        setVideos((prev) => [...prev, ...nextPage])
-        setHasMore(nextPage.length >= HOLODEX_MAX_LIMIT)
-        offsetRef.current += HOLODEX_MAX_LIMIT
+      .then((result) => {
+        if (generation !== generationRef.current) return
+        setVideos((prev) => [...prev, ...result.videos])
+        setHasMore(result.hasMore)
+        offsetRef.current = result.nextOffset
       })
       .catch(() => {
         // A failed prefetch just means no more videos load on this scroll
         // — the ones already shown stay put rather than surfacing an error
         // for a background fetch the user didn't directly trigger.
-        setHasMore(false)
+        if (generation === generationRef.current) setHasMore(false)
       })
       .finally(() => {
-        loadingMoreRef.current = false
+        if (generation === generationRef.current) loadingMoreRef.current = false
       })
   }, [holodexChannelId, fetcher])
 

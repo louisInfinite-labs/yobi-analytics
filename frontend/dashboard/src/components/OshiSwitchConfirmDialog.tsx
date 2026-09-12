@@ -20,14 +20,31 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
   const checkboxRef = useRef<HTMLInputElement>(null)
   const switchButtonRef = useRef<HTMLButtonElement>(null)
   const openerRef = useRef<Element | null>(document.activeElement)
+  // CreatorStatusList passes a new onCancel closure every render (and its
+  // own parent re-renders on the useCreatorStatuses tick while this dialog
+  // is open) — reading it through a ref instead of a dependency keeps the
+  // listener effect below from re-running (and re-focusing the checkbox,
+  // stealing focus from wherever Tab had moved it) on every such re-render.
+  const onCancelRef = useRef(onCancel)
+  useEffect(() => {
+    onCancelRef.current = onCancel
+  })
+
+  // Mount-only: return focus to the opener exactly once, on unmount — not
+  // every time the listener effect below re-runs.
+  useEffect(() => {
+    const opener = openerRef.current
+    return () => {
+      if (opener instanceof HTMLElement) opener.focus()
+    }
+  }, [])
 
   useEffect(() => {
     checkboxRef.current?.focus()
-    const opener = openerRef.current
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        onCancel()
+        onCancelRef.current()
         return
       }
       if (event.key !== "Tab") return
@@ -55,9 +72,8 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
     return () => {
       document.removeEventListener("keydown", handleKeyDown)
       document.removeEventListener("focusin", handleFocusIn)
-      if (opener instanceof HTMLElement) opener.focus()
     }
-  }, [onCancel])
+  }, [])
 
   const message = t(locale, "oshiSwitch.confirmMessage", { creatorName })
 
