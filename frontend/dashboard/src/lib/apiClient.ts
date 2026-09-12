@@ -1,3 +1,5 @@
+import { t, type Locale } from "../i18n/translations"
+
 /** A non-2xx response from the Yobi Analytics backend (Roadmap 4.1/4.4/4.5/4.6).
  * `message` is the backend's own `{"error": "..."}` body (api_handler.py's
  * `_json_response`) when present, so a caller can show the same clean text
@@ -92,29 +94,30 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
  * it" (a real status code, shown so it's reportable) — so a caller like
  * ErrorState doesn't have to collapse every failure into one generic
  * message that leaves the visitor unable to tell which side the problem is
- * on. */
-export function describeApiFailure(error: Error): { code: string; description: string } {
+ * on. `locale` picks which of the three prepared languages the message is
+ * rendered in (see i18n/translations.ts). */
+export function describeApiFailure(error: Error, locale: Locale = "zh-TW"): { code: string; description: string } {
   if (error instanceof ConfigError) {
     // Never reached AWS, but not the visitor's fault either -- a deployment
     // mistake (missing env var), not something a retry or a different
     // network fixes.
-    return { code: "CONFIG", description: "應用程式設定錯誤,請聯絡管理員。" }
+    return { code: "CONFIG", description: t(locale, "apiError.config") }
   }
   if (!(error instanceof ApiError)) {
     // apiRequest only throws a plain Error when fetch itself never got a
     // response back (offline, DNS/CORS failure, VITE_API_BASE_URL
     // misconfigured) -- that's the visitor's own connection, not AWS.
-    return { code: "NETWORK", description: "無法連線到伺服器,請檢查你的網絡連線後重試。" }
+    return { code: "NETWORK", description: t(locale, "apiError.network") }
   }
 
   if (error.status === 429) {
     return {
       code: "429",
-      description: "現在使用人數較多,伺服器暫時限制請求 (429)。系統已自動重試但仍未成功,請稍後再重新整理。",
+      description: t(locale, "apiError.rateLimited"),
     }
   }
   if (error.status >= 500) {
-    return { code: String(error.status), description: `AWS 伺服器發生錯誤 (${error.status}),並非你的網絡問題,請稍後再試。` }
+    return { code: String(error.status), description: t(locale, "apiError.serverError", { status: String(error.status) }) }
   }
-  return { code: String(error.status), description: `請求失敗 (${error.status}):${error.message}` }
+  return { code: String(error.status), description: t(locale, "apiError.generic", { status: String(error.status), message: error.message }) }
 }

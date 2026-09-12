@@ -17,9 +17,9 @@ export function formatAbsoluteTime(iso: string): string {
 
 /** Floors elapsed partial minutes, never negative (spec: "never shows a
  * negative value"). Once the scheduled time is reached this returns the
- * zero form ("0時間0分後" / "0小時0分後" / "In 0h:0m"); callers reclassify
- * status at that point rather than keep showing a countdown (see
- * isScheduledTimeReached). */
+ * zero form (0 hours/0 minutes, localized per language, e.g. "In 0h:0m" for
+ * English); callers reclassify status at that point rather than keep
+ * showing a countdown (see isScheduledTimeReached). */
 export function formatCountdown(iso: string, now: Date = new Date(), language: CountdownLanguage = "ja"): string {
   const totalMinutes = Math.max(0, Math.floor((new Date(iso).getTime() - now.getTime()) / 60000))
   const hours = Math.floor(totalMinutes / 60)

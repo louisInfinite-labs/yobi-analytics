@@ -71,9 +71,10 @@ export interface HolodexPage {
   hasMore: boolean
 }
 
-/** "最新直播" — archived streams only, straight from Holodex's own
- * `type=stream` filter (this session: "holodex api 沒有直播影片這個filter
- * 嗎?" — it does: `type` is "stream" | "clip"). Using the filter instead of
+/** "Latest Live" — archived streams only, straight from Holodex's own
+ * `type=stream` filter (this session raised the question of whether the
+ * Holodex API even has a filter for stream videos — it does: `type` is
+ * "stream" | "clip"). Using the filter instead of
  * pulling everything and hoping enough streams turn up in that page is
  * what actually guarantees this list isn't empty just because a creator
  * happened to publish several plain videos more recently than their last
@@ -84,8 +85,9 @@ export interface HolodexPage {
  * /live (live-now + upcoming) is only meaningful on the first page —
  * merging it in on later pages would re-show the same currently-live
  * video every time. Paginated independently from
- * fetchUploadedVideosFromHolodex (this session: "user 滑動 最新直播時 ...
- * 只會再發生api request 取 更多的最新直播 最新影片的判定不會被觸發"). */
+ * fetchUploadedVideosFromHolodex (this session's own requirement: scrolling
+ * the Latest Live row must only ever trigger more Latest Live requests,
+ * never get misclassified as a Latest Videos request). */
 export async function fetchArchivedStreamsFromHolodex(
   holodexChannelId: string,
   { limit = HOLODEX_MAX_LIMIT, offset = 0 }: PageArgs = {},
@@ -110,7 +112,7 @@ export async function fetchArchivedStreamsFromHolodex(
   }
 }
 
-/** "最新影片" — the channel's own plain (non-stream) uploads. Holodex's
+/** "Latest Videos" — the channel's own plain (non-stream) uploads. Holodex's
  * `type` enum has no distinct value for these (only "stream" | "clip", and
  * "clip" means fan-made clips of someone else's stream, not the channel's
  * own videos) — so this still pulls `status=past` with no `type` filter and

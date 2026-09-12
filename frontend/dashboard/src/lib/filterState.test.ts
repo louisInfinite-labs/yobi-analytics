@@ -19,7 +19,7 @@ function matches(state: FilterState) {
   return mockVideoStats.filter((v) => matchesClassification(v, state) && matchesContent(v, state))
 }
 
-describe("required scenario: 卒業 (graduated, no other filter)", () => {
+describe("required scenario: graduated, no other filter", () => {
   it("matches every graduated creator's videos regardless of organization", () => {
     const state = { ...EMPTY_FILTER_STATE, lifecycleStage: "graduated" as const }
     const result = matches(state)
@@ -31,7 +31,7 @@ describe("required scenario: 卒業 (graduated, no other filter)", () => {
   })
 })
 
-describe("required scenario: Hololive + 卒業", () => {
+describe("required scenario: Hololive + graduated", () => {
   it("narrows graduated results to Hololive only", () => {
     const state = { ...EMPTY_FILTER_STATE, organization: "hololive" as const, lifecycleStage: "graduated" as const }
     const result = matches(state)
@@ -40,8 +40,8 @@ describe("required scenario: Hololive + 卒業", () => {
   })
 })
 
-describe("required scenario: Hololive + JP + 1期生 + 卒業", () => {
-  it("matches only graduated Hololive JP creators retaining the 1期生 tag", () => {
+describe("required scenario: Hololive + JP + Gen 1 + graduated", () => {
+  it("matches only graduated Hololive JP creators retaining the Gen 1 tag", () => {
     const state = {
       ...EMPTY_FILTER_STATE,
       organization: "hololive" as const,
@@ -63,15 +63,15 @@ describe("required scenario: Hololive + JP + 1期生 + 卒業", () => {
   })
 })
 
-describe("required scenario: 1期生 + ゲーマーズ (OR within one dimension)", () => {
+describe("required scenario: Gen 1 + Gamers (OR within one dimension)", () => {
   it("matches a creator with either tag, not requiring both", () => {
     let state = EMPTY_FILTER_STATE
     state = { ...state, groupKey: ["1期生", "ゲーマーズ"] }
     const result = matches(state)
     const channelNames = new Set(result.map((v) => v.channelName))
     // Fubuki carries both tags; Ema and Pekora carry only one each — all three must appear.
-    expect(channelNames.has("藍沢エマ")).toBe(true) // 1期生 only
-    expect(channelNames.has("白上フブキ")).toBe(true) // 1期生 + ゲーマーズ
+    expect(channelNames.has("藍沢エマ")).toBe(true) // Gen 1 only
+    expect(channelNames.has("白上フブキ")).toBe(true) // Gen 1 + Gamers
   })
 })
 
@@ -102,7 +102,7 @@ describe("required scenario: SF6 content tag", () => {
   })
 })
 
-describe("required scenario: 歌回 (karaoke) content tag", () => {
+describe("required scenario: karaoke content tag", () => {
   it("matches only videos tagged karaoke", () => {
     const state = { ...EMPTY_FILTER_STATE, contentTags: ["karaoke" as const] }
     const result = matches(state)
@@ -144,7 +144,7 @@ describe("hierarchical narrowing", () => {
   it("retains a still-valid branch-independent groupKey selection isn't kept if invalid under the new branch", () => {
     const withTag = { ...EMPTY_FILTER_STATE, organization: "hololive" as const, branch: "holo_jp" as const, groupKey: ["1期生"] }
     const afterBranchChange = setBranch(withTag, "holo_en", mockCreators)
-    // "1期生" isn't a Hololive EN tag in this fixture (EN uses "Myth") — must be cleared.
+    // The Gen 1 tag isn't a Hololive EN tag in this fixture (EN uses "Myth") — must be cleared.
     expect(afterBranchChange.groupKey).toEqual([])
   })
 
