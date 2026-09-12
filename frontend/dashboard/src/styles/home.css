@@ -34,14 +34,10 @@
   gap: var(--space-5);
 }
 
-/* Both sections (最新影片/最新直播) share the available height equally via
-   flex-grow, each row's thumbnails filling whatever their section has left
-   after its label — so the two rows always add up to exactly what's
-   available, never more. That's what actually guarantees the gap above
-   "最新影片" (.home-page's own 12px flex gap, already ≥ the 4px label-to-
-   thumbnail gap below it) never gets eaten into or overlapped by overflow
-   (this session: "home scene和 最新影片 的文字重疊了" — fixed height
-   thumbnails could ask for more room than was left and spill upward). */
+/* The section grows via flex-grow to fill whatever height is left below
+   home-scene, its thumbnails filling whatever the section has left after
+   its toolbar -- so it never asks for more room than is actually
+   available and spills upward into home-scene above it. */
 .recent-videos {
   flex: 1 1 auto;
   min-width: 0;
@@ -49,6 +45,29 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+/* Tag bar + (conditionally) the sort dropdown, side by side. Shrink-wraps
+   to its own content width (not stretched to the section's full width) so
+   the row below can measure and match it, keeping the row's right-scroll
+   arrow aligned with the dropdown's own right edge (or the tag bar's right
+   edge when no dropdown is shown) -- see RecentVideosSection.tsx's
+   toolbarRef/ResizeObserver. */
+.recent-videos__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.recent-videos__toolbar .filter-chip-group {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.recent-videos__toolbar .soft-select {
+  flex: 0 0 auto;
 }
 
 .recent-videos__section {
@@ -59,21 +78,16 @@
   gap: var(--space-1);
 }
 
-/* Indented past the scroll button (32px) + its gap (--space-2, 8px) so the
-   label text lines up with the thumbnails' own left edge, not the arrow's
-   (this session: "最新影片 和 最新直播的文字改成 和 影片縮圖 最左對齊"). */
-.recent-videos__label {
-  flex: 0 0 auto;
-  margin-left: calc(32px + var(--space-2));
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-secondary, #6b6774);
-}
-
-/* [left arrow][scrollable track][right arrow] — the arrow, not the
-   thumbnails, is what now sits at the row's own left edge (this session:
-   "靠左對齊改成 home scene 和 箭頭icon對齊"). */
+/* [scrollable track][right arrow] -- the track's own left edge is the
+   row's left edge, which lines up with home-scene's left edge above it, so
+   the leftmost video card aligns directly under home-scene rather than
+   under an arrow button. Width is set inline from RecentVideosSection.tsx
+   (matching the toolbar's own measured width) so the right-scroll-arrow
+   lines up with the toolbar's right edge instead of always stretching to
+   the section's full available width; `flex`/no explicit width here is
+   just the pre-measurement fallback for the first paint. */
 .recent-videos__row {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -97,11 +111,20 @@
   cursor: pointer;
 }
 
+/* Overlaid on the track's own left edge (half in, half out) rather than
+   taking up its own flex slot -- otherwise it would push the track (and
+   the leftmost video card) to the right, away from home-scene's left edge
+   above it. */
+.recent-videos__scroll-button--left {
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
 /* Left arrow only, while the track is scrolled all the way left (see
-   VideoRow's canScrollLeft) -- visibility (not unmounting the button) so it
-   keeps reserving its own layout space, since the row's left edge lining up
-   with home-scene above it depends on this button staying in flex flow
-   whether or not it's actually visible right now. */
+   VideoRow's canScrollLeft). */
 .recent-videos__scroll-button--hidden {
   visibility: hidden;
 }
@@ -121,13 +144,20 @@
   display: none; /* Chrome/Safari/Edge */
 }
 
+/* Exactly 4 cards visible at once on desktop -- width is 1/4 of the track
+   minus its own 3 inter-card gaps (var(--space-3), matching
+   .recent-videos__track's own `gap`), not a fixed px value like the
+   previous 176px. scrollByOneCard/handleScroll in RecentVideosSection.tsx
+   already read `card.offsetWidth` at runtime, so the existing
+   arrow-scroll-step/prefetch-threshold logic needed no code change to
+   adapt to this width. */
 .recent-videos__card {
-  flex: 0 0 176px;
+  flex: 0 0 calc((100% - 3 * var(--space-3)) / 4);
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  width: 176px;
+  width: calc((100% - 3 * var(--space-3)) / 4);
   background: transparent;
   border: none;
   padding: 0;

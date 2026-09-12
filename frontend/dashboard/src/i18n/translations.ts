@@ -15,6 +15,19 @@ export type TranslationKey =
   | "creatorStatusList.emptyFavorites"
   | "creatorStatusList.emptySearch"
   | "creatorStatusList.switchOshiTo"
+  | "recentVideos.tag.latestVideos"
+  | "recentVideos.tag.latestLive"
+  | "recentVideos.tag.all"
+  | "recentVideos.tag.sf6"
+  | "recentVideos.tag.valo"
+  | "recentVideos.tag.minecraft"
+  | "recentVideos.tag.apex"
+  | "recentVideos.tag.singing"
+  | "recentVideos.tag.chatting"
+  | "recentVideos.tag.other"
+  | "recentVideos.sort.newest"
+  | "recentVideos.sort.oldest"
+  | "recentVideos.sort.mostViews"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -27,6 +40,19 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.emptyFavorites": "尚未有收藏。",
     "creatorStatusList.emptySearch": "找不到符合的創作者。",
     "creatorStatusList.switchOshiTo": "切換推し為 {{creatorName}}",
+    "recentVideos.tag.latestVideos": "最新影片",
+    "recentVideos.tag.latestLive": "最新直播",
+    "recentVideos.tag.all": "ALL",
+    "recentVideos.tag.sf6": "SF6",
+    "recentVideos.tag.valo": "VALO",
+    "recentVideos.tag.minecraft": "Minecraft",
+    "recentVideos.tag.apex": "Apex",
+    "recentVideos.tag.singing": "歌回",
+    "recentVideos.tag.chatting": "雜談",
+    "recentVideos.tag.other": "其他",
+    "recentVideos.sort.newest": "最新上架",
+    "recentVideos.sort.oldest": "最舊上架",
+    "recentVideos.sort.mostViews": "總觀看次數最多",
   },
   en: {
     "common.cancel": "Cancel",
@@ -38,6 +64,19 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.emptyFavorites": "No favorites yet.",
     "creatorStatusList.emptySearch": "No matching creator.",
     "creatorStatusList.switchOshiTo": "Switch Oshi to {{creatorName}}",
+    "recentVideos.tag.latestVideos": "Latest Videos",
+    "recentVideos.tag.latestLive": "Latest Live",
+    "recentVideos.tag.all": "ALL",
+    "recentVideos.tag.sf6": "SF6",
+    "recentVideos.tag.valo": "VALO",
+    "recentVideos.tag.minecraft": "Minecraft",
+    "recentVideos.tag.apex": "Apex",
+    "recentVideos.tag.singing": "Singing",
+    "recentVideos.tag.chatting": "Chatting",
+    "recentVideos.tag.other": "Other",
+    "recentVideos.sort.newest": "Newest",
+    "recentVideos.sort.oldest": "Oldest",
+    "recentVideos.sort.mostViews": "Most Views",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -49,6 +88,19 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.emptyFavorites": "まだお気に入りがありません。",
     "creatorStatusList.emptySearch": "該当する配信者が見つかりません。",
     "creatorStatusList.switchOshiTo": "推しを{{creatorName}}に切り替える",
+    "recentVideos.tag.latestVideos": "最新動画",
+    "recentVideos.tag.latestLive": "最新配信",
+    "recentVideos.tag.all": "ALL",
+    "recentVideos.tag.sf6": "SF6",
+    "recentVideos.tag.valo": "VALO",
+    "recentVideos.tag.minecraft": "Minecraft",
+    "recentVideos.tag.apex": "Apex",
+    "recentVideos.tag.singing": "歌枠",
+    "recentVideos.tag.chatting": "雑談",
+    "recentVideos.tag.other": "その他",
+    "recentVideos.sort.newest": "新着順",
+    "recentVideos.sort.oldest": "古い順",
+    "recentVideos.sort.mostViews": "総再生数順",
   },
 }
 
