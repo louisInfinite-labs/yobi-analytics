@@ -1,80 +1,61 @@
-import { useRef, useState } from "react"
 import { mockCreators } from "../../data/mockCreators"
-import { homeAssetConfig } from "../../lib/homeAssets"
+import { useCountdownLanguage } from "../../hooks/useCountdownLanguage"
+import { useCreatorStatuses } from "../../hooks/useCreatorStatuses"
 import { useSelectedCreator } from "../../hooks/useSelectedCreator"
-import { CreatorStatusPanel } from "./CreatorStatusPanel"
-import { DeskMonitor } from "./DeskMonitor"
-import { HomeAnalyticsOverlay } from "./HomeAnalyticsOverlay"
-import { OshiLayer } from "./OshiLayer"
+import { useUpcomingDisplayMode } from "../../hooks/useUpcomingDisplayMode"
+import { formatCreatorStatus } from "../../lib/creatorStatusFormat"
 import { RecentVideosSection } from "./RecentVideosSection"
 
-/** One room-scene layer image (background/desk/chair/microphone/keyboard/
- * mouse) with a labeled placeholder fallback — the purchased ぱるぷんて。
- * asset files are not committed to this repo (see homeAssets.ts), so every
- * layer must degrade to something reviewable instead of a broken image. */
-function RoomLayer({ src, label, className }: { src?: string; label: string; className: string }) {
-  const [failed, setFailed] = useState(false)
-  if (!src || failed) {
-    return <div className={`home-scene__layer ${className} home-placeholder`}>{label}</div>
-  }
+/** The selected creator's own name + live status, one line, bottom-right
+ * corner of the (otherwise empty) frame (this session: "creator名 Live狀態
+ * 在這個框的右下角 同一行顯示"). No border of its own here — it sits
+ * directly inside the frame's own border. No switch button either — that
+ * stays merged into the global LiveScheduleDock pill so it isn't
+ * duplicated here. */
+function SceneStatusLine({ creatorId }: { creatorId: string }) {
+  const [displayMode] = useUpcomingDisplayMode()
+  const [language] = useCountdownLanguage()
+  const { statuses, now } = useCreatorStatuses()
+  const creatorName = mockCreators.find((c) => c.channelId === creatorId)?.channelName ?? creatorId
+  const status = statuses[creatorId]
+  const display = status ? formatCreatorStatus(status, displayMode, now, language) : null
+
   return (
-    <img className={`home-scene__layer ${className}`} src={src} alt="" draggable={false} onError={() => setFailed(true)} />
+    <div className="home-scene__layer home-scene__status-line">
+      <span className="home-scene__status-line__name">{creatorName}</span>
+      {display && (
+        <span className="home-scene__status-line__status">
+          <span className={`creator-status-list__dot creator-status-list__dot--${display.dotColor}`} aria-hidden="true" />
+          {display.label}
+        </span>
+      )}
+    </div>
   )
 }
 
-/** Home V1: a fixed 16:9 layered OBS-style scene inside the existing app
- * shell — Oshi left, analytics right, local media on the desk monitor
- * (spec's "Page Composition"/"Default Layout"). The Global Live Schedule
- * Dock (App.tsx-mounted, so it's visible on every page, not just this one)
- * and the YouTube embed overlay both reuse the existing VideoPlayerModal.
+/** Home's scene area is just an empty outlined frame (this session: "我要
+ * 看到有個框 中間什麼元素都不要") plus SceneStatusLine in its bottom-right
+ * corner — no Room background/Oshi image/desk monitor placeholders, no
+ * analytics overlay; all of that was tried and pulled back out over this
+ * session. The border itself lives in styles/home.css's `.home-scene` rule.
  *
- * Above the scene sits this session's own added "upper part", two columns:
- * left is RecentVideosSection (2 latest videos, then 2 livestream slots —
- * live-now + latest archive when one is live, otherwise the 2 latest
- * archives); right is CreatorStatusPanel ("ListStatus" — the selected
- * creator's name, and a collapsed live/offline-count summary that expands
- * into the same grouped list the global Dock shows). The whole page is
- * height-budgeted (see styles/home.css's `.home-page`) so this section plus
- * the scene together fit a 1920x1080 viewport without scrolling, per this
- * session's own explicit layout requirement. */
+ * Below it sits RecentVideosSection (2 latest videos, then 2 livestream
+ * slots — live-now + latest archive when one is live, otherwise the 2
+ * latest archives), left-aligned with the frame above it. The global
+ * LiveScheduleDock (switch + live-status pill, mounted once in App.tsx)
+ * stays the one live-status indicator for ALL creators, visible on every
+ * page including this one. */
 export function HomePage() {
-  const [creatorId, setCreatorId] = useSelectedCreator()
-  const [editable, setEditable] = useState(false)
-  const sceneRef = useRef<HTMLDivElement>(null)
+  const [creatorId] = useSelectedCreator()
 
   return (
     <div className="home-page">
-      <div className="home-page__toolbar">
-        <label className="home-page__creator-picker">
-          Oshi
-          <select value={creatorId} onChange={(event) => setCreatorId(event.target.value)}>
-            {mockCreators.map((creator) => (
-              <option key={creator.channelId} value={creator.channelId}>
-                {creator.channelName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="button" onClick={() => setEditable((prev) => !prev)}>
-          {editable ? "Done" : "Edit room"}
-        </button>
+      <div className="home-scene">
+        <SceneStatusLine creatorId={creatorId} />
       </div>
 
       <div className="home-page__upper">
         <RecentVideosSection creatorId={creatorId} />
-        <CreatorStatusPanel creatorId={creatorId} onSelectCreator={setCreatorId} />
-      </div>
-
-      <div className="home-scene" ref={sceneRef}>
-        <RoomLayer src={homeAssetConfig.background} label="Room background" className="home-scene__background" />
-        <RoomLayer src={homeAssetConfig.chair} label="Chair" className="home-scene__chair" />
-        <OshiLayer creatorId={creatorId} sceneRef={sceneRef} editable={editable} />
-        <RoomLayer src={homeAssetConfig.desk} label="Desk" className="home-scene__desk" />
-        <DeskMonitor creatorId={creatorId} monitorRect={homeAssetConfig.monitorRect} editable={editable} />
-        <RoomLayer src={homeAssetConfig.keyboard} label="Keyboard" className="home-scene__keyboard" />
-        <RoomLayer src={homeAssetConfig.mouse} label="Mouse" className="home-scene__mouse" />
-        <RoomLayer src={homeAssetConfig.microphone} label="Microphone" className="home-scene__microphone" />
-        <HomeAnalyticsOverlay creatorId={creatorId} />
       </div>
     </div>
   )

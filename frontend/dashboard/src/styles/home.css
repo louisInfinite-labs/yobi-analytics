@@ -4,11 +4,15 @@
    scene together must fit one 1920x1080 viewport with no vertical scroll
    (this session's own explicit requirement) — 100dvh falls back to 100vh
    in engines without dynamic-viewport-unit support. */
+/* padding-bottom is var(--space-4) (16px), not var(--space-5), so
+   RecentVideosSection's last row sits exactly 16px above the viewport
+   bottom edge once it's grown to fill the space (this session: "播放器的
+   大小放大到 第最新直播的標題離畫面底部16PX"). */
 .home-page {
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
-  padding: var(--space-4) var(--space-6) var(--space-5);
+  padding: var(--space-4) var(--space-6) var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -17,56 +21,99 @@
   box-sizing: border-box;
 }
 
-.home-page__toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  flex: 0 0 auto;
-}
-
-.home-page__creator-picker {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 0.85rem;
-  color: var(--text-secondary, #6b6774);
-}
-
-/* ============ Upper part: RecentVideosSection (left) + CreatorStatusPanel (right) ============ */
+/* ============ Upper part: RecentVideosSection, left-aligned under the
+   scene, grown to fill the rest of the page's height (see .home-page's own
+   comment above) instead of sizing to its content. ============ */
 
 .home-page__upper {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   align-items: stretch;
   gap: var(--space-5);
 }
 
+/* Both sections (最新影片/最新直播) share the available height equally via
+   flex-grow, each row's thumbnails filling whatever their section has left
+   after its label — so the two rows always add up to exactly what's
+   available, never more. That's what actually guarantees the gap above
+   "最新影片" (.home-page's own 12px flex gap, already ≥ the 4px label-to-
+   thumbnail gap below it) never gets eaten into or overlapped by overflow
+   (this session: "home scene和 最新影片 的文字重疊了" — fixed height
+   thumbnails could ask for more room than was left and spill upward). */
 .recent-videos {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
 .recent-videos__section {
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
 }
 
+/* Indented past the scroll button (32px) + its gap (--space-2, 8px) so the
+   label text lines up with the thumbnails' own left edge, not the arrow's
+   (this session: "最新影片 和 最新直播的文字改成 和 影片縮圖 最左對齊"). */
 .recent-videos__label {
+  flex: 0 0 auto;
+  margin-left: calc(32px + var(--space-2));
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-secondary, #6b6774);
 }
 
+/* [left arrow][scrollable track][right arrow] — the arrow, not the
+   thumbnails, is what now sits at the row's own left edge (this session:
+   "靠左對齊改成 home scene 和 箭頭icon對齊"). */
 .recent-videos__row {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* YouTube-style circular scroll button. */
+.recent-videos__scroll-button {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--surface-border, #dcd9e0);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-primary, #232028);
+  cursor: pointer;
+}
+
+.recent-videos__track {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
   display: flex;
   gap: var(--space-3);
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none; /* Firefox */
+}
+
+.recent-videos__track::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge */
 }
 
 .recent-videos__card {
+  flex: 0 0 176px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -79,13 +126,30 @@
   color: inherit;
 }
 
+/* Fills whatever height its row actually has (never more), capped so it
+   doesn't balloon when space is abundant — this session's "縮圖高度放大小
+   許" was a modest bump from the original 99px, not an unbounded stretch. */
 .recent-videos__thumb {
   position: relative;
-  width: 176px;
-  height: 99px; /* 16:9 */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 126px;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.recent-videos__thumb-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.recent-videos__thumb-placeholder {
+  position: absolute;
+  inset: 0;
 }
 
 .recent-videos__card:hover .recent-videos__thumb,
@@ -123,162 +187,29 @@
   color: rgba(107, 103, 116, 0.7);
 }
 
-/* ============ CreatorStatusPanel ("ListStatus") — right column ============ */
-
-.creator-status-panel {
-  position: relative;
-  flex: 0 0 220px;
-  display: flex;
-  flex-direction: column;
-}
-
-.creator-status-panel__name {
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.creator-status-panel__spacer {
-  flex: 1 1 auto;
-}
-
-/* Bottom-left switch icon + the collapsed summary, side by side
-   (this session: "ListStatus 左下方 加一粒switch icon 制"). */
-.creator-status-panel__bottom-bar {
-  display: flex;
-  align-items: stretch;
-  gap: var(--space-2);
-}
-
-.creator-status-panel__view-toggle {
-  flex: 0 0 auto;
-  width: 40px;
-  height: 99px;
-  background: transparent;
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-sm);
-  font-size: 1rem;
-  color: var(--text-secondary, #6b6774);
-  cursor: pointer;
-}
-
-.creator-status-panel__view-toggle[aria-pressed="true"] {
-  color: #e8b923;
-  border-color: #e8b923;
-}
-
-/* Collapsed by default — only the live/offline counts, aligned with the
-   "最新直播" row below it (this session: "預設ListStatus係唔打開 只顯示直播數 同OFF數"). */
-.creator-status-panel__summary {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  height: 99px;
-  background: transparent;
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-3);
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary, #6b6774);
-  cursor: pointer;
-}
-
-/* position: fixed (not absolute) so "到畫面最頂" reaches the actual viewport
-   top regardless of where CreatorStatusPanel sits in the page flow — safe
-   to anchor this way because .home-page never scrolls (see its own
-   height-budget rule), so the panel's on-screen position is stable. */
-.creator-status-panel__popover {
-  position: fixed;
-  right: var(--space-4);
-  z-index: 30;
-  width: 260px;
-  display: flex;
-  flex-direction: column;
-  background: rgba(20, 19, 24, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-  color: #f2f0f5;
-}
-
-.creator-status-panel__popover--top {
-  top: var(--space-4);
-  height: calc(100vh - 2 * var(--space-4));
-  height: calc(100dvh - 2 * var(--space-4));
-}
-
-.creator-status-panel__popover--half {
-  top: var(--space-4);
-  height: 50vh;
-  height: 50dvh;
-}
-
-.creator-status-panel__popover-header {
-  flex: 0 0 auto;
-  display: flex;
-  gap: var(--space-2);
-  padding: var(--space-2);
-}
-
-.creator-status-panel__search {
-  flex: 1 1 auto;
-  min-width: 0;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-sm);
-  color: inherit;
-  padding: var(--space-1) var(--space-2);
-  font-size: 0.82rem;
-}
-
-.creator-status-panel__size-toggle {
-  flex: 0 0 auto;
-  width: 28px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-sm);
-  color: inherit;
-  cursor: pointer;
-  font-size: 0.9rem;
-  line-height: 1;
-}
-
-.creator-status-panel__list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
-
 @media (max-width: 900px) {
   .home-page__upper {
     flex-direction: column;
   }
-  .creator-status-panel {
-    flex: 0 0 auto;
-  }
 }
 
-/* ============ Scene: 16:9, height-driven so it fills whatever vertical
-   space remains after the toolbar and RecentVideosSection instead of
-   forcing the page taller than the viewport ============ */
+/* ============ Scene: an empty outlined frame plus SceneStatusLine in its
+   bottom-right corner. Height is 64% of the available vertical space —
+   80% reduced by another 20% (this session: "高度縮小20%" then "home-scene
+   高度減少20%"), width left-aligned so it lines up with RecentVideosSection
+   below it. ============ */
 
 .home-scene {
   position: relative;
-  flex: 1 1 auto;
+  flex: 0 0 64%;
   min-height: 0;
-  height: 100%;
   width: auto;
   max-width: 100%;
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: var(--radius-lg);
-  background: #1b1a20;
-  border: 1px solid var(--surface-border);
-  margin: 0 auto;
+  border: 1px solid var(--surface-border, #dcd9e0);
+  margin: 0;
 }
 
 .home-scene__layer {
@@ -290,18 +221,6 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.home-scene__desk,
-.home-scene__chair,
-.home-scene__keyboard,
-.home-scene__mouse,
-.home-scene__microphone {
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: auto;
-  pointer-events: none;
 }
 
 .home-placeholder {
@@ -316,146 +235,28 @@
   padding: var(--space-2);
 }
 
-/* ============ Oshi layer ============ */
-
-.home-oshi {
-  bottom: auto;
-  width: 34%;
-  cursor: default;
-  touch-action: none;
-  user-select: none;
-}
-
-.home-oshi--editable {
-  cursor: grab;
-}
-
-.home-oshi--editable:active {
-  cursor: grabbing;
-}
-
-.home-oshi__image {
-  display: block;
-  width: 100%;
-  height: auto;
-  pointer-events: none;
-}
-
-.home-placeholder--oshi {
-  aspect-ratio: 3 / 4;
-}
-
-.home-oshi__controls {
-  position: absolute;
-  bottom: -2.25rem;
-  left: 50%;
-  transform: translateX(-50%);
+/* Creator name + live status, one line, bottom-right corner of the frame
+   (this session: "creator名 Live狀態 在這個框的右下角 同一行顯示"). No
+   border/fill of its own — sits directly inside the frame's own border. */
+.home-scene__status-line {
+  right: var(--space-3);
+  bottom: var(--space-3);
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  background: rgba(20, 19, 24, 0.75);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  white-space: nowrap;
+  color: var(--text-primary, #232028);
+  font-size: 0.8rem;
+  z-index: 10;
 }
 
-/* ============ Desk monitor ============ */
-
-.home-desk-monitor {
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: #000;
+.home-scene__status-line__name {
+  font-weight: 700;
 }
 
-.home-desk-monitor__media {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.home-placeholder--monitor {
-  width: 100%;
-  height: 100%;
-}
-
-.home-desk-monitor__controls {
-  position: absolute;
-  bottom: var(--space-1);
-  left: var(--space-1);
-  right: var(--space-1);
+.home-scene__status-line__status {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-1);
-}
-
-.home-desk-monitor__controls button {
-  font-size: 0.7rem;
-}
-
-.home-desk-monitor__file-input {
-  font-size: 0.7rem;
-  max-width: 8rem;
-}
-
-/* ============ Analytics overlay (OBS-style compact panel) ============ */
-
-.home-analytics-overlay {
-  top: var(--space-4);
-  right: var(--space-4);
-  width: 26%;
-  min-width: 220px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  background: rgba(20, 19, 24, 0.62);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--home-overlay-accent, rgba(255, 255, 255, 0.18));
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  color: #f2f0f5;
-}
-
-.home-analytics-overlay .card {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
-  padding: var(--space-2);
-}
-
-.home-analytics-overlay .kpi-card__label {
-  font-size: 0.65rem;
-  color: rgba(242, 240, 245, 0.65);
-}
-
-.home-analytics-overlay .kpi-card__value {
-  font-size: 1rem;
-  color: #f2f0f5;
-}
-
-.home-analytics-overlay__kpis {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-2);
-}
-
-.home-analytics-overlay__chart {
-  height: 140px;
-}
-
-.home-analytics-overlay__chart .chart-card {
-  height: 100%;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 0;
-}
-
-@media (max-width: 640px) {
-  .home-analytics-overlay {
-    position: static;
-    width: 100%;
-    margin-top: var(--space-3);
-  }
 }
 
 /* ============ Global Live Schedule Dock ============ */
@@ -472,18 +273,49 @@
   transition: none !important;
 }
 
+/* One pill holding two buttons — the favorites-view switch and the
+   live-status summary — with no divider between them (this session:
+   "2個元素中間不要有黑線"). */
 .live-schedule-dock__summary {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  align-items: stretch;
   background: rgba(20, 19, 24, 0.85);
   color: #f2f0f5;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 999px;
-  padding: var(--space-2) var(--space-4);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.live-schedule-dock__view-toggle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: var(--space-2) 0;
+}
+
+.live-schedule-dock__view-toggle[aria-pressed="true"] {
+  color: #e8b923;
+}
+
+.live-schedule-dock__summary-text {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  color: inherit;
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-1);
   font-size: 0.8rem;
   font-weight: 600;
-  box-shadow: var(--shadow-sm);
   cursor: pointer;
 }
 
@@ -547,8 +379,15 @@
   padding: var(--space-1);
 }
 
+/* Scrollbar hidden, still scrollable (this session: "LIVE STATUS LIST
+   VIEW右邊的scroll view 要不顯示"). */
 .live-schedule-dock__list {
   overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+}
+
+.live-schedule-dock__list::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge */
 }
 
 /* ============ Creator status list (shared: Dock's expanded panel + Home's inline ListStatus panel) ============ */
