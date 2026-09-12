@@ -9,11 +9,12 @@ import { useLocale } from "../hooks/useLocale"
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion"
 import { useSelectedCreator } from "../hooks/useSelectedCreator"
 import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
+import { t } from "../i18n/translations"
 import { formatCountdown, type CountdownLanguage } from "../lib/creatorStatusFormat"
 import type { CreatorStatus } from "../types/creatorStatus"
 import { VideoPlayerModal } from "./VideoPlayerModal"
 
-/** "我的收藏" — only creators the user has starred; "all" — everyone. */
+/** "favorites" — only creators the user has starred; "all" — everyone. */
 type ViewMode = "all" | "favorites"
 
 /** "full" — panel reaches the top of the screen (the default every time the
@@ -55,10 +56,8 @@ function summarize(
  * The collapsed pill also carries the favorites-view switch (⇄) merged
  * directly into it, one pill, no second widget next to it — Home briefly
  * had its own separate creator-name+switch+live pill, but that just
- * duplicated this one already-existing bottom-right pill (this session,
- * marking the duplicate with an X: "為什麼還有2個在" / "我說了只要有右下角
- * 的一個"), so the switch was merged in here instead rather than kept as a
- * second widget. */
+ * duplicated this one already-existing bottom-right pill, so the switch
+ * was merged in here instead rather than kept as a second widget. */
 export function LiveScheduleDock() {
   const [expanded, setExpanded] = useState(false)
   const [panelSize, setPanelSize] = useState<PanelSize>("full")
@@ -83,9 +82,9 @@ export function LiveScheduleDock() {
   const summary = summarize(summaryStatuses, now, language)
 
   // Mirrors this component's own `expanded` state out to the module-level
-  // useLiveDockExpanded store (spec: "home scene的max width 要和live
-  // status打開時貼齊 不可重疊") so Home's scene frame can react to it
-  // without this component needing to know Home exists at all.
+  // useLiveDockExpanded store so Home's scene frame can react to it (to
+  // stay flush against this dock's own panel edges when open) without this
+  // component needing to know Home exists at all.
   useEffect(() => {
     setLiveDockExpanded(expanded)
   }, [expanded])
@@ -110,11 +109,10 @@ export function LiveScheduleDock() {
     }
   }, [expanded])
 
-  // The favorites-view switch — shown both on the collapsed pill and (per
-  // this session: "箭頭位置也要和live status沒打開時一樣有switch的button")
-  // inside the expanded panel's own header, so switching all/favorites
-  // never requires closing the list first. Same button, same shared
-  // viewMode, just rendered in two different places.
+  // The favorites-view switch — shown both on the collapsed pill and inside
+  // the expanded panel's own header, so switching all/favorites never
+  // requires closing the list first. Same button, same shared viewMode,
+  // just rendered in two different places.
   const viewToggle = (
     <button
       type="button"
@@ -122,7 +120,7 @@ export function LiveScheduleDock() {
       onClick={() => setViewMode((prev) => (prev === "all" ? "favorites" : "all"))}
       aria-label={viewMode === "all" ? "Show only my favorites" : "Show all creators"}
       aria-pressed={viewMode === "favorites"}
-      title={viewMode === "all" ? "全部 / 我的收藏" : "我的收藏 / 全部"}
+      title={t(locale, viewMode === "all" ? "liveScheduleDock.viewToggle.allThenFavorites" : "liveScheduleDock.viewToggle.favoritesThenAll")}
     >
       ⇄
     </button>
@@ -171,7 +169,7 @@ export function LiveScheduleDock() {
                 onClick={() => setPanelSize((prev) => (prev === "full" ? "compact" : "full"))}
                 aria-label={panelSize === "full" ? "Shrink panel" : "Expand panel to full height"}
                 aria-pressed={panelSize === "full"}
-                title={panelSize === "full" ? "縮小" : "放大"}
+                title={t(locale, panelSize === "full" ? "liveScheduleDock.resize.shrink" : "liveScheduleDock.resize.expand")}
               >
                 {panelSize === "full" ? "⤡" : "⤢"}
               </button>

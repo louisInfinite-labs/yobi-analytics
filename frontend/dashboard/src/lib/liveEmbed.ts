@@ -14,8 +14,7 @@ export interface LiveEmbedVideo {
  * but only when that was within the last 24 hours. Anything older (or no
  * stream history at all) returns null; the scene frame then falls back to
  * its existing empty/status-line-only rendering -- that fallback's own
- * design is still an open decision (this session: "24小時內沒有直播的情況
- * 等待你coding完這個再作打算"), not this function's job. */
+ * design is still an open decision, not this function's job. */
 export function selectLiveEmbedVideo(
   status: CreatorStatus | undefined,
   streamVideos: RecentVideo[],

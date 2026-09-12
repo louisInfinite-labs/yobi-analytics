@@ -69,8 +69,9 @@ export function selectVideosByCategory(
   ).slice(0, count)
 }
 
-/** The 5 latest normal (non-live) videos, most recent first (this session:
- * "最新影片和 最新直播也是5條影片"). */
+/** The 5 latest normal (non-live) videos, most recent first. No `sort`
+ * param -- the sort dropdown only applies to "ALL"/category tags, so this
+ * always stays newest-first exactly as before. */
 export function selectLatestVideos(videos: RecentVideo[], count = 5): RecentVideo[] {
   return sortByPublishedDesc(videos.filter((v) => v.contentFormat === "normal_video")).slice(0, count)
 }
@@ -78,8 +79,7 @@ export function selectLatestVideos(videos: RecentVideo[], count = 5): RecentVide
 /** The livestream row's 5 slots:
  *  - currently live now → [live now, ...4 most recent completed streams]
  *  - otherwise → [5 most recent completed streams]
- * (this session's own spec: "如果目前有直播 顯示 現在直播 + 最新直播", slot
- * count later raised to 5 alongside selectLatestVideos). */
+ * Also has no `sort` param, same reason as selectLatestVideos above. */
 export function selectLivestreamSlots(videos: RecentVideo[], count = 5): RecentVideo[] {
   const liveNow = videos.find((v) => v.contentFormat === "live_now")
   const archives = sortByPublishedDesc(videos.filter((v) => v.contentFormat === "live_archive"))

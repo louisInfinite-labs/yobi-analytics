@@ -1,5 +1,5 @@
-/** Semantic asset mapping for the Home OBS-style room scene (ぱるぷんて。
- * "配信部屋 素材セット", https://booth.pm/ja/items/5706710).
+/** Semantic asset mapping for the Home OBS-style room scene (asset pack:
+ * parupunte's "Streaming Room Material Set", https://booth.pm/ja/items/5706710).
  *
  * The actual purchased image files are not committed here — confirm the
  * downloaded tier's licence permits this app's intended use before shipping

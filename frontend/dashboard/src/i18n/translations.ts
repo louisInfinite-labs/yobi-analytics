@@ -28,6 +28,16 @@ export type TranslationKey =
   | "recentVideos.sort.newest"
   | "recentVideos.sort.oldest"
   | "recentVideos.sort.mostViews"
+  | "liveScheduleDock.viewToggle.allThenFavorites"
+  | "liveScheduleDock.viewToggle.favoritesThenAll"
+  | "liveScheduleDock.resize.shrink"
+  | "liveScheduleDock.resize.expand"
+  | "errorState.code"
+  | "apiError.config"
+  | "apiError.network"
+  | "apiError.rateLimited"
+  | "apiError.serverError"
+  | "apiError.generic"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -53,6 +63,16 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.sort.newest": "最新上架",
     "recentVideos.sort.oldest": "最舊上架",
     "recentVideos.sort.mostViews": "總觀看次數最多",
+    "liveScheduleDock.viewToggle.allThenFavorites": "全部 / 我的收藏",
+    "liveScheduleDock.viewToggle.favoritesThenAll": "我的收藏 / 全部",
+    "liveScheduleDock.resize.shrink": "縮小",
+    "liveScheduleDock.resize.expand": "放大",
+    "errorState.code": "(代碼: {{code}})",
+    "apiError.config": "應用程式設定錯誤,請聯絡管理員。",
+    "apiError.network": "無法連線到伺服器,請檢查你的網絡連線後重試。",
+    "apiError.rateLimited": "現在使用人數較多,伺服器暫時限制請求 (429)。系統已自動重試但仍未成功,請稍後再重新整理。",
+    "apiError.serverError": "AWS 伺服器發生錯誤 ({{status}}),並非你的網絡問題,請稍後再試。",
+    "apiError.generic": "請求失敗 ({{status}}):{{message}}",
   },
   en: {
     "common.cancel": "Cancel",
@@ -77,6 +97,16 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.sort.newest": "Newest",
     "recentVideos.sort.oldest": "Oldest",
     "recentVideos.sort.mostViews": "Most Views",
+    "liveScheduleDock.viewToggle.allThenFavorites": "All / Favorites",
+    "liveScheduleDock.viewToggle.favoritesThenAll": "Favorites / All",
+    "liveScheduleDock.resize.shrink": "Shrink",
+    "liveScheduleDock.resize.expand": "Expand",
+    "errorState.code": "(Code: {{code}})",
+    "apiError.config": "Application configuration error. Please contact an administrator.",
+    "apiError.network": "Could not connect to the server. Please check your network connection and try again.",
+    "apiError.rateLimited": "Usage is currently high and the server is temporarily rate-limiting requests (429). Automatic retries did not succeed — please refresh and try again shortly.",
+    "apiError.serverError": "The server returned an error ({{status}}). This is not a problem with your network — please try again shortly.",
+    "apiError.generic": "Request failed ({{status}}): {{message}}",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -101,6 +131,16 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.sort.newest": "新着順",
     "recentVideos.sort.oldest": "古い順",
     "recentVideos.sort.mostViews": "総再生数順",
+    "liveScheduleDock.viewToggle.allThenFavorites": "全部 / お気に入り",
+    "liveScheduleDock.viewToggle.favoritesThenAll": "お気に入り / 全部",
+    "liveScheduleDock.resize.shrink": "縮小",
+    "liveScheduleDock.resize.expand": "拡大",
+    "errorState.code": "(コード: {{code}})",
+    "apiError.config": "アプリの設定エラーです。管理者にお問い合わせください。",
+    "apiError.network": "サーバーに接続できませんでした。ネットワーク接続を確認して再試行してください。",
+    "apiError.rateLimited": "現在アクセスが集中しており、サーバーが一時的にリクエストを制限しています (429)。自動リトライも成功しませんでした。しばらくしてから再読み込みしてください。",
+    "apiError.serverError": "サーバー側でエラーが発生しました ({{status}})。ネットワークの問題ではありません。しばらくしてから再試行してください。",
+    "apiError.generic": "リクエストに失敗しました ({{status}}):{{message}}",
   },
 }
 

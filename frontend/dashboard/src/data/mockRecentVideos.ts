@@ -54,9 +54,9 @@ export function resolvePlaybackVideoId(videoId: string): string {
  * different shape/purpose entirely, so extending one must not perturb the
  * other). Each creator carries at least 5 normal_video entries and 5
  * live_now/live_archive entries so selectLatestVideos/selectLivestreamSlots
- * (both capped at 5, this session: "最新影片和 最新直播也是5條影片") have
- * enough to actually fill 5 slots instead of being capped by sparse
- * fixture data. Swap this module's export for a real per-creator video list
+ * (both capped at 5) have enough to actually fill 5 slots instead of being
+ * capped by sparse fixture data. Swap this module's export for a real
+ * per-creator video list
  * (Read API/Holodex) once that exists — see homeAssets.ts/
  * mockCreatorStatuses.ts for the same swap-point pattern used elsewhere in
  * Home. */

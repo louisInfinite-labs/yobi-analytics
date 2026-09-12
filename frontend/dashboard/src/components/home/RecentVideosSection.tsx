@@ -21,9 +21,8 @@ interface RecentVideosSectionProps {
 }
 
 /** Once the user has scrolled to roughly the 14th-16th card, the next page
- * is already worth fetching (this session: "user往右滑到14-16支影片時 再預入
- * 後20支影片") — picking the smaller end (14) means it fires no later than
- * that window. */
+ * is already worth fetching — picking the smaller end (14) means it fires
+ * no later than that window. */
 const PREFETCH_AT_INDEX = 13
 
 const INITIAL_VISIBLE_COUNT = 20
@@ -98,9 +97,8 @@ function VideoRow({
   const nextThresholdRef = useRef(PREFETCH_AT_INDEX)
   // Left arrow starts hidden -- the track starts scrolled all the way left
   // (list[0] flush against the left edge), so there's nothing left to
-  // scroll back to yet (this session: "＜箭頭顯示是條件是目前list[0]的影片
-  // 不在最左邊"). Any rightward scroll at all reveals it again ("有被滑了
-  //一下也要顯示"), not just once it's scrolled a full card.
+  // scroll back to yet. Any rightward scroll at all reveals it again, not
+  // just once it's scrolled a full card.
   const [canScrollLeft, setCanScrollLeft] = useState(false)
 
   function scrollByOneCard(direction: 1 | -1) {

@@ -11,10 +11,9 @@ import { selectLiveEmbedVideo } from "../../lib/liveEmbed"
 import { RecentVideosSection } from "./RecentVideosSection"
 
 /** The selected creator's own name + live status, one line, bottom-right
- * corner of the (otherwise empty) frame (this session: "creator名 Live狀態
- * 在這個框的右下角 同一行顯示"). No border of its own here — it sits
- * directly inside the frame's own border. No switch button either — that
- * stays merged into the global LiveScheduleDock pill so it isn't
+ * corner of the (otherwise empty) frame. No border of its own here — it
+ * sits directly inside the frame's own border. No switch button either —
+ * that stays merged into the global LiveScheduleDock pill so it isn't
  * duplicated here. */
 function SceneStatusLine({ creatorId }: { creatorId: string }) {
   const [displayMode] = useUpcomingDisplayMode()
@@ -38,17 +37,15 @@ function SceneStatusLine({ creatorId }: { creatorId: string }) {
 }
 
 /** The real, playable YouTube embed for the selected creator's live scene
- * (this session: "把home-scene改一個純youtube播放器 直播該creator的直播
- * 內容") -- only rendered when selectLiveEmbedVideo finds something
- * eligible (currently live, or an archive that ended within the last 24h).
+ * -- only rendered when selectLiveEmbedVideo finds something eligible
+ * (currently live, or an archive that ended within the last 24h).
  *
  * Desktop autoplays muted: every major browser blocks unmuted autoplay
  * without a user gesture, and this renders on page load / creator switch,
- * not a click, so muted is what actually makes "電腦版是直接播放" happen
- * rather than silently fail to autoplay at all. Mobile never requests
- * autoplay (spec: "手機打開時是預設不播放") -- YouTube's own embed already
- * shows a thumbnail + play button when it isn't autoplaying, so no separate
- * placeholder UI is needed here. */
+ * not a click, so muted is what actually makes autoplay work at all rather
+ * than silently fail. Mobile never requests autoplay -- YouTube's own
+ * embed already shows a thumbnail + play button when it isn't autoplaying,
+ * so no separate placeholder UI is needed here. */
 function LiveEmbedPlayer({ videoId, title, autoplay }: { videoId: string; title: string; autoplay: boolean }) {
   const params = autoplay ? "autoplay=1&mute=1" : "autoplay=0"
   return (
@@ -65,10 +62,9 @@ function LiveEmbedPlayer({ videoId, title, autoplay }: { videoId: string; title:
 /** Home's scene area: the selected creator's live YouTube embed when one is
  * eligible (see LiveEmbedPlayer), plus SceneStatusLine layered on top in
  * its bottom-right corner either way. When no video is eligible, this is
- * still just the empty outlined frame from before (this session: "我要看到
- * 有個框 中間什麼元素都不要") -- that no-eligible-video fallback is an open
- * decision, not resolved by this change. The border itself lives in
- * styles/home.css's `.home-scene` rule.
+ * still just the empty outlined frame from before -- that no-eligible-
+ * video fallback is an open decision, not resolved by this change. The
+ * border itself lives in styles/home.css's `.home-scene` rule.
  *
  * Below it sits RecentVideosSection (2 latest videos, then 2 livestream
  * slots — live-now + latest archive when one is live, otherwise the 2

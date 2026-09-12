@@ -26,12 +26,12 @@ export function setLiveDockExpanded(next: boolean): void {
   listeners.forEach((listener) => listener())
 }
 
-/** Whether the global Live Schedule Dock panel is currently expanded (spec:
- * "home scene的max width 要和live status打開時貼齊 不可重疊" -- the dock
- * floats as a fixed-position overlay with no layout space reserved for it,
- * so Home's own scene frame needs to know when to shrink itself rather than
- * sit underneath it). Read-only for every consumer except LiveScheduleDock
- * itself. */
+/** Whether the global Live Schedule Dock panel is currently expanded -- the
+ * dock floats as a fixed-position overlay with no layout space reserved
+ * for it, so Home's own scene frame needs to know when to shrink itself
+ * (staying flush against the dock's edges, never overlapped by it) rather
+ * than sit underneath it. Read-only for every consumer except
+ * LiveScheduleDock itself. */
 export function useLiveDockExpanded(): boolean {
   return useSyncExternalStore(subscribe, getSnapshot)
 }

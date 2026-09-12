@@ -6,8 +6,7 @@
    in engines without dynamic-viewport-unit support. */
 /* padding-bottom is var(--space-4) (16px), not var(--space-5), so
    RecentVideosSection's last row sits exactly 16px above the viewport
-   bottom edge once it's grown to fill the space (this session: "播放器的
-   大小放大到 第最新直播的標題離畫面底部16PX"). */
+   bottom edge once it's grown to fill the space. */
 .home-page {
   height: 100vh;
   height: 100dvh;
@@ -167,8 +166,8 @@
 }
 
 /* Fills whatever height its row actually has (never more), capped so it
-   doesn't balloon when space is abundant — this session's "縮圖高度放大小
-   許" was a modest bump from the original 99px, not an unbounded stretch. */
+   doesn't balloon when space is abundant -- a modest bump from the
+   original 99px, not an unbounded stretch. */
 .recent-videos__thumb {
   position: relative;
   flex: 1 1 auto;
@@ -234,10 +233,9 @@
 }
 
 /* ============ Scene: an empty outlined frame plus SceneStatusLine in its
-   bottom-right corner. Height is 64% of the available vertical space —
-   80% reduced by another 20% (this session: "高度縮小20%" then "home-scene
-   高度減少20%"), width left-aligned so it lines up with RecentVideosSection
-   below it. ============ */
+   bottom-right corner. Height is 64% of the available vertical space,
+   width left-aligned so it lines up with RecentVideosSection below it.
+   ============ */
 
 .home-scene {
   position: relative;
@@ -254,22 +252,22 @@
 
 /* LiveScheduleDock floats as a fixed, viewport-anchored overlay with no
    layout space reserved for it, so without this the scene sits underneath
-   it instead of stopping flush at its left edge (this session: "home
-   scene的max width 要和live status打開時貼齊 不可重疊" / "我要求是緊貼").
-   A plain percentage max-width can't guarantee that: home-scene's own
-   width normally comes from its OWN height × its 16/9 aspect-ratio, not
-   from how much horizontal room is available, so on a wide/short viewport
-   its natural width is already narrower than any percentage-based cap --
-   nothing to clip, so the gap to the dock stays open. This instead
-   computes home-scene's exact required width in absolute viewport terms:
-   the dock's left edge (100vw - dock width, min(90vw,380px) mirroring
-   .live-schedule-dock__panel's own width) minus home-scene's own left edge
-   (.home-page's own centering offset, which only exists once the viewport
-   exceeds --home-page-max-width, plus its var(--space-6) left padding).
-   Setting `width` (not `max-width`) forces this exact size regardless of
-   the natural aspect-ratio width, which is also what overrides the 16:9
-   ratio here on a wide viewport ("我要求是緊貼" -- flush wins over keeping
-   the frame's own proportions) -- only RecentVideosSection stays put. */
+   it instead of stopping flush at its left edge, with zero gap, while the
+   dock is open. A plain percentage max-width can't guarantee that:
+   home-scene's own width normally comes from its OWN height × its 16/9
+   aspect-ratio, not from how much horizontal room is available, so on a
+   wide/short viewport its natural width is already narrower than any
+   percentage-based cap -- nothing to clip, so the gap to the dock stays
+   open. This instead computes home-scene's exact required width in
+   absolute viewport terms: the dock's left edge (100vw - dock width,
+   min(90vw,380px) mirroring .live-schedule-dock__panel's own width) minus
+   home-scene's own left edge (.home-page's own centering offset, which
+   only exists once the viewport exceeds --home-page-max-width, plus its
+   var(--space-6) left padding). Setting `width` (not `max-width`) forces
+   this exact size regardless of the natural aspect-ratio width, which is
+   also what overrides the 16:9 ratio here on a wide viewport -- flush
+   against the dock wins over keeping the frame's own proportions while
+   it's open -- only RecentVideosSection stays put. */
 .home-scene--dock-open {
   width: calc(100vw - min(90vw, 380px) - ((100vw - min(var(--home-page-max-width), 100vw)) / 2) - var(--space-6));
   max-width: none;
@@ -308,9 +306,9 @@
   padding: var(--space-2);
 }
 
-/* Creator name + live status, one line, bottom-right corner of the frame
-   (this session: "creator名 Live狀態 在這個框的右下角 同一行顯示"). No
-   border/fill of its own — sits directly inside the frame's own border. */
+/* Creator name + live status, one line, bottom-right corner of the frame.
+   No border/fill of its own — sits directly inside the frame's own
+   border. */
 .home-scene__status-line {
   right: var(--space-3);
   bottom: var(--space-3);
@@ -355,8 +353,7 @@
 }
 
 /* One pill holding two buttons — the favorites-view switch and the
-   live-status summary — with no divider between them (this session:
-   "2個元素中間不要有黑線"). */
+   live-status summary — with no divider between them. */
 .live-schedule-dock__summary {
   display: flex;
   align-items: stretch;
@@ -483,8 +480,7 @@
   padding: var(--space-1);
 }
 
-/* Scrollbar hidden, still scrollable (this session: "LIVE STATUS LIST
-   VIEW右邊的scroll view 要不顯示"). Solid background matching each row's
+/* Scrollbar hidden, still scrollable. Solid background matching each row's
    own #141318 (not the panel's translucent rgba(20,19,24,.92)) so the
    gaps between rows read as the same single background as the rows
    themselves -- no visible two-tone split. __header above keeps the
@@ -625,10 +621,9 @@
 }
 
 /* 48px placeholder avatar (spec's own example size — no avatar existed in
-   the prior implementation to preserve the size of, see the completion
-   report's "與規格不同的地方"). Deterministic per-creator color reuses
-   getMemberAccent, whose own doc comment already names "avatars" as an
-   intended use. */
+   the prior implementation to preserve the size of). Deterministic
+   per-creator color reuses getMemberAccent, whose own doc comment already
+   names "avatars" as an intended use. */
 .creator-status-list__avatar {
   position: relative;
   flex: 0 0 auto;
@@ -655,10 +650,9 @@
 
 /* CURRENT ACTIVE OSHI only (spec section 2) -- not hover/focus/LIVE/favorite. */
 .creator-status-list__avatar--active {
-  /* Leans white rather than the raw theme color (this session: "creator
-     點下去的光圈我想要偏白色 有點亮的感覺") while still tracking the
-     current Oshi's own theme -- a white-tinted version of it, not a fixed
-     unrelated color. */
+  /* Leans white rather than the raw theme color, for a brighter/glowing
+     feel, while still tracking the current Oshi's own theme -- a
+     white-tinted version of it, not a fixed unrelated color. */
   --avatar-glow-color: color-mix(in srgb, white 65%, var(--theme-primary) 35%);
   outline-color: var(--avatar-glow-color);
   box-shadow: 0 0 10px color-mix(in srgb, var(--avatar-glow-color) 70%, transparent);

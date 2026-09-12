@@ -144,9 +144,9 @@ export interface CreatorStatusListProps {
   /** Avatar+name click (spec: "switches the active Oshi") — never opens
    * YouTube and never touches favorite state. */
   onSelectCreator: (channelId: string) => void
-  /** "我的收藏": when set, only creators in this set are listed at all — a
-   * stricter filter than search, applied first. Omit to list every creator
-   * (the "all" mode). */
+  /** Favorites-only filter: when set, only creators in this set are listed
+   * at all — a stricter filter than search, applied first. Omit to list
+   * every creator (the "all" mode). */
   favoriteOnlyIds?: Set<string>
   favorites: Set<string>
   /** Committed by each row's own swipe-to-favorite gesture (CreatorRow /
@@ -257,9 +257,9 @@ export function CreatorStatusList({
   )
 }
 
-/** Live/offline counts across the given creator subset (all, or "我的收藏"
- * only) — the "ListStatus" collapsed summary's own numbers (this session:
- * "預設ListStatus係唔打開 只顯示直播數 同OFF數"). */
+/** Live/offline counts across the given creator subset (all, or favorites
+ * only) — the "ListStatus" collapsed summary's own numbers, shown by
+ * default before the list itself is expanded. */
 export function countLiveAndOffline(
   statuses: Record<string, CreatorStatus>,
   favoriteOnlyIds?: Set<string>,

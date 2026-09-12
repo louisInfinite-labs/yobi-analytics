@@ -24,9 +24,9 @@ function serializeFavorites(favorites: Set<string>): string {
 // live/offline counts, ...) immediately, not just after a remount.
 const favoritesStore = createSharedState(STORAGE_KEY, readFavorites, serializeFavorites)
 
-/** "我的收藏" — the user's own hand-picked subset of creators they actually
- * want to keep an eye on, shared app-wide (see favoritesStore above) via
- * the same underlying store, not a per-view favorites list. */
+/** "My Favorites" — the user's own hand-picked subset of creators they
+ * actually want to keep an eye on, shared app-wide (see favoritesStore above)
+ * via the same underlying store, not a per-view favorites list. */
 export function useFavoriteCreators() {
   const [favorites, setFavorites] = useSharedState(favoritesStore)
 

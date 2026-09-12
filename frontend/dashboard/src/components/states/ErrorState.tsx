@@ -1,4 +1,6 @@
 import { AlertTriangle } from "lucide-react"
+import { useLocale } from "../../hooks/useLocale"
+import { t } from "../../i18n/translations"
 
 /** Shown when the analytics request itself failed (Roadmap 3.4 ClientError/5xx).
  * `code` is the concrete status (e.g. "503", "429") or "NETWORK" when the
@@ -15,12 +17,13 @@ export function ErrorState({
   code?: string
   onRetry?: () => void
 }) {
+  const [locale] = useLocale()
   return (
     <div className="state-panel state-panel--error" role="alert">
       <AlertTriangle size={28} className="state-panel__icon" aria-hidden="true" />
       <p>
         {message}
-        {code && <span className="state-panel__error-code"> (代碼: {code})</span>}
+        {code && <span className="state-panel__error-code"> {t(locale, "errorState.code", { code })}</span>}
       </p>
       {onRetry && (
         <button type="button" className="soft-button" onClick={onRetry}>
