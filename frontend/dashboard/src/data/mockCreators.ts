@@ -8,6 +8,19 @@ export interface MockCreator {
   groupKey: GroupKey[]
   channelType: ChannelType
   lifecycleStage: LifecycleStage
+  /** Real YouTube channel avatar thumbnail URL. No creator-master/YouTube
+   * data source exposes this yet (see this task's completion report's data
+   * dependency note), so every mock entry below leaves it unset and the UI
+   * falls back to a generated colored-circle/initial placeholder. */
+  avatarUrl?: string
+  /** The creator's own Japanese reading (Hiragana or Katakana), used only as
+   * a gojuon sort key (see lib/japaneseReading.ts) — never derived from the
+   * displayed Kanji name at runtime. Left unset for group/staff/placeholder
+   * channels and non-Japanese-branch creators, whose name isn't an
+   * individual's own pronunciation to begin with (see this task's
+   * completion report's kana-coverage note); sorting falls back to stable
+   * roster order for any creator missing it. */
+  kana?: string
 }
 
 // Covers: hololive + VSPO, JP/EN/ID branches, active/graduated/pre-debut,
@@ -22,6 +35,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生"],
     channelType: "member",
     lifecycleStage: "active",
+    kana: "あいざわえま",
   },
   {
     channelId: "ch_shirakami_fubuki",
@@ -31,6 +45,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生", "ゲーマーズ"],
     channelType: "member",
     lifecycleStage: "active",
+    kana: "しらかみふぶき",
   },
   {
     channelId: "ch_usada_pekora",
@@ -40,6 +55,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["3期生"],
     channelType: "member",
     lifecycleStage: "active",
+    kana: "うさだぺこら",
   },
   {
     channelId: "ch_gawr_gura",
@@ -70,6 +86,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生"],
     channelType: "member",
     lifecycleStage: "graduated",
+    kana: "きりゅうここ",
   },
   {
     channelId: "ch_amelia_myth_graduated",

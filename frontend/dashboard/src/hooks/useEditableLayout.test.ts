@@ -3,6 +3,7 @@ import { act } from "react"
 import { beforeEach, describe, expect, it } from "vitest"
 import { useEditableLayout } from "./useEditableLayout"
 import { readLayout, writeLayout } from "../lib/layoutStore"
+import type { Breakpoint } from "../types/widget"
 
 describe("useEditableLayout", () => {
   beforeEach(() => {
@@ -11,7 +12,10 @@ describe("useEditableLayout", () => {
 
   it("reloads the layout for the new breakpoint instead of carrying over the previous one's draft", () => {
     const { result, rerender } = renderHook(({ breakpoint }) => useEditableLayout("dashboard", breakpoint), {
-      initialProps: { breakpoint: "desktop" as const },
+      // Widened to Breakpoint (not `as const`'s literal "desktop") so
+      // rerender() below can pass any other Breakpoint value without a type
+      // error -- renderHook infers its Props generic from this object.
+      initialProps: { breakpoint: "desktop" as Breakpoint },
     })
 
     act(() => {
@@ -35,7 +39,10 @@ describe("useEditableLayout", () => {
 
   it("saves to the new breakpoint's own storage key after switching, not the previous one's", () => {
     const { result, rerender } = renderHook(({ breakpoint }) => useEditableLayout("dashboard", breakpoint), {
-      initialProps: { breakpoint: "desktop" as const },
+      // Widened to Breakpoint (not `as const`'s literal "desktop") so
+      // rerender() below can pass any other Breakpoint value without a type
+      // error -- renderHook infers its Props generic from this object.
+      initialProps: { breakpoint: "desktop" as Breakpoint },
     })
 
     rerender({ breakpoint: "mobile" })

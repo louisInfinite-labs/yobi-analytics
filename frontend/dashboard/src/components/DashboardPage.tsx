@@ -1,7 +1,5 @@
 import { useCallback, useMemo, useState } from "react"
-import { MOCK_REPORT_DATE, mockVideoStats } from "../data/mockVideoStats"
 import { mockDailySeries } from "../data/mockDailySeries"
-import type { CacheEntry } from "../lib/analyticsCache"
 import { describeApiFailure } from "../lib/apiClient"
 import { useBreakpoint } from "../hooks/useBreakpoint"
 import { useCachedDashboardData } from "../hooks/useCachedDashboardData"
@@ -11,8 +9,7 @@ import { useHeartbeat } from "../hooks/useHeartbeat"
 import { deriveChannelContribution, deriveKpis } from "../lib/deriveAnalytics"
 import { deriveInsights } from "../lib/deriveInsights"
 import { matchesClassification, matchesContent } from "../lib/filterState"
-import { fetchLiveAnalytics } from "../lib/liveAnalytics"
-import { comparisonDateFor, scaleStatsForPeriod } from "../lib/period"
+import { fetchMockAnalytics, fetchRealAnalytics, MOCK_REPORT_DATE } from "../lib/dashboardAnalyticsSource"
 import { detectDeviceTimeZone } from "../lib/timezone"
 import type { Period } from "../types/domain"
 import type { DashboardWidgetData } from "../lib/widgetRegistry"
@@ -30,38 +27,6 @@ import { ErrorState } from "./states/ErrorState"
 import { LoadingState } from "./states/LoadingState"
 
 const LAYOUT_PROFILE_ID = "default"
-
-/** Mock fixture path (Roadmap 3.6's cache-then-refresh flow, real not simulated). */
-function fetchMockAnalytics(reportDate: string, period: Period): Promise<CacheEntry> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        timeZone: "", // filled in by the caller, which knows the requested zone
-        reportDate,
-        comparisonDate: comparisonDateFor(reportDate, period),
-        period,
-        fetchedAt: new Date().toISOString(),
-        results: scaleStatsForPeriod(mockVideoStats, period),
-      })
-    }, 550)
-  })
-}
-
-/** Real Read API path (Roadmap 3.4) — merges every organization's trending
- * results (see lib/liveAnalytics.ts for why this is more than one request)
- * into the same CacheEntry shape the mock path returns, so nothing
- * downstream of fetchAnalytics needs to know which source it came from. */
-async function fetchRealAnalytics(reportDate: string, period: Period, timeZone: string): Promise<CacheEntry> {
-  const { results, comparisonDate } = await fetchLiveAnalytics(reportDate, period, timeZone)
-  return {
-    timeZone: "",
-    reportDate,
-    comparisonDate,
-    period,
-    fetchedAt: new Date().toISOString(),
-    results,
-  }
-}
 
 /** Top-level composition: wires cache-backed data, filters, and every
  * KPI/chart/ranking/table view together behind one shared filter state. */

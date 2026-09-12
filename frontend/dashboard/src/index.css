@@ -18,6 +18,11 @@
   --neutral-badge: #8f8a97;
   --neutral-badge-soft: #eeecf0;
 
+  /* The one LIVE/red token — recent-videos' live badge, the Dock/creator-list
+     red dots, and the favorite heart all read this instead of each carrying
+     their own copy of the hex value. */
+  --live-red: #e5484d;
+
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;

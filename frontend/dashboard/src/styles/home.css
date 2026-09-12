@@ -1,0 +1,668 @@
+/* ============ Home page shell ============ */
+
+/* height-budgeted, not min-height: the toolbar + RecentVideosSection +
+   scene together must fit one 1920x1080 viewport with no vertical scroll
+   (this session's own explicit requirement) — 100dvh falls back to 100vh
+   in engines without dynamic-viewport-unit support. */
+/* padding-bottom is var(--space-4) (16px), not var(--space-5), so
+   RecentVideosSection's last row sits exactly 16px above the viewport
+   bottom edge once it's grown to fill the space (this session: "播放器的
+   大小放大到 第最新直播的標題離畫面底部16PX"). */
+.home-page {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  padding: var(--space-4) var(--space-6) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 1440px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* ============ Upper part: RecentVideosSection, left-aligned under the
+   scene, grown to fill the rest of the page's height (see .home-page's own
+   comment above) instead of sizing to its content. ============ */
+
+.home-page__upper {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-5);
+}
+
+/* Both sections (最新影片/最新直播) share the available height equally via
+   flex-grow, each row's thumbnails filling whatever their section has left
+   after its label — so the two rows always add up to exactly what's
+   available, never more. That's what actually guarantees the gap above
+   "最新影片" (.home-page's own 12px flex gap, already ≥ the 4px label-to-
+   thumbnail gap below it) never gets eaten into or overlapped by overflow
+   (this session: "home scene和 最新影片 的文字重疊了" — fixed height
+   thumbnails could ask for more room than was left and spill upward). */
+.recent-videos {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.recent-videos__section {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Indented past the scroll button (32px) + its gap (--space-2, 8px) so the
+   label text lines up with the thumbnails' own left edge, not the arrow's
+   (this session: "最新影片 和 最新直播的文字改成 和 影片縮圖 最左對齊"). */
+.recent-videos__label {
+  flex: 0 0 auto;
+  margin-left: calc(32px + var(--space-2));
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary, #6b6774);
+}
+
+/* [left arrow][scrollable track][right arrow] — the arrow, not the
+   thumbnails, is what now sits at the row's own left edge (this session:
+   "靠左對齊改成 home scene 和 箭頭icon對齊"). */
+.recent-videos__row {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* YouTube-style circular scroll button. */
+.recent-videos__scroll-button {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--surface-border, #dcd9e0);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-primary, #232028);
+  cursor: pointer;
+}
+
+.recent-videos__track {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none; /* Firefox */
+}
+
+.recent-videos__track::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge */
+}
+
+.recent-videos__card {
+  flex: 0 0 176px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 176px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+/* Fills whatever height its row actually has (never more), capped so it
+   doesn't balloon when space is abundant — this session's "縮圖高度放大小
+   許" was a modest bump from the original 99px, not an unbounded stretch. */
+.recent-videos__thumb {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 126px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.recent-videos__thumb-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.recent-videos__thumb-placeholder {
+  position: absolute;
+  inset: 0;
+}
+
+.recent-videos__card:hover .recent-videos__thumb,
+.recent-videos__card:focus-visible .recent-videos__thumb {
+  border-color: var(--home-overlay-accent, rgba(255, 255, 255, 0.35));
+}
+
+.recent-videos__live-badge {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  background: var(--live-red);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.recent-videos__title {
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--text-secondary, #6b6774);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-videos__empty {
+  display: flex;
+  align-items: center;
+  height: 99px;
+  font-size: 0.75rem;
+  color: rgba(107, 103, 116, 0.7);
+}
+
+@media (max-width: 900px) {
+  .home-page__upper {
+    flex-direction: column;
+  }
+}
+
+/* ============ Scene: an empty outlined frame plus SceneStatusLine in its
+   bottom-right corner. Height is 64% of the available vertical space —
+   80% reduced by another 20% (this session: "高度縮小20%" then "home-scene
+   高度減少20%"), width left-aligned so it lines up with RecentVideosSection
+   below it. ============ */
+
+.home-scene {
+  position: relative;
+  flex: 0 0 64%;
+  min-height: 0;
+  width: auto;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--surface-border, #dcd9e0);
+  margin: 0;
+}
+
+.home-scene__layer {
+  position: absolute;
+}
+
+.home-scene__background {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.home-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.75rem;
+  text-align: center;
+  padding: var(--space-2);
+}
+
+/* Creator name + live status, one line, bottom-right corner of the frame
+   (this session: "creator名 Live狀態 在這個框的右下角 同一行顯示"). No
+   border/fill of its own — sits directly inside the frame's own border. */
+.home-scene__status-line {
+  right: var(--space-3);
+  bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-primary, #232028);
+  font-size: 0.8rem;
+  z-index: 10;
+}
+
+.home-scene__status-line__name {
+  font-weight: 700;
+}
+
+.home-scene__status-line__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* ============ Global Live Schedule Dock ============ */
+
+.live-schedule-dock {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 40;
+}
+
+.live-schedule-dock--no-motion,
+.live-schedule-dock--no-motion * {
+  transition: none !important;
+}
+
+/* One pill holding two buttons — the favorites-view switch and the
+   live-status summary — with no divider between them (this session:
+   "2個元素中間不要有黑線"). */
+.live-schedule-dock__summary {
+  display: flex;
+  align-items: stretch;
+  background: rgba(20, 19, 24, 0.85);
+  color: #f2f0f5;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.live-schedule-dock__view-toggle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: var(--space-2) 0;
+}
+
+.live-schedule-dock__view-toggle[aria-pressed="true"] {
+  color: #e8b923;
+}
+
+.live-schedule-dock__summary-text {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  color: inherit;
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-1);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.live-schedule-dock__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.live-schedule-dock__dot--red {
+  background: var(--live-red);
+}
+
+.live-schedule-dock__dot--grey {
+  background: #8a8790;
+}
+
+.live-schedule-dock__panel {
+  width: min(90vw, 380px);
+  max-height: min(70vh, 520px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(20, 19, 24, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  color: #f2f0f5;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.live-schedule-dock__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.live-schedule-dock__search {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.85rem;
+}
+
+.live-schedule-dock__close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: var(--space-1);
+}
+
+/* Scrollbar hidden, still scrollable (this session: "LIVE STATUS LIST
+   VIEW右邊的scroll view 要不顯示"). */
+.live-schedule-dock__list {
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+}
+
+.live-schedule-dock__list::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge */
+}
+
+/* ============ Creator status list (shared: Dock's expanded panel + Home's inline ListStatus panel) ============ */
+
+.creator-status-list {
+  padding: var(--space-2) 0;
+}
+
+.creator-status-list__group-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(242, 240, 245, 0.5);
+  padding: var(--space-2) var(--space-3) var(--space-1);
+}
+
+/* Swipe-to-favorite wrapper: houses the reveal layer (behind) and the
+   draggable row (in front, same DOM order = on top, no z-index needed).
+   position: relative only -- no size/height changes (spec section 4/38). */
+.creator-status-list__swipe-row {
+  position: relative;
+}
+
+/* Static reveal layer behind the row (spec section 17: "must remain behind
+   the translated row content"). Uses the row's own dimensions via inset: 0
+   rather than any new size. */
+.creator-status-list__reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Noto Sans JP",
+    "Yu Gothic",
+    Meiryo,
+    sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  transition: opacity 100ms ease-out;
+}
+
+.creator-status-list__reveal--left {
+  justify-content: flex-start;
+  padding-left: 18px;
+  background: rgba(27, 135, 150, 0.18);
+  color: #b4f1f9;
+}
+
+.creator-status-list__reveal--right {
+  justify-content: flex-end;
+  padding-right: 18px;
+  background: rgba(255, 255, 255, 0.075);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.creator-status-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-right: var(--space-2);
+  /* Opaque so the reveal layer behind only shows through the gap the drag
+     actually opens up, not through the whole row (it was transparent
+     before -- harmless at rest since it only ever sat over the same-toned
+     panel background, but swiping needs it to actually occlude). Same base
+     hue as both host panels' own rgba(20, 19, 24, .92/.95) background. */
+  background: #141318;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.creator-status-list__row--snapping {
+  transition: transform 180ms ease-out;
+}
+
+.creator-status-list__creator-button {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: var(--space-2) var(--space-2) var(--space-2) 0;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.creator-status-list__creator-button:hover,
+.creator-status-list__creator-button:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 48px placeholder avatar (spec's own example size — no avatar existed in
+   the prior implementation to preserve the size of, see the completion
+   report's "與規格不同的地方"). Deterministic per-creator color reuses
+   getMemberAccent, whose own doc comment already names "avatars" as an
+   intended use. */
+.creator-status-list__avatar {
+  position: relative;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  overflow: visible;
+}
+
+/* Real YouTube channel avatar (spec: "USE REAL YOUTUBE CHANNEL AVATAR").
+   Only rendered when creator.avatarUrl is set and hasn't failed to load —
+   otherwise CreatorAvatar falls back to the colored-circle/initial. */
+.creator-status-list__avatar-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Display-only, favorited-only filled heart overlapping the avatar's
+   top-right corner (spec: 20.8%/-4.2%/-4.2% of avatar diameter ->
+   10px/-2px/-2px at 48px). #FF4D67, no outline-heart state, not clickable. */
+.creator-status-list__favorite-indicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  fill: var(--live-red);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+
+.creator-status-list__row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creator-status-list__status-button {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.creator-status-list__status-button:not(:disabled):hover,
+.creator-status-list__status-button:not(:disabled):focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.creator-status-list__status-button:disabled {
+  cursor: default;
+  color: rgba(242, 240, 245, 0.45);
+}
+
+.creator-status-list__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.creator-status-list__dot--red {
+  background: var(--live-red);
+}
+
+.creator-status-list__dot--grey {
+  background: #8a8790;
+}
+
+.creator-status-list__empty {
+  padding: var(--space-3);
+  font-size: 0.8rem;
+  color: rgba(242, 240, 245, 0.6);
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .live-schedule-dock {
+    right: var(--space-3);
+    bottom: var(--space-3);
+    left: var(--space-3);
+  }
+
+  .live-schedule-dock__panel {
+    width: 100%;
+  }
+}
+
+/* ============ Oshi switch confirmation dialog ============ */
+
+.oshi-switch-confirm__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 24, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-5);
+}
+
+.oshi-switch-confirm__panel {
+  width: min(360px, 100%);
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  color: var(--text-primary);
+}
+
+.oshi-switch-confirm__message {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.oshi-switch-confirm__checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.oshi-switch-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.oshi-switch-confirm__cancel,
+.oshi-switch-confirm__confirm {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.oshi-switch-confirm__cancel {
+  background: transparent;
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
+}
+
+.oshi-switch-confirm__cancel:hover {
+  background: var(--surface-hover);
+}
+
+.oshi-switch-confirm__confirm {
+  background: var(--theme-primary);
+  border: 1px solid var(--theme-primary);
+  color: #fff;
+}
