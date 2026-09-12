@@ -80,6 +80,12 @@ function VideoRow({
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const nextThresholdRef = useRef(PREFETCH_AT_INDEX)
+  // Left arrow starts hidden -- the track starts scrolled all the way left
+  // (list[0] flush against the left edge), so there's nothing left to
+  // scroll back to yet (this session: "＜箭頭顯示是條件是目前list[0]的影片
+  // 不在最左邊"). Any rightward scroll at all reveals it again ("有被滑了
+  //一下也要顯示"), not just once it's scrolled a full card.
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
 
   function scrollByOneCard(direction: 1 | -1) {
     const track = trackRef.current
@@ -91,8 +97,11 @@ function VideoRow({
 
   function handleScroll() {
     const track = trackRef.current
-    const card = track?.querySelector<HTMLElement>(".recent-videos__card")
-    if (!track || !card) return
+    if (!track) return
+    setCanScrollLeft(track.scrollLeft > 0)
+
+    const card = track.querySelector<HTMLElement>(".recent-videos__card")
+    if (!card) return
     const cardStep = card.offsetWidth + 12
     const leadingIndex = Math.floor(track.scrollLeft / cardStep)
 
@@ -108,7 +117,7 @@ function VideoRow({
       <div className="recent-videos__row">
         <button
           type="button"
-          className="recent-videos__scroll-button"
+          className={`recent-videos__scroll-button${canScrollLeft ? "" : " recent-videos__scroll-button--hidden"}`}
           onClick={() => scrollByOneCard(-1)}
           aria-label={`Scroll ${label} left`}
         >

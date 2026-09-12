@@ -16,7 +16,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  max-width: 1440px;
+  --home-page-max-width: 1440px;
+  max-width: var(--home-page-max-width);
   margin: 0 auto;
   box-sizing: border-box;
 }
@@ -94,6 +95,15 @@
   box-shadow: var(--shadow-sm);
   color: var(--text-primary, #232028);
   cursor: pointer;
+}
+
+/* Left arrow only, while the track is scrolled all the way left (see
+   VideoRow's canScrollLeft) -- visibility (not unmounting the button) so it
+   keeps reserving its own layout space, since the row's left edge lining up
+   with home-scene above it depends on this button staying in flex flow
+   whether or not it's actually visible right now. */
+.recent-videos__scroll-button--hidden {
+  visibility: hidden;
 }
 
 .recent-videos__track {
@@ -212,6 +222,29 @@
   margin: 0;
 }
 
+/* LiveScheduleDock floats as a fixed, viewport-anchored overlay with no
+   layout space reserved for it, so without this the scene sits underneath
+   it instead of stopping flush at its left edge (this session: "home
+   scene的max width 要和live status打開時貼齊 不可重疊" / "我要求是緊貼").
+   A plain percentage max-width can't guarantee that: home-scene's own
+   width normally comes from its OWN height × its 16/9 aspect-ratio, not
+   from how much horizontal room is available, so on a wide/short viewport
+   its natural width is already narrower than any percentage-based cap --
+   nothing to clip, so the gap to the dock stays open. This instead
+   computes home-scene's exact required width in absolute viewport terms:
+   the dock's left edge (100vw - dock width, min(90vw,380px) mirroring
+   .live-schedule-dock__panel's own width) minus home-scene's own left edge
+   (.home-page's own centering offset, which only exists once the viewport
+   exceeds --home-page-max-width, plus its var(--space-6) left padding).
+   Setting `width` (not `max-width`) forces this exact size regardless of
+   the natural aspect-ratio width, which is also what overrides the 16:9
+   ratio here on a wide viewport ("我要求是緊貼" -- flush wins over keeping
+   the frame's own proportions) -- only RecentVideosSection stays put. */
+.home-scene--dock-open {
+  width: calc(100vw - min(90vw, 380px) - ((100vw - min(var(--home-page-max-width), 100vw)) / 2) - var(--space-6));
+  max-width: none;
+}
+
 .home-scene__layer {
   position: absolute;
 }
@@ -221,6 +254,16 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* The real YouTube embed (LiveEmbedPlayer) filling the frame. z-index: auto
+   (no explicit value) keeps it below __status-line's z-index: 10 without
+   this needing one of its own. */
+.home-scene__player {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
 }
 
 .home-placeholder {
@@ -271,6 +314,14 @@
 .live-schedule-dock--no-motion,
 .live-schedule-dock--no-motion * {
   transition: none !important;
+}
+
+/* Once opened (either size mode), the panel docks flush against the
+   screen's right/bottom edges instead of floating with the collapsed
+   pill's own var(--space-4) gap. */
+.live-schedule-dock--expanded {
+  right: 0;
+  bottom: 0;
 }
 
 /* One pill holding two buttons — the favorites-view switch and the
@@ -351,12 +402,35 @@
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
+/* Default size when the panel opens: reaches all the way to the top of the
+   screen (not the min(70vh,520px) cap above) -- an explicit height, not a
+   max-height, so it holds the full viewport height even when there's too
+   little content to need it. The resize button (__resize) toggles back to
+   the capped size above. */
+.live-schedule-dock__panel--full {
+  height: 100vh;
+  max-height: 100vh;
+}
+
 .live-schedule-dock__header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Same (transparent) background as __header -- blends in, no button-shaped
+   patch of color -- matching __close's own existing style. */
+.live-schedule-dock__resize {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: var(--space-1);
 }
 
 .live-schedule-dock__search {
@@ -380,10 +454,15 @@
 }
 
 /* Scrollbar hidden, still scrollable (this session: "LIVE STATUS LIST
-   VIEW右邊的scroll view 要不顯示"). */
+   VIEW右邊的scroll view 要不顯示"). Solid background matching each row's
+   own #141318 (not the panel's translucent rgba(20,19,24,.92)) so the
+   gaps between rows read as the same single background as the rows
+   themselves -- no visible two-tone split. __header above keeps the
+   panel's own translucent background untouched. */
 .live-schedule-dock__list {
   overflow-y: auto;
   scrollbar-width: none; /* Firefox */
+  background: #141318;
 }
 
 .live-schedule-dock__list::-webkit-scrollbar {
@@ -404,11 +483,38 @@
   padding: var(--space-2) var(--space-3) var(--space-1);
 }
 
+/* Rows stack as flex items (not plain block flow) purely so adjacent rows'
+   vertical margins do NOT collapse -- each row donates 5px top + 5px bottom,
+   so two neighboring rows add up to exactly 10px between them (5+5), while
+   a lone row still gets its own 5px on each side. Block-flow margin
+   collapsing would otherwise reduce that same 5px+5px down to a single 5px. */
+.creator-status-list__group {
+  display: flex;
+  flex-direction: column;
+}
+
 /* Swipe-to-favorite wrapper: houses the reveal layer (behind) and the
    draggable row (in front, same DOM order = on top, no z-index needed).
-   position: relative only -- no size/height changes (spec section 4/38). */
+   position: relative only -- no size/height changes (spec section 4/38).
+   margin: 10px left/right (full amount, no neighboring row beside it to
+   share with) and 5px top/bottom (see .creator-status-list__group above).
+   All spacing here is measured against the AVATAR icon itself (not this
+   wrapper or the button), so .creator-status-list__creator-button's own
+   vertical padding is removed below -- otherwise it would sit between this
+   margin and the avatar and inflate icon-to-icon spacing past 10px. */
 .creator-status-list__swipe-row {
   position: relative;
+  margin: 5px 10px;
+}
+
+/* The first row in each group needs a full 10px from the group label above
+   it (spec: icon-to-organization-label = 10px, not the 5px used between two
+   icons) -- override just this row's own top margin rather than touching
+   the label's spacing (its own padding stays exactly as it was). Adjacent-
+   sibling combinator, not :first-of-type -- the label is also a <div>, so
+   it (not the first row) already counts as "first of type" among divs. */
+.creator-status-list__group-label + .creator-status-list__swipe-row {
+  margin-top: 10px;
 }
 
 /* Static reveal layer behind the row (spec section 17: "must remain behind
@@ -472,20 +578,20 @@
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  /* Icon-to-name gap (spec: 10px) -- not var(--space-2)/8px. */
+  gap: 10px;
   min-width: 0;
   background: transparent;
   border: none;
   color: inherit;
-  padding: var(--space-2) var(--space-2) var(--space-2) 0;
+  /* No top/bottom padding: the avatar's own 5px top/bottom margin (see
+     .creator-status-list__swipe-row/:first-of-type above) is what creates
+     the icon-to-icon and icon-to-label spacing, so padding here would only
+     add unwanted extra space on top of that. */
+  padding: 0 var(--space-2) 0 0;
   font-size: 0.82rem;
   cursor: pointer;
   text-align: left;
-}
-
-.creator-status-list__creator-button:hover,
-.creator-status-list__creator-button:focus-visible {
-  background: rgba(255, 255, 255, 0.08);
 }
 
 /* 48px placeholder avatar (spec's own example size — no avatar existed in
@@ -506,6 +612,26 @@
   font-weight: 700;
   text-transform: uppercase;
   overflow: visible;
+  /* Selected-Oshi glow lives here as a transparent, always-present
+     outline/box-shadow (spec section 3/5) -- transitioning color/shadow
+     only, never the avatar's own 48px size. */
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 8px transparent;
+  transition:
+    outline-color 160ms ease-out,
+    box-shadow 160ms ease-out;
+}
+
+/* CURRENT ACTIVE OSHI only (spec section 2) -- not hover/focus/LIVE/favorite. */
+.creator-status-list__avatar--active {
+  /* Leans white rather than the raw theme color (this session: "creator
+     點下去的光圈我想要偏白色 有點亮的感覺") while still tracking the
+     current Oshi's own theme -- a white-tinted version of it, not a fixed
+     unrelated color. */
+  --avatar-glow-color: color-mix(in srgb, white 65%, var(--theme-primary) 35%);
+  outline-color: var(--avatar-glow-color);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--avatar-glow-color) 70%, transparent);
 }
 
 /* Real YouTube channel avatar (spec: "USE REAL YOUTUBE CHANNEL AVATAR").
@@ -551,11 +677,6 @@
   font-size: 0.72rem;
   white-space: nowrap;
   cursor: pointer;
-}
-
-.creator-status-list__status-button:not(:disabled):hover,
-.creator-status-list__status-button:not(:disabled):focus-visible {
-  background: rgba(255, 255, 255, 0.08);
 }
 
 .creator-status-list__status-button:disabled {
