@@ -28,10 +28,10 @@ function notify() {
 window.addEventListener("popstate", notify)
 
 function setPage(next: Page) {
-  if (next === readPage()) return
   const url = new URL(window.location.href)
   url.pathname = PAGE_PATHS[next]
   url.searchParams.delete("admin")
+  if (url.href === window.location.href) return
   window.history.pushState({}, "", url)
   notify()
 }
