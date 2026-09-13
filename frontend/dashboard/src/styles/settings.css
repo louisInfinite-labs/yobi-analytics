@@ -21,8 +21,18 @@
    an inset, rounded-pill active/hover background rather than
    MainNavbar's edge-to-edge one -- this is a nested, page-local panel,
    not the app-wide shell, so it gets Mantine's own visual language
-   instead of reusing MainNavbar's. */
+   instead of reusing MainNavbar's. This means its colors too: Mantine's
+   own default palette values (gray/blue, "light" active variant), not
+   this app's own surface/theme tokens, scoped to this component only --
+   MainNavbar and every other page keep the app's own theme. */
 .settings-secondary-navbar {
+  --mantine-gray-1: #f1f3f5;
+  --mantine-gray-3: #dee2e6;
+  --mantine-gray-7: #495057;
+  --mantine-gray-9: #212529;
+  --mantine-blue-0: #e7f5ff;
+  --mantine-blue-7: #1c7ed6;
+
   flex: 0 0 var(--settings-secondary-navbar-width);
   width: var(--settings-secondary-navbar-width);
   box-sizing: border-box;
@@ -30,14 +40,14 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  background: var(--surface-card);
-  border-right: 1px solid var(--surface-border);
+  background: #ffffff;
+  border-right: 1px solid var(--mantine-gray-3);
 }
 
 .settings-secondary-navbar__title {
   font-size: 18px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--mantine-gray-9);
   padding: 0 var(--space-3);
   margin-bottom: var(--space-3);
 }
@@ -46,7 +56,7 @@
   appearance: none;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--mantine-gray-7);
   font-family: inherit;
   font-size: 14px;
   text-align: left;
@@ -57,13 +67,13 @@
 }
 
 .settings-secondary-navbar__link:hover {
-  background: var(--surface-hover);
-  color: var(--text-primary);
+  background: var(--mantine-gray-1);
+  color: var(--mantine-gray-9);
 }
 
 .settings-secondary-navbar__link--active {
-  background: var(--theme-primary-soft);
-  color: var(--theme-text-accent);
+  background: var(--mantine-blue-0);
+  color: var(--mantine-blue-7);
   font-weight: 600;
 }
 
@@ -80,7 +90,7 @@
     width: auto;
     flex: 0 0 auto;
     border-right: none;
-    border-bottom: 1px solid var(--surface-border);
+    border-bottom: 1px solid var(--mantine-gray-3);
   }
 
   .settings-secondary-navbar__title {
