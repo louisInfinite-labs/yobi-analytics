@@ -45,6 +45,7 @@
   --mantine-dark-0: #c9c9c9;
   --mantine-blue-filled: #1971c2;
 
+  position: relative;
   flex: 0 0 var(--settings-secondary-navbar-width);
   width: var(--settings-secondary-navbar-width);
   box-sizing: border-box;
@@ -112,14 +113,20 @@
    approach as MainNavbar/SettingsSecondaryNavbar above, scoped to this
    component only. ============ */
 
+/* Pinned to SettingsSecondaryNavbar's own bottom edge -- 16px above it,
+   horizontally centered in the navbar's width -- rather than sitting inline
+   in the settings-page__content area as its own section (see
+   SettingsSecondaryNavbar.tsx). */
 .language-picker {
   --mantine-dark-4: #424242;
   --mantine-dark-5: #3b3b3b;
   --mantine-dark-6: #2e2e2e;
   --mantine-dark-0: #c9c9c9;
 
-  position: relative;
-  display: inline-block;
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
 }
 
 .language-picker__control {
@@ -174,9 +181,12 @@
   transform: rotate(180deg);
 }
 
+/* Opens UPWARD (`bottom`, not `top`) -- the trigger itself sits at the
+   very bottom of the screen (see .language-picker above), so a downward
+   dropdown would render off-screen. */
 .language-picker__dropdown {
   position: absolute;
-  top: calc(100% + 5px);
+  bottom: calc(100% + 5px);
   left: 0;
   width: 200px;
   box-sizing: border-box;
@@ -362,4 +372,216 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ============ Oshi Settings: favorite-creator management grid ============ */
+
+.oshi-settings__agency-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.oshi-settings__agency-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* Same plain-<input>, instant-filter interaction as Live Status's own
+   search (dockCreatorOrder.ts's creatorMatchesSearch, live-schedule-dock
+   __search in home.css) -- colors use this page's own light Settings
+   tokens instead of that dark panel's hardcoded palette. */
+.oshi-settings__search {
+  width: 260px;
+  max-width: 100%;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  padding: var(--space-1) var(--space-2);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.oshi-settings__search::placeholder {
+  color: var(--text-tertiary);
+}
+
+.oshi-settings__search:focus {
+  outline: none;
+  border-color: var(--theme-primary);
+}
+
+.oshi-settings__empty-state {
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.oshi-settings__agency {
+  margin-bottom: var(--space-6);
+}
+
+.oshi-settings__agency--divided {
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--surface-border);
+}
+
+.oshi-settings__region {
+  margin-bottom: var(--space-5);
+}
+
+.oshi-settings__region:not(:first-child) {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--surface-border);
+}
+
+.oshi-settings__region-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-3);
+}
+
+.oshi-settings__subgroup {
+  margin-bottom: var(--space-3);
+}
+
+.oshi-settings__subgroup-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  margin: 0 0 var(--space-1);
+}
+
+/* FIXED 96px columns, not `minmax(96px, 1fr)` -- each subgroup (Gamers,
+   FLOW GLOW, Other, ...) now renders its own separate grid, so a 1fr max
+   would stretch a sparsely-populated subgroup's cards to fill its row
+   (e.g. 4 Gamers members spread across the full row width, wider than
+   every other subgroup's cards) -- a real layout-consistency bug, not a
+   deliberate choice. `auto-fill` still computes however many fixed-width
+   columns fit the available width (so the page stays responsive:
+   4/3/2/1 on narrower viewports), it just never grows existing cards to
+   use up leftover space in an under-filled row. */
+.oshi-settings__grid {
+  display: grid;
+  /* 124px, not 96px -- the roster's own longest single-line name
+     ("綺々羅々ヴィヴィ") measures ~103px unwrapped at this font-size, plus
+     the card's own 8px+8px padding (~119px) -- 124px keeps it on one line
+     with a small margin, still a single FIXED size (see the note above
+     this rule's own history) so every card stays the same width. */
+  grid-template-columns: repeat(auto-fill, 124px);
+  gap: var(--space-3);
+}
+
+/* Card is a plain vertical stack: the avatar+checkbox row on top, name
+   underneath. */
+.oshi-settings__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+.oshi-settings__card:hover {
+  background: var(--surface-hover);
+}
+
+/* Centers the avatar itself, independent of the checkbox: `justify-content:
+   center` centers .oshi-settings__avatar-wrap, whose own width is just the
+   avatar's (the checkbox is taken out of flow below), so the checkbox's
+   presence never pulls the avatar off-center the way centering an
+   avatar+checkbox row as one block would. */
+.oshi-settings__card-top {
+  display: flex;
+  justify-content: center;
+}
+
+/* Sized to the avatar alone (the checkbox is `position: absolute`, out of
+   flow) so .oshi-settings__card-top centers the avatar itself, not an
+   avatar+checkbox pair. */
+.oshi-settings__avatar-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Same 48px size as Live Status's own creator avatar
+   (.creator-status-list__avatar, home.css) -- only the size is required to
+   match; colors use this page's own light Settings tokens rather than that
+   dark panel's hardcoded palette. */
+.oshi-settings__avatar {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Same font-size as Live Status's own creator name
+   (.creator-status-list__creator-button, home.css: 0.82rem). Kept at the
+   card's default (stretched) width -- unlike .oshi-settings__card-top
+   above -- so a long name still has the full tile width to wrap/center
+   against instead of just the avatar+checkbox row's own width; centered
+   independently of that row (its own `text-align`, not tied to where the
+   avatar/checkbox block happens to sit). Wraps onto multiple lines instead
+   of truncating when a name doesn't fit on one line -- `overflow-wrap`
+   breaks a single long unbroken word (e.g. a long English name) if needed,
+   rather than overflowing the card; CJK names wrap between characters by
+   the browser's own default line-breaking rules (no spaces needed for
+   that). `pre-line` (not `normal`): a handful of names in mockCreators.ts
+   (e.g. "ACHRORA -\nmekPark") carry explicit `\n` line breaks at exact,
+   requested positions -- `pre-line` renders those breaks while every other
+   name (no `\n`) still wraps normally based on available width. */
+.oshi-settings__creator-name {
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  text-align: center;
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  line-height: 1.25;
+}
+
+/* Positioned relative to .oshi-settings__avatar-wrap (out of flow), a FIXED
+   16px to the right of the avatar and vertically centered on it -- keeps
+   the exact "checkbox 16px from avatar, same row" requirement without the
+   checkbox's own width affecting where the avatar centers (see
+   .oshi-settings__card-top above). */
+.oshi-settings__checkbox {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 16px;
+  transform: translateY(-50%);
+}
+
+/* Ant Design's own Checkbox already supplies the hover/checked states off
+   this component's ConfigProvider colorPrimary token (OshiSettings.tsx) --
+   the only gap is a focus-visible ring (antd's own default is easy to
+   miss), added here as a small, understated glow rather than overriding
+   the control's own look. antd 6's Checkbox has no separate
+   `.ant-checkbox-inner` box -- `.ant-checkbox` itself is the 16px square
+   (border/background directly on it), with the real, focusable
+   `<input>` nested inside it, hence `:has()` rather than a `+` sibling
+   selector. */
+.oshi-settings__checkbox .ant-checkbox:has(.ant-checkbox-input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 30%, transparent);
 }

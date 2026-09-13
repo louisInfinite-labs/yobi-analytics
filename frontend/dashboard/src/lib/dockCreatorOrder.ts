@@ -38,8 +38,11 @@ const NUMBERED_GENERATION_PATTERN = /^(\d+)期生$/
  * session (2026-09-11) — everything else (e.g. a staff channel's "NO" tag,
  * or any future unrecognized groupKey) sorts after all of these and keeps
  * mockCreators' own relative order, since its exact placement was not part
- * of that confirmation. */
-const HOLOLIVE_JP_FIXED_GROUP_ORDER = ["ゲーマーズ", "holoX", "DEV_IS", "ReGLOSS", "FLOW GLOW"]
+ * of that confirmation. "FLOWGLOW" (no space) matches the real Creator
+ * Master roster's own groupKey value (src/creators.json) -- confirmed
+ * directly against that data, not the "FLOW GLOW" spelling used only in
+ * display names. */
+const HOLOLIVE_JP_FIXED_GROUP_ORDER = ["ゲーマーズ", "holoX", "DEV_IS", "ReGLOSS", "FLOWGLOW"]
 
 /** Numbered generations (any "Nth generation" tag) sort first, ascending;
  * then the fixed non-numbered units above; anything unrecognized sorts

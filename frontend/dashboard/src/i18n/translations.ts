@@ -57,8 +57,12 @@ export type TranslationKey =
   | "settingsSecondaryNavbar.navAriaLabel"
   | "settingsSecondaryNavbar.oshiSettings"
   | "settingsSecondaryNavbar.notificationSettings"
-  | "settingsSecondaryNavbar.languageSettings"
-  | "oshiSettings.comingSoon"
+  | "oshiSettings.searchPlaceholder"
+  | "oshiSettings.noResults"
+  | "oshiSettings.addFavoriteAria"
+  | "oshiSettings.removeFavoriteAria"
+  | "oshiSettings.otherGroupLabel"
+  | "oshiSettings.gamersGroupLabel"
   | "notificationSettings.liveColumnHeader"
   | "notificationSettings.newVideoColumnHeader"
   | "notificationSettings.liveSwitchAriaLabel"
@@ -67,7 +71,6 @@ export type TranslationKey =
   | "notificationSettings.gamersGroupLabel"
   | "notificationSettings.searchPlaceholder"
   | "notificationSettings.noResults"
-  | "languageSettings.comingSoon"
   | "languageSettings.picker.zhTW"
   | "languageSettings.picker.en"
   | "languageSettings.picker.ja"
@@ -125,8 +128,12 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
     "settingsSecondaryNavbar.oshiSettings": "我推設定",
     "settingsSecondaryNavbar.notificationSettings": "推送設定",
-    "settingsSecondaryNavbar.languageSettings": "語言設定",
-    "oshiSettings.comingSoon": "我推設定即將推出。",
+    "oshiSettings.searchPlaceholder": "搜尋成員...",
+    "oshiSettings.noResults": "找不到符合的成員",
+    "oshiSettings.addFavoriteAria": "將 {{name}} 加入我推",
+    "oshiSettings.removeFavoriteAria": "將 {{name}} 從我推移除",
+    "oshiSettings.otherGroupLabel": "其他",
+    "oshiSettings.gamersGroupLabel": "Gamers",
     "notificationSettings.liveColumnHeader": "直播",
     "notificationSettings.newVideoColumnHeader": "新片",
     "notificationSettings.liveSwitchAriaLabel": "{{name}} 直播通知",
@@ -135,7 +142,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.gamersGroupLabel": "Gamers",
     "notificationSettings.searchPlaceholder": "搜尋成員...",
     "notificationSettings.noResults": "找不到符合的成員",
-    "languageSettings.comingSoon": "語言設定即將推出。",
     "languageSettings.picker.zhTW": "繁體中文",
     "languageSettings.picker.en": "英文",
     "languageSettings.picker.ja": "日文",
@@ -192,8 +198,12 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
     "settingsSecondaryNavbar.oshiSettings": "Oshi Settings",
     "settingsSecondaryNavbar.notificationSettings": "Notification Settings",
-    "settingsSecondaryNavbar.languageSettings": "Language Settings",
-    "oshiSettings.comingSoon": "Oshi Settings is coming soon.",
+    "oshiSettings.searchPlaceholder": "Search creators...",
+    "oshiSettings.noResults": "No creators found",
+    "oshiSettings.addFavoriteAria": "Add {{name}} to favorites",
+    "oshiSettings.removeFavoriteAria": "Remove {{name}} from favorites",
+    "oshiSettings.otherGroupLabel": "Other",
+    "oshiSettings.gamersGroupLabel": "Gamers",
     "notificationSettings.liveColumnHeader": "Live",
     "notificationSettings.newVideoColumnHeader": "New Video",
     "notificationSettings.liveSwitchAriaLabel": "{{name}} live notifications",
@@ -202,7 +212,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.gamersGroupLabel": "Gamers",
     "notificationSettings.searchPlaceholder": "Search creators...",
     "notificationSettings.noResults": "No creators found",
-    "languageSettings.comingSoon": "Language Settings is coming soon.",
     "languageSettings.picker.zhTW": "Traditional Chinese",
     "languageSettings.picker.en": "English",
     "languageSettings.picker.ja": "Japanese",
@@ -259,8 +268,12 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
     "settingsSecondaryNavbar.oshiSettings": "推し設定",
     "settingsSecondaryNavbar.notificationSettings": "通知設定",
-    "settingsSecondaryNavbar.languageSettings": "言語設定",
-    "oshiSettings.comingSoon": "推し設定は近日公開予定です。",
+    "oshiSettings.searchPlaceholder": "メンバーを検索...",
+    "oshiSettings.noResults": "該当するメンバーが見つかりません",
+    "oshiSettings.addFavoriteAria": "{{name}}を推しに追加",
+    "oshiSettings.removeFavoriteAria": "{{name}}を推しから削除",
+    "oshiSettings.otherGroupLabel": "その他",
+    "oshiSettings.gamersGroupLabel": "ゲーマーズ",
     "notificationSettings.liveColumnHeader": "配信",
     "notificationSettings.newVideoColumnHeader": "新着動画",
     "notificationSettings.liveSwitchAriaLabel": "{{name}} の配信通知",
@@ -269,7 +282,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.gamersGroupLabel": "ゲーマーズ",
     "notificationSettings.searchPlaceholder": "メンバーを検索...",
     "notificationSettings.noResults": "該当するメンバーが見つかりません",
-    "languageSettings.comingSoon": "言語設定は近日公開予定です。",
     "languageSettings.picker.zhTW": "繁体中国語",
     "languageSettings.picker.en": "英語",
     "languageSettings.picker.ja": "日本語",

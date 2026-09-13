@@ -1,14 +1,17 @@
 import { useLocale } from "../../hooks/useLocale"
 import { t, type TranslationKey } from "../../i18n/translations"
+import { LanguagePicker } from "./LanguagePicker"
 
-export type SettingsSection = "oshi" | "notification" | "language"
+export type SettingsSection = "oshi" | "notification"
 
-/** Fixed order per this feature's own spec -- Oshi Settings, Notification
- * Settings, Language Settings -- not to be reordered. */
+/** Fixed order per this feature's own spec -- Oshi Settings, then
+ * Notification Settings -- not to be reordered. Language switching isn't a
+ * nav section/page of its own -- LanguagePicker below is pinned to this
+ * navbar's own bottom instead, always visible regardless of which section
+ * is active. */
 const NAV_ITEMS: { section: SettingsSection; labelKey: TranslationKey }[] = [
   { section: "oshi", labelKey: "settingsSecondaryNavbar.oshiSettings" },
   { section: "notification", labelKey: "settingsSecondaryNavbar.notificationSettings" },
-  { section: "language", labelKey: "settingsSecondaryNavbar.languageSettings" },
 ]
 
 /** Settings' own secondary nav, to MainNavbar's right -- Mantine's
@@ -43,6 +46,7 @@ export function SettingsSecondaryNavbar({
           {t(locale, item.labelKey)}
         </button>
       ))}
+      <LanguagePicker />
     </nav>
   )
 }

@@ -9,8 +9,8 @@ const LANGUAGE_DATA: { locale: Locale; flag: string; labelKey: TranslationKey }[
   { locale: "ja", flag: "🇯🇵", labelKey: "languageSettings.picker.ja" },
 ]
 
-/** Language Settings -- ported pixel-for-pixel from Mantine UI's own
- * "Language picker" demo (ui.mantine.dev/component/language-picker,
+/** The app's language switcher -- ported pixel-for-pixel from Mantine UI's
+ * own "Language picker" demo (ui.mantine.dev/component/language-picker,
  * LanguagePicker.tsx/.module.css): a pill control (flag + label +
  * chevron) opening a dropdown menu, sizes/colors/spacing measured from
  * that demo's own dark-mode rendering, same as MainNavbar/
@@ -18,8 +18,12 @@ const LANGUAGE_DATA: { locale: Locale; flag: string; labelKey: TranslationKey }[
  * the three languages' own flags/labels (Hong Kong/UK/Japan flags for
  * Traditional Chinese/English/Japanese, per this feature's own spec) and
  * wiring selection to useLocale -- Mantine's own demo has no such
- * app-wide effect, it's just local component state there. */
-export function LanguageSettings() {
+ * app-wide effect, it's just local component state there.
+ *
+ * Rendered pinned to the bottom of SettingsSecondaryNavbar itself (not a
+ * separate nav section/page) -- the dropdown opens upward (`bottom`, not
+ * `top`) since the trigger sits at the very bottom of the screen. */
+export function LanguagePicker() {
   const [locale, setLocale] = useLocale()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)

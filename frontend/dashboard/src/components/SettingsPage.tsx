@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { LanguageSettings } from "./settings/LanguageSettings"
 import { NotificationSettings } from "./settings/NotificationSettings"
 import { OshiSettings } from "./settings/OshiSettings"
 import { SettingsSecondaryNavbar, type SettingsSection } from "./settings/SettingsSecondaryNavbar"
@@ -19,7 +18,6 @@ export function SettingsPage() {
       <div className="settings-page__content">
         {activeSection === "oshi" && <OshiSettings />}
         {activeSection === "notification" && <NotificationSettings />}
-        {activeSection === "language" && <LanguageSettings />}
       </div>
     </div>
   )
