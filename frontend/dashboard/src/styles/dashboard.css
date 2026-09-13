@@ -943,7 +943,7 @@ button.video-table__title-cell {
 
 .save-toast {
   position: fixed;
-  left: calc(var(--sidebar-width, 0px) + var(--space-5));
+  left: calc(var(--main-navbar-width, 0px) + var(--space-5));
   bottom: var(--space-5);
   background: var(--text-primary);
   color: var(--surface-card);

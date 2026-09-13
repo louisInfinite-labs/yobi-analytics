@@ -41,9 +41,9 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener)
 }
 
-/** The Sidebar's page switch (Home/Dashboard/Settings), reflected in the
+/** MainNavbar's page switch (Home/Dashboard/Settings), reflected in the
  * URL's own path -- "/" (Home), "/dashboard", "/setting" -- made reactive
- * via useSyncExternalStore + a popstate listener, so clicking a Sidebar
+ * via useSyncExternalStore + a popstate listener, so clicking a MainNavbar
  * link updates the rendered page immediately instead of needing a reload.
  * Any path this doesn't recognize falls back to Home, since "/" itself is
  * Home rather than a distinct catch-all/not-found case. Serving
