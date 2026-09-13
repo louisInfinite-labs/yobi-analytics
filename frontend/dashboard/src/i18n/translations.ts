@@ -49,6 +49,12 @@ export type TranslationKey =
   | "apiError.rateLimited"
   | "apiError.serverError"
   | "apiError.generic"
+  | "sidebar.navAriaLabel"
+  | "sidebar.dashboard"
+  | "sidebar.home"
+  | "sidebar.settings"
+  | "settingsPage.title"
+  | "settingsPage.comingSoon"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -95,6 +101,12 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "apiError.rateLimited": "現在使用人數較多,伺服器暫時限制請求 (429)。系統已自動重試但仍未成功,請稍後再重新整理。",
     "apiError.serverError": "AWS 伺服器發生錯誤 ({{status}}),並非你的網絡問題,請稍後再試。",
     "apiError.generic": "請求失敗 ({{status}}):{{message}}",
+    "sidebar.navAriaLabel": "主導覽",
+    "sidebar.dashboard": "影片數據",
+    "sidebar.home": "首頁",
+    "sidebar.settings": "設定",
+    "settingsPage.title": "設定",
+    "settingsPage.comingSoon": "設定頁面即將推出。",
   },
   en: {
     "common.cancel": "Cancel",
@@ -140,6 +152,12 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "apiError.rateLimited": "Usage is currently high and the server is temporarily rate-limiting requests (429). Automatic retries did not succeed — please refresh and try again shortly.",
     "apiError.serverError": "The server returned an error ({{status}}). This is not a problem with your network — please try again shortly.",
     "apiError.generic": "Request failed ({{status}}): {{message}}",
+    "sidebar.navAriaLabel": "Main navigation",
+    "sidebar.dashboard": "Video Data",
+    "sidebar.home": "Home",
+    "sidebar.settings": "Settings",
+    "settingsPage.title": "Settings",
+    "settingsPage.comingSoon": "The settings page is coming soon.",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -185,6 +203,12 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "apiError.rateLimited": "現在アクセスが集中しており、サーバーが一時的にリクエストを制限しています (429)。自動リトライも成功しませんでした。しばらくしてから再読み込みしてください。",
     "apiError.serverError": "サーバー側でエラーが発生しました ({{status}})。ネットワークの問題ではありません。しばらくしてから再試行してください。",
     "apiError.generic": "リクエストに失敗しました ({{status}}):{{message}}",
+    "sidebar.navAriaLabel": "メインナビゲーション",
+    "sidebar.dashboard": "動画データ",
+    "sidebar.home": "ホーム",
+    "sidebar.settings": "設定",
+    "settingsPage.title": "設定",
+    "settingsPage.comingSoon": "設定ページは近日公開予定です。",
   },
 }
 

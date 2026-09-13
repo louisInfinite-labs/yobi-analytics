@@ -10,8 +10,9 @@ interface HeartbeatStats {
 /**
  * Admin-only screen (Roadmap 4.5): view aggregate client activity
  * (Roadmap 4.4's heartbeat data) and author a remote-config entry for any
- * clientId. Reachable only via `?admin` on the Dashboard's own URL — not
- * linked from the normal UI — and gated behind a shared admin API key
+ * clientId. Reachable only via `?admin` on any URL (see App.tsx's
+ * isAdminRoute) — not linked from the normal UI — and gated behind a
+ * shared admin API key
  * entered by hand and kept only in this component's own React state. The
  * key is never hardcoded here (this file ships in the same public JS
  * bundle every visitor downloads, so baking in a real secret would hand it
