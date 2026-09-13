@@ -197,3 +197,114 @@
 .language-picker__item:hover {
   background-color: var(--mantine-dark-4);
 }
+
+/* ============ Notification Settings' creator list -- this app's own
+   theme (no library style was specified for this component, unlike
+   SettingsSecondaryNavbar/LanguageSettings above). ============ */
+
+.notification-settings__branch {
+  margin-bottom: var(--space-6);
+}
+
+.notification-settings__branch:not(:first-child) {
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--surface-border);
+}
+
+.notification-settings__branch-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-4);
+}
+
+.notification-settings__subgroup {
+  margin-bottom: var(--space-4);
+}
+
+.notification-settings__subgroup-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-2);
+}
+
+.notification-settings__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-1);
+}
+
+.notification-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.notification-settings__row:hover {
+  background: var(--surface-hover);
+}
+
+.notification-settings__creator-name {
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-settings__switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.notification-settings__switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.notification-settings__switch-track {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-border);
+  border-radius: 999px;
+  transition: background-color 150ms ease;
+}
+
+.notification-settings__switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 150ms ease;
+}
+
+.notification-settings__switch input:checked + .notification-settings__switch-track {
+  background: var(--theme-primary);
+}
+
+.notification-settings__switch input:checked + .notification-settings__switch-track::after {
+  transform: translateX(16px);
+}
+
+.notification-settings__switch input:focus-visible + .notification-settings__switch-track {
+  outline: 2px solid var(--theme-ring);
+  outline-offset: 2px;
+}
