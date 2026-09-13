@@ -49,12 +49,28 @@ export type TranslationKey =
   | "apiError.rateLimited"
   | "apiError.serverError"
   | "apiError.generic"
-  | "sidebar.navAriaLabel"
-  | "sidebar.dashboard"
-  | "sidebar.home"
-  | "sidebar.settings"
-  | "settingsPage.title"
-  | "settingsPage.comingSoon"
+  | "mainNavbar.navAriaLabel"
+  | "mainNavbar.dashboard"
+  | "mainNavbar.home"
+  | "mainNavbar.settings"
+  | "settingsSecondaryNavbar.title"
+  | "settingsSecondaryNavbar.navAriaLabel"
+  | "settingsSecondaryNavbar.oshiSettings"
+  | "settingsSecondaryNavbar.notificationSettings"
+  | "settingsSecondaryNavbar.languageSettings"
+  | "oshiSettings.comingSoon"
+  | "notificationSettings.liveColumnHeader"
+  | "notificationSettings.newVideoColumnHeader"
+  | "notificationSettings.liveSwitchAriaLabel"
+  | "notificationSettings.newVideoSwitchAriaLabel"
+  | "notificationSettings.otherGroupLabel"
+  | "notificationSettings.gamersGroupLabel"
+  | "notificationSettings.searchPlaceholder"
+  | "notificationSettings.noResults"
+  | "languageSettings.comingSoon"
+  | "languageSettings.picker.zhTW"
+  | "languageSettings.picker.en"
+  | "languageSettings.picker.ja"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -101,12 +117,28 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "apiError.rateLimited": "現在使用人數較多,伺服器暫時限制請求 (429)。系統已自動重試但仍未成功,請稍後再重新整理。",
     "apiError.serverError": "AWS 伺服器發生錯誤 ({{status}}),並非你的網絡問題,請稍後再試。",
     "apiError.generic": "請求失敗 ({{status}}):{{message}}",
-    "sidebar.navAriaLabel": "主導覽",
-    "sidebar.dashboard": "影片數據",
-    "sidebar.home": "首頁",
-    "sidebar.settings": "設定",
-    "settingsPage.title": "設定",
-    "settingsPage.comingSoon": "設定頁面即將推出。",
+    "mainNavbar.navAriaLabel": "主導覽",
+    "mainNavbar.dashboard": "影片數據",
+    "mainNavbar.home": "首頁",
+    "mainNavbar.settings": "設定",
+    "settingsSecondaryNavbar.title": "設定",
+    "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
+    "settingsSecondaryNavbar.oshiSettings": "我推設定",
+    "settingsSecondaryNavbar.notificationSettings": "推送設定",
+    "settingsSecondaryNavbar.languageSettings": "語言設定",
+    "oshiSettings.comingSoon": "我推設定即將推出。",
+    "notificationSettings.liveColumnHeader": "直播",
+    "notificationSettings.newVideoColumnHeader": "新片",
+    "notificationSettings.liveSwitchAriaLabel": "{{name}} 直播通知",
+    "notificationSettings.newVideoSwitchAriaLabel": "{{name}} 新片通知",
+    "notificationSettings.otherGroupLabel": "其他",
+    "notificationSettings.gamersGroupLabel": "Gamers",
+    "notificationSettings.searchPlaceholder": "搜尋成員...",
+    "notificationSettings.noResults": "找不到符合的成員",
+    "languageSettings.comingSoon": "語言設定即將推出。",
+    "languageSettings.picker.zhTW": "繁體中文",
+    "languageSettings.picker.en": "英文",
+    "languageSettings.picker.ja": "日文",
   },
   en: {
     "common.cancel": "Cancel",
@@ -152,12 +184,28 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "apiError.rateLimited": "Usage is currently high and the server is temporarily rate-limiting requests (429). Automatic retries did not succeed — please refresh and try again shortly.",
     "apiError.serverError": "The server returned an error ({{status}}). This is not a problem with your network — please try again shortly.",
     "apiError.generic": "Request failed ({{status}}): {{message}}",
-    "sidebar.navAriaLabel": "Main navigation",
-    "sidebar.dashboard": "Video Data",
-    "sidebar.home": "Home",
-    "sidebar.settings": "Settings",
-    "settingsPage.title": "Settings",
-    "settingsPage.comingSoon": "The settings page is coming soon.",
+    "mainNavbar.navAriaLabel": "Main navigation",
+    "mainNavbar.dashboard": "Video Data",
+    "mainNavbar.home": "Home",
+    "mainNavbar.settings": "Settings",
+    "settingsSecondaryNavbar.title": "Settings",
+    "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
+    "settingsSecondaryNavbar.oshiSettings": "Oshi Settings",
+    "settingsSecondaryNavbar.notificationSettings": "Notification Settings",
+    "settingsSecondaryNavbar.languageSettings": "Language Settings",
+    "oshiSettings.comingSoon": "Oshi Settings is coming soon.",
+    "notificationSettings.liveColumnHeader": "Live",
+    "notificationSettings.newVideoColumnHeader": "New Video",
+    "notificationSettings.liveSwitchAriaLabel": "{{name}} live notifications",
+    "notificationSettings.newVideoSwitchAriaLabel": "{{name}} new video notifications",
+    "notificationSettings.otherGroupLabel": "Other",
+    "notificationSettings.gamersGroupLabel": "Gamers",
+    "notificationSettings.searchPlaceholder": "Search creators...",
+    "notificationSettings.noResults": "No creators found",
+    "languageSettings.comingSoon": "Language Settings is coming soon.",
+    "languageSettings.picker.zhTW": "Traditional Chinese",
+    "languageSettings.picker.en": "English",
+    "languageSettings.picker.ja": "Japanese",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -203,12 +251,28 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "apiError.rateLimited": "現在アクセスが集中しており、サーバーが一時的にリクエストを制限しています (429)。自動リトライも成功しませんでした。しばらくしてから再読み込みしてください。",
     "apiError.serverError": "サーバー側でエラーが発生しました ({{status}})。ネットワークの問題ではありません。しばらくしてから再試行してください。",
     "apiError.generic": "リクエストに失敗しました ({{status}}):{{message}}",
-    "sidebar.navAriaLabel": "メインナビゲーション",
-    "sidebar.dashboard": "動画データ",
-    "sidebar.home": "ホーム",
-    "sidebar.settings": "設定",
-    "settingsPage.title": "設定",
-    "settingsPage.comingSoon": "設定ページは近日公開予定です。",
+    "mainNavbar.navAriaLabel": "メインナビゲーション",
+    "mainNavbar.dashboard": "動画データ",
+    "mainNavbar.home": "ホーム",
+    "mainNavbar.settings": "設定",
+    "settingsSecondaryNavbar.title": "設定",
+    "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
+    "settingsSecondaryNavbar.oshiSettings": "推し設定",
+    "settingsSecondaryNavbar.notificationSettings": "通知設定",
+    "settingsSecondaryNavbar.languageSettings": "言語設定",
+    "oshiSettings.comingSoon": "推し設定は近日公開予定です。",
+    "notificationSettings.liveColumnHeader": "配信",
+    "notificationSettings.newVideoColumnHeader": "新着動画",
+    "notificationSettings.liveSwitchAriaLabel": "{{name}} の配信通知",
+    "notificationSettings.newVideoSwitchAriaLabel": "{{name}} の新着動画通知",
+    "notificationSettings.otherGroupLabel": "その他",
+    "notificationSettings.gamersGroupLabel": "ゲーマーズ",
+    "notificationSettings.searchPlaceholder": "メンバーを検索...",
+    "notificationSettings.noResults": "該当するメンバーが見つかりません",
+    "languageSettings.comingSoon": "言語設定は近日公開予定です。",
+    "languageSettings.picker.zhTW": "繁体中国語",
+    "languageSettings.picker.en": "英語",
+    "languageSettings.picker.ja": "日本語",
   },
 }
 

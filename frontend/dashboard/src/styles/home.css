@@ -12,7 +12,7 @@
    auto-centering every other max-width shell on this page uses) so
    home-scene/the tag bar/the video thumbnails -- every one of this page's
    direct-or-nested children shares this same left inset -- sit exactly
-   var(--space-4) from Sidebar's right edge, the same distance home-scene
+   var(--space-4) from Main Navbar's right edge, the same distance home-scene
    already sits from the top, at any viewport width (auto-centering would
    reopen a bigger, viewport-dependent gap the moment this page's content
    grows narrower than --home-page-max-width). */
@@ -270,7 +270,7 @@
    open. --home-scene-flush-width computes home-scene's exact required
    width in absolute viewport terms: the dock's left edge (100vw - dock
    width, min(90vw,380px) mirroring .live-schedule-dock__panel's own
-   width) minus home-scene's own left edge -- Sidebar's own fixed width
+   width) minus home-scene's own left edge -- Main Navbar's own fixed width
    plus .home-page's own var(--space-4) left padding (see .home-page's own
    comment above), since .home-page has no centering margin of its own to
    add on top of those two.
@@ -281,7 +281,7 @@
    stopping short of the dock and leaving a visible gap between the two,
    which looks like a bug rather than the intentional content-width cap it
    actually is. --home-page-available-width is .home-page's own capped
-   outer width (min(--home-page-max-width, 100vw - sidebar width)) minus
+   outer width (min(--home-page-max-width, 100vw - main navbar width)) minus
    its own left+right padding -- the most home-scene could ever occupy
    without overflowing its parent -- and the final width takes whichever
    of the two is smaller, so home-scene either reaches the dock flush or
@@ -292,9 +292,9 @@
    dock (or .home-page's own edge) wins over keeping the frame's own
    proportions while it's open -- only RecentVideosSection stays put. */
 .home-scene--dock-open {
-  --home-scene-flush-width: calc(100vw - min(90vw, 380px) - var(--sidebar-width) - var(--space-4));
+  --home-scene-flush-width: calc(100vw - min(90vw, 380px) - var(--main-navbar-width) - var(--space-4));
   --home-page-available-width: calc(
-    min(var(--home-page-max-width), 100vw - var(--sidebar-width)) - var(--space-4) - var(--space-6)
+    min(var(--home-page-max-width), 100vw - var(--main-navbar-width)) - var(--space-4) - var(--space-6)
   );
   width: min(var(--home-scene-flush-width), var(--home-page-available-width));
   max-width: none;

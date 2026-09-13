@@ -1,0 +1,121 @@
+/* ============ App-wide fixed Main Navbar ============ */
+
+/* Ported pixel-for-pixel from Mantine UI's own "Navbar with 2 sections"
+   demo (ui.mantine.dev/category/navbars, DoubleNavbar.tsx/.module.css)
+   -- its .aside/.mainLink/.logo, specifically (the icon-only rail;
+   .main/.title/.link is SettingsSecondaryNavbar's own, see settings.css).
+   Values below are copied as literally as possible (colors, sizes,
+   radius, spacing) from that component's own dark-mode rendering (the
+   demo site's default color scheme; measured via computed styles, since
+   this app has no light/dark toggle of its own to switch these with
+   `light-dark()` against). The only two things swapped for our own
+   branding are the icon in .main-navbar__logo (this app's cat mark
+   instead of Mantine's own logo) and the document <title> (index.html's
+   own "OshiYobi") -- not anything rendered in this file. */
+:root {
+  --main-navbar-width: 60px;
+}
+
+/* .app-shell__content reserves the Main Navbar's width via margin-left
+   (the navbar itself is position:fixed, out of flow) so every page's own
+   content -- including Home's home-scene -- starts flush against the
+   navbar's right edge instead of needing its own per-page offset. */
+.app-shell__content {
+  margin-left: var(--main-navbar-width);
+  min-width: 0;
+}
+
+.main-navbar {
+  --mantine-dark-5: #3b3b3b;
+  --mantine-dark-7: #242424;
+  --mantine-dark-0: #c9c9c9;
+  --mantine-blue-light: #0c3256;
+  --mantine-blue-light-color: #e7f5ff;
+
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--main-navbar-width);
+  height: 100vh;
+  height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: var(--mantine-dark-7);
+  border-right: 1px solid var(--mantine-dark-7);
+  z-index: 10;
+}
+
+.main-navbar__logo {
+  width: 100%;
+  height: 60px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 16px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--mantine-dark-7);
+}
+
+.main-navbar__logo-icon {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.main-navbar__link {
+  position: relative;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--mantine-dark-0);
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.main-navbar__link:hover {
+  background-color: var(--mantine-dark-5);
+}
+
+.main-navbar__link--active,
+.main-navbar__link--active:hover {
+  background-color: var(--mantine-blue-light);
+  color: var(--mantine-blue-light-color);
+}
+
+/* Mantine's own demo uses a Tooltip (position="right") on each icon
+   button instead of visible labels -- this reproduces that with plain
+   CSS (no tooltip library) rather than adding @mantine/core just for
+   this one component. */
+.main-navbar__tooltip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #1a1b1e;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-radius: 4px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.1s ease;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.main-navbar__link:hover .main-navbar__tooltip,
+.main-navbar__link:focus-visible .main-navbar__tooltip {
+  opacity: 1;
+  visibility: visible;
+}

@@ -1,17 +1,25 @@
-import { useLocale } from "../hooks/useLocale"
-import { t } from "../i18n/translations"
+import { useState } from "react"
+import { LanguageSettings } from "./settings/LanguageSettings"
+import { NotificationSettings } from "./settings/NotificationSettings"
+import { OshiSettings } from "./settings/OshiSettings"
+import { SettingsSecondaryNavbar, type SettingsSection } from "./settings/SettingsSecondaryNavbar"
 
-/** Placeholder for Sidebar's third nav destination (/setting) -- no
- * settings exist yet to configure here; this just gives the route
- * somewhere real to render instead of 404ing until an actual settings UI
- * is designed. */
+/** Settings' own [MainNavbar] [SettingsSecondaryNavbar] [Content] layout
+ * (MainNavbar is mounted one level up, in App.tsx -- this renders the
+ * other two). Which section is active is plain local state, not part of
+ * the URL, since nothing else needs to deep-link into a specific
+ * settings section today -- defaults to OshiSettings per this feature's
+ * own spec. */
 export function SettingsPage() {
-  const [locale] = useLocale()
+  const [activeSection, setActiveSection] = useState<SettingsSection>("oshi")
+
   return (
-    <div className="dashboard-page">
-      <h1>{t(locale, "settingsPage.title")}</h1>
-      <div className="state-panel">
-        <p>{t(locale, "settingsPage.comingSoon")}</p>
+    <div className="settings-page">
+      <SettingsSecondaryNavbar activeSection={activeSection} onSelect={setActiveSection} />
+      <div className="settings-page__content">
+        {activeSection === "oshi" && <OshiSettings />}
+        {activeSection === "notification" && <NotificationSettings />}
+        {activeSection === "language" && <LanguageSettings />}
       </div>
     </div>
   )
