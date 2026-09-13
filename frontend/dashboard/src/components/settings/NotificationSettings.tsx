@@ -119,12 +119,16 @@ export function NotificationSettings() {
 
   const filteredAgencyGroups = filterAgencyGroups(agencyGroups, searchQuery)
   const hasResults = filteredAgencyGroups.length > 0
-  // The search box's own heading row always shows the first SURVIVING
-  // agency's label (falling back to the real first agency, e.g. "VSPO",
-  // once none survive) -- its position never moves, but which agency it
-  // sits beside can change as the query narrows results down to a single
-  // agency (see filterAgencyGroups above).
-  const headerAgencyLabel = filteredAgencyGroups[0]?.agencyLabel ?? agencyGroups[0]?.agencyLabel ?? ""
+  // The search box's own heading row shows the first SURVIVING agency's
+  // label -- its position never moves, but which agency it sits beside
+  // can change as the query narrows results down to a single agency (see
+  // filterAgencyGroups above). Deliberately null (not a fallback to the
+  // real, unfiltered first agency) once nothing survives -- showing e.g.
+  // "VSPO" next to a zero-result query is exactly the "unrelated agency
+  // name" bug: that label has nothing to do with a search that matched
+  // nothing. The header row itself still renders (see below) so the
+  // search input's own position never shifts.
+  const headerAgencyLabel = filteredAgencyGroups[0]?.agencyLabel ?? null
 
   return (
     // Scoped to this component's own subtree only (antd's ConfigProvider
@@ -135,7 +139,15 @@ export function NotificationSettings() {
     <ConfigProvider theme={{ token: { colorPrimary: theme.primary } }}>
       <div className="notification-settings">
         <div className="notification-settings__agency-header">
-          <h2 className="notification-settings__agency-title">{headerAgencyLabel}</h2>
+          {headerAgencyLabel ? (
+            <h2 className="notification-settings__agency-title">{headerAgencyLabel}</h2>
+          ) : (
+            // Keeps the header row a 2-child flex layout (so the search
+            // input stays pinned to the right edge, same as always) without
+            // showing a label that has nothing to do with a zero-result
+            // search.
+            <span className="notification-settings__agency-title" aria-hidden="true" />
+          )}
           <Input
             className="notification-settings__search"
             prefix={<SearchOutlined />}

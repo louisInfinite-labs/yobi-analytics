@@ -38,6 +38,7 @@ export function SettingsSecondaryNavbar({
             activeSection === item.section ? " settings-secondary-navbar__link--active" : ""
           }`}
           onClick={() => onSelect(item.section)}
+          aria-current={activeSection === item.section ? "page" : undefined}
         >
           {t(locale, item.labelKey)}
         </button>

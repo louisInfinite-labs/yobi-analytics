@@ -114,7 +114,8 @@
   z-index: 20;
 }
 
-.main-navbar__link:hover .main-navbar__tooltip {
+.main-navbar__link:hover .main-navbar__tooltip,
+.main-navbar__link:focus-visible .main-navbar__tooltip {
   opacity: 1;
   visibility: visible;
 }
