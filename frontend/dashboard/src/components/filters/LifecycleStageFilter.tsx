@@ -7,7 +7,7 @@ interface LifecycleStageFilterProps {
   onChange: (value: LifecycleStage | null) => void
 }
 
-/** The visible 卒業 chip is this filter set to "graduated" — it never
+/** The visible "graduated" chip is this filter set to "graduated" — it never
  * replaces a creator's organization/branch/tag memberships, only adds this
  * independent status dimension (dashboard_ui_direction_en.md section 9). */
 export function LifecycleStageFilter({ value, onChange }: LifecycleStageFilterProps) {

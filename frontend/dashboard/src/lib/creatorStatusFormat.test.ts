@@ -11,7 +11,7 @@ import type { CreatorStatus } from "../types/creatorStatus"
 describe("formatCountdown", () => {
   it("floors partial minutes rather than rounding", () => {
     const now = new Date("2026-09-09T00:00:00.000Z")
-    // 65 minutes 59 seconds away — must read 1時間5分後, not 1時間6分後.
+    // 65 minutes 59 seconds away — must read as 1h05m, not 1h06m.
     const target = new Date(now.getTime() + 65 * 60_000 + 59_000).toISOString()
     expect(formatCountdown(target, now)).toBe("1時間5分後")
   })
@@ -34,7 +34,7 @@ describe("formatCountdown", () => {
     expect(formatCountdown(target, now)).toBe(formatCountdown(target, now, "ja"))
   })
 
-  it("renders Chinese as X小時X分後", () => {
+  it("renders Chinese using an hours-minutes-later pattern", () => {
     const now = new Date("2026-09-09T00:00:00.000Z")
     const target = new Date("2026-09-09T01:05:00.000Z").toISOString()
     expect(formatCountdown(target, now, "zh")).toBe("1小時5分後")
@@ -100,7 +100,7 @@ describe("formatCreatorStatus", () => {
     expect(formatCreatorStatus(status, "absolute", now)).toEqual({ label: "15:30", dotColor: "red", clickable: true })
   })
 
-  it("renders upcoming in countdown mode using X時間X分後", () => {
+  it("renders upcoming in countdown mode using an hours-minutes-later pattern", () => {
     const status: CreatorStatus = { kind: "upcoming", videoId: "v1", title: "t", scheduledStart: "2026-09-09T13:15:00.000Z" }
     expect(formatCreatorStatus(status, "countdown", now)).toEqual({ label: "1時間15分後", dotColor: "red", clickable: true })
   })

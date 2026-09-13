@@ -6,6 +6,7 @@ import { useCachedDashboardData } from "../hooks/useCachedDashboardData"
 import { useEditableLayout } from "../hooks/useEditableLayout"
 import { useFilterState } from "../hooks/useFilterState"
 import { useHeartbeat } from "../hooks/useHeartbeat"
+import { useLocale } from "../hooks/useLocale"
 import { deriveChannelContribution, deriveKpis } from "../lib/deriveAnalytics"
 import { deriveInsights } from "../lib/deriveInsights"
 import { matchesClassification, matchesContent } from "../lib/filterState"
@@ -32,6 +33,7 @@ const LAYOUT_PROFILE_ID = "default"
  * KPI/chart/ranking/table view together behind one shared filter state. */
 export function DashboardPage() {
   useHeartbeat()
+  const [locale] = useLocale()
   const [period, setPeriod] = useState<Period>("1d")
   const [timeZone, setTimeZone] = useState(detectDeviceTimeZone)
   const filters = useFilterState()
@@ -129,7 +131,7 @@ export function DashboardPage() {
       ) : error && entry === null ? (
         <div className="card">
           {(() => {
-            const { code, description } = describeApiFailure(error)
+            const { code, description } = describeApiFailure(error, locale)
             return <ErrorState message={description} code={code} />
           })()}
         </div>

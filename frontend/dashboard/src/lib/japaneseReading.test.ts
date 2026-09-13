@@ -21,7 +21,7 @@ describe("normalizeJapaneseReadingForSort", () => {
     expect(normalizeJapaneseReadingForSort("いちのせウルハ")).toBe("いちのせうるは")
   })
 
-  it("leaves non-kana characters (e.g. the chōonpu ー) unchanged", () => {
+  it("leaves non-kana characters (e.g. the chōonpu long vowel mark) unchanged", () => {
     expect(normalizeJapaneseReadingForSort("カード")).toBe("かーど")
   })
 })

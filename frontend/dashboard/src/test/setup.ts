@@ -1,6 +1,7 @@
 import { cleanup } from "@testing-library/react"
 import { afterEach } from "vitest"
 import "@testing-library/jest-dom/vitest"
+import { resetLiveDockExpandedForTests } from "../hooks/useLiveDockExpanded"
 import { resetAllSharedStateForTests } from "../lib/sharedState"
 
 // @testing-library/react's own auto-cleanup only self-registers when
@@ -18,6 +19,10 @@ afterEach(() => {
   // selection toggled in one test would still be set at the start of the
   // next one.
   resetAllSharedStateForTests()
+  // useLiveDockExpanded is the same kind of module-level singleton but
+  // isn't one of lib/sharedState's localStorage-backed stores (it's
+  // deliberately not persisted), so it needs its own reset here.
+  resetLiveDockExpandedForTests()
 })
 
 // jsdom has no matchMedia implementation; components that read

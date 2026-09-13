@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { mockCreators, type MockCreator } from "../data/mockCreators"
+import { useSelectedCreator } from "../hooks/useSelectedCreator"
 import { useSwipeToFavorite } from "../hooks/useSwipeToFavorite"
 import { creatorMatchesSearch, groupCreatorsForDock } from "../lib/dockCreatorOrder"
 import { formatCreatorStatus, type CountdownLanguage, type UpcomingDisplayMode } from "../lib/creatorStatusFormat"
@@ -14,14 +15,22 @@ import { OshiSwitchConfirmDialog } from "./OshiSwitchConfirmDialog"
  * ONLY as fallback") lives per-row rather than in the list's own state —
  * same onError->placeholder pattern HomePage's RoomLayer already uses for
  * the room-scene layers. */
-function CreatorAvatar({ creator, isFavorite }: { creator: MockCreator; isFavorite: boolean }) {
+function CreatorAvatar({
+  creator,
+  isFavorite,
+  isActive,
+}: {
+  creator: MockCreator
+  isFavorite: boolean
+  isActive: boolean
+}) {
   const [imageFailed, setImageFailed] = useState(false)
   const accent = getMemberAccent(creator.channelId)
   const showImage = Boolean(creator.avatarUrl) && !imageFailed
 
   return (
     <span
-      className="creator-status-list__avatar"
+      className={`creator-status-list__avatar${isActive ? " creator-status-list__avatar--active" : ""}`}
       aria-hidden="true"
       style={showImage ? undefined : { background: accent.primary, color: accent.textAccent }}
     >
@@ -51,6 +60,7 @@ interface CreatorRowProps {
   language: CountdownLanguage
   now: Date
   isFavorite: boolean
+  isActive: boolean
   locale: Locale
   onCreatorButtonClick: (creator: MockCreator) => void
   onSelectVideo: (video: { videoId: string; title: string }) => void
@@ -71,6 +81,7 @@ function CreatorRow({
   language,
   now,
   isFavorite,
+  isActive,
   locale,
   onCreatorButtonClick,
   onSelectVideo,
@@ -101,7 +112,7 @@ function CreatorRow({
           onClick={swipe.guardClick(() => onCreatorButtonClick(creator))}
           aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.channelName })}
         >
-          <CreatorAvatar creator={creator} isFavorite={isFavorite} />
+          <CreatorAvatar creator={creator} isFavorite={isFavorite} isActive={isActive} />
           <span className="creator-status-list__row-name">{creator.channelName}</span>
         </button>
         <button
@@ -133,9 +144,9 @@ export interface CreatorStatusListProps {
   /** Avatar+name click (spec: "switches the active Oshi") — never opens
    * YouTube and never touches favorite state. */
   onSelectCreator: (channelId: string) => void
-  /** "我的收藏": when set, only creators in this set are listed at all — a
-   * stricter filter than search, applied first. Omit to list every creator
-   * (the "all" mode). */
+  /** Favorites-only filter: when set, only creators in this set are listed
+   * at all — a stricter filter than search, applied first. Omit to list
+   * every creator (the "all" mode). */
   favoriteOnlyIds?: Set<string>
   favorites: Set<string>
   /** Committed by each row's own swipe-to-favorite gesture (CreatorRow /
@@ -184,6 +195,11 @@ export function CreatorStatusList({
     mockCreators.filter((creator) => matchesFavoriteFilter(creator.channelId, favoriteOnlyIds) && creatorMatchesSearch(creator, query)),
   )
   const [pendingSwitch, setPendingSwitch] = useState<{ channelId: string; channelName: string } | null>(null)
+  // The shared active-Oshi selection (Home + Dock both already read/write
+  // this same store) -- read-only here, purely to compare against each row's
+  // own channelId for the selected-avatar glow (spec: "reuse the existing
+  // shared selected-Oshi state, do NOT create a second local selected state").
+  const [activeOshiId] = useSelectedCreator()
 
   function handleCreatorClick(creator: MockCreator) {
     if (confirmOshiSwitch) {
@@ -210,6 +226,7 @@ export function CreatorStatusList({
                 language={language}
                 now={now}
                 isFavorite={isFavorite}
+                isActive={creator.channelId === activeOshiId}
                 locale={locale}
                 onCreatorButtonClick={handleCreatorClick}
                 onSelectVideo={onSelectVideo}
@@ -240,9 +257,9 @@ export function CreatorStatusList({
   )
 }
 
-/** Live/offline counts across the given creator subset (all, or "我的收藏"
- * only) — the "ListStatus" collapsed summary's own numbers (this session:
- * "預設ListStatus係唔打開 只顯示直播數 同OFF數"). */
+/** Live/offline counts across the given creator subset (all, or favorites
+ * only) — the "ListStatus" collapsed summary's own numbers, shown by
+ * default before the list itself is expanded. */
 export function countLiveAndOffline(
   statuses: Record<string, CreatorStatus>,
   favoriteOnlyIds?: Set<string>,

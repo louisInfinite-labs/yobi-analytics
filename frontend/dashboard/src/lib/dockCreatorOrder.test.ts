@@ -37,9 +37,9 @@ describe("groupCreatorsForDock", () => {
     ]
     const groups = groupCreatorsForDock(creators)
     expect(groups.find((g) => g.branch === "vspo_jp")!.creators.map((c) => c.channelId)).toEqual([
-      "aizawa", // あいざわえま
-      "ichinose", // いちのせうるは
-      "erisa", // えりさ
+      "aizawa", // reading: aizawaema
+      "ichinose", // reading: ichinoseuruha
+      "erisa", // reading: erisa
     ])
   })
 
@@ -52,8 +52,9 @@ describe("groupCreatorsForDock", () => {
       creator({ channelId: "aizawa", channelName: "藍沢エマ", branch: "vspo_jp", kana: "あいざわえま" }),
     ]
     const groups = groupCreatorsForDock(creators)
-    // Normalized keys: あいざわえま, あいら, いちのせうるは, うるふ, えりさ — this
-    // would fail under a "collect all Hiragana, then append all Katakana"
+    // Normalized readings in gojuon order: aizawaema, aira, ichinoseuruha,
+    // urufu, erisa — this would fail under a "collect all Hiragana, then
+    // append all Katakana"
     // implementation, which would put aira/urufu (stored as Katakana) after
     // erisa/ichinose/aizawa (stored as Hiragana/Kanji) regardless of reading.
     expect(groups.find((g) => g.branch === "vspo_jp")!.creators.map((c) => c.channelId)).toEqual([
@@ -91,7 +92,7 @@ describe("groupCreatorsForDock", () => {
     expect(groups.find((g) => g.branch === "vspo_en")!.creators.map((c) => c.channelId)).toEqual(["a", "b", "c"])
   })
 
-  it("Hololive JP: numbered generations ascending, then ゲーマーズ, holoX, DEV_IS/ReGLOSS/FLOW GLOW, then unrecognized tags last", () => {
+  it("Hololive JP: numbered generations ascending, then Gamers, holoX, DEV_IS/ReGLOSS/FLOW GLOW, then unrecognized tags last", () => {
     const creators = [
       creator({ channelId: "staff", channelName: "Staff", branch: "holo_jp", groupKey: ["NO"], channelType: "staff" }),
       creator({ channelId: "gen3", channelName: "Gen3", branch: "holo_jp", groupKey: ["3期生"] }),
@@ -104,7 +105,7 @@ describe("groupCreatorsForDock", () => {
     ]
     const groups = groupCreatorsForDock(creators)
     expect(groups.find((g) => g.branch === "holo_jp")!.creators.map((c) => c.channelId)).toEqual([
-      "gen1b", // 1期生, stable tie: gen1b appears before gen1a in input
+      "gen1b", // Gen 1, stable tie: gen1b appears before gen1a in input
       "gen1a",
       "gen3",
       "gamers",
@@ -122,10 +123,11 @@ describe("groupCreatorsForDock", () => {
       creator({ channelId: "gen3_pekora", channelName: "兎田ぺこら", branch: "holo_jp", groupKey: ["3期生"], kana: "うさだぺこら" }),
     ]
     const groups = groupCreatorsForDock(creators)
-    // Within 1期生: き (coco) < し (fubuki) in gojuon order, so coco sorts
-    // first there. Pekora's own reading starts with う — earlier in gojuon
-    // than both — but she still sorts after all of 1期生, because generation
-    // rank is level 1 and always wins over kana (level 2).
+    // Within Gen 1: coco's reading ("ki...") sorts before fubuki's ("shi...")
+    // in gojuon order, so coco sorts first there. Pekora's own reading
+    // starts with "u" — earlier in gojuon order than both — but she still
+    // sorts after all of Gen 1, because generation rank is level 1 and
+    // always wins over kana (level 2).
     expect(groups.find((g) => g.branch === "holo_jp")!.creators.map((c) => c.channelId)).toEqual([
       "gen1_coco",
       "gen1_fubuki",

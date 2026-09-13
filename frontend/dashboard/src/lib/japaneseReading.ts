@@ -1,5 +1,5 @@
-const KATAKANA_START = 0x30a1 // ァ
-const KATAKANA_END = 0x30f6 // ヶ (the contiguous Katakana block that has a 1:1 Hiragana counterpart)
+const KATAKANA_START = 0x30a1 // U+30A1, katakana small "a"
+const KATAKANA_END = 0x30f6 // U+30F6, katakana small "ke" (the contiguous Katakana block that has a 1:1 Hiragana counterpart)
 const HIRAGANA_OFFSET = 0x60 // Katakana code point minus this = its Hiragana equivalent
 
 /** Converts a Japanese reading to a normalized sort key: Katakana characters
@@ -8,7 +8,8 @@ const HIRAGANA_OFFSET = 0x60 // Katakana code point minus this = its Hiragana eq
  * (this task's "Hiragana/Katakana combined phonetic sorting" requirement).
  * This exists ONLY for sorting — callers must keep using the original
  * `creator.kana` for anything displayed. Characters outside the standard
- * Katakana block (e.g. the chōonpu "ー", or any non-kana character) pass
+ * Katakana block (e.g. the chōonpu long vowel mark (U+30FC), or any
+ * non-kana character) pass
  * through unchanged; no example in this task's spec requires them to
  * collate specially, so inventing that behavior here would be guessing. */
 export function normalizeJapaneseReadingForSort(reading: string): string {

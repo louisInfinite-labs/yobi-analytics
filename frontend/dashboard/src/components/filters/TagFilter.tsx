@@ -8,7 +8,7 @@ interface TagFilterProps {
 
 /** Creator generation/unit/staff-grouping multi-select (Creator Master's
  * groupKey) — OR matching within this dimension. A creator may carry more
- * than one tag (e.g. "1期生" + "ゲーマーズ"). */
+ * than one tag (e.g. a numbered generation tag plus a unit tag like Gamers). */
 export function TagFilter({ selected, options, onToggle }: TagFilterProps) {
   if (options.length === 0) return null
 

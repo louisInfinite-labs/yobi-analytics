@@ -80,9 +80,10 @@ export const mockCreators: MockCreator[] = [
     channelName: "桐生ココ",
     organization: "hololive",
     branch: "holo_jp",
-    // Shares 1期生 with 藍沢エマ/白上フブキ so a graduated creator still
-    // retaining an active generation tag is a real, testable fixture case
-    // (dashboard_ui_direction_en.md's Hololive + JP + 1期生 + 卒業 example).
+    // Shares a Gen 1 tag with other active Gen 1 creators so a graduated
+    // creator still retaining an active generation tag is a real, testable
+    // fixture case (dashboard_ui_direction_en.md's Hololive + JP + Gen 1 +
+    // graduated example).
     groupKey: ["1期生"],
     channelType: "member",
     lifecycleStage: "graduated",

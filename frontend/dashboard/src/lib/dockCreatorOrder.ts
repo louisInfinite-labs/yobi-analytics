@@ -7,10 +7,10 @@ import type { BranchKey } from "../types/domain"
  * exactly onto this list. */
 export const DOCK_BRANCH_ORDER: BranchKey[] = ["vspo_jp", "vspo_en", "holo_jp", "holo_en", "holo_id"]
 
-/** A creator can carry more than one groupKey (e.g. 白上フブキ: ["1期生",
- * "ゲーマーズ"]) — the first tag is treated as the primary generation/unit for
- * grouping purposes, matching how the array itself already puts a creator's
- * "main" tag first. */
+/** A creator can carry more than one groupKey (e.g. a Gen 1 creator who is
+ * also tagged as part of the Gamers unit) — the first tag is treated as the
+ * primary generation/unit for grouping purposes, matching how the array
+ * itself already puts a creator's "main" tag first. */
 function primaryGroupKey(creator: MockCreator): string {
   return creator.groupKey[0] ?? ""
 }
@@ -41,8 +41,9 @@ const NUMBERED_GENERATION_PATTERN = /^(\d+)期生$/
  * of that confirmation. */
 const HOLOLIVE_JP_FIXED_GROUP_ORDER = ["ゲーマーズ", "holoX", "DEV_IS", "ReGLOSS", "FLOW GLOW"]
 
-/** Numbered generations (any N期生) sort first, ascending; then the fixed
- * non-numbered units above; anything unrecognized sorts last of all. */
+/** Numbered generations (any "Nth generation" tag) sort first, ascending;
+ * then the fixed non-numbered units above; anything unrecognized sorts
+ * last of all. */
 function hololiveJpGroupRank(groupKey: string): number {
   const numbered = groupKey.match(NUMBERED_GENERATION_PATTERN)
   if (numbered) return Number(numbered[1])
@@ -55,7 +56,7 @@ function hololiveJpGroupRank(groupKey: string): number {
 }
 
 /** Hololive JP: level 1 is the existing, unchanged generation/unit rank
- * (numbered generations ascending, then ゲーマーズ/holoX/DEV_IS/ReGLOSS/FLOW
+ * (numbered generations ascending, then Gamers/holoX/DEV_IS/ReGLOSS/FLOW
  * GLOW, then anything else) — a creator's kana can never move it into a
  * different generation/unit. Level 2, inside the SAME rank, is the
  * normalized Japanese-gojuon comparator; ties there (equal readings, or

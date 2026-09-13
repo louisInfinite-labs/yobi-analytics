@@ -19,12 +19,13 @@ interface VideoPage {
 
 type PageFetcher = (holodexChannelId: string, args: { offset: number }) => Promise<HolodexPage>
 
-/** One independently-paginated video pool — either "最新影片" (backed by
- * fetchUploadedVideosFromHolodex) or "最新直播" (fetchArchivedStreamsFromHolodex).
+/** One independently-paginated video pool — either "Latest Videos" (backed by
+ * fetchUploadedVideosFromHolodex) or "Latest Live" (fetchArchivedStreamsFromHolodex).
  * Kept as two separate instances of this same hook (see useRecentVideos
  * below) rather than one merged pool, so scrolling one row's prefetch
- * never fires the other row's request (this session: "user 滑動 最新直播時
- * ... 只會再發生api request 取 更多的最新直播 最新影片的判定不會被觸發"). */
+ * never fires the other row's request (this session's own requirement:
+ * scrolling the Latest Live row must only ever trigger more Latest Live
+ * requests, never get misclassified as a Latest Videos request). */
 function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefined, fetcher: PageFetcher): VideoPage {
   const mockVideos = getRecentVideosForCreator(creatorId)
 
@@ -108,24 +109,25 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
 }
 
 interface UseRecentVideosResult {
-  /** "最新影片" — plain (non-stream) uploads only. */
+  /** "Latest Videos" — plain (non-stream) uploads only. */
   latestVideos: VideoPage
-  /** "最新直播" — live-now/upcoming + archived streams only. */
+  /** "Latest Live" — live-now/upcoming + archived streams only. */
   streamVideos: VideoPage
 }
 
 /** Mock data by default; real, independently-paginated Holodex data for the
  * small hand-picked subset of creators in holodexChannelIds.ts (this
- * session: "我淨係要試真HOLODEX API 效果" — local testing only, see
- * holodexClient.ts's own docstring on why the API key here must not ship
- * as-is). Falls back to mock on fetch failure so each row still renders
- * something rather than going empty.
+ * session's own request to try the real Holodex API for a quick effect
+ * check — local testing only, see holodexClient.ts's own docstring on why
+ * the API key here must not ship as-is). Falls back to mock on fetch
+ * failure so each row still renders something rather than going empty.
  *
  * Each pool starts with one page (this session's own "20+20" target — up
  * to HOLODEX_MAX_LIMIT=50 per row's own dedicated, correctly-typed
  * endpoint) and the caller triggers that pool's own loadMore() once the
- * user has scrolled that row to roughly its 14th-16th card (this session:
- * "user往右滑到14-16支影片時 再預入後20支影片"). */
+ * user has scrolled that row to roughly its 14th-16th card (this session's
+ * own requirement: prefetch the next ~20 videos once the user scrolls to
+ * around the 14th-16th video). */
 export function useRecentVideos(creatorId: string): UseRecentVideosResult {
   const holodexChannelId = holodexChannelIdByCreatorId[creatorId]
   const latestVideos = usePaginatedVideos(creatorId, holodexChannelId, fetchUploadedVideosFromHolodex)

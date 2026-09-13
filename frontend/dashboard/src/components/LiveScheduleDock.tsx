@@ -4,16 +4,23 @@ import { useConfirmOshiSwitchPreference } from "../hooks/useConfirmOshiSwitchPre
 import { useCountdownLanguage } from "../hooks/useCountdownLanguage"
 import { useCreatorStatuses } from "../hooks/useCreatorStatuses"
 import { useFavoriteCreators } from "../hooks/useFavoriteCreators"
+import { setLiveDockExpanded } from "../hooks/useLiveDockExpanded"
 import { useLocale } from "../hooks/useLocale"
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion"
 import { useSelectedCreator } from "../hooks/useSelectedCreator"
 import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
+import { t } from "../i18n/translations"
 import { formatCountdown, type CountdownLanguage } from "../lib/creatorStatusFormat"
 import type { CreatorStatus } from "../types/creatorStatus"
 import { VideoPlayerModal } from "./VideoPlayerModal"
 
-/** "我的收藏" — only creators the user has starred; "all" — everyone. */
+/** "favorites" — only creators the user has starred; "all" — everyone. */
 type ViewMode = "all" | "favorites"
+
+/** "full" — panel reaches the top of the screen (the default every time the
+ * panel opens); "compact" — the original min(70vh,520px)-capped size, one
+ * click away via the header's resize button. */
+type PanelSize = "full" | "compact"
 
 /** Collapsed-state summary: nothing to fetch here — it only reads the
  * already-shared statuses (spec: "Avoid refetching when the Dock opens").
@@ -49,12 +56,11 @@ function summarize(
  * The collapsed pill also carries the favorites-view switch (⇄) merged
  * directly into it, one pill, no second widget next to it — Home briefly
  * had its own separate creator-name+switch+live pill, but that just
- * duplicated this one already-existing bottom-right pill (this session,
- * marking the duplicate with an X: "為什麼還有2個在" / "我說了只要有右下角
- * 的一個"), so the switch was merged in here instead rather than kept as a
- * second widget. */
+ * duplicated this one already-existing bottom-right pill, so the switch
+ * was merged in here instead rather than kept as a second widget. */
 export function LiveScheduleDock() {
   const [expanded, setExpanded] = useState(false)
+  const [panelSize, setPanelSize] = useState<PanelSize>("full")
   const [viewMode, setViewMode] = useState<ViewMode>("all")
   const [query, setQuery] = useState("")
   const [embed, setEmbed] = useState<{ videoId: string; title: string } | null>(null)
@@ -74,6 +80,14 @@ export function LiveScheduleDock() {
     ? Object.fromEntries(Object.entries(statuses).filter(([id]) => favoriteOnlyIds.has(id)))
     : statuses
   const summary = summarize(summaryStatuses, now, language)
+
+  // Mirrors this component's own `expanded` state out to the module-level
+  // useLiveDockExpanded store so Home's scene frame can react to it (to
+  // stay flush against this dock's own panel edges when open) without this
+  // component needing to know Home exists at all.
+  useEffect(() => {
+    setLiveDockExpanded(expanded)
+  }, [expanded])
 
   useEffect(() => {
     if (!expanded) return
@@ -95,6 +109,23 @@ export function LiveScheduleDock() {
     }
   }, [expanded])
 
+  // The favorites-view switch — shown both on the collapsed pill and inside
+  // the expanded panel's own header, so switching all/favorites never
+  // requires closing the list first. Same button, same shared viewMode,
+  // just rendered in two different places.
+  const viewToggle = (
+    <button
+      type="button"
+      className="live-schedule-dock__view-toggle"
+      onClick={() => setViewMode((prev) => (prev === "all" ? "favorites" : "all"))}
+      aria-label={t(locale, viewMode === "all" ? "liveScheduleDock.viewToggle.showFavoritesAria" : "liveScheduleDock.viewToggle.showAllAria")}
+      aria-pressed={viewMode === "favorites"}
+      title={t(locale, viewMode === "all" ? "liveScheduleDock.viewToggle.allThenFavorites" : "liveScheduleDock.viewToggle.favoritesThenAll")}
+    >
+      ⇄
+    </button>
+  )
+
   return (
     <>
       <div
@@ -103,24 +134,27 @@ export function LiveScheduleDock() {
       >
         {!expanded ? (
           <div className="live-schedule-dock__summary">
+            {viewToggle}
             <button
               type="button"
-              className="live-schedule-dock__view-toggle"
-              onClick={() => setViewMode((prev) => (prev === "all" ? "favorites" : "all"))}
-              aria-label={viewMode === "all" ? "Show only my favorites" : "Show all creators"}
-              aria-pressed={viewMode === "favorites"}
-              title={viewMode === "all" ? "全部 / 我的收藏" : "我的收藏 / 全部"}
+              className="live-schedule-dock__summary-text"
+              onClick={() => {
+                setPanelSize("full")
+                setExpanded(true)
+              }}
             >
-              ⇄
-            </button>
-            <button type="button" className="live-schedule-dock__summary-text" onClick={() => setExpanded(true)}>
               <span className={`live-schedule-dock__dot live-schedule-dock__dot--${summary.dotColor}`} aria-hidden="true" />
               {summary.text}
             </button>
           </div>
         ) : (
-          <div className="live-schedule-dock__panel" role="dialog" aria-label="Live schedule search">
+          <div
+            className={`live-schedule-dock__panel${panelSize === "full" ? " live-schedule-dock__panel--full" : ""}`}
+            role="dialog"
+            aria-label={t(locale, "liveScheduleDock.panelAriaLabel")}
+          >
             <div className="live-schedule-dock__header">
+              {viewToggle}
               <input
                 ref={searchInputRef}
                 type="text"
@@ -129,6 +163,16 @@ export function LiveScheduleDock() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
+              <button
+                type="button"
+                className="live-schedule-dock__resize"
+                onClick={() => setPanelSize((prev) => (prev === "full" ? "compact" : "full"))}
+                aria-label={t(locale, panelSize === "full" ? "liveScheduleDock.resize.shrinkAria" : "liveScheduleDock.resize.expandAria")}
+                aria-pressed={panelSize === "full"}
+                title={t(locale, panelSize === "full" ? "liveScheduleDock.resize.shrink" : "liveScheduleDock.resize.expand")}
+              >
+                {panelSize === "full" ? "⤡" : "⤢"}
+              </button>
               <button type="button" className="live-schedule-dock__close" onClick={() => setExpanded(false)} aria-label="Close">
                 ×
               </button>
