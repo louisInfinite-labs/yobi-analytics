@@ -61,6 +61,9 @@ export type TranslationKey =
   | "oshiSettings.comingSoon"
   | "notificationSettings.comingSoon"
   | "languageSettings.comingSoon"
+  | "languageSettings.picker.zhTW"
+  | "languageSettings.picker.en"
+  | "languageSettings.picker.ja"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -119,6 +122,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.comingSoon": "我推設定即將推出。",
     "notificationSettings.comingSoon": "推送設定即將推出。",
     "languageSettings.comingSoon": "語言設定即將推出。",
+    "languageSettings.picker.zhTW": "繁體中文",
+    "languageSettings.picker.en": "英文",
+    "languageSettings.picker.ja": "日文",
   },
   en: {
     "common.cancel": "Cancel",
@@ -176,6 +182,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.comingSoon": "Oshi Settings is coming soon.",
     "notificationSettings.comingSoon": "Notification Settings is coming soon.",
     "languageSettings.comingSoon": "Language Settings is coming soon.",
+    "languageSettings.picker.zhTW": "Traditional Chinese",
+    "languageSettings.picker.en": "English",
+    "languageSettings.picker.ja": "Japanese",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -233,6 +242,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.comingSoon": "推し設定は近日公開予定です。",
     "notificationSettings.comingSoon": "通知設定は近日公開予定です。",
     "languageSettings.comingSoon": "言語設定は近日公開予定です。",
+    "languageSettings.picker.zhTW": "繁体中国語",
+    "languageSettings.picker.en": "英語",
+    "languageSettings.picker.ja": "日本語",
   },
 }
 
