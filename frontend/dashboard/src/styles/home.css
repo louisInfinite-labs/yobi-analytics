@@ -267,19 +267,36 @@
    aspect-ratio, not from how much horizontal room is available, so on a
    wide/short viewport its natural width is already narrower than any
    percentage-based cap -- nothing to clip, so the gap to the dock stays
-   open. This instead computes home-scene's exact required width in
-   absolute viewport terms: the dock's left edge (100vw - dock width,
-   min(90vw,380px) mirroring .live-schedule-dock__panel's own width) minus
-   home-scene's own left edge -- Sidebar's own fixed width plus
-   .home-page's own var(--space-4) left padding (see .home-page's own
+   open. --home-scene-flush-width computes home-scene's exact required
+   width in absolute viewport terms: the dock's left edge (100vw - dock
+   width, min(90vw,380px) mirroring .live-schedule-dock__panel's own
+   width) minus home-scene's own left edge -- Sidebar's own fixed width
+   plus .home-page's own var(--space-4) left padding (see .home-page's own
    comment above), since .home-page has no centering margin of its own to
-   add on top of those two. Setting `width` (not `max-width`) forces this
-   exact size regardless of the natural aspect-ratio width, which is also
-   what overrides the 16:9 ratio here on a wide viewport -- flush against
-   the dock wins over keeping the frame's own proportions while it's open
-   -- only RecentVideosSection stays put. */
+   add on top of those two.
+     On a viewport wide enough that .home-page's own max-width caps it
+   (--home-page-max-width, 1440px) before the dock's edge is reached,
+   --home-scene-flush-width overshoots past .home-page's own right edge --
+   home-scene would then get clipped by .home-page's overflow:hidden,
+   stopping short of the dock and leaving a visible gap between the two,
+   which looks like a bug rather than the intentional content-width cap it
+   actually is. --home-page-available-width is .home-page's own capped
+   outer width (min(--home-page-max-width, 100vw - sidebar width)) minus
+   its own left+right padding -- the most home-scene could ever occupy
+   without overflowing its parent -- and the final width takes whichever
+   of the two is smaller, so home-scene either reaches the dock flush or
+   stops flush at .home-page's own right edge, never overflowing between
+   the two. Setting `width` (not `max-width`) forces this exact size
+   regardless of the natural aspect-ratio width, which is also what
+   overrides the 16:9 ratio here on a wide viewport -- flush against the
+   dock (or .home-page's own edge) wins over keeping the frame's own
+   proportions while it's open -- only RecentVideosSection stays put. */
 .home-scene--dock-open {
-  width: calc(100vw - min(90vw, 380px) - var(--sidebar-width) - var(--space-4));
+  --home-scene-flush-width: calc(100vw - min(90vw, 380px) - var(--sidebar-width) - var(--space-4));
+  --home-page-available-width: calc(
+    min(var(--home-page-max-width), 100vw - var(--sidebar-width)) - var(--space-4) - var(--space-6)
+  );
+  width: min(var(--home-scene-flush-width), var(--home-page-available-width));
   max-width: none;
 }
 
