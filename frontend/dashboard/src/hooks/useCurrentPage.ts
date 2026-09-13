@@ -30,7 +30,7 @@ window.addEventListener("popstate", notify)
 function setPage(next: Page) {
   const url = new URL(window.location.href)
   url.pathname = PAGE_PATHS[next]
-  url.searchParams.delete("admin")
+  url.search = ""
   if (url.href === window.location.href) return
   window.history.pushState({}, "", url)
   notify()
