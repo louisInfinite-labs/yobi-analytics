@@ -17,64 +17,70 @@
   padding: var(--space-5) var(--space-6);
 }
 
-/* Mantine's own default NavLink look (ui.mantine.dev/category/navbars):
-   an inset, rounded-pill active/hover background rather than
-   MainNavbar's edge-to-edge one -- this is a nested, page-local panel,
-   not the app-wide shell, so it gets Mantine's own visual language
-   instead of reusing MainNavbar's. This means its colors too: Mantine's
-   own default palette values (gray/blue, "light" active variant), not
-   this app's own surface/theme tokens, scoped to this component only --
-   MainNavbar and every other page keep the app's own theme. */
+/* Ported directly from Mantine UI's own "Navbar with 2 sections" demo
+   (ui.mantine.dev/category/navbars, DoubleNavbar.tsx/.module.css) -- its
+   .main/.title/.link, specifically, since .aside/.mainLink there is the
+   icon-only rail MainNavbar already covers. Values below are copied as
+   literally as possible (colors, sizes, radius, spacing) from that
+   component's own dark-mode rendering (the demo site's default color
+   scheme; measured via computed styles, since this app has no
+   light/dark toggle of its own to switch these with `light-dark()`
+   against) -- not reinterpreted through this app's own surface/theme
+   tokens, and scoped to this component only: MainNavbar and every other
+   page keep the app's own (light) theme. */
 .settings-secondary-navbar {
-  --mantine-gray-1: #f1f3f5;
-  --mantine-gray-3: #dee2e6;
-  --mantine-gray-7: #495057;
-  --mantine-gray-9: #212529;
-  --mantine-blue-0: #e7f5ff;
-  --mantine-blue-7: #1c7ed6;
+  --mantine-dark-5: #3b3b3b;
+  --mantine-dark-6: #2e2e2e;
+  --mantine-dark-7: #242424;
+  --mantine-dark-0: #c9c9c9;
+  --mantine-blue-filled: #1971c2;
 
   flex: 0 0 var(--settings-secondary-navbar-width);
   width: var(--settings-secondary-navbar-width);
   box-sizing: border-box;
-  padding: var(--space-5) var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  background: #ffffff;
-  border-right: 1px solid var(--mantine-gray-3);
+  background-color: var(--mantine-dark-6);
 }
 
 .settings-secondary-navbar__title {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--mantine-gray-9);
-  padding: 0 var(--space-3);
-  margin-bottom: var(--space-3);
+  font-weight: 500;
+  background-color: var(--mantine-dark-7);
+  padding: 16px;
+  padding-top: 18px;
+  height: 60px;
+  box-sizing: border-box;
+  margin-bottom: 32px;
+  color: var(--mantine-dark-0);
+  border-bottom: 1px solid var(--mantine-dark-7);
 }
 
 .settings-secondary-navbar__link {
   appearance: none;
+  display: block;
   border: none;
   background: transparent;
-  color: var(--mantine-gray-7);
+  color: var(--mantine-dark-0);
   font-family: inherit;
   font-size: 14px;
+  font-weight: 500;
   text-align: left;
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
+  height: 44px;
+  line-height: 44px;
+  padding: 0 16px;
+  margin: 0 16px 0 0;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
   cursor: pointer;
 }
 
 .settings-secondary-navbar__link:hover {
-  background: var(--mantine-gray-1);
-  color: var(--mantine-gray-9);
+  background: var(--mantine-dark-5);
+  color: #ffffff;
 }
 
-.settings-secondary-navbar__link--active {
-  background: var(--mantine-blue-0);
-  color: var(--mantine-blue-7);
-  font-weight: 600;
+.settings-secondary-navbar__link--active,
+.settings-secondary-navbar__link--active:hover {
+  background: var(--mantine-blue-filled);
+  color: #ffffff;
 }
 
 @media (max-width: 900px) {
@@ -82,18 +88,8 @@
     flex-direction: column;
   }
 
-  /* Stays a vertical list (its links are width:100%, so a row layout
-     here would just wrap each one onto its own line anyway) -- only the
-     border moves from right to bottom, now that .settings-page stacks
-     this above the content instead of beside it. */
   .settings-secondary-navbar {
     width: auto;
     flex: 0 0 auto;
-    border-right: none;
-    border-bottom: 1px solid var(--mantine-gray-3);
-  }
-
-  .settings-secondary-navbar__title {
-    width: 100%;
   }
 }
