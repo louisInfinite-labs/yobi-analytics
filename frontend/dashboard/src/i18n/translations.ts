@@ -59,7 +59,14 @@ export type TranslationKey =
   | "settingsSecondaryNavbar.notificationSettings"
   | "settingsSecondaryNavbar.languageSettings"
   | "oshiSettings.comingSoon"
-  | "notificationSettings.comingSoon"
+  | "notificationSettings.liveColumnHeader"
+  | "notificationSettings.newVideoColumnHeader"
+  | "notificationSettings.liveSwitchAriaLabel"
+  | "notificationSettings.newVideoSwitchAriaLabel"
+  | "notificationSettings.otherGroupLabel"
+  | "notificationSettings.gamersGroupLabel"
+  | "notificationSettings.searchPlaceholder"
+  | "notificationSettings.noResults"
   | "languageSettings.comingSoon"
   | "languageSettings.picker.zhTW"
   | "languageSettings.picker.en"
@@ -120,7 +127,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.notificationSettings": "推送設定",
     "settingsSecondaryNavbar.languageSettings": "語言設定",
     "oshiSettings.comingSoon": "我推設定即將推出。",
-    "notificationSettings.comingSoon": "推送設定即將推出。",
+    "notificationSettings.liveColumnHeader": "直播",
+    "notificationSettings.newVideoColumnHeader": "新片",
+    "notificationSettings.liveSwitchAriaLabel": "{{name}} 直播通知",
+    "notificationSettings.newVideoSwitchAriaLabel": "{{name}} 新片通知",
+    "notificationSettings.otherGroupLabel": "其他",
+    "notificationSettings.gamersGroupLabel": "Gamers",
+    "notificationSettings.searchPlaceholder": "搜尋成員...",
+    "notificationSettings.noResults": "找不到符合的成員",
     "languageSettings.comingSoon": "語言設定即將推出。",
     "languageSettings.picker.zhTW": "繁體中文",
     "languageSettings.picker.en": "英文",
@@ -180,7 +194,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.notificationSettings": "Notification Settings",
     "settingsSecondaryNavbar.languageSettings": "Language Settings",
     "oshiSettings.comingSoon": "Oshi Settings is coming soon.",
-    "notificationSettings.comingSoon": "Notification Settings is coming soon.",
+    "notificationSettings.liveColumnHeader": "Live",
+    "notificationSettings.newVideoColumnHeader": "New Video",
+    "notificationSettings.liveSwitchAriaLabel": "{{name}} live notifications",
+    "notificationSettings.newVideoSwitchAriaLabel": "{{name}} new video notifications",
+    "notificationSettings.otherGroupLabel": "Other",
+    "notificationSettings.gamersGroupLabel": "Gamers",
+    "notificationSettings.searchPlaceholder": "Search creators...",
+    "notificationSettings.noResults": "No creators found",
     "languageSettings.comingSoon": "Language Settings is coming soon.",
     "languageSettings.picker.zhTW": "Traditional Chinese",
     "languageSettings.picker.en": "English",
@@ -240,7 +261,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.notificationSettings": "通知設定",
     "settingsSecondaryNavbar.languageSettings": "言語設定",
     "oshiSettings.comingSoon": "推し設定は近日公開予定です。",
-    "notificationSettings.comingSoon": "通知設定は近日公開予定です。",
+    "notificationSettings.liveColumnHeader": "配信",
+    "notificationSettings.newVideoColumnHeader": "新着動画",
+    "notificationSettings.liveSwitchAriaLabel": "{{name}} の配信通知",
+    "notificationSettings.newVideoSwitchAriaLabel": "{{name}} の新着動画通知",
+    "notificationSettings.otherGroupLabel": "その他",
+    "notificationSettings.gamersGroupLabel": "ゲーマーズ",
+    "notificationSettings.searchPlaceholder": "メンバーを検索...",
+    "notificationSettings.noResults": "該当するメンバーが見つかりません",
     "languageSettings.comingSoon": "言語設定は近日公開予定です。",
     "languageSettings.picker.zhTW": "繁体中国語",
     "languageSettings.picker.en": "英語",
