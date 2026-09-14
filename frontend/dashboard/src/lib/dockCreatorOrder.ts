@@ -1,5 +1,6 @@
 import type { MockCreator } from "../data/mockCreators"
 import { normalizeJapaneseReadingForSort } from "./japaneseReading"
+import { subgroupsForBranch, type Subgroup } from "./hololiveSubgrouping"
 import type { BranchKey } from "../types/domain"
 
 /** Spec's required Dock grouping/order: VSPO JP, VSPO EN, hololive JP, EN,
@@ -125,6 +126,29 @@ export function groupCreatorsForDock(creators: MockCreator[]): { branch: BranchK
       creators.filter((creator) => creator.branch === branch),
     ),
   })).filter((group) => group.creators.length > 0)
+}
+
+/** Same branch grouping/order/sort as groupCreatorsForDock above, further
+ * split into the same generation/unit subgroups Notification Settings and
+ * Oshi Settings already show (shared subgroupsForBranch, hololiveSubgrouping
+ * .ts -- not a separate copy of that algorithm). Fed each branch's own
+ * ALREADY-sorted creators (kana order for VSPO JP/hololive JP, alphabetical
+ * for the rest), so subgroupsForBranch's own partitioning -- which never
+ * reorders a bucket's members, only groupHololiveJp's "Other" catch-all
+ * sorts its bucket itself -- preserves that exact per-branch order within
+ * each generation/unit rather than replacing it.
+ *
+ * Same "Gamers dual-bucket" rule as Oshi/Notification Settings, on purpose:
+ * the real hololive Gamers unit is 4 members (confirmed), and one of them
+ * (Shirakami Fubuki) also carries her own "1期生" tag -- she must still
+ * show under BOTH, or Gamers would only ever show 3. */
+export function groupCreatorsForDockWithSubgroups(
+  creators: MockCreator[],
+): { branch: BranchKey; subgroups: Subgroup<MockCreator>[] }[] {
+  return groupCreatorsForDock(creators).map((group) => ({
+    branch: group.branch,
+    subgroups: subgroupsForBranch(group.branch, group.creators, (c) => c.channelName),
+  }))
 }
 
 /** Case-insensitive match against the creator's display name. No separate

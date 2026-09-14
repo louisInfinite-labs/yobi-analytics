@@ -1,15 +1,7 @@
 import { mockCreators, type MockCreator } from "../data/mockCreators"
 import type { BranchKey } from "../types/domain"
 import { DOCK_BRANCH_ORDER, creatorMatchesSearch } from "./dockCreatorOrder"
-import {
-  GAMERS_GROUP_LABEL_KEY,
-  groupByFixedOrThenNumbered,
-  groupFlat,
-  groupHololiveJp,
-  HOLOLIVE_EN_FIXED_ORDER,
-  OTHER_GROUP_LABEL_KEY,
-  type Subgroup,
-} from "./hololiveSubgrouping"
+import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY, subgroupsForBranch, type Subgroup } from "./hololiveSubgrouping"
 
 export { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY }
 
@@ -38,26 +30,6 @@ function agencyLabelForBranch(branch: BranchKey): string {
   return branch.startsWith("vspo_") ? "VSPO" : "Hololive"
 }
 
-/** Same Agency>Region>Generation/Unit grouping algorithm as Notification
- * Settings (see hololiveSubgrouping.ts -- shared, not a second parallel
- * copy), applied to Live Status's own roster (mockCreators) instead of the
- * real creators.json one, so favorites stay keyed by the same `channelId`
- * Live Status itself already uses (useFavoriteCreators) -- no separate ID
- * space, no mapping table. */
-function subgroupsForBranch(branch: BranchKey, creators: MockCreator[]): Subgroup<MockCreator>[] {
-  switch (branch) {
-    case "holo_jp":
-      return groupHololiveJp(creators, (c) => c.channelName)
-    case "holo_en":
-      return groupByFixedOrThenNumbered(creators, HOLOLIVE_EN_FIXED_ORDER)
-    case "holo_id":
-      return groupByFixedOrThenNumbered(creators, [])
-    case "vspo_jp":
-    case "vspo_en":
-      return groupFlat(creators)
-  }
-}
-
 /** Oshi Settings' own creator grouping -- reuses Live Status's existing
  * roster (mockCreators) and branch order (DOCK_BRANCH_ORDER in
  * dockCreatorOrder.ts), nested one level deeper into Agency > Region >
@@ -83,6 +55,7 @@ export function groupCreatorsForOshiSettings(query: string): OshiSettingsAgencyG
     subgroups: subgroupsForBranch(
       branch,
       filtered.filter((creator) => creator.branch === branch),
+      (c) => c.channelName,
     ),
   })).filter((region) => region.subgroups.length > 0)
 

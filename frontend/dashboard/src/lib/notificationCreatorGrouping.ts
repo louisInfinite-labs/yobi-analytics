@@ -1,13 +1,5 @@
 import rawCreators from "../data/creators.json"
-import {
-  GAMERS_GROUP_LABEL_KEY,
-  groupByFixedOrThenNumbered,
-  groupFlat,
-  groupHololiveJp,
-  HOLOLIVE_EN_FIXED_ORDER,
-  OTHER_GROUP_LABEL_KEY,
-  type Subgroup,
-} from "./hololiveSubgrouping"
+import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY, subgroupsForBranch } from "./hololiveSubgrouping"
 import type { BranchKey } from "../types/domain"
 
 export { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY }
@@ -103,20 +95,6 @@ const AGENCY_REGION_ORDER: { agencyLabel: string; branch: BranchKey; regionLabel
   { agencyLabel: "HOLOLIVE", branch: "holo_id", regionLabel: "ID" },
 ]
 
-function subgroupsForBranch(branch: BranchKey, creators: NotificationCreator[]): Subgroup<NotificationCreator>[] {
-  switch (branch) {
-    case "holo_jp":
-      return groupHololiveJp(creators, (c) => c.displayName)
-    case "holo_en":
-      return groupByFixedOrThenNumbered(creators, HOLOLIVE_EN_FIXED_ORDER)
-    case "holo_id":
-      return groupByFixedOrThenNumbered(creators, [])
-    case "vspo_jp":
-    case "vspo_en":
-      return groupFlat(creators)
-  }
-}
-
 /** Every creator in the roster, grouped into the spec's own three-level
  * tree -- Agency (VSPO/HOLOLIVE) > Region (JP/EN/ID) > Generation/Unit >
  * Creators -- in the spec's own fixed order (AGENCY_REGION_ORDER). */
@@ -127,6 +105,7 @@ export function groupCreatorsForNotificationSettings(): CreatorAgencyGroup[] {
     subgroups: subgroupsForBranch(
       branch,
       ALL_CREATORS.filter((creator) => creator.branch === branch),
+      (c) => c.displayName,
     ),
   })).filter((region) => region.subgroups.length > 0)
 

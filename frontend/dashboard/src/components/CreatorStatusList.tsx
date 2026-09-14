@@ -1,14 +1,24 @@
-import { useState } from "react"
+import { Fragment, useState } from "react"
 import { mockCreators, type MockCreator } from "../data/mockCreators"
 import { useSelectedCreator } from "../hooks/useSelectedCreator"
 import { useSwipeToFavorite } from "../hooks/useSwipeToFavorite"
-import { creatorMatchesSearch, groupCreatorsForDock } from "../lib/dockCreatorOrder"
+import { creatorMatchesSearch, groupCreatorsForDockWithSubgroups } from "../lib/dockCreatorOrder"
 import { formatCreatorStatus, type CountdownLanguage, type UpcomingDisplayMode } from "../lib/creatorStatusFormat"
+import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY } from "../lib/hololiveSubgrouping"
 import { getMemberAccent } from "../theme/memberAccent"
 import { BRANCH_LABELS } from "../types/domain"
 import type { CreatorStatus } from "../types/creatorStatus"
 import { t, type Locale } from "../i18n/translations"
 import { OshiSwitchConfirmDialog } from "./OshiSwitchConfirmDialog"
+
+/** Every subgroup label is a real, locale-independent generation/unit name
+ * (e.g. "1期生", "FLOW GLOW") EXCEPT the two sentinel keys below -- same
+ * pattern as OshiSettings'/NotificationSettings' own subgroupTitle. */
+function subgroupTitle(locale: Locale, label: string): string {
+  if (label === OTHER_GROUP_LABEL_KEY) return t(locale, "creatorStatusList.otherGroupLabel")
+  if (label === GAMERS_GROUP_LABEL_KEY) return t(locale, "creatorStatusList.gamersGroupLabel")
+  return label
+}
 
 /** Avatar + favorite indicator, factored out so the image-load-failure
  * state (spec: "the existing colored-circle/initial placeholder may remain
@@ -191,7 +201,7 @@ export function CreatorStatusList({
   confirmOshiSwitch,
   onConfirmOshiSwitchChange,
 }: CreatorStatusListProps) {
-  const groups = groupCreatorsForDock(
+  const groups = groupCreatorsForDockWithSubgroups(
     mockCreators.filter((creator) => matchesFavoriteFilter(creator.channelId, favoriteOnlyIds) && creatorMatchesSearch(creator, query)),
   )
   const [pendingSwitch, setPendingSwitch] = useState<{ channelId: string; channelName: string } | null>(null)
@@ -214,26 +224,33 @@ export function CreatorStatusList({
       {groups.map((group) => (
         <div key={group.branch} className="creator-status-list__group">
           <div className="creator-status-list__group-label">{BRANCH_LABELS[group.branch]}</div>
-          {group.creators.map((creator) => {
-            const status = statuses[creator.channelId] ?? { kind: "offline" as const }
-            const isFavorite = favorites.has(creator.channelId)
-            return (
-              <CreatorRow
-                key={creator.channelId}
-                creator={creator}
-                status={status}
-                displayMode={displayMode}
-                language={language}
-                now={now}
-                isFavorite={isFavorite}
-                isActive={creator.channelId === activeOshiId}
-                locale={locale}
-                onCreatorButtonClick={handleCreatorClick}
-                onSelectVideo={onSelectVideo}
-                onToggleFavorite={onToggleFavorite}
-              />
-            )
-          })}
+          {group.subgroups.map((subgroup) => (
+            <Fragment key={subgroup.label ?? "__flat__"}>
+              {subgroup.label && (
+                <div className="creator-status-list__subgroup-label">{subgroupTitle(locale, subgroup.label)}</div>
+              )}
+              {subgroup.creators.map((creator) => {
+                const status = statuses[creator.channelId] ?? { kind: "offline" as const }
+                const isFavorite = favorites.has(creator.channelId)
+                return (
+                  <CreatorRow
+                    key={creator.channelId}
+                    creator={creator}
+                    status={status}
+                    displayMode={displayMode}
+                    language={language}
+                    now={now}
+                    isFavorite={isFavorite}
+                    isActive={creator.channelId === activeOshiId}
+                    locale={locale}
+                    onCreatorButtonClick={handleCreatorClick}
+                    onSelectVideo={onSelectVideo}
+                    onToggleFavorite={onToggleFavorite}
+                  />
+                )
+              })}
+            </Fragment>
+          ))}
         </div>
       ))}
       {groups.length === 0 && (

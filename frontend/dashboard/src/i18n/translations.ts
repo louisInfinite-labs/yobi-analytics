@@ -15,6 +15,8 @@ export type TranslationKey =
   | "creatorStatusList.emptyFavorites"
   | "creatorStatusList.emptySearch"
   | "creatorStatusList.switchOshiTo"
+  | "creatorStatusList.otherGroupLabel"
+  | "creatorStatusList.gamersGroupLabel"
   | "recentVideos.tag.latestVideos"
   | "recentVideos.tag.latestLive"
   | "recentVideos.tag.all"
@@ -86,6 +88,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.emptyFavorites": "尚未有收藏。",
     "creatorStatusList.emptySearch": "找不到符合的創作者。",
     "creatorStatusList.switchOshiTo": "切換推し為 {{creatorName}}",
+    "creatorStatusList.otherGroupLabel": "其他",
+    "creatorStatusList.gamersGroupLabel": "Gamers",
     "recentVideos.tag.latestVideos": "最新影片",
     "recentVideos.tag.latestLive": "最新直播",
     "recentVideos.tag.all": "ALL",
@@ -156,6 +160,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.emptyFavorites": "No favorites yet.",
     "creatorStatusList.emptySearch": "No matching creator.",
     "creatorStatusList.switchOshiTo": "Switch Oshi to {{creatorName}}",
+    "creatorStatusList.otherGroupLabel": "Other",
+    "creatorStatusList.gamersGroupLabel": "Gamers",
     "recentVideos.tag.latestVideos": "Latest Videos",
     "recentVideos.tag.latestLive": "Latest Live",
     "recentVideos.tag.all": "ALL",
@@ -226,6 +232,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.emptyFavorites": "まだお気に入りがありません。",
     "creatorStatusList.emptySearch": "該当する配信者が見つかりません。",
     "creatorStatusList.switchOshiTo": "推しを{{creatorName}}に切り替える",
+    "creatorStatusList.otherGroupLabel": "その他",
+    "creatorStatusList.gamersGroupLabel": "ゲーマーズ",
     "recentVideos.tag.latestVideos": "最新動画",
     "recentVideos.tag.latestLive": "最新配信",
     "recentVideos.tag.all": "ALL",

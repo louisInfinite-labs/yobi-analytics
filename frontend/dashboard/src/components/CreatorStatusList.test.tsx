@@ -41,7 +41,10 @@ describe("CreatorStatusList", () => {
   it("lists every creator when favoriteOnlyIds is not set", () => {
     renderList()
     expect(screen.getByText("藍沢エマ")).toBeInTheDocument()
-    expect(screen.getByText("白上フブキ")).toBeInTheDocument()
+    // Shirakami Fubuki carries both "1期生" and "ゲーマーズ" tags, so she's
+    // listed under both subgroups (same intentional dual-bucket rule as
+    // Oshi/Notification Settings) -- two rows, not one.
+    expect(screen.getAllByText("白上フブキ")).toHaveLength(2)
   })
 
   it("lists only the favorited creators when favoriteOnlyIds is set", () => {

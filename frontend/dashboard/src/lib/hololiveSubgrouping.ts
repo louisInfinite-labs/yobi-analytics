@@ -1,13 +1,16 @@
 /** Shared Agency>Region>Generation/Unit subgrouping algorithm, generic over
- * any creator shape that carries `groupKey`/`channelType` -- used by BOTH
+ * any creator shape that carries `groupKey`/`channelType` -- used by
  * Notification Settings (the real 112-entry creators.json roster,
- * `creatorId` space) and Oshi Settings (Live Status's own mockCreators
- * roster, `channelId` space) so the two pages group Hololive JP/EN/ID
- * identically without a second, parallel copy of this same business logic
- * (numbered-generation ordering, the Gamers dual-bucket rule, FLOWGLOW/
- * ReGLOSS group-channel-first ordering, Hololive EN's fixed unit order).
- * Each page still keeps its own data source, IDs, and display-name
- * overrides -- only this grouping shape is shared. */
+ * `creatorId` space), Oshi Settings, and Live Status's own creator list
+ * (the latter two both read mockCreators, `channelId` space) so all three
+ * group Hololive JP/EN/ID identically without a second/third parallel copy
+ * of this same business logic (numbered-generation ordering, the Gamers
+ * dual-bucket rule, FLOWGLOW/ReGLOSS group-channel-first ordering,
+ * Hololive EN's fixed unit order). Each consumer still keeps its own data
+ * source, IDs, and display-name overrides -- only this grouping shape is
+ * shared. */
+
+import type { BranchKey } from "../types/domain"
 
 export interface GroupableCreator {
   groupKey: string[]
@@ -142,4 +145,28 @@ export function groupByFixedOrThenNumbered<T extends GroupableCreator>(
  * placeholder like "NO") -- a single, unlabeled subgroup. */
 export function groupFlat<T>(creators: T[]): Subgroup<T>[] {
   return creators.length > 0 ? [{ label: null, creators }] : []
+}
+
+/** Per-branch dispatch to the right grouping function above -- shared by
+ * every consumer that groups a branch's creators into generations/units
+ * (Notification Settings, Oshi Settings, and Live Status's own creator
+ * list) so this same branch->algorithm mapping isn't copied a third time.
+ * `getSortName` is only consulted by holo_jp's "Other" catch-all bucket
+ * (see groupHololiveJp above). */
+export function subgroupsForBranch<T extends GroupableCreator>(
+  branch: BranchKey,
+  creators: T[],
+  getSortName: (creator: T) => string,
+): Subgroup<T>[] {
+  switch (branch) {
+    case "holo_jp":
+      return groupHololiveJp(creators, getSortName)
+    case "holo_en":
+      return groupByFixedOrThenNumbered(creators, HOLOLIVE_EN_FIXED_ORDER)
+    case "holo_id":
+      return groupByFixedOrThenNumbered(creators, [])
+    case "vspo_jp":
+    case "vspo_en":
+      return groupFlat(creators)
+  }
 }
