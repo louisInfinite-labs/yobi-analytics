@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { creatorMatchesSearch, groupCreatorsForDock, DOCK_BRANCH_ORDER } from "./dockCreatorOrder"
+import { creatorMatchesSearch, groupCreatorsForDock, pinNonMemberChannelsLast, DOCK_BRANCH_ORDER } from "./dockCreatorOrder"
 import { mockCreators, type MockCreator } from "../data/mockCreators"
 
 function creator(overrides: Partial<MockCreator> & Pick<MockCreator, "channelId" | "channelName" | "branch">): MockCreator {
@@ -82,6 +82,20 @@ describe("groupCreatorsForDock", () => {
     ])
   })
 
+  it("VSPO JP: a non-member channel (e.g. VSPO! Official) sorts after every individual member, even one missing kana — not merely tied for last by both lacking a reading", () => {
+    const creators = [
+      creator({ channelId: "official", channelName: "VSPO! Official", branch: "vspo_jp", channelType: "group" }),
+      creator({ channelId: "no_kana_member", channelName: "Some Member", branch: "vspo_jp" }),
+      creator({ channelId: "aizawa", channelName: "藍沢エマ", branch: "vspo_jp", kana: "あいざわえま" }),
+    ]
+    const groups = groupCreatorsForDock(creators)
+    expect(groups.find((g) => g.branch === "vspo_jp")!.creators.map((c) => c.channelId)).toEqual([
+      "aizawa", // has kana, sorts first
+      "no_kana_member", // a member missing kana still outranks a non-member channel
+      "official", // pinned last regardless of kana
+    ])
+  })
+
   it("VSPO EN: sorts by display name A-Z case-insensitively", () => {
     const creators = [
       creator({ channelId: "b", channelName: "beta", branch: "vspo_en" }),
@@ -158,6 +172,34 @@ describe("groupCreatorsForDock", () => {
     // held elsewhere in the app.
     const groupsAfter = groupCreatorsForDock(mockCreators).find((g) => g.branch === "holo_jp")!.creators.map((c) => c.channelId)
     expect(groupsAfter).toEqual(groupsBefore)
+  })
+})
+
+// VSPO JP's own official channel (youtube.com/@Vspo77) is being added to
+// the real Creator Master roster by the backend separately, exact
+// creatorId not yet known — confirmed with the user: once it exists, it's
+// pinned to the very bottom of VSPO JP's list, in Live Status, Oshi
+// Settings, and Notification Settings alike (all three reuse this same
+// function). Synthetic fixtures here (not real roster data, since
+// mockCreators/creators.json have no non-member vspo_jp entry today) prove
+// the rule itself works correctly ahead of that backend change landing.
+describe("pinNonMemberChannelsLast", () => {
+  it("moves every non-member entry after every member entry, preserving each group's own relative order", () => {
+    const fixture = [
+      { id: "official_channel", channelType: "group" },
+      { id: "member_a", channelType: "member" },
+      { id: "member_b", channelType: "member" },
+      { id: "staff_channel", channelType: "staff" },
+    ]
+    expect(pinNonMemberChannelsLast(fixture).map((entry) => entry.id)).toEqual(["member_a", "member_b", "official_channel", "staff_channel"])
+  })
+
+  it("is a no-op when every entry is already a member", () => {
+    const fixture = [
+      { id: "member_a", channelType: "member" },
+      { id: "member_b", channelType: "member" },
+    ]
+    expect(pinNonMemberChannelsLast(fixture).map((entry) => entry.id)).toEqual(["member_a", "member_b"])
   })
 })
 

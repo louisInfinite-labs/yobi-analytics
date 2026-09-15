@@ -57,8 +57,10 @@ export type TranslationKey =
   | "mainNavbar.settings"
   | "settingsSecondaryNavbar.title"
   | "settingsSecondaryNavbar.navAriaLabel"
+  | "settingsSecondaryNavbar.myOshiSettings"
   | "settingsSecondaryNavbar.oshiSettings"
   | "settingsSecondaryNavbar.notificationSettings"
+  | "myOshiSettings.placeholder"
   | "oshiSettings.searchPlaceholder"
   | "oshiSettings.noResults"
   | "oshiSettings.addFavoriteAria"
@@ -73,6 +75,23 @@ export type TranslationKey =
   | "notificationSettings.gamersGroupLabel"
   | "notificationSettings.searchPlaceholder"
   | "notificationSettings.noResults"
+  | "notificationSettings.defaultReminderLabel"
+  | "notificationSettings.reminder.atStart"
+  | "notificationSettings.reminder.10min"
+  | "notificationSettings.reminder.30min"
+  | "notificationSettings.reminder.1hour"
+  | "notificationSettings.reminderColumnHeader"
+  | "notificationSettings.reminderSelectAriaLabel"
+  | "notificationSettings.topicReminderMode.memberChoice"
+  | "notificationSettings.reminderNotInEffectHint"
+  | "notificationSettings.notifiedMembersLabel"
+  | "notificationSettings.selectedCountLabel"
+  | "notificationSettings.namePreviewSeparator"
+  | "notificationSettings.noSelectedMembers"
+  | "notificationSettings.manageMembersButton"
+  | "notificationSettings.managementDrawerTitle"
+  | "notificationSettings.favoritesGroupLabel"
+  | "notificationSettings.topic.all"
   | "languageSettings.picker.zhTW"
   | "languageSettings.picker.en"
   | "languageSettings.picker.ja"
@@ -130,8 +149,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "設定",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
-    "settingsSecondaryNavbar.oshiSettings": "我推設定",
-    "settingsSecondaryNavbar.notificationSettings": "推送設定",
+    "settingsSecondaryNavbar.myOshiSettings": "我推設定",
+    "settingsSecondaryNavbar.oshiSettings": "收藏名單",
+    "settingsSecondaryNavbar.notificationSettings": "推送通知(直播 / 新片)",
     "oshiSettings.searchPlaceholder": "搜尋成員...",
     "oshiSettings.noResults": "找不到符合的成員",
     "oshiSettings.addFavoriteAria": "將 {{name}} 加入我推",
@@ -146,6 +166,24 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.gamersGroupLabel": "Gamers",
     "notificationSettings.searchPlaceholder": "搜尋成員...",
     "notificationSettings.noResults": "找不到符合的成員",
+    "notificationSettings.defaultReminderLabel": "提醒時間",
+    "notificationSettings.reminder.atStart": "開播時",
+    "notificationSettings.reminder.10min": "10 分鐘前",
+    "notificationSettings.reminder.30min": "30 分鐘前",
+    "notificationSettings.reminder.1hour": "1 小時前",
+    "notificationSettings.reminderColumnHeader": "提醒時間",
+    "notificationSettings.reminderSelectAriaLabel": "{{name}} 的提醒時間",
+    "notificationSettings.topicReminderMode.memberChoice": "各成員為準",
+    "notificationSettings.reminderNotInEffectHint": "未生效（套用主題時間）",
+    "notificationSettings.notifiedMembersLabel": "通知成員",
+    "notificationSettings.selectedCountLabel": "已選 {{count}} 人",
+    "notificationSettings.namePreviewSeparator": "、",
+    "notificationSettings.noSelectedMembers": "尚未選擇任何成員",
+    "notificationSettings.manageMembersButton": "管理成員",
+    "notificationSettings.managementDrawerTitle": "{{topic}} — 通知成員",
+    "notificationSettings.favoritesGroupLabel": "收藏",
+    "notificationSettings.topic.all": "全部",
+    "myOshiSettings.placeholder": "即將推出",
     "languageSettings.picker.zhTW": "繁體中文",
     "languageSettings.picker.en": "英文",
     "languageSettings.picker.ja": "日文",
@@ -202,8 +240,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "Settings",
     "settingsSecondaryNavbar.title": "Settings",
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
-    "settingsSecondaryNavbar.oshiSettings": "Oshi Settings",
-    "settingsSecondaryNavbar.notificationSettings": "Notification Settings",
+    "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
+    "settingsSecondaryNavbar.oshiSettings": "Favorites List",
+    "settingsSecondaryNavbar.notificationSettings": "Notifications (Live / New Video)",
     "oshiSettings.searchPlaceholder": "Search creators...",
     "oshiSettings.noResults": "No creators found",
     "oshiSettings.addFavoriteAria": "Add {{name}} to favorites",
@@ -218,6 +257,24 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.gamersGroupLabel": "Gamers",
     "notificationSettings.searchPlaceholder": "Search creators...",
     "notificationSettings.noResults": "No creators found",
+    "notificationSettings.defaultReminderLabel": "Reminder time",
+    "notificationSettings.reminder.atStart": "At start",
+    "notificationSettings.reminder.10min": "10 minutes before",
+    "notificationSettings.reminder.30min": "30 minutes before",
+    "notificationSettings.reminder.1hour": "1 hour before",
+    "notificationSettings.reminderColumnHeader": "Reminder time",
+    "notificationSettings.reminderSelectAriaLabel": "{{name}}'s reminder time",
+    "notificationSettings.topicReminderMode.memberChoice": "Member's own choice",
+    "notificationSettings.reminderNotInEffectHint": "Not in effect (using topic time)",
+    "notificationSettings.notifiedMembersLabel": "Notified members",
+    "notificationSettings.selectedCountLabel": "{{count}} selected",
+    "notificationSettings.namePreviewSeparator": ", ",
+    "notificationSettings.noSelectedMembers": "No members selected yet",
+    "notificationSettings.manageMembersButton": "Manage members",
+    "notificationSettings.managementDrawerTitle": "{{topic}} — Notified Members",
+    "notificationSettings.favoritesGroupLabel": "Favorites",
+    "notificationSettings.topic.all": "All",
+    "myOshiSettings.placeholder": "Coming soon",
     "languageSettings.picker.zhTW": "Traditional Chinese",
     "languageSettings.picker.en": "English",
     "languageSettings.picker.ja": "Japanese",
@@ -274,8 +331,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "設定",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
-    "settingsSecondaryNavbar.oshiSettings": "推し設定",
-    "settingsSecondaryNavbar.notificationSettings": "通知設定",
+    "settingsSecondaryNavbar.myOshiSettings": "推し設定",
+    "settingsSecondaryNavbar.oshiSettings": "お気に入りリスト",
+    "settingsSecondaryNavbar.notificationSettings": "通知設定(配信 / 新着動画)",
     "oshiSettings.searchPlaceholder": "メンバーを検索...",
     "oshiSettings.noResults": "該当するメンバーが見つかりません",
     "oshiSettings.addFavoriteAria": "{{name}}を推しに追加",
@@ -290,6 +348,24 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.gamersGroupLabel": "ゲーマーズ",
     "notificationSettings.searchPlaceholder": "メンバーを検索...",
     "notificationSettings.noResults": "該当するメンバーが見つかりません",
+    "notificationSettings.defaultReminderLabel": "リマインド時間",
+    "notificationSettings.reminder.atStart": "配信開始時",
+    "notificationSettings.reminder.10min": "10分前",
+    "notificationSettings.reminder.30min": "30分前",
+    "notificationSettings.reminder.1hour": "1時間前",
+    "notificationSettings.reminderColumnHeader": "リマインド時間",
+    "notificationSettings.reminderSelectAriaLabel": "{{name}} のリマインド時間",
+    "notificationSettings.topicReminderMode.memberChoice": "各メンバーの設定",
+    "notificationSettings.reminderNotInEffectHint": "現在は無効（トピックの時間を使用中）",
+    "notificationSettings.notifiedMembersLabel": "通知メンバー",
+    "notificationSettings.selectedCountLabel": "{{count}} 人選択中",
+    "notificationSettings.namePreviewSeparator": "、",
+    "notificationSettings.noSelectedMembers": "まだメンバーが選択されていません",
+    "notificationSettings.manageMembersButton": "メンバーを管理",
+    "notificationSettings.managementDrawerTitle": "{{topic}} — 通知メンバー",
+    "notificationSettings.favoritesGroupLabel": "お気に入り",
+    "notificationSettings.topic.all": "全部",
+    "myOshiSettings.placeholder": "近日公開",
     "languageSettings.picker.zhTW": "繁体中国語",
     "languageSettings.picker.en": "英語",
     "languageSettings.picker.ja": "日本語",

@@ -1,5 +1,6 @@
 import rawCreators from "../data/creators.json"
 import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY, subgroupsForBranch } from "./hololiveSubgrouping"
+import { sortNotificationCreatorsLikeLiveStatus } from "./notificationCreatorOrder"
 import type { BranchKey } from "../types/domain"
 
 export { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY }
@@ -64,6 +65,16 @@ function withDisplayNameOverride(creator: NotificationCreator): NotificationCrea
 
 const ALL_CREATORS = (rawCreators as NotificationCreator[]).map(withDisplayNameOverride)
 
+/** The same real Creator Master roster ALL_CREATORS above already loads,
+ * exposed flat (not grouped) -- for consumers that need to resolve a
+ * creatorId to its creator record (e.g. the topic Notification Settings'
+ * compact "already selected" name preview) or filter/partition the whole
+ * roster themselves (e.g. TopicCreatorManagementDrawer's own Favorites vs.
+ * agency-group split) rather than walking the grouped tree. */
+export function getAllNotificationCreators(): NotificationCreator[] {
+  return ALL_CREATORS
+}
+
 export interface CreatorSubgroup {
   /** null for a branch with no generation/unit subdivision (VSPO JP/EN,
    * per this feature's own spec) -- rendered with no subgroup header. */
@@ -97,14 +108,23 @@ const AGENCY_REGION_ORDER: { agencyLabel: string; branch: BranchKey; regionLabel
 
 /** Every creator in the roster, grouped into the spec's own three-level
  * tree -- Agency (VSPO/HOLOLIVE) > Region (JP/EN/ID) > Generation/Unit >
- * Creators -- in the spec's own fixed order (AGENCY_REGION_ORDER). */
+ * Creators -- in the spec's own fixed order (AGENCY_REGION_ORDER). Each
+ * branch's creators are ordered to match Live Status's own display order
+ * (sortNotificationCreatorsLikeLiveStatus) before being partitioned into
+ * generations/units -- subgroupsForBranch itself never reorders a
+ * subgroup's members (only its "Other" catch-all re-sorts, alphabetically,
+ * on its own), so feeding it an already-ordered list is what makes each
+ * subgroup come out ordered too. */
 export function groupCreatorsForNotificationSettings(): CreatorAgencyGroup[] {
   const regionGroups: CreatorRegionGroup[] = AGENCY_REGION_ORDER.map(({ branch, regionLabel }) => ({
     branch,
     regionLabel,
     subgroups: subgroupsForBranch(
       branch,
-      ALL_CREATORS.filter((creator) => creator.branch === branch),
+      sortNotificationCreatorsLikeLiveStatus(
+        branch,
+        ALL_CREATORS.filter((creator) => creator.branch === branch),
+      ),
       (c) => c.displayName,
     ),
   })).filter((region) => region.subgroups.length > 0)

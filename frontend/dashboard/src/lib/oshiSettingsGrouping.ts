@@ -1,6 +1,6 @@
 import { mockCreators, type MockCreator } from "../data/mockCreators"
 import type { BranchKey } from "../types/domain"
-import { DOCK_BRANCH_ORDER, creatorMatchesSearch } from "./dockCreatorOrder"
+import { DOCK_BRANCH_ORDER, creatorMatchesSearch, pinNonMemberChannelsLast } from "./dockCreatorOrder"
 import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY, subgroupsForBranch, type Subgroup } from "./hololiveSubgrouping"
 
 export { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY }
@@ -49,15 +49,20 @@ function agencyLabelForBranch(branch: BranchKey): string {
 export function groupCreatorsForOshiSettings(query: string): OshiSettingsAgencyGroup[] {
   const filtered = mockCreators.filter((creator) => creatorMatchesSearch(creator, query))
 
-  const regions: OshiSettingsRegionGroup[] = DOCK_BRANCH_ORDER.map((branch) => ({
-    branch,
-    regionLabel: REGION_LABEL_BY_BRANCH[branch],
-    subgroups: subgroupsForBranch(
+  const regions: OshiSettingsRegionGroup[] = DOCK_BRANCH_ORDER.map((branch) => {
+    const branchCreators = filtered.filter((creator) => creator.branch === branch)
+    return {
       branch,
-      filtered.filter((creator) => creator.branch === branch),
-      (c) => c.channelName,
-    ),
-  })).filter((region) => region.subgroups.length > 0)
+      regionLabel: REGION_LABEL_BY_BRANCH[branch],
+      // VSPO JP's own official channel (VSPO! Official) is pinned to the
+      // very bottom of this branch's list -- confirmed with the user,
+      // reusing the exact same rule Live Status and Notification Settings
+      // both apply (dockCreatorOrder.ts's own pinNonMemberChannelsLast),
+      // not a second copy of it. Every other branch's own existing order
+      // is untouched.
+      subgroups: subgroupsForBranch(branch, branch === "vspo_jp" ? pinNonMemberChannelsLast(branchCreators) : branchCreators, (c) => c.channelName),
+    }
+  }).filter((region) => region.subgroups.length > 0)
 
   const agencies: OshiSettingsAgencyGroup[] = []
   for (const region of regions) {

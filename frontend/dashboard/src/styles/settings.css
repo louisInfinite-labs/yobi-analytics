@@ -53,13 +53,14 @@
 }
 
 .settings-secondary-navbar__title {
+  display: flex;
+  align-items: center;
   font-weight: 500;
   background-color: var(--mantine-dark-7);
-  padding: 16px;
-  padding-top: 18px;
+  padding: 0 16px;
   height: 60px;
   box-sizing: border-box;
-  margin-bottom: 32px;
+  margin: 0;
   color: var(--mantine-dark-0);
   border-bottom: 1px solid var(--mantine-dark-7);
 }
@@ -219,159 +220,27 @@
   background-color: var(--mantine-dark-4);
 }
 
-/* ============ Notification Settings' creator list -- this app's own
-   theme (no library style was specified for this component, unlike
-   SettingsSecondaryNavbar/LanguageSettings above); Mantine's Avatar/
-   Switch/Divider/ScrollArea are used only as a VISUAL reference (per
-   this feature's own decision (A)), not the actual library -- same
-   hand-ported-CSS approach as everywhere else in this app.
-
-   One creator is always exactly one full-width row (never two creators
-   sharing a row) -- .notification-settings__list is a plain vertical
-   stack, and .notification-settings__row/__column-header share the same
-   literal grid-template-columns (avatar / flexible name / two FIXED
-   switch columns), so the two switch columns stay vertically aligned
-   for every row regardless of name length -- this is a fixed grid, not
-   `justify-content: space-between` (decision's own explicit rule). ============ */
+/* ============ Notification Settings container -- this app's own theme
+   (no library style was specified for this component, unlike
+   SettingsSecondaryNavbar/LanguageSettings above). The topic-card layout
+   itself is defined further below, after Oshi Settings; the full
+   creator-roster styling this block used to hold (flat row/column-header
+   grid, agency/region/subgroup headings, search) moved into
+   TopicCreatorManagementDrawer's own .topic-creator-drawer__* rules,
+   since the roster itself no longer renders on this page directly. ============ */
 
 .notification-settings {
-  max-width: 720px;
+  max-width: 960px;
   margin: 0 auto;
-}
-
-.notification-settings__row,
-.notification-settings__column-header {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 72px 72px;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.notification-settings__agency {
-  margin-bottom: var(--space-6);
-}
-
-/* Applied via JSX to every agency section after the first SURVIVING one
-   (see NotificationSettings.tsx) -- not a `:not(:first-child)` selector,
-   since the search header above it always precedes every agency section
-   in the DOM, first one included. */
-.notification-settings__agency--divided {
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--surface-border);
-}
-
-.notification-settings__empty-state {
-  padding: var(--space-6) var(--space-3);
-  text-align: center;
-  font-size: 14px;
-  color: var(--text-tertiary);
-}
-
-.notification-settings__agency-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--space-4);
-  margin: 0 0 var(--space-4);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--surface-border);
 }
 
-.notification-settings__agency-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.notification-settings__search {
-  width: 260px;
-  max-width: 100%;
-  flex-shrink: 0;
-}
-
-.notification-settings__region {
-  margin-bottom: var(--space-5);
-}
-
-.notification-settings__region:not(:first-child) {
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--surface-border);
-}
-
-.notification-settings__region-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 0 0 var(--space-3);
-}
-
-.notification-settings__subgroup {
-  margin-bottom: var(--space-3);
-}
-
-.notification-settings__subgroup-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  margin: 0 0 var(--space-1);
-}
-
-.notification-settings__column-header {
-  padding: 0 var(--space-3) var(--space-1);
-}
-
-.notification-settings__column-header-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-tertiary);
-  text-align: center;
-}
-
-.notification-settings__list {
-  display: flex;
-  flex-direction: column;
-}
-
-.notification-settings__row {
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-}
-
-.notification-settings__row:hover {
-  background: var(--surface-hover);
-}
-
-.notification-settings__avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--surface-hover);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.notification-settings__creator-name {
-  font-size: 14px;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The switch itself is the real antd <Switch> (see NotificationSettings
-   .tsx) -- this is only a grid-cell wrapper, centering it within its
-   fixed 72px column. No custom track/thumb CSS here anymore: antd
-   renders and styles the control itself. */
-.notification-settings__switch-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+@media (max-width: 640px) {
+  .notification-settings {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ============ Oshi Settings: favorite-creator management grid ============ */
@@ -411,6 +280,17 @@
   font-family: inherit;
 }
 
+/* MyOshiSettings' own blank-placeholder page -- see MyOshiSettings.tsx.
+   Same look as .oshi-settings__empty-state below, this section's own
+   nearest equivalent ("nothing to show yet" copy), until this section gets
+   its real content. */
+.my-oshi-settings__placeholder {
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
 .oshi-settings__search::placeholder {
   color: var(--text-tertiary);
 }
@@ -431,16 +311,25 @@
   margin-bottom: var(--space-6);
 }
 
+/* No border-top here -- confirmed with the user: the line that used to sit
+   between the last VSPO region's own member grid (VSPO EN) and the next
+   agency's own title ("Hololive") should not render. Only the spacing
+   (padding-top) that separates the two agencies stays. */
 .oshi-settings__agency--divided {
   padding-top: var(--space-5);
-  border-top: 1px solid var(--surface-border);
 }
 
 .oshi-settings__region {
   margin-bottom: var(--space-5);
 }
 
-.oshi-settings__region:not(:first-child) {
+/* Adjacent-sibling, not `:not(:first-child)` -- an agency section past the
+   first one (see .oshi-settings__agency--divided above) renders its own <h2>
+   title before its first region, which would otherwise count as that
+   region's "not first child" and wrongly draw this same line right under
+   the agency title (e.g. between "Hololive" and its own "JP" region) even
+   though no divider was intended there -- only between two regions. */
+.oshi-settings__region + .oshi-settings__region {
   padding-top: var(--space-4);
   border-top: 1px solid var(--surface-border);
 }
@@ -492,10 +381,6 @@
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   min-width: 0;
-}
-
-.oshi-settings__card:hover {
-  background: var(--surface-hover);
 }
 
 /* Centers the avatar itself, independent of the checkbox: `justify-content:
@@ -584,4 +469,268 @@
    selector. */
 .oshi-settings__checkbox .ant-checkbox:has(.ant-checkbox-input:focus-visible) {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 30%, transparent);
+}
+
+/* ============ Notification Settings: topic-centered rewrite ============
+   Compact per-topic cards only -- the full ~122-creator roster never
+   renders on this page itself, only inside TopicCreatorManagementDrawer
+   (see below). Reuses this app's own light Settings tokens, same as
+   every other block in this file. ============ */
+
+.notification-settings__topic-card {
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+}
+
+.notification-settings__topic-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-3);
+}
+
+.notification-settings__topic-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  /* var(--space-2) (8px) top/bottom, reduced 20% per user request -- a
+     one-off value rather than a token, since no existing --space-N step
+     lands there. */
+  padding: 6.4px 0;
+}
+
+.notification-settings__topic-row--members {
+  align-items: flex-start;
+}
+
+.notification-settings__topic-row-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* The trigger Button itself (antd's own outlined/DownOutlined look, no
+   custom border/background here) -- width matches the old Select's own
+   160px so the row layout is unchanged. */
+.notification-settings__reminder-trigger {
+  width: 160px;
+  flex-shrink: 0;
+  justify-content: space-between;
+}
+
+/* Dropdown's own Object Style semantic API (classNames.root -- see
+   DropdownProps in antd's own type defs, the modern replacement for the
+   deprecated overlayClassName) -- the popup's real min-width matches the
+   trigger button above it, since antd's Dropdown (unlike Select) doesn't
+   match its popup's width to its trigger's automatically. Every other
+   visual trait (outlined trigger, rounded popup corners, hover/selected
+   menu-item styling) is antd's own default theme, already reused
+   unchanged via this component's ConfigProvider. */
+.notification-settings__reminder-popup {
+  min-width: 160px;
+}
+
+.notification-settings__member-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  text-align: right;
+}
+
+.notification-settings__member-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.notification-settings__member-preview {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 360px;
+}
+
+.notification-settings__member-preview--empty {
+  font-style: italic;
+}
+
+/* Now a real antd <Button type="primary">, so its own colors/border/
+   hover/focus states come from antd's own theme (colorPrimary: this
+   component's member accent color, via the outer ConfigProvider) --
+   only the row position (margin-top, unchanged) is still this rule's
+   job. */
+.notification-settings__manage-button {
+  margin-top: var(--space-3);
+}
+
+/* ============ Topic Creator Management Drawer: the full searchable
+   roster, Favorites-first, opened per topic from a topic card's own
+   "管理成員" button above -- same Agency > Region > Generation/Unit
+   hierarchy and search behavior as the old flat NotificationSettings list
+   this replaced, now scoped inside one topic at a time. Each row carries
+   this topic's own Live / New Video switches plus an optional reminder
+   override, independent of every other topic. ============ */
+
+.topic-creator-drawer__content {
+  display: flex;
+  flex-direction: column;
+}
+
+.topic-creator-drawer__search {
+  width: 100%;
+  margin-bottom: var(--space-4);
+}
+
+.topic-creator-drawer__empty-state {
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.topic-creator-drawer__group {
+  margin-bottom: var(--space-6);
+}
+
+.topic-creator-drawer__group-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topic-creator-drawer__region {
+  margin-bottom: var(--space-4);
+}
+
+.topic-creator-drawer__region:not(:first-child) {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--surface-border);
+}
+
+.topic-creator-drawer__region-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-2);
+}
+
+.topic-creator-drawer__subgroup {
+  margin-bottom: var(--space-3);
+}
+
+.topic-creator-drawer__subgroup-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  margin: 0 0 var(--space-1);
+}
+
+/* avatar / flexible name / Live / New Video / reminder -- same fixed-grid
+   reasoning as the old .notification-settings__row this replaced (see git
+   history): a plain flex row would let the switch/reminder columns drift
+   out of vertical alignment across rows of different name lengths. */
+.topic-creator-drawer__row,
+.topic-creator-drawer__column-header {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 56px 56px 112px;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.topic-creator-drawer__column-header {
+  padding: 0 var(--space-2) var(--space-1);
+}
+
+.topic-creator-drawer__column-header-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.topic-creator-drawer__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.topic-creator-drawer__row {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.topic-creator-drawer__row:hover {
+  background: var(--surface-hover);
+}
+
+.topic-creator-drawer__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.topic-creator-drawer__creator-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topic-creator-drawer__switch-cell,
+.topic-creator-drawer__reminder-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topic-creator-drawer__reminder-cell-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+
+/* antd's own outlined/DownOutlined trigger Button, sized to fill the
+   grid's own reminder column exactly like the old Select did -- the
+   popup itself is left at antd's own default (content-based) width, no
+   custom classNames/styles needed here. */
+.topic-creator-drawer__reminder-trigger {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.topic-creator-drawer__reminder-empty {
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+/* Shown under a member's own reminder Select whenever the topic's own mode
+   isn't "member_choice" -- the topic's concrete time is forcing every
+   member's actual notification right now, so this member's own visible
+   selection is real (never cleared) but not currently in effect. */
+.topic-creator-drawer__reminder-not-in-effect {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-align: center;
+  line-height: 1.2;
 }

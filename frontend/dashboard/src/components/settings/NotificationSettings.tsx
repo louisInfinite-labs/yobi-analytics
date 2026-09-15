@@ -1,196 +1,186 @@
 import { useState } from "react"
-import { ConfigProvider, Input, Switch } from "antd"
-import { SearchOutlined } from "@ant-design/icons"
+import { Button, ConfigProvider, Dropdown } from "antd"
+import type { ConfigProviderProps, GetProp } from "antd"
+import { DownOutlined } from "@ant-design/icons"
 import { useLocale } from "../../hooks/useLocale"
-import { useCreatorNotificationPreferences } from "../../hooks/useCreatorNotificationPreferences"
+import { useTopicNotificationPreferences } from "../../hooks/useTopicNotificationPreferences"
+import { getAllNotificationCreators } from "../../lib/notificationCreatorGrouping"
 import {
-  GAMERS_GROUP_LABEL_KEY,
-  groupCreatorsForNotificationSettings,
-  OTHER_GROUP_LABEL_KEY,
-  type CreatorAgencyGroup,
-  type NotificationCreator,
-} from "../../lib/notificationCreatorGrouping"
-import { t, type Locale } from "../../i18n/translations"
+  MEMBER_CHOICE_MODE,
+  NOTIFICATION_TOPICS,
+  REMINDER_TIME_LABEL_KEYS,
+  REMINDER_TIME_VALUES,
+  type NotificationTopicId,
+  type TopicReminderMode,
+} from "../../lib/notificationTopics"
+import { t } from "../../i18n/translations"
 import { useMemberTheme } from "../../theme/ThemeContext"
+import { TopicCreatorManagementDrawer } from "./TopicCreatorManagementDrawer"
 
-/** Every subgroup label is a real, locale-independent group/generation
- * name (e.g. "1期生", "Myth") EXCEPT the two sentinel keys below, each
- * swapped for its own translated wording here instead of being rendered
- * directly: the catch-all "Other" bucket (OTHER_GROUP_LABEL_KEY), and
- * Gamers (GAMERS_GROUP_LABEL_KEY, confirmed wording: "Gamers" in both
- * zh-TW and English, "ゲーマーズ" in Japanese -- not a plain pass-through
- * like the other proper-noun labels here). */
-function subgroupTitle(locale: Locale, label: string): string {
-  if (label === OTHER_GROUP_LABEL_KEY) return t(locale, "notificationSettings.otherGroupLabel")
-  if (label === GAMERS_GROUP_LABEL_KEY) return t(locale, "notificationSettings.gamersGroupLabel")
-  return label
+/** How many enabled creator names the compact card previews before
+ * trailing off with "..." -- this feature's own spec worked example
+ * (section 3) shows 4 named creators before the ellipsis. */
+const MAX_PREVIEW_NAMES = 4
+
+type WaveConfig = GetProp<ConfigProviderProps, "wave">
+
+/** "Inset" click-wave effect -- copied verbatim from Ant Design's own
+ * Button "Custom Wave" doc example (components/button/demo/wave.tsx,
+ * `showInsetEffect`): a small white dot grows from the click point to
+ * 200px while fading to transparent, instead of antd's default border
+ * ripple. Applied only to "管理成員" (via its own nested ConfigProvider,
+ * see TopicCard below) -- every other button on this page, and everywhere
+ * else in the app, keeps antd's normal wave effect untouched. */
+const showInsetEffect: NonNullable<WaveConfig>["showEffect"] = (node, { event, component }) => {
+  if (component !== "Button") return
+
+  const { borderWidth } = getComputedStyle(node)
+  const borderWidthNum = Number.parseInt(borderWidth, 10)
+
+  const holder = document.createElement("div")
+  holder.style.position = "absolute"
+  holder.style.inset = `-${borderWidthNum}px`
+  holder.style.borderRadius = "inherit"
+  holder.style.background = "transparent"
+  holder.style.zIndex = "999"
+  holder.style.pointerEvents = "none"
+  holder.style.overflow = "hidden"
+  node.appendChild(holder)
+
+  const rect = holder.getBoundingClientRect()
+  const dot = document.createElement("div")
+  dot.style.position = "absolute"
+  dot.style.insetInlineStart = `${event.clientX - rect.left}px`
+  dot.style.top = `${event.clientY - rect.top}px`
+  dot.style.width = "0px"
+  dot.style.height = "0px"
+  dot.style.borderRadius = "50%"
+  dot.style.background = "rgba(255, 255, 255, 0.65)"
+  dot.style.transform = "translate3d(-50%, -50%, 0)"
+  dot.style.transition = "all 1s ease-out"
+  holder.appendChild(dot)
+
+  requestAnimationFrame(() => {
+    dot.ontransitionend = () => holder.remove()
+    dot.style.width = "200px"
+    dot.style.height = "200px"
+    dot.style.opacity = "0"
+  })
 }
 
-/** Instant client-side filter, matched against the creator's own
- * (possibly already Japanese-name-overridden) displayName -- an empty or
- * whitespace-only query matches everyone. Never touches notification
- * switch state, only which rows render. */
-function matchesSearch(creator: NotificationCreator, query: string): boolean {
-  const trimmed = query.trim().toLowerCase()
-  return trimmed === "" || creator.displayName.toLowerCase().includes(trimmed)
-}
-
-/** Filters the WHOLE Agency > Region > Subgroup > Creator hierarchy, not
- * just individual creator rows -- a subgroup/region/agency is dropped
- * entirely once it has zero matching creators left, so a search never
- * leaves an empty heading, column header, or divider on screen (this is
- * the actual fix: the earlier version only filtered which CreatorRows
- * rendered while every parent heading stayed mounted regardless). */
-function filterAgencyGroups(agencyGroups: CreatorAgencyGroup[], query: string): CreatorAgencyGroup[] {
-  return agencyGroups
-    .map((agency) => ({
-      ...agency,
-      regions: agency.regions
-        .map((region) => ({
-          ...region,
-          subgroups: region.subgroups
-            .map((subgroup) => ({
-              ...subgroup,
-              creators: subgroup.creators.filter((creator) => matchesSearch(creator, query)),
-            }))
-            .filter((subgroup) => subgroup.creators.length > 0),
-        }))
-        .filter((region) => region.subgroups.length > 0),
-    }))
-    .filter((agency) => agency.regions.length > 0)
-}
-
-function CreatorRow({ creator }: { creator: NotificationCreator }) {
+function TopicCard({ topicId, onManage }: { topicId: NotificationTopicId; onManage: () => void }) {
   const [locale] = useLocale()
-  const { isLiveSubscribed, isNewVideoSubscribed, setLiveSubscribed, setNewVideoSubscribed } =
-    useCreatorNotificationPreferences()
+  const { getReminderMode, setReminderMode, getEnabledCreatorIds } = useTopicNotificationPreferences()
+  const topicDef = NOTIFICATION_TOPICS.find((entry) => entry.id === topicId)!
+
+  const enabledIds = getEnabledCreatorIds(topicId)
+  const enabledCreators = getAllNotificationCreators().filter((creator) => enabledIds.has(creator.creatorId))
+  const previewNames = enabledCreators.slice(0, MAX_PREVIEW_NAMES).map((creator) => creator.displayName)
+  const hasMore = enabledCreators.length > MAX_PREVIEW_NAMES
+  const separator = t(locale, "notificationSettings.namePreviewSeparator")
+
+  // "各成員為準" listed last, per the user's own confirmed ordering (this
+  // feature's own confirmed spec: a topic in a concrete-time mode FORCES
+  // that time onto every Live-enabled member, overriding their own
+  // individual choice -- only "member_choice" mode lets each member's own
+  // reminder (set in the management drawer) actually take effect. See
+  // useTopicNotificationPreferences' getEffectiveReminder for the
+  // resolution logic itself.
+  const reminderModeOptions = [
+    ...REMINDER_TIME_VALUES.map((value) => ({ value, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) })),
+    { value: MEMBER_CHOICE_MODE, label: t(locale, "notificationSettings.topicReminderMode.memberChoice") },
+  ]
+  const topicLabel = t(locale, topicDef.labelKey)
+  const reminderMode = getReminderMode(topicId)
+  const reminderModeLabel = reminderModeOptions.find((option) => option.value === reminderMode)?.label ?? ""
 
   return (
-    <div className="notification-settings__row">
-      <span className="notification-settings__avatar" aria-hidden="true">
-        {creator.displayName.trim().charAt(0)}
-      </span>
-      <span className="notification-settings__creator-name">{creator.displayName}</span>
-      <span className="notification-settings__switch-cell">
-        <Switch
-          checked={isLiveSubscribed(creator.creatorId)}
-          onChange={(checked) => setLiveSubscribed(creator.creatorId, checked)}
-          aria-label={t(locale, "notificationSettings.liveSwitchAriaLabel", { name: creator.displayName })}
-        />
-      </span>
-      <span className="notification-settings__switch-cell">
-        <Switch
-          checked={isNewVideoSubscribed(creator.creatorId)}
-          onChange={(checked) => setNewVideoSubscribed(creator.creatorId, checked)}
-          aria-label={t(locale, "notificationSettings.newVideoSwitchAriaLabel", { name: creator.displayName })}
-        />
-      </span>
-    </div>
+    <section className="notification-settings__topic-card">
+      <h2 className="notification-settings__topic-title">{topicLabel}</h2>
+
+      <div className="notification-settings__topic-row">
+        <span className="notification-settings__topic-row-label">{t(locale, "notificationSettings.defaultReminderLabel")}</span>
+        <Dropdown
+          menu={{
+            items: reminderModeOptions.map((option) => ({ key: option.value, label: option.label })),
+            selectedKeys: [reminderMode],
+            onClick: ({ key }) => setReminderMode(topicId, key as TopicReminderMode),
+          }}
+          trigger={["click"]}
+          classNames={{ root: "notification-settings__reminder-popup" }}
+        >
+          <Button
+            variant="outlined"
+            color="default"
+            className="notification-settings__reminder-trigger"
+            icon={<DownOutlined />}
+            iconPlacement="end"
+            aria-label={t(locale, "notificationSettings.defaultReminderLabel") + " " + topicLabel}
+          >
+            {reminderModeLabel}
+          </Button>
+        </Dropdown>
+      </div>
+
+      <div className="notification-settings__topic-row notification-settings__topic-row--members">
+        <span className="notification-settings__topic-row-label">{t(locale, "notificationSettings.notifiedMembersLabel")}</span>
+        <div className="notification-settings__member-summary">
+          <span className="notification-settings__member-count">
+            {t(locale, "notificationSettings.selectedCountLabel", { count: String(enabledCreators.length) })}
+          </span>
+          {enabledCreators.length > 0 ? (
+            <span className="notification-settings__member-preview">
+              {previewNames.join(separator)}
+              {hasMore ? `${separator}...` : ""}
+            </span>
+          ) : (
+            <span className="notification-settings__member-preview notification-settings__member-preview--empty">
+              {t(locale, "notificationSettings.noSelectedMembers")}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Ant Design's own "Inset" Custom Wave example (components/button/demo
+       * /wave.tsx) -- scoped to just this Button via its own nested
+       * ConfigProvider, so no other button anywhere else in the app is
+       * affected. type="primary" reuses this component's own outer
+       * ConfigProvider theme (colorPrimary: the member's own accent color,
+       * not antd's default blue) -- text/onClick/aria-label/position all
+       * unchanged from the plain <button> this replaced. */}
+      <ConfigProvider wave={{ showEffect: showInsetEffect }}>
+        <Button
+          type="primary"
+          size="small"
+          className="notification-settings__manage-button"
+          onClick={onManage}
+          aria-label={`${t(locale, "notificationSettings.manageMembersButton")} ${topicLabel}`}
+        >
+          {t(locale, "notificationSettings.manageMembersButton")} <span aria-hidden="true">›</span>
+        </Button>
+      </ConfigProvider>
+    </section>
   )
 }
 
-function ColumnHeader() {
-  const [locale] = useLocale()
-  return (
-    <div className="notification-settings__column-header">
-      <span aria-hidden="true" />
-      <span aria-hidden="true" />
-      <span className="notification-settings__column-header-label">{t(locale, "notificationSettings.liveColumnHeader")}</span>
-      <span className="notification-settings__column-header-label">
-        {t(locale, "notificationSettings.newVideoColumnHeader")}
-      </span>
-    </div>
-  )
-}
-
-/** Notification Settings' content: every creator in the real Creator
- * Master roster (src/lib/notificationCreatorGrouping.ts -- 112 as of
- * this roster, not the small mockCreators.ts used elsewhere), in the
- * spec's own three-level hierarchy -- Agency (VSPO/HOLOLIVE) > Region
- * (JP/EN/ID) > Generation/Unit > one creator per row, never more than
- * one creator on a line. Each row has two independent switches (live,
- * then new video -- see useCreatorNotificationPreferences), both on by
- * default. */
+/** Notification Settings' own content: a topic-centered summary per topic
+ * (this feature's own spec sections 2/3/14) -- never the full ~122-creator
+ * roster permanently on screen. Each topic card shows its own default
+ * reminder time and a compact "who's enabled" summary; the full creator
+ * roster (Agency > Region > Generation/Unit, Favorites-first, searchable)
+ * only ever renders inside TopicCreatorManagementDrawer, opened per topic
+ * via "管理成員". */
 export function NotificationSettings() {
-  const agencyGroups = groupCreatorsForNotificationSettings()
   const { theme } = useMemberTheme()
-  const [locale] = useLocale()
-  const [searchQuery, setSearchQuery] = useState("")
-
-  const filteredAgencyGroups = filterAgencyGroups(agencyGroups, searchQuery)
-  const hasResults = filteredAgencyGroups.length > 0
-  // The search box's own heading row shows the first SURVIVING agency's
-  // label -- its position never moves, but which agency it sits beside
-  // can change as the query narrows results down to a single agency (see
-  // filterAgencyGroups above). Deliberately null (not a fallback to the
-  // real, unfiltered first agency) once nothing survives -- showing e.g.
-  // "VSPO" next to a zero-result query is exactly the "unrelated agency
-  // name" bug: that label has nothing to do with a search that matched
-  // nothing. The header row itself still renders (see below) so the
-  // search input's own position never shifts.
-  const headerAgencyLabel = filteredAgencyGroups[0]?.agencyLabel ?? null
+  const [managingTopicId, setManagingTopicId] = useState<NotificationTopicId | null>(null)
 
   return (
-    // Scoped to this component's own subtree only (antd's ConfigProvider
-    // affects only the antd components rendered inside it, and Switch is
-    // the only antd component used anywhere in this app) -- ON uses this
-    // app's own active theme primary color without any global antd theme
-    // setup or CSS reset.
     <ConfigProvider theme={{ token: { colorPrimary: theme.primary } }}>
       <div className="notification-settings">
-        <div className="notification-settings__agency-header">
-          {headerAgencyLabel ? (
-            <h2 className="notification-settings__agency-title">{headerAgencyLabel}</h2>
-          ) : (
-            // Keeps the header row a 2-child flex layout (so the search
-            // input stays pinned to the right edge, same as always) without
-            // showing a label that has nothing to do with a zero-result
-            // search.
-            <span className="notification-settings__agency-title" aria-hidden="true" />
-          )}
-          <Input
-            className="notification-settings__search"
-            prefix={<SearchOutlined />}
-            placeholder={t(locale, "notificationSettings.searchPlaceholder")}
-            allowClear
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-        </div>
-        {!hasResults && <p className="notification-settings__empty-state">{t(locale, "notificationSettings.noResults")}</p>}
-        {filteredAgencyGroups.map((agency, agencyIndex) => (
-          <section
-            key={agency.agencyLabel}
-            className={
-              agencyIndex === 0
-                ? "notification-settings__agency"
-                : "notification-settings__agency notification-settings__agency--divided"
-            }
-          >
-            {/* The first surviving agency's own title already renders in
-             * the search header above -- only later agencies repeat it
-             * here. */}
-            {agencyIndex > 0 && <h2 className="notification-settings__agency-title">{agency.agencyLabel}</h2>}
-            {agency.regions.map((region) => (
-              <div key={region.branch} className="notification-settings__region">
-                <h3 className="notification-settings__region-title">{region.regionLabel}</h3>
-                {region.subgroups.map((subgroup) => (
-                  <div key={subgroup.label ?? "__flat__"} className="notification-settings__subgroup">
-                    {subgroup.label && (
-                      <h4 className="notification-settings__subgroup-title">{subgroupTitle(locale, subgroup.label)}</h4>
-                    )}
-                    <ColumnHeader />
-                    <div className="notification-settings__list">
-                      {subgroup.creators.map((creator) => (
-                        <CreatorRow key={creator.creatorId} creator={creator} />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </section>
+        {NOTIFICATION_TOPICS.map((topic) => (
+          <TopicCard key={topic.id} topicId={topic.id} onManage={() => setManagingTopicId(topic.id)} />
         ))}
+        <TopicCreatorManagementDrawer topicId={managingTopicId} onClose={() => setManagingTopicId(null)} />
       </div>
     </ConfigProvider>
   )

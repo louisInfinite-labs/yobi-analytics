@@ -95,13 +95,34 @@ function sortVspoJp(creators: MockCreator[]): MockCreator[] {
   return [...creators].sort(compareByNormalizedKana)
 }
 
+/** VSPO JP's own official channel (youtube.com/@Vspo77, "ぶいすぽっ!【公式】"
+ * / "VSPO! Official", channelType "group") is pinned to the very bottom of
+ * VSPO JP's own list, below every individual member, rather than taking
+ * part in the normal kana sort -- confirmed with the user, applied
+ * consistently across all three places this branch is ever ordered: Live
+ * Status (here), Oshi Settings (oshiSettingsGrouping.ts), and Notification
+ * Settings (notificationCreatorOrder.ts, which reuses this exact function
+ * via sortWithinBranch below). Detected by `channelType !== "member"`
+ * (this app's own existing way of distinguishing an official/group channel
+ * from an individual member), not a hardcoded creatorId/channelId, so it
+ * keeps working if this roster entry is ever renamed. */
+export function pinNonMemberChannelsLast<T extends { channelType: string }>(creators: T[]): T[] {
+  const members = creators.filter((creator) => creator.channelType === "member")
+  const nonMembers = creators.filter((creator) => creator.channelType !== "member")
+  return [...members, ...nonMembers]
+}
+
 /** Per-branch stable ordering (spec section 5 / this session's "STABLE
  * CREATOR SORTING" follow-up) — never a function of live/upcoming/offline
- * status, only of the creator's own branch/groupKey/name/kana. */
-function sortWithinBranch(branch: BranchKey, creators: MockCreator[]): MockCreator[] {
+ * status, only of the creator's own branch/groupKey/name/kana. Exported so
+ * Notification Settings' own creator ordering (notificationCreatorOrder.ts)
+ * can reuse this exact algorithm against creators.json's roster (bridged to
+ * its mockCreators counterpart for kana/name) instead of re-implementing a
+ * second, parallel copy of it. */
+export function sortWithinBranch(branch: BranchKey, creators: MockCreator[]): MockCreator[] {
   switch (branch) {
     case "vspo_jp":
-      return sortVspoJp(creators)
+      return pinNonMemberChannelsLast(sortVspoJp(creators))
     case "vspo_en":
       return sortAlphabetical(creators)
     case "holo_jp":
