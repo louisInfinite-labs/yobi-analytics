@@ -1,49 +1,13 @@
 import type { TranslationKey } from "../i18n/translations"
 
-/** Notification Settings' own topic list. Reuses the exact id spellings
- * already defined by Home's VideoCategory (lib/videoCategories.ts) --
- * "valo"/"apex"/"minecraft"/"sf6"/"singing"/"chatting" -- since that is the
- * only place this game/activity vocabulary already exists in the app, and
- * the display labels below reuse that feature's own already-translated
- * strings (t(locale, "recentVideos.tag.valo") etc.) rather than inventing
- * new proper-noun translations. VideoCategory's own type is deliberately
- * NOT imported here: that taxonomy tags VIDEO CONTENT on Home's Recent
- * Videos section, a different concern from "which topics a creator can be
- * subscribed to notifications for" (same reasoning as videoCategories.ts's
- * own top comment about not reusing ContentTagKey/ContentFormat for its
- * concern) -- this stays its own small, notification-specific list, this
- * feature's only actual net-new taxonomy decision.
+/** Reminder-mode machinery only -- topic IDENTITY (which topics exist, and
+ * their labels) now lives in lib/notificationTopicCatalog.ts instead: this
+ * used to also hold a closed NotificationTopicId enum/NOTIFICATION_TOPICS
+ * array, but topics are now a dynamic, user-added list (confirmed with the
+ * user), so nothing here can assume a fixed topic set any more. Everything
+ * below is genuinely topic-agnostic and unaffected by that change.
  *
- * "other" is a user-requested addition (this feature's original written
- * spec excluded it, reasoning it had no coherent "notify me about this
- * topic" meaning) -- confirmed with the user, it reuses VideoCategory's own
- * "recentVideos.tag.other" label, same as every other non-"all" topic here
- * reusing that feature's own tag labels. */
-export type NotificationTopicId = "all" | "valo" | "apex" | "minecraft" | "sf6" | "singing" | "chatting" | "other"
-
-export interface NotificationTopic {
-  id: NotificationTopicId
-  labelKey: TranslationKey
-}
-
-/** "all" is a user-requested addition (not from the original written spec)
- * -- its own label ("全部"/"All"/"全部", given directly by the user) is
- * deliberately its own new key rather than reusing Home's existing
- * "recentVideos.tag.all" ("ALL" in every locale): the wording the user
- * asked for here doesn't match that existing string, so reusing it would
- * silently show the wrong text rather than what was actually requested. */
-export const NOTIFICATION_TOPICS: readonly NotificationTopic[] = [
-  { id: "all", labelKey: "notificationSettings.topic.all" },
-  { id: "valo", labelKey: "recentVideos.tag.valo" },
-  { id: "apex", labelKey: "recentVideos.tag.apex" },
-  { id: "minecraft", labelKey: "recentVideos.tag.minecraft" },
-  { id: "sf6", labelKey: "recentVideos.tag.sf6" },
-  { id: "singing", labelKey: "recentVideos.tag.singing" },
-  { id: "chatting", labelKey: "recentVideos.tag.chatting" },
-  { id: "other", labelKey: "recentVideos.tag.other" },
-]
-
-/** Reminder-time values a creator can be notified at -- confirmed directly
+ * Reminder-time values a creator can be notified at -- confirmed directly
  * with the user (superseding this feature's original written spec, which
  * also listed "5 分鐘前"): 開播時/10 分鐘前/30 分鐘前/1 小時前 only. */
 export type ReminderTimeValue = "at_start" | "10min" | "30min" | "1hour"

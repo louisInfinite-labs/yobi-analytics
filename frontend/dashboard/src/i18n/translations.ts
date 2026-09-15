@@ -92,6 +92,14 @@ export type TranslationKey =
   | "notificationSettings.managementDrawerTitle"
   | "notificationSettings.favoritesGroupLabel"
   | "notificationSettings.topic.all"
+  | "notificationSettings.topicCatalog.gta"
+  | "notificationSettings.topicCatalog.sevenDaysToDie"
+  | "notificationSettings.topicCatalog.mahjongSoul"
+  | "notificationSettings.topicCatalog.endfield"
+  | "notificationSettings.saveTopicButton"
+  | "notificationSettings.topicSelectPlaceholder"
+  | "notificationSettings.topicSelectAriaLabel"
+  | "notificationSettings.addTopicButtonAriaLabel"
   | "languageSettings.picker.zhTW"
   | "languageSettings.picker.en"
   | "languageSettings.picker.ja"
@@ -179,10 +187,18 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.selectedCountLabel": "已選 {{count}} 人",
     "notificationSettings.namePreviewSeparator": "、",
     "notificationSettings.noSelectedMembers": "尚未選擇任何成員",
-    "notificationSettings.manageMembersButton": "管理成員",
+    "notificationSettings.manageMembersButton": "成員名單",
     "notificationSettings.managementDrawerTitle": "{{topic}} — 通知成員",
     "notificationSettings.favoritesGroupLabel": "收藏",
     "notificationSettings.topic.all": "全部",
+    "notificationSettings.topicCatalog.gta": "GTA",
+    "notificationSettings.topicCatalog.sevenDaysToDie": "7 DAYS TO DIE",
+    "notificationSettings.topicCatalog.mahjongSoul": "雀魂",
+    "notificationSettings.topicCatalog.endfield": "終末地",
+    "notificationSettings.saveTopicButton": "儲存",
+    "notificationSettings.topicSelectPlaceholder": "選擇主題",
+    "notificationSettings.topicSelectAriaLabel": "選擇通知主題",
+    "notificationSettings.addTopicButtonAriaLabel": "新增主題",
     "myOshiSettings.selectAria": "將 {{name}} 設為我推",
     "languageSettings.picker.zhTW": "繁體中文",
     "languageSettings.picker.en": "英文",
@@ -242,7 +258,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
     "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
     "settingsSecondaryNavbar.oshiSettings": "Favorites List",
-    "settingsSecondaryNavbar.notificationSettings": "Notifications (Live / New Video)",
+    "settingsSecondaryNavbar.notificationSettings": "Live/Video Notifications",
     "oshiSettings.searchPlaceholder": "Search creators",
     "oshiSettings.noResults": "No creators found",
     "oshiSettings.addFavoriteAria": "Add {{name}} to favorites",
@@ -264,16 +280,24 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.1hour": "1 hour before",
     "notificationSettings.reminderColumnHeader": "Reminder time",
     "notificationSettings.reminderSelectAriaLabel": "{{name}}'s reminder time",
-    "notificationSettings.topicReminderMode.memberChoice": "Member's own choice",
+    "notificationSettings.topicReminderMode.memberChoice": "Member's choice",
     "notificationSettings.reminderNotInEffectHint": "Not in effect (using topic time)",
     "notificationSettings.notifiedMembersLabel": "Notified members",
     "notificationSettings.selectedCountLabel": "{{count}} selected",
     "notificationSettings.namePreviewSeparator": ", ",
     "notificationSettings.noSelectedMembers": "No members selected yet",
-    "notificationSettings.manageMembersButton": "Manage members",
+    "notificationSettings.manageMembersButton": "Members list",
     "notificationSettings.managementDrawerTitle": "{{topic}} — Notified Members",
     "notificationSettings.favoritesGroupLabel": "Favorites",
     "notificationSettings.topic.all": "All",
+    "notificationSettings.topicCatalog.gta": "GTA",
+    "notificationSettings.topicCatalog.sevenDaysToDie": "7 DAYS TO DIE",
+    "notificationSettings.topicCatalog.mahjongSoul": "雀魂",
+    "notificationSettings.topicCatalog.endfield": "Endfield",
+    "notificationSettings.saveTopicButton": "Save",
+    "notificationSettings.topicSelectPlaceholder": "Select a topic",
+    "notificationSettings.topicSelectAriaLabel": "Select notification topic",
+    "notificationSettings.addTopicButtonAriaLabel": "Add topic",
     "myOshiSettings.selectAria": "Set {{name}} as my Oshi",
     "languageSettings.picker.zhTW": "Traditional Chinese",
     "languageSettings.picker.en": "English",
@@ -365,6 +389,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.managementDrawerTitle": "{{topic}} — 通知メンバー",
     "notificationSettings.favoritesGroupLabel": "お気に入り",
     "notificationSettings.topic.all": "全部",
+    "notificationSettings.topicCatalog.gta": "GTA",
+    "notificationSettings.topicCatalog.sevenDaysToDie": "7 DAYS TO DIE",
+    "notificationSettings.topicCatalog.mahjongSoul": "雀魂",
+    "notificationSettings.topicCatalog.endfield": "エンドフィールド",
+    "notificationSettings.saveTopicButton": "保存",
+    "notificationSettings.topicSelectPlaceholder": "トピックを選択",
+    "notificationSettings.topicSelectAriaLabel": "通知トピックを選択",
+    "notificationSettings.addTopicButtonAriaLabel": "トピックを追加",
     "myOshiSettings.selectAria": "{{name}} を推しに設定",
     "languageSettings.picker.zhTW": "繁体中国語",
     "languageSettings.picker.en": "英語",

@@ -40,3 +40,14 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as unknown as MediaQueryList
 }
+
+// jsdom has no ResizeObserver either; antd's Select (and other rc-component
+// popups) observe their own popup size to position it -- a no-op stub is
+// enough since layout/positioning isn't what these tests assert on.
+if (!window.ResizeObserver) {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}

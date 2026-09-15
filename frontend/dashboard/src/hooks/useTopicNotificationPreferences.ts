@@ -1,46 +1,61 @@
 import { useCallback } from "react"
 import { createSharedState, useSharedState } from "../lib/sharedState"
+import type { TopicCatalogId } from "../lib/notificationTopicCatalog"
 import {
   INITIAL_MEMBER_REMINDER,
   INITIAL_TOPIC_REMINDER_MODE,
   MEMBER_CHOICE_MODE,
-  NOTIFICATION_TOPICS,
-  type NotificationTopicId,
   type ReminderTimeValue,
   type TopicReminderMode,
 } from "../lib/notificationTopics"
 
-const STORAGE_KEY = "yobi.topicNotificationPreferences"
+// Bumped to v2 -- a browser that already used the dynamic-topics feature
+// before the 5 permanent defaults (全部/SF6/VALO/APEX/Minecraft) were
+// restored would otherwise have a real, valid-shaped topicOrder already
+// persisted under the old key (e.g. just ["valo", "seven_days_to_die"]
+// from earlier testing), which readState's own validation accepts as-is
+// and never replaces with INITIAL_SAVED_TOPIC_IDS below -- changing that
+// constant alone silently does nothing for anyone with existing data. A
+// new key forces every browser to start fresh from the new defaults once,
+// consistent with this feature's own "local-only persistence, no
+// migration contract" framing.
+const STORAGE_KEY = "yobi.topicNotificationPreferences.v2"
 
 interface TopicPreferenceState {
-  /** "member_choice", or a concrete time that's forced onto every
-   * Live-enabled member of this topic (see notificationTopics.ts's own
-   * TopicReminderMode doc). */
   reminderMode: TopicReminderMode
-  /** creatorIds enabled for this topic's Live (stream-start) notification. */
   live: string[]
-  /** creatorIds enabled for this topic's New Video notification -- kept
-   * fully independent from `live` (this feature's own spec: both switches
-   * can be set per creator per topic, not one combined "selected" flag). */
   newVideo: string[]
-  /** creatorId -> that member's OWN reminder choice, Live-only (New Video
-   * has no reminder-time concept -- see notificationTopics.ts). Always
-   * present once a member has touched their own control; never cleared by
-   * `reminderMode` switching away from "member_choice" -- only dropped
-   * when Live itself is turned off for that member (see setLiveEnabled). */
   reminderOverrides: Record<string, ReminderTimeValue>
 }
 
-type TopicPreferencesState = Record<NotificationTopicId, TopicPreferenceState>
+/** The 5 permanent default cards the page starts with, in this exact order
+ * (confirmed with the user: 全部/SF6/VALO/APEX/Minecraft, never reordered or
+ * removed) -- everything else is added by the user via "+", appended after
+ * these. */
+const INITIAL_SAVED_TOPIC_IDS: readonly TopicCatalogId[] = ["all", "sf6", "valo", "apex", "minecraft"]
+
+interface TopicPreferencesState {
+  /** Every topic currently rendered as a SAVED grid card, in render order.
+   * Append-only (no "remove card" was requested) -- new topics only ever
+   * get pushed onto the end, so existing cards never reflow when one is
+   * added. */
+  topicOrder: TopicCatalogId[]
+  /** Per-topic preference data -- deliberately NOT required to have an
+   * entry for every id in topicOrder. Every getter below falls back to
+   * emptyTopicState() for a missing entry (same fallback shape
+   * getMemberReminder already used before this reshape), so a freshly
+   * saved topic (see NotificationSettings.tsx's addTopic call) gets no
+   * entry at all until the user actually touches something about it (a
+   * reminder mode, a Live switch, ...) -- there's nothing to seed. */
+  topics: Partial<Record<TopicCatalogId, TopicPreferenceState>>
+}
 
 function emptyTopicState(): TopicPreferenceState {
   return { reminderMode: INITIAL_TOPIC_REMINDER_MODE, live: [], newVideo: [], reminderOverrides: {} }
 }
 
 function initialState(): TopicPreferencesState {
-  const state = {} as TopicPreferencesState
-  for (const topic of NOTIFICATION_TOPICS) state[topic.id] = emptyTopicState()
-  return state
+  return { topicOrder: [...INITIAL_SAVED_TOPIC_IDS], topics: {} }
 }
 
 function readState(): TopicPreferencesState {
@@ -48,18 +63,23 @@ function readState(): TopicPreferencesState {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return initialState()
     const parsed = JSON.parse(raw) as Partial<TopicPreferencesState>
-    const state = initialState()
-    for (const topic of NOTIFICATION_TOPICS) {
-      const saved = parsed[topic.id]
+    // Old (pre-dynamic-topics) localStorage was a flat Record<topicId,
+    // TopicPreferenceState> with no topicOrder field at all -- this check
+    // is what makes reading that shape harmlessly fall back to the default
+    // below instead of being misread, no storage-key version bump needed.
+    const topicOrder = Array.isArray(parsed.topicOrder) && parsed.topicOrder.every((id) => typeof id === "string") ? parsed.topicOrder : [...INITIAL_SAVED_TOPIC_IDS]
+    const topics: TopicPreferencesState["topics"] = {}
+    for (const id of topicOrder) {
+      const saved = parsed.topics?.[id]
       if (!saved) continue
-      state[topic.id] = {
+      topics[id] = {
         reminderMode: saved.reminderMode ?? INITIAL_TOPIC_REMINDER_MODE,
         live: Array.isArray(saved.live) ? saved.live : [],
         newVideo: Array.isArray(saved.newVideo) ? saved.newVideo : [],
         reminderOverrides: typeof saved.reminderOverrides === "object" && saved.reminderOverrides ? saved.reminderOverrides : {},
       }
     }
-    return state
+    return { topicOrder, topics }
   } catch {
     return initialState()
   }
@@ -72,79 +92,84 @@ function readState(): TopicPreferencesState {
 // introducing one is out of this task's scope).
 const topicPreferencesStore = createSharedState(STORAGE_KEY, readState, (state) => JSON.stringify(state))
 
-/** Topic-centered notification preferences: for each topic (see
- * lib/notificationTopics.ts), a reminder MODE (either a concrete time
- * forced onto everyone, or "member_choice" letting each member's own
- * setting apply), an independent Live-enabled and New-Video-enabled
- * creator set, and each member's own individually-stored reminder choice.
- * Entirely separate from both Favorites (useFavoriteCreators) and the
- * pre-existing global per-creator Live/New Video mute switches
- * (useCreatorNotificationPreferences) -- this hook owns only the new topic
- * dimension. */
 export function useTopicNotificationPreferences() {
   const [state, setState] = useSharedState(topicPreferencesStore)
 
-  const getReminderMode = useCallback((topicId: NotificationTopicId) => state[topicId].reminderMode, [state])
+  const topicState = useCallback((topicId: TopicCatalogId) => state.topics[topicId] ?? emptyTopicState(), [state])
 
-  const setReminderMode = useCallback(
-    (topicId: NotificationTopicId, mode: TopicReminderMode) => {
-      setState({ ...state, [topicId]: { ...state[topicId], reminderMode: mode } })
+  const setTopicState = useCallback(
+    (topicId: TopicCatalogId, next: TopicPreferenceState) => {
+      setState({ ...state, topics: { ...state.topics, [topicId]: next } })
     },
     [state, setState],
   )
 
-  const isMemberChoiceMode = useCallback((topicId: NotificationTopicId) => state[topicId].reminderMode === MEMBER_CHOICE_MODE, [state])
-
-  const isLiveEnabled = useCallback(
-    (topicId: NotificationTopicId, creatorId: string) => state[topicId].live.includes(creatorId),
-    [state],
+  /** Appends a newly-saved topic to the grid -- confirmed with the user:
+   * selecting a topic in the draft card's dropdown only updates that
+   * card's own local, unsaved state (see NotificationSettings.tsx); THIS
+   * is the only thing an explicit Save action calls, and it's the only
+   * way a topic ever becomes a real, persisted card. The `includes` guard
+   * is defense-in-depth only -- the draft's own dropdown options
+   * (lib/notificationTopicCatalog.ts's getSelectableTopics) are what
+   * actually keep a topic from ever being offered twice. */
+  const addTopic = useCallback(
+    (topicId: TopicCatalogId) => {
+      if (state.topicOrder.includes(topicId)) return
+      setState({ ...state, topicOrder: [...state.topicOrder, topicId] })
+    },
+    [state, setState],
   )
 
+  const getReminderMode = useCallback((topicId: TopicCatalogId) => topicState(topicId).reminderMode, [topicState])
+
+  const setReminderMode = useCallback(
+    (topicId: TopicCatalogId, mode: TopicReminderMode) => {
+      setTopicState(topicId, { ...topicState(topicId), reminderMode: mode })
+    },
+    [topicState, setTopicState],
+  )
+
+  const isMemberChoiceMode = useCallback((topicId: TopicCatalogId) => topicState(topicId).reminderMode === MEMBER_CHOICE_MODE, [topicState])
+
+  const isLiveEnabled = useCallback((topicId: TopicCatalogId, creatorId: string) => topicState(topicId).live.includes(creatorId), [topicState])
+
   const setLiveEnabled = useCallback(
-    (topicId: NotificationTopicId, creatorId: string, enabled: boolean) => {
-      const topic = state[topicId]
+    (topicId: TopicCatalogId, creatorId: string, enabled: boolean) => {
+      const topic = topicState(topicId)
       const live = enabled ? [...topic.live, creatorId] : topic.live.filter((id) => id !== creatorId)
       // Dropping Live also drops this creator's own stored reminder choice
       // — with no Live notification left to remind about, it's orphaned
       // state, not a preference worth keeping around for if Live gets
       // re-enabled later.
-      const reminderOverrides = enabled
-        ? topic.reminderOverrides
-        : Object.fromEntries(Object.entries(topic.reminderOverrides).filter(([id]) => id !== creatorId))
-      setState({ ...state, [topicId]: { ...topic, live, reminderOverrides } })
+      const reminderOverrides = enabled ? topic.reminderOverrides : Object.fromEntries(Object.entries(topic.reminderOverrides).filter(([id]) => id !== creatorId))
+      setTopicState(topicId, { ...topic, live, reminderOverrides })
     },
-    [state, setState],
+    [topicState, setTopicState],
   )
 
-  const isNewVideoEnabled = useCallback(
-    (topicId: NotificationTopicId, creatorId: string) => state[topicId].newVideo.includes(creatorId),
-    [state],
-  )
+  const isNewVideoEnabled = useCallback((topicId: TopicCatalogId, creatorId: string) => topicState(topicId).newVideo.includes(creatorId), [topicState])
 
   const setNewVideoEnabled = useCallback(
-    (topicId: NotificationTopicId, creatorId: string, enabled: boolean) => {
-      const topic = state[topicId]
+    (topicId: TopicCatalogId, creatorId: string, enabled: boolean) => {
+      const topic = topicState(topicId)
       const newVideo = enabled ? [...topic.newVideo, creatorId] : topic.newVideo.filter((id) => id !== creatorId)
-      setState({ ...state, [topicId]: { ...topic, newVideo } })
+      setTopicState(topicId, { ...topic, newVideo })
     },
-    [state, setState],
+    [topicState, setTopicState],
   )
 
   /** A member's OWN reminder choice, regardless of whether it's currently
    * in effect (see getEffectiveReminder below for that) -- falls back to
    * INITIAL_MEMBER_REMINDER only for display until they've ever touched
    * their own control; never written to storage just by reading it. */
-  const getMemberReminder = useCallback(
-    (topicId: NotificationTopicId, creatorId: string): ReminderTimeValue => state[topicId].reminderOverrides[creatorId] ?? INITIAL_MEMBER_REMINDER,
-    [state],
-  )
+  const getMemberReminder = useCallback((topicId: TopicCatalogId, creatorId: string): ReminderTimeValue => topicState(topicId).reminderOverrides[creatorId] ?? INITIAL_MEMBER_REMINDER, [topicState])
 
   const setMemberReminder = useCallback(
-    (topicId: NotificationTopicId, creatorId: string, value: ReminderTimeValue) => {
-      const topic = state[topicId]
-      setState({ ...state, [topicId]: { ...topic, reminderOverrides: { ...topic.reminderOverrides, [creatorId]: value } } })
+    (topicId: TopicCatalogId, creatorId: string, value: ReminderTimeValue) => {
+      const topic = topicState(topicId)
+      setTopicState(topicId, { ...topic, reminderOverrides: { ...topic.reminderOverrides, [creatorId]: value } })
     },
-    [state, setState],
+    [topicState, setTopicState],
   )
 
   /** The reminder a member ACTUALLY gets notified at: the topic's own
@@ -154,23 +179,25 @@ export function useTopicNotificationPreferences() {
    * not an inheritance fallback -- a concrete topic mode overrides every
    * member's own setting rather than merely being their fallback. */
   const getEffectiveReminder = useCallback(
-    (topicId: NotificationTopicId, creatorId: string): ReminderTimeValue => {
-      const mode = state[topicId].reminderMode
+    (topicId: TopicCatalogId, creatorId: string): ReminderTimeValue => {
+      const mode = topicState(topicId).reminderMode
       return mode === MEMBER_CHOICE_MODE ? getMemberReminder(topicId, creatorId) : mode
     },
-    [state, getMemberReminder],
+    [topicState, getMemberReminder],
   )
 
   /** Union of Live- and New-Video-enabled creators for this topic -- the
    * main page's own "已選 N 人" count and name preview don't distinguish
    * which of the two a creator is enabled for (this feature's own spec,
    * section 3: one combined count). */
-  const getEnabledCreatorIds = useCallback((topicId: NotificationTopicId): Set<string> => {
-    const topic = state[topicId]
+  const getEnabledCreatorIds = useCallback((topicId: TopicCatalogId): Set<string> => {
+    const topic = topicState(topicId)
     return new Set([...topic.live, ...topic.newVideo])
-  }, [state])
+  }, [topicState])
 
   return {
+    savedTopicIds: state.topicOrder,
+    addTopic,
     getReminderMode,
     setReminderMode,
     isMemberChoiceMode,

@@ -14,19 +14,14 @@ import {
   type NotificationCreator,
 } from "../../lib/notificationCreatorGrouping"
 import { sortFlatNotificationCreatorsLikeLiveStatus } from "../../lib/notificationCreatorOrder"
-import {
-  NOTIFICATION_TOPICS,
-  REMINDER_TIME_LABEL_KEYS,
-  REMINDER_TIME_VALUES,
-  type NotificationTopicId,
-  type ReminderTimeValue,
-} from "../../lib/notificationTopics"
+import { getAvailableTopics, type TopicCatalogId } from "../../lib/notificationTopicCatalog"
+import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, type ReminderTimeValue } from "../../lib/notificationTopics"
 import { t, type Locale } from "../../i18n/translations"
 import { useMemberTheme } from "../../theme/ThemeContext"
 
 interface TopicCreatorManagementDrawerProps {
   /** null closes the drawer -- also doubles as "which topic is open". */
-  topicId: NotificationTopicId | null
+  topicId: TopicCatalogId | null
   onClose: () => void
 }
 
@@ -116,7 +111,7 @@ function ColumnHeader({ locale }: { locale: Locale }) {
  * hint below it says so, so the value on screen never gets mistaken for
  * what this member is actually being notified at right now (see
  * getEffectiveReminder for the resolution itself). */
-function ReminderCell({ topicId, creator, locale }: { topicId: NotificationTopicId; creator: NotificationCreator; locale: Locale }) {
+function ReminderCell({ topicId, creator, locale }: { topicId: TopicCatalogId; creator: NotificationCreator; locale: Locale }) {
   const { isLiveEnabled, isMemberChoiceMode, getMemberReminder, setMemberReminder } = useTopicNotificationPreferences()
 
   if (!isLiveEnabled(topicId, creator.creatorId)) {
@@ -159,7 +154,7 @@ function ReminderCell({ topicId, creator, locale }: { topicId: NotificationTopic
   )
 }
 
-function CreatorRow({ topicId, creator }: { topicId: NotificationTopicId; creator: NotificationCreator }) {
+function CreatorRow({ topicId, creator }: { topicId: TopicCatalogId; creator: NotificationCreator }) {
   const [locale] = useLocale()
   const { isLiveEnabled, setLiveEnabled, isNewVideoEnabled, setNewVideoEnabled } = useTopicNotificationPreferences()
 
@@ -225,7 +220,7 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
   const filteredAgencyGroups = filterAgencyGroups(nonFavoriteAgencyGroups, searchQuery)
   const hasResults = filteredFavorites.length > 0 || filteredAgencyGroups.length > 0
 
-  const topicDef = NOTIFICATION_TOPICS.find((entry) => entry.id === topicId)
+  const topicDef = getAvailableTopics().find((entry) => entry.id === topicId)
   const drawerTitle = topicDef ? t(locale, "notificationSettings.managementDrawerTitle", { topic: t(locale, topicDef.labelKey) }) : ""
 
   return (

@@ -293,6 +293,26 @@
   transform: translateY(-50%);
 }
 
+/* Square, not antd Radio's own default circle -- confirmed with the user:
+   switching between this page and 收藏名單 (Favorites List, whose own
+   Checkbox is a 4px-radius square) made the shape jump out as a jarring
+   difference. This is a pure shape override -- still a real antd Radio
+   underneath (single-select semantics untouched), just reshaped to match
+   Checkbox's own exact corner radius. */
+.my-oshi-settings__radio .ant-radio {
+  border-radius: 4px;
+}
+
+/* Checked state: a fully solid square, not a dot-in-a-ring -- antd Radio's
+   own checked look already fills .ant-radio itself with a solid tint (see
+   the theme's own colorPrimary), it's only this small white ::after dot
+   sitting on top that was leaving a visible gap in the middle; hiding it
+   here (rather than also reshaping it, now moot) is what actually makes
+   the square read as solid. */
+.my-oshi-settings__radio .ant-radio-checked::after {
+  background-color: transparent;
+}
+
 .my-oshi-settings__radio .ant-radio:has(.ant-radio-input:focus-visible) {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 30%, transparent);
 }
@@ -574,6 +594,50 @@
    job. */
 .notification-settings__manage-button {
   margin-top: var(--space-3);
+}
+
+/* DraftTopicCard's own bottom row, once a topic is picked -- Members list
+   on the left, Save on the right (confirmed with the user). Own
+   margin-top instead of relying on .notification-settings__manage-button's
+   (zeroed out below when nested here), since this row itself is what needs
+   the spacing now, not the individual button inside it. */
+.notification-settings__topic-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-3);
+}
+
+.notification-settings__topic-card-actions .notification-settings__manage-button {
+  margin-top: 0;
+}
+
+/* The "+" tile -- extends .notification-settings__topic-card's own box
+   (border/radius/padding), only overriding the border style/color and
+   centering a plus icon, so it renders as the same width/height/spacing as
+   a real saved card (confirmed with the user). The grid's own default
+   align-items: stretch already matches its height to a real card when they
+   share a row; auto-height is fine when it starts a row alone, since every
+   card's own height is itself content-driven, not fixed. */
+.notification-settings__add-topic-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  color: var(--text-tertiary);
+  font-size: 20px;
+}
+
+.notification-settings__add-topic-tile:hover {
+  color: var(--theme-primary);
+}
+
+/* Sits where a saved card's own <h2> topic title sits -- same
+   margin-bottom the title had, so the rows underneath (once a topic is
+   picked) land in the same position as a saved card's own rows. */
+.notification-settings__topic-select {
+  width: 100%;
+  margin-bottom: var(--space-3);
 }
 
 /* ============ Topic Creator Management Drawer: the full searchable
