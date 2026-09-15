@@ -280,15 +280,21 @@
   font-family: inherit;
 }
 
-/* MyOshiSettings' own blank-placeholder page -- see MyOshiSettings.tsx.
-   Same look as .oshi-settings__empty-state below, this section's own
-   nearest equivalent ("nothing to show yet" copy), until this section gets
-   its real content. */
-.my-oshi-settings__placeholder {
-  padding: var(--space-6) var(--space-3);
-  text-align: center;
-  font-size: 14px;
-  color: var(--text-tertiary);
+/* MyOshiSettings' own single-select Radio -- same absolute positioning
+   (16px right of the avatar, vertically centered) as .oshi-settings__checkbox
+   below, since MyOshiSettings.tsx reuses that exact same tile layout;
+   named separately only because the focus-visible rule below it needs its
+   own antd Radio (not Checkbox) selector. */
+.my-oshi-settings__radio {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 16px;
+  transform: translateY(-50%);
+}
+
+.my-oshi-settings__radio .ant-radio:has(.ant-radio-input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 30%, transparent);
 }
 
 .oshi-settings__search::placeholder {

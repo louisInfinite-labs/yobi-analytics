@@ -45,9 +45,20 @@ function agencyLabelForBranch(branch: BranchKey): string {
  * Search is applied BEFORE grouping (matching NotificationSettings' own
  * "filter the hierarchy, not just the rows" fix): a subgroup/region/agency
  * with zero matching creators simply never appears, so a search never
- * leaves an empty "VSPO"/"Hololive"/"JP"/"1期生" heading on screen. */
-export function groupCreatorsForOshiSettings(query: string): OshiSettingsAgencyGroup[] {
-  const filtered = mockCreators.filter((creator) => creatorMatchesSearch(creator, query))
+ * leaves an empty "VSPO"/"Hololive"/"JP"/"1期生" heading on screen.
+ *
+ * `filterCreator`, if given, is ANDed into that same pre-grouping filter --
+ * used by MyOshiSettings.tsx to additionally drop ineligible creators (see
+ * lib/myOshiEligibility.ts) while still sharing this exact grouping/layout
+ * with the plain Favorites List page (whose own call site omits it,
+ * unaffected). */
+export function groupCreatorsForOshiSettings(
+  query: string,
+  filterCreator?: (creator: MockCreator) => boolean,
+): OshiSettingsAgencyGroup[] {
+  const filtered = mockCreators.filter(
+    (creator) => creatorMatchesSearch(creator, query) && (!filterCreator || filterCreator(creator)),
+  )
 
   const regions: OshiSettingsRegionGroup[] = DOCK_BRANCH_ORDER.map((branch) => {
     const branchCreators = filtered.filter((creator) => creator.branch === branch)
