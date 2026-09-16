@@ -252,6 +252,425 @@
   }
 }
 
+/* ============ Main Oshi Select: esports-style single creator selector ============ */
+
+.settings-page__content--main-oshi {
+  --main-oshi-bg: #17141d;
+  --main-oshi-surface: #211d29;
+  --main-oshi-surface-strong: #292432;
+  --main-oshi-border: #393342;
+  --main-oshi-text-primary: #f3eff7;
+  --main-oshi-text-secondary: #b9b1c5;
+  --main-oshi-text-tertiary: #948b9f;
+
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--theme-primary) 12%, transparent), transparent 38%),
+    var(--main-oshi-bg);
+  color: var(--main-oshi-text-primary);
+}
+
+.my-oshi-select {
+  min-height: calc(100vh - (var(--space-5) * 2));
+  min-height: calc(100dvh - (var(--space-5) * 2));
+}
+
+.my-oshi-select__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.my-oshi-select__eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--theme-primary);
+}
+
+.my-oshi-select__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--main-oshi-text-primary);
+}
+
+.my-oshi-select__search.ant-input-affix-wrapper {
+  width: 280px;
+  max-width: 100%;
+  flex-shrink: 0;
+  border-color: var(--main-oshi-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--main-oshi-surface) 86%, transparent);
+  color: var(--main-oshi-text-primary);
+}
+
+.my-oshi-select__search.ant-input-affix-wrapper:hover,
+.my-oshi-select__search.ant-input-affix-wrapper-focused {
+  border-color: var(--theme-primary);
+}
+
+.my-oshi-select__search .ant-input {
+  background: transparent;
+  color: var(--main-oshi-text-primary);
+}
+
+.my-oshi-select__search .ant-input::placeholder {
+  color: var(--main-oshi-text-tertiary);
+}
+
+.my-oshi-select__search .ant-input-prefix,
+.my-oshi-select__search .ant-input-clear-icon {
+  color: var(--main-oshi-text-tertiary);
+}
+
+.my-oshi-select__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.my-oshi-select__roster {
+  min-width: 0;
+}
+
+.my-oshi-select__region + .my-oshi-select__region {
+  margin-top: var(--space-6);
+}
+
+.my-oshi-select__region-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.my-oshi-select__region-header::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: linear-gradient(90deg, var(--main-oshi-border), transparent);
+}
+
+.my-oshi-select__region-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--main-oshi-text-secondary);
+}
+
+.my-oshi-select__subgroup + .my-oshi-select__subgroup {
+  margin-top: var(--space-4);
+}
+
+.my-oshi-select__subgroup-title {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--main-oshi-text-tertiary);
+}
+
+.my-oshi-select__empty-state {
+  margin: 0;
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+  font-size: 14px;
+  color: var(--main-oshi-text-tertiary);
+}
+
+.my-oshi-select__segmented.ant-segmented {
+  display: block;
+  background: transparent;
+}
+
+.my-oshi-select__segmented .ant-segmented-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 124px);
+  gap: var(--space-3);
+  justify-content: start;
+}
+
+.my-oshi-select__segmented .ant-segmented-thumb {
+  display: none !important;
+  position: absolute !important;
+}
+
+.my-oshi-select__segment-item {
+  width: 100%;
+  min-height: auto;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--main-oshi-text-secondary);
+}
+
+.my-oshi-select__segment-item.ant-segmented-item-selected {
+  background: transparent;
+}
+
+.my-oshi-select__segment-item::after {
+  display: none;
+}
+
+.my-oshi-select__segment-item:has(.ant-segmented-item-input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--creator-accent, var(--theme-primary)) 35%, transparent);
+}
+
+.my-oshi-select__segment-label {
+  display: block;
+  width: 100%;
+  padding: 0;
+}
+
+.my-oshi-select__slot {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.my-oshi-select__slot::after {
+  content: "";
+  width: 18px;
+  height: 2px;
+  margin-top: 1px;
+  background: transparent;
+  transform: skewX(-24deg);
+}
+
+.my-oshi-select__slot-avatar-frame {
+  display: inline-flex;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.my-oshi-select__avatar {
+  background: var(--creator-accent-soft);
+  color: var(--creator-accent-text);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.my-oshi-select__avatar--slot {
+  width: 48px;
+  height: 48px;
+  font-size: 0.9rem;
+}
+
+.my-oshi-select__avatar--hero {
+  width: 260px;
+  height: 260px;
+  font-size: 4.5rem;
+}
+
+.my-oshi-select__slot-name {
+  width: 100%;
+  min-width: 0;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  text-align: center;
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  color: var(--main-oshi-text-secondary);
+  transition: color 120ms ease;
+}
+
+.my-oshi-select__segment-item:hover .my-oshi-select__slot-avatar-frame {
+  border-color: color-mix(in srgb, var(--creator-accent) 48%, transparent);
+}
+
+.my-oshi-select__segment-item:hover .my-oshi-select__slot-name {
+  color: var(--creator-accent);
+}
+
+.my-oshi-select__segment-item.ant-segmented-item-selected .my-oshi-select__slot-avatar-frame {
+  border-color: var(--creator-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--creator-accent) 18%, transparent);
+}
+
+.my-oshi-select__segment-item.ant-segmented-item-selected .my-oshi-select__slot-name {
+  color: var(--main-oshi-text-primary);
+}
+
+.my-oshi-select__segment-item.ant-segmented-item-selected .my-oshi-select__slot::after {
+  background: var(--creator-accent);
+}
+
+.my-oshi-select__presentation {
+  position: sticky;
+  top: var(--space-5);
+  overflow: hidden;
+  min-height: 520px;
+  padding: var(--space-5);
+  border: 1px solid color-mix(in srgb, var(--creator-accent) 34%, var(--main-oshi-border));
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--creator-accent) 22%, transparent), transparent 42%),
+    var(--main-oshi-surface);
+}
+
+.my-oshi-select__presentation::before,
+.my-oshi-select__presentation::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.my-oshi-select__presentation::before {
+  inset: 18px;
+  border-top: 1px solid color-mix(in srgb, var(--creator-accent) 44%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--creator-accent) 24%, transparent);
+  clip-path: polygon(0 0, 100% 0, 100% 78%, 86% 100%, 0 100%);
+}
+
+.my-oshi-select__presentation::after {
+  right: -42px;
+  bottom: 42px;
+  width: 150px;
+  height: 20px;
+  background: color-mix(in srgb, var(--creator-accent) 34%, transparent);
+  transform: skewX(-28deg);
+}
+
+.my-oshi-select__presentation-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.16;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--creator-accent) 32%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--creator-accent) 32%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg, black, transparent 68%);
+}
+
+.my-oshi-select__status-marker {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  color: var(--main-oshi-text-primary);
+  background: color-mix(in srgb, var(--creator-accent) 26%, transparent);
+  border-left: 2px solid var(--creator-accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.my-oshi-select__hero-avatar-frame {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  margin: var(--space-6) 0 var(--space-5);
+}
+
+.my-oshi-select__hero-avatar-frame::before {
+  content: "";
+  position: absolute;
+  inset: 50%;
+  width: 294px;
+  height: 294px;
+  border: 1px solid color-mix(in srgb, var(--creator-accent) 56%, transparent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.my-oshi-select__avatar--hero {
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, var(--creator-accent) 82%, transparent),
+    0 18px 40px rgba(0, 0, 0, 0.34);
+}
+
+.my-oshi-select__identity {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+
+.my-oshi-select__selected-name {
+  margin: 0;
+  color: var(--main-oshi-text-primary);
+  font-size: 28px;
+  line-height: 1.2;
+  white-space: pre-line;
+}
+
+.my-oshi-select__selected-meta {
+  margin: var(--space-2) 0 0;
+  color: var(--creator-accent);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1180px) {
+  .my-oshi-select__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .my-oshi-select__presentation {
+    position: relative;
+    top: auto;
+    order: -1;
+    min-height: auto;
+  }
+
+  .my-oshi-select__avatar--hero {
+    width: 220px;
+    height: 220px;
+    font-size: 3.8rem;
+  }
+
+  .my-oshi-select__hero-avatar-frame::before {
+    width: 250px;
+    height: 250px;
+  }
+}
+
+@media (max-width: 640px) {
+  .my-oshi-select__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .my-oshi-select__search.ant-input-affix-wrapper {
+    width: 100%;
+  }
+
+  .my-oshi-select__presentation {
+    padding: var(--space-4);
+  }
+
+  .my-oshi-select__avatar--hero {
+    width: 180px;
+    height: 180px;
+    font-size: 3rem;
+  }
+
+  .my-oshi-select__hero-avatar-frame::before {
+    width: 206px;
+    height: 206px;
+  }
+}
+
 /* ============ Oshi Settings: favorite-creator management grid ============ */
 
 .oshi-settings__agency-header {

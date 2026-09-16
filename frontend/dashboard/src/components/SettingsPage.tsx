@@ -12,13 +12,18 @@ import { SettingsSecondaryNavbar, type SettingsSection } from "./settings/Settin
  * own spec. */
 export function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingsSection>("oshi")
+  const contentClassName = [
+    "settings-page__content",
+    activeSection === "myOshi" ? "settings-page__content--main-oshi" : "",
+    activeSection === "oshi" ? "settings-page__content--favorites" : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
 
   return (
     <div className="settings-page">
       <SettingsSecondaryNavbar activeSection={activeSection} onSelect={setActiveSection} />
-      <div
-        className={`settings-page__content${activeSection === "oshi" ? " settings-page__content--favorites" : ""}`}
-      >
+      <div className={contentClassName}>
         {activeSection === "myOshi" && <MyOshiSettings />}
         {activeSection === "oshi" && <OshiSettings />}
         {activeSection === "notification" && <NotificationSettings />}

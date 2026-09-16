@@ -61,6 +61,10 @@ export type TranslationKey =
   | "settingsSecondaryNavbar.oshiSettings"
   | "settingsSecondaryNavbar.notificationSettings"
   | "myOshiSettings.selectAria"
+  | "myOshiSettings.pageTitle"
+  | "myOshiSettings.statusMarker"
+  | "myOshiSettings.presentationAria"
+  | "myOshiSettings.rosterAria"
   | "oshiSettings.searchPlaceholder"
   | "oshiSettings.noResults"
   | "oshiSettings.addFavoriteAria"
@@ -206,6 +210,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.topicSelectAriaLabel": "選擇通知主題",
     "notificationSettings.addTopicButtonAriaLabel": "新增主題",
     "myOshiSettings.selectAria": "將 {{name}} 設為我推",
+    "myOshiSettings.pageTitle": "MAIN OSHI SELECT",
+    "myOshiSettings.statusMarker": "MAIN OSHI",
+    "myOshiSettings.presentationAria": "目前主推: {{name}}",
+    "myOshiSettings.rosterAria": "我推成員選擇列表",
     "languageSettings.picker.zhTW": "繁體中文",
     "languageSettings.picker.en": "英文",
     "languageSettings.picker.ja": "日文",
@@ -308,6 +316,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.topicSelectAriaLabel": "Select notification topic",
     "notificationSettings.addTopicButtonAriaLabel": "Add topic",
     "myOshiSettings.selectAria": "Set {{name}} as my Oshi",
+    "myOshiSettings.pageTitle": "MAIN OSHI SELECT",
+    "myOshiSettings.statusMarker": "MAIN OSHI",
+    "myOshiSettings.presentationAria": "Current Main Oshi: {{name}}",
+    "myOshiSettings.rosterAria": "Main Oshi creator selector",
     "languageSettings.picker.zhTW": "Traditional Chinese",
     "languageSettings.picker.en": "English",
     "languageSettings.picker.ja": "Japanese",
@@ -410,6 +422,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.topicSelectAriaLabel": "通知トピックを選択",
     "notificationSettings.addTopicButtonAriaLabel": "トピックを追加",
     "myOshiSettings.selectAria": "{{name}} を推しに設定",
+    "myOshiSettings.pageTitle": "MAIN OSHI SELECT",
+    "myOshiSettings.statusMarker": "MAIN OSHI",
+    "myOshiSettings.presentationAria": "現在の推し: {{name}}",
+    "myOshiSettings.rosterAria": "推しメンバー選択リスト",
     "languageSettings.picker.zhTW": "繁体中国語",
     "languageSettings.picker.en": "英語",
     "languageSettings.picker.ja": "日本語",
