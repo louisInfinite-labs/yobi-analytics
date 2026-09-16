@@ -5,24 +5,19 @@
   --settings-secondary-navbar-width: 240px;
 }
 
-/* height (not min-height) + overflow:hidden, same pattern as .home-page,
-   so SettingsSecondaryNavbar (a plain flex child, stretched to this
-   fixed height) stays put while only .settings-page__content scrolls
-   internally -- MainNavbar is already position:fixed, unaffected either
-   way. */
+/* Settings uses the document's scrollbar. Keep the page at least as tall
+   as the viewport, then let it grow with its content; locking this wrapper
+   to 100dvh and making __content scroll independently creates a second
+   vertical scrollbar and can expose the body's background below it. */
 .settings-page {
   display: flex;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .settings-page__content {
   flex: 1 1 auto;
   min-width: 0;
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
   box-sizing: border-box;
   padding: var(--space-5) var(--space-6);
 }
@@ -50,6 +45,20 @@
   width: var(--settings-secondary-navbar-width);
   box-sizing: border-box;
   background-color: var(--mantine-dark-6);
+}
+
+/* The document owns scrolling, but the desktop settings navigation should
+   remain viewport-bound like the fixed main navigation. This also keeps
+   the absolutely positioned language picker at the visible bottom of the
+   secondary navigation instead of the bottom of the long roster. */
+@media (min-width: 901px) {
+  .settings-secondary-navbar {
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: 100vh;
+    height: 100dvh;
+  }
 }
 
 .settings-secondary-navbar__title {
@@ -387,7 +396,8 @@
    columns fit the available width (so the page stays responsive:
    4/3/2/1 on narrower viewports), it just never grows existing cards to
    use up leftover space in an under-filled row. */
-.oshi-settings__grid {
+.oshi-settings__grid,
+.favorites-roster__grid {
   display: grid;
   /* 124px, not 96px -- the roster's own longest single-line name
      ("綺々羅々ヴィヴィ") measures ~103px unwrapped at this font-size, plus
@@ -400,7 +410,8 @@
 
 /* Card is a plain vertical stack: the avatar+checkbox row on top, name
    underneath. */
-.oshi-settings__card {
+.oshi-settings__card,
+.favorites-roster__tile {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -461,7 +472,9 @@
    (e.g. "ACHRORA -\nmekPark") carry explicit `\n` line breaks at exact,
    requested positions -- `pre-line` renders those breaks while every other
    name (no `\n`) still wraps normally based on available width. */
-.oshi-settings__creator-name {
+.oshi-settings__creator-name,
+.favorites-roster__name {
+  width: 100%;
   min-width: 0;
   font-size: 0.82rem;
   color: var(--text-primary);
@@ -803,4 +816,301 @@
   color: var(--text-tertiary);
   text-align: center;
   line-height: 1.2;
+}
+
+/* ============ Favorites Roster (My Favorites / 收藏名單): esports-style
+   squad-management redesign -- confirmed with the user, this page reads as
+   one unified dark roster surface, not individual settings cards, and is
+   deliberately its OWN class prefix (favorites-roster__*, not
+   oshi-settings__*, which no longer exists) so MyOshiSettings.tsx -- which
+   reuses .oshi-settings__* verbatim for its own, deliberately different
+   single-select "choose one Main Oshi" page -- stays completely
+   unaffected by anything below. ============ */
+
+/* Page background ownership follows the SAME pattern Oshi Settings already
+   uses: .settings-page__content itself (not a nested child) is the element
+   that visually paints the page background and owns the page padding --
+   .oshi-settings has no background/padding/border-radius of its own, it
+   just sits inside .settings-page__content's existing padding box. This ONE
+   page needs a dark background instead of the shared light one (esports
+   roster feel), so that same "content wrapper paints the background" job
+   moves to .settings-page__content--favorites (applied by SettingsPage.tsx
+   only while Favorites is the active section) instead of living on
+   .favorites-roster. .settings-page stretches this content column to at
+   least the full viewport and grows with it; the document therefore owns
+   the single scrollbar while this background covers the entire page.
+   There is no separate floating/rounded panel anymore, matching Oshi
+   Settings' own flush, panel-less page-background treatment exactly.
+   .favorites-roster below is now unstyled, like .oshi-settings. */
+.settings-page__content--favorites {
+  /* Page-scoped dark palette -- confirmed with the user: this ONE page
+     goes dark (esports roster feel), unlike the rest of Settings (light).
+     New tokens, not the app's light-tuned --text-primary/--surface-border/
+     etc (those are calibrated for a white background and fail contrast
+     here). Contrast against --roster-bg (#17141d): text-primary ~15:1,
+     text-secondary ~8:1, text-tertiary ~4.6:1 (small/muted labels only).
+     Member-accent tokens (--theme-primary etc, set by MemberThemeProvider)
+     still drive selection/hover accents on top of this neutral palette. */
+  --roster-bg: #17141d;
+  --roster-surface: #211d29;
+  --roster-border: #34303d;
+  --roster-text-primary: #f3eff7;
+  --roster-text-secondary: #b6aec2;
+  --roster-text-tertiary: #948b9f;
+
+  background: var(--roster-bg);
+  color: var(--roster-text-primary);
+}
+
+.favorites-roster__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.favorites-roster__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  /* No-op for CJK (no case distinction) -- stylizes the English/romaji
+     string per the spec's own "MY FAVORITES" example without hardcoding
+     caps into the translated string itself. */
+  text-transform: uppercase;
+  color: var(--roster-text-primary);
+}
+
+.favorites-roster__count {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--theme-primary);
+}
+
+.favorites-roster__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+
+.favorites-roster__search {
+  width: 240px;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--roster-border);
+  border-radius: var(--radius-sm);
+  background: var(--roster-surface);
+  color: var(--roster-text-primary);
+  padding: var(--space-1) var(--space-2);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.favorites-roster__search::placeholder {
+  color: var(--roster-text-tertiary);
+}
+
+.favorites-roster__search:focus {
+  outline: none;
+  border-color: var(--theme-primary);
+}
+
+.favorites-roster__empty-state {
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+  font-size: 14px;
+  color: var(--roster-text-tertiary);
+}
+
+.favorites-roster__agency + .favorites-roster__agency {
+  margin-top: var(--space-6);
+}
+
+.favorites-roster__region + .favorites-roster__region {
+  margin-top: var(--space-5);
+}
+
+.favorites-roster__region-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--roster-border);
+}
+
+.favorites-roster__region-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--roster-text-secondary);
+}
+
+.favorites-roster__region-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--roster-text-tertiary);
+}
+
+.favorites-roster__subgroup {
+  margin-bottom: var(--space-3);
+}
+
+.favorites-roster__subgroup-title {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--roster-text-tertiary);
+}
+
+/* This IS antd's own Checkbox root <label> (see FavoriteTile in
+   OshiSettings.tsx) -- confirmed with the user: keep the underlying
+   Checkbox/toggleFavorite state semantics, only the VISIBLE UI changes.
+   Native <label> behavior already makes clicking anywhere in here (avatar,
+   name, empty space) toggle the nested real <input>, with no extra JS. */
+/* Grid sizing, padding and internal spacing come from the shared
+   .oshi-settings__card rule above, so Favorites and My Oshi stay exactly
+   aligned. This rule contains only Favorites-specific interaction styles. */
+.favorites-roster__tile {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+/* antd renders a Checkbox's `children` inside its OWN wrapper,
+   `.ant-checkbox-label` -- the single in-flow child of the tile above (the
+   real `.ant-checkbox` square is taken out of flow by the visually-hidden
+   rule below). Give that wrapper the full 108px inner card width and the
+   same 4px avatar-to-name gap used by My Oshi. */
+.favorites-roster__tile .ant-checkbox-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+  padding-inline: 0;
+}
+
+/* antd's own checkbox visual (the small square + its real <input>) --
+   visually hidden (not display:none), so the real <input> stays in the tab
+   order and keyboard-operable (standard visually-hidden technique). */
+.favorites-roster__tile .ant-checkbox {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Same focus-ring box-shadow value as every other interactive control in
+   this app (see the old .oshi-settings__checkbox's own :has() rule) --
+   applied to the whole tile now, since the visible click target is the
+   whole tile, not a small checkbox. */
+.favorites-roster__tile:has(.ant-checkbox-input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 30%, transparent);
+}
+
+.favorites-roster__avatar-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.favorites-roster__avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  /* Transparent by default so the selected/hover ring never shifts layout
+     when it appears -- only its color changes. */
+  border: 2px solid transparent;
+  transition: border-color 120ms ease;
+  box-sizing: border-box;
+}
+
+.favorites-roster__avatar-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.favorites-roster__tile:hover .favorites-roster__avatar {
+  border-color: color-mix(in srgb, var(--theme-primary) 45%, transparent);
+}
+
+.favorites-roster__tile--selected .favorites-roster__avatar {
+  border-color: var(--theme-primary);
+}
+
+/* Same filled-heart visual semantic as Live Status's own favorite
+   indicator (creator-status-list__favorite-indicator, home.css) -- reused
+   for recognizability, NOT its swipe-only/pointer-events:none/display-only
+   treatment, since this page's own click target is the whole tile, not a
+   gesture. --live-red (not a roster-specific color) is the same token
+   Live Status already uses for this exact semantic. */
+.favorites-roster__favorite-icon {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 16px;
+  height: 16px;
+  padding: 2px;
+  box-sizing: border-box;
+  color: var(--live-red);
+  background: var(--roster-bg);
+  border-radius: 50%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+/* Width, font size, line height and wrapping are shared directly with
+   .oshi-settings__creator-name above. Only Favorites-specific positioning
+   and dark-palette color live here. */
+.favorites-roster__name {
+  position: relative;
+  color: var(--roster-text-secondary);
+}
+
+.favorites-roster__tile:hover .favorites-roster__name {
+  color: var(--roster-text-primary);
+}
+
+.favorites-roster__tile--selected .favorites-roster__name {
+  color: var(--roster-text-primary);
+}
+
+@media (max-width: 640px) {
+  .favorites-roster__controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .favorites-roster__segmented.ant-segmented {
+    width: 100%;
+  }
+
+  .favorites-roster__search {
+    width: 100%;
+  }
 }

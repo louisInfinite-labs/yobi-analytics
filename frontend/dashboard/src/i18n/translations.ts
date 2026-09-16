@@ -67,6 +67,9 @@ export type TranslationKey =
   | "oshiSettings.removeFavoriteAria"
   | "oshiSettings.otherGroupLabel"
   | "oshiSettings.gamersGroupLabel"
+  | "oshiSettings.pageTitle"
+  | "oshiSettings.selectedCountLabel"
+  | "oshiSettings.viewFilter.favoritesOnly"
   | "notificationSettings.liveColumnHeader"
   | "notificationSettings.newVideoColumnHeader"
   | "notificationSettings.liveSwitchAriaLabel"
@@ -166,6 +169,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.removeFavoriteAria": "將 {{name}} 從我推移除",
     "oshiSettings.otherGroupLabel": "其他",
     "oshiSettings.gamersGroupLabel": "Gamers",
+    "oshiSettings.pageTitle": "我的收藏",
+    "oshiSettings.selectedCountLabel": "已選 {{count}} 人",
+    "oshiSettings.viewFilter.favoritesOnly": "收藏",
     "notificationSettings.liveColumnHeader": "直播",
     "notificationSettings.newVideoColumnHeader": "新片",
     "notificationSettings.liveSwitchAriaLabel": "{{name}} 直播通知",
@@ -265,6 +271,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.removeFavoriteAria": "Remove {{name}} from favorites",
     "oshiSettings.otherGroupLabel": "Other",
     "oshiSettings.gamersGroupLabel": "Gamers",
+    "oshiSettings.pageTitle": "My Favorites",
+    "oshiSettings.selectedCountLabel": "{{count}} selected",
+    "oshiSettings.viewFilter.favoritesOnly": "Favorites",
     "notificationSettings.liveColumnHeader": "Live",
     "notificationSettings.newVideoColumnHeader": "New Video",
     "notificationSettings.liveSwitchAriaLabel": "{{name}} live notifications",
@@ -364,6 +373,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.removeFavoriteAria": "{{name}}を推しから削除",
     "oshiSettings.otherGroupLabel": "その他",
     "oshiSettings.gamersGroupLabel": "ゲーマーズ",
+    "oshiSettings.pageTitle": "マイお気に入り",
+    "oshiSettings.selectedCountLabel": "{{count}} 人選択中",
+    "oshiSettings.viewFilter.favoritesOnly": "お気に入り",
     "notificationSettings.liveColumnHeader": "配信",
     "notificationSettings.newVideoColumnHeader": "新着動画",
     "notificationSettings.liveSwitchAriaLabel": "{{name}} の配信通知",

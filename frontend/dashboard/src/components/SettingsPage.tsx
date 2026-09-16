@@ -16,7 +16,9 @@ export function SettingsPage() {
   return (
     <div className="settings-page">
       <SettingsSecondaryNavbar activeSection={activeSection} onSelect={setActiveSection} />
-      <div className="settings-page__content">
+      <div
+        className={`settings-page__content${activeSection === "oshi" ? " settings-page__content--favorites" : ""}`}
+      >
         {activeSection === "myOshi" && <MyOshiSettings />}
         {activeSection === "oshi" && <OshiSettings />}
         {activeSection === "notification" && <NotificationSettings />}
