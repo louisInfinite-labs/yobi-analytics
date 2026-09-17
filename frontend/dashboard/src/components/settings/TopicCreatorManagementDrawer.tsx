@@ -217,6 +217,11 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
   const { favorites } = useFavoriteCreators()
   const [searchQuery, setSearchQuery] = useState("")
 
+  const handleClose = () => {
+    setSearchQuery("")
+    onClose()
+  }
+
   const allCreators = useMemo(() => getAllNotificationCreators(), [])
   const baseAgencyGroups = useMemo(() => groupCreatorsForNotificationSettings(), [])
 
@@ -276,7 +281,7 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
         },
       }}
     >
-      <Drawer open={topicId !== null} onClose={onClose} title={drawerTitle} size={480} className="topic-creator-drawer">
+      <Drawer open={topicId !== null} onClose={handleClose} title={drawerTitle} size={480} className="topic-creator-drawer">
         {topicId && (
           <div className="topic-creator-drawer__content">
             <Input

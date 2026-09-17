@@ -136,33 +136,29 @@ function MembersRow({ topicId, topicLabel, onManage }: { topicId: TopicCatalogId
   const separator = t(locale, "notificationSettings.namePreviewSeparator")
   const previewText = enabledCreators.length > 0 ? `${previewNames.join(separator)}${hasMore ? `${separator}...` : ""}` : t(locale, "notificationSettings.noSelectedMembers")
 
-  const row = (
-    <ConfigProvider wave={{ showEffect: showInsetEffect }}>
-      <Button
-        type="text"
-        block
-        className="notification-settings__members-row"
-        onClick={onManage}
-        aria-label={`${t(locale, "notificationSettings.manageMembersButton")} ${topicLabel}`}
-      >
-        <span className="notification-settings__group-label">
-          <Users size={14} aria-hidden="true" />
-          {t(locale, "notificationSettings.notifiedMembersLabel")}
-        </span>
-        <span className="notification-settings__members-row-value">
-          <span className="notification-settings__member-count">
-            {t(locale, "notificationSettings.selectedCountLabel", { count: String(enabledCreators.length) })}
-          </span>
-          <ChevronRight size={16} aria-hidden="true" className="notification-settings__members-row-chevron" />
-        </span>
-      </Button>
-    </ConfigProvider>
-  )
-
   return (
-    <Tooltip title={previewText} placement="bottom">
-      {row}
-    </Tooltip>
+    <ConfigProvider wave={{ showEffect: showInsetEffect }}>
+      <Tooltip title={previewText} placement="bottom">
+        <Button
+          type="text"
+          block
+          className="notification-settings__members-row"
+          onClick={onManage}
+          aria-label={`${t(locale, "notificationSettings.manageMembersButton")} ${topicLabel}`}
+        >
+          <span className="notification-settings__group-label">
+            <Users size={14} aria-hidden="true" />
+            {t(locale, "notificationSettings.notifiedMembersLabel")}
+          </span>
+          <span className="notification-settings__members-row-value">
+            <span className="notification-settings__member-count">
+              {t(locale, "notificationSettings.selectedCountLabel", { count: String(enabledCreators.length) })}
+            </span>
+            <ChevronRight size={16} aria-hidden="true" className="notification-settings__members-row-chevron" />
+          </span>
+        </Button>
+      </Tooltip>
+    </ConfigProvider>
   )
 }
 
