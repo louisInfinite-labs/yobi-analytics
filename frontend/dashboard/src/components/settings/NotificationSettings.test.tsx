@@ -84,7 +84,7 @@ describe("NotificationSettings", () => {
     expect(screen.queryByRole("heading", { name: "GTA" })).not.toBeInTheDocument()
   })
 
-  it("lets the user change the reminder time on the still-unsaved draft card -- now an antd Segmented (all choices visible at once), presentation change only, same underlying values", async () => {
+  it("keeps draft preferences transient until Save commits the topic", async () => {
     // antd's real radio <input> is visually hidden via pointer-events: none
     // (the sliding thumb is the visible surface) -- same as this app's own
     // established visually-hidden-input pattern elsewhere, just via this
@@ -104,16 +104,28 @@ describe("NotificationSettings", () => {
 
     await user.click(draftCard.getByRole("radio", { name: "30 minutes before" }))
 
-    // Asserted via the actual persisted preference rather than the radio's
-    // own DOM `checked` attribute -- rc-segmented's sliding-thumb motion
-    // effect (MotionThumb) makes the freshly-mounted draft card's own
-    // `checked` attribute unreliable to read synchronously right after a
-    // jsdom click (confirmed not a real bug: the same interaction was
-    // verified correct in an actual browser both for a saved card and for
-    // a freshly-created draft card). This still verifies the real
-    // observable behavior: the topic's reminder mode actually changed.
-    const stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
+    let stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
+    expect(stored.topics?.gta).toBeUndefined()
+
+    await user.click(draftCard.getByRole("button", { name: "Save" }))
+    stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
     expect(stored.topics.gta.reminderMode).toBe("30min")
+  })
+
+  it("discards an abandoned draft so reselecting that topic starts clean", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    const first = renderNotificationSettings()
+    await user.click(screen.getByRole("button", { name: "Add topic" }))
+    await user.click(screen.getByRole("combobox", { name: "Select notification topic" }))
+    await user.click(await screen.findByTitle("GTA"))
+    await user.click(within(getDraftCard()).getByRole("radio", { name: "30 minutes before" }))
+    first.unmount()
+
+    renderNotificationSettings()
+    await user.click(screen.getByRole("button", { name: "Add topic" }))
+    await user.click(screen.getByRole("combobox", { name: "Select notification topic" }))
+    await user.click(await screen.findByTitle("GTA"))
+    expect(within(getDraftCard()).getByRole("radio", { name: "10 minutes before" })).toBeChecked()
   })
 
   it("opens the member-management drawer for the still-unsaved draft topic when its 'Members list' is clicked", async () => {
@@ -177,6 +189,19 @@ describe("NotificationSettings", () => {
     expect(screen.getByTitle("7 DAYS TO DIE")).toBeInTheDocument()
     expect(screen.getByTitle("雀魂")).toBeInTheDocument()
     expect(screen.getByTitle("Endfield")).toBeInTheDocument()
+  })
+
+  it("hides the Add topic tile when every catalog topic is already saved", () => {
+    window.localStorage.setItem(
+      "yobi.topicNotificationPreferences.v2",
+      JSON.stringify({
+        topicOrder: ["all", "sf6", "valo", "apex", "minecraft", "gta", "seven_days_to_die", "mahjong_soul", "endfield"],
+        topics: {},
+      }),
+    )
+    resetAllSharedStateForTests()
+    renderNotificationSettings()
+    expect(screen.queryByRole("button", { name: "Add topic" })).not.toBeInTheDocument()
   })
 })
 

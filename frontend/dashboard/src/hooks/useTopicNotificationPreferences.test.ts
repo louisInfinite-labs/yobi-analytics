@@ -1,6 +1,7 @@
 import { renderHook, act } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { useTopicNotificationPreferences } from "./useTopicNotificationPreferences"
+import { resetAllSharedStateForTests } from "../lib/sharedState"
 
 // Each mutation gets its OWN act() call (never batched together) — same
 // convention as useFavoriteCreators.test.ts. The hook's setters close over
@@ -10,6 +11,24 @@ import { useTopicNotificationPreferences } from "./useTopicNotificationPreferenc
 // real UI ever calls them (one Switch/Select onChange per event, each its
 // own render cycle), so tests must not do it either.
 describe("useTopicNotificationPreferences", () => {
+  it("filters unknown and duplicate saved topic IDs while restoring required defaults", () => {
+    window.localStorage.setItem(
+      "yobi.topicNotificationPreferences.v2",
+      JSON.stringify({
+        topicOrder: ["gta", "unknown-topic", "gta", "all"],
+        topics: {
+          gta: { reminderMode: "30min", live: [], newVideo: [], reminderOverrides: {} },
+          "unknown-topic": { reminderMode: "1hour", live: [], newVideo: [], reminderOverrides: {} },
+        },
+      }),
+    )
+    resetAllSharedStateForTests()
+
+    const { result } = renderHook(() => useTopicNotificationPreferences())
+    expect(result.current.savedTopicIds).toEqual(["all", "sf6", "valo", "apex", "minecraft", "gta"])
+    expect(result.current.getReminderMode("gta")).toBe("30min")
+  })
+
   it("starts with every topic's reminder mode set to the spec's own worked-example value (10 分鐘前) and nobody enabled", () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
     expect(result.current.getReminderMode("valo")).toBe("10min")

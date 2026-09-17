@@ -47,6 +47,14 @@ describe("CreatorStatusList", () => {
     expect(screen.getAllByText("白上フブキ")).toHaveLength(2)
   })
 
+  it("counts a live creator only once when she belongs to multiple subgroups", () => {
+    renderList({
+      statuses: { ...allOffline, ch_shirakami_fubuki: { kind: "live", videoId: "v1", title: "t1" } },
+    })
+    expect(screen.getByText("01 LIVE")).toBeInTheDocument()
+    expect(screen.queryByText("02 LIVE")).not.toBeInTheDocument()
+  })
+
   it("lists only the favorited creators when favoriteOnlyIds is set", () => {
     renderList({ favoriteOnlyIds: new Set(["ch_aizawa_ema"]) })
     expect(screen.getByText("藍沢エマ")).toBeInTheDocument()

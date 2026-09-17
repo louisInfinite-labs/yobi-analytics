@@ -114,6 +114,19 @@
     width: auto;
     flex: 0 0 auto;
   }
+
+  .language-picker {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    margin: var(--space-3) var(--space-4);
+  }
+
+  .language-picker__dropdown {
+    top: calc(100% + 5px);
+    bottom: auto;
+  }
 }
 
 /* ============ Language Settings' own picker, ported pixel-for-pixel

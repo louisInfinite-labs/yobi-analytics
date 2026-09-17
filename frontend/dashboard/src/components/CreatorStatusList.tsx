@@ -256,10 +256,10 @@ export function CreatorStatusList({
         // this component -- no new data source/backend query (spec: "Live
         // count per group may be shown only if it is trivially derived
         // from already available state").
-        const liveCount = group.subgroups.reduce(
-          (count, subgroup) => count + subgroup.creators.filter((creator) => statuses[creator.channelId]?.kind === "live").length,
-          0,
+        const liveChannelIds = new Set(
+          group.subgroups.flatMap((subgroup) => subgroup.creators.map((creator) => creator.channelId)),
         )
+        const liveCount = [...liveChannelIds].filter((channelId) => statuses[channelId]?.kind === "live").length
         return (
           <div key={group.branch} className="creator-status-list__group">
             <div className="creator-status-list__group-header">

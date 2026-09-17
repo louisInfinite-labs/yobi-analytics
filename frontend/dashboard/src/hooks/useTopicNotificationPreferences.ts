@@ -1,6 +1,6 @@
 import { useCallback } from "react"
 import { createSharedState, useSharedState } from "../lib/sharedState"
-import type { TopicCatalogId } from "../lib/notificationTopicCatalog"
+import { getAvailableTopics, type TopicCatalogId } from "../lib/notificationTopicCatalog"
 import {
   INITIAL_MEMBER_REMINDER,
   INITIAL_TOPIC_REMINDER_MODE,
@@ -67,7 +67,14 @@ function readState(): TopicPreferencesState {
     // TopicPreferenceState> with no topicOrder field at all -- this check
     // is what makes reading that shape harmlessly fall back to the default
     // below instead of being misread, no storage-key version bump needed.
-    const topicOrder = Array.isArray(parsed.topicOrder) && parsed.topicOrder.every((id) => typeof id === "string") ? parsed.topicOrder : [...INITIAL_SAVED_TOPIC_IDS]
+    const availableTopicIds = new Set(getAvailableTopics().map((topic) => topic.id))
+    const savedTopicOrder = Array.isArray(parsed.topicOrder)
+      ? parsed.topicOrder.filter((id): id is TopicCatalogId => typeof id === "string" && availableTopicIds.has(id))
+      : []
+    const topicOrder = [...INITIAL_SAVED_TOPIC_IDS]
+    for (const id of savedTopicOrder) {
+      if (!topicOrder.includes(id)) topicOrder.push(id)
+    }
     const topics: TopicPreferencesState["topics"] = {}
     for (const id of topicOrder) {
       const saved = parsed.topics?.[id]
@@ -85,12 +92,23 @@ function readState(): TopicPreferencesState {
   }
 }
 
+/** Serializes saved cards only. Draft-topic controls still share their
+ * in-memory state across the card and drawer, but nothing reaches storage
+ * until addTopic commits that topic ID to topicOrder. */
+function serializeState(state: TopicPreferencesState): string {
+  const topics: TopicPreferencesState["topics"] = {}
+  for (const id of state.topicOrder) {
+    if (state.topics[id]) topics[id] = state.topics[id]
+  }
+  return JSON.stringify({ ...state, topics })
+}
+
 // Module-scoped singleton (see lib/sharedState.ts), same reactivity
 // reasoning as useFavoriteCreators/useCreatorNotificationPreferences --
 // local-only persistence (this feature's own explicit decision: no backend
 // contract exists for topic-level defaults or per-creator overrides, and
 // introducing one is out of this task's scope).
-const topicPreferencesStore = createSharedState(STORAGE_KEY, readState, (state) => JSON.stringify(state))
+const topicPreferencesStore = createSharedState(STORAGE_KEY, readState, serializeState)
 
 export function useTopicNotificationPreferences() {
   const [state, setState] = useSharedState(topicPreferencesStore)
@@ -119,6 +137,17 @@ export function useTopicNotificationPreferences() {
     },
     [state, setState],
   )
+
+  /** Drops transient configuration when a draft changes or is abandoned.
+   * Saved topic preferences are protected even if this is called during
+   * the same render in which Save commits the draft. */
+  const discardUnsavedTopic = useCallback((topicId: TopicCatalogId) => {
+    const current = topicPreferencesStore.get()
+    if (current.topicOrder.includes(topicId) || !current.topics[topicId]) return
+    const topics = { ...current.topics }
+    delete topics[topicId]
+    topicPreferencesStore.set({ ...current, topics })
+  }, [])
 
   const getReminderMode = useCallback((topicId: TopicCatalogId) => topicState(topicId).reminderMode, [topicState])
 
@@ -198,6 +227,7 @@ export function useTopicNotificationPreferences() {
   return {
     savedTopicIds: state.topicOrder,
     addTopic,
+    discardUnsavedTopic,
     getReminderMode,
     setReminderMode,
     isMemberChoiceMode,

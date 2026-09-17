@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button, ConfigProvider, Segmented, Select, Tooltip } from "antd"
 import type { ConfigProviderProps, GetProp } from "antd"
 import { ChevronRight, Clock3, Gamepad2, Plus, Users } from "lucide-react"
@@ -278,7 +278,7 @@ function AddTopicTile({ onClick }: { onClick: () => void }) {
  * Local Storage behavior, and the Drawer itself are all unchanged. */
 export function NotificationSettings() {
   const [managingTopicId, setManagingTopicId] = useState<TopicCatalogId | null>(null)
-  const { savedTopicIds, addTopic } = useTopicNotificationPreferences()
+  const { savedTopicIds, addTopic, discardUnsavedTopic } = useTopicNotificationPreferences()
 
   // At most one draft at a time (confirmed with the user) -- plain
   // component state, not shared/persisted: an in-progress, not-yet-saved
@@ -286,15 +286,32 @@ export function NotificationSettings() {
   // "a draft card is open, nothing picked yet" from "no draft at all"
   // (the `active` flag) -- see saveDraft's own guard below.
   const [draft, setDraft] = useState<{ active: boolean; topicId: TopicCatalogId | null }>({ active: false, topicId: null })
+  const draftTopicIdRef = useRef<TopicCatalogId | null>(null)
+  const selectableTopics = getSelectableTopics(savedTopicIds)
 
-  const startDraft = () => setDraft({ active: true, topicId: null })
+  useEffect(
+    () => () => {
+      if (draftTopicIdRef.current !== null) discardUnsavedTopic(draftTopicIdRef.current)
+    },
+    [discardUnsavedTopic],
+  )
+
+  const startDraft = () => {
+    draftTopicIdRef.current = null
+    setDraft({ active: true, topicId: null })
+  }
   // Only ever updates the LOCAL draft -- never calls addTopic. Picking an
   // option must not immediately persist (confirmed with the user); only
   // the explicit Save action below does.
-  const selectDraftTopic = (topicId: TopicCatalogId) => setDraft({ active: true, topicId })
+  const selectDraftTopic = (topicId: TopicCatalogId) => {
+    if (draft.topicId !== null && draft.topicId !== topicId) discardUnsavedTopic(draft.topicId)
+    draftTopicIdRef.current = topicId
+    setDraft({ active: true, topicId })
+  }
   const saveDraft = () => {
     if (draft.topicId === null) return
     addTopic(draft.topicId)
+    draftTopicIdRef.current = null
     setDraft({ active: false, topicId: null }) // clears the draft and re-enables "+" together
   }
 
@@ -339,14 +356,14 @@ export function NotificationSettings() {
         {draft.active ? (
           <DraftTopicCard
             selectedTopicId={draft.topicId}
-            selectableTopics={getSelectableTopics(savedTopicIds)}
+            selectableTopics={selectableTopics}
             onSelectTopic={selectDraftTopic}
             onManage={() => setManagingTopicId(draft.topicId)}
             onSave={saveDraft}
           />
-        ) : (
+        ) : selectableTopics.length > 0 ? (
           <AddTopicTile onClick={startDraft} />
-        )}
+        ) : null}
         <TopicCreatorManagementDrawer topicId={managingTopicId} onClose={() => setManagingTopicId(null)} />
       </div>
     </ConfigProvider>
