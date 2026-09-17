@@ -679,10 +679,18 @@ def merge_partial_rankings(
 
 
 def _scopes_for(row: HistoryRow, dimensions: CreatorDimensions | None) -> list[ScopeKey]:
+    """Scope keys this row contributes to.
+
+    The organization scope_type is "org", not "organization" (V5.12): the
+    existing production contract -- both the legacy trending_precompute
+    writer and get_organization_trending's own cache lookup -- has always
+    used "org:<organization>:...". Emitting anything else here makes this
+    pipeline's own organization-scope writes unreadable by the public API.
+    """
     scopes: list[ScopeKey] = [("global", "global"), ("creator", row.creator_id)]
     if dimensions is not None:
         if dimensions.organization:
-            scopes.append(("organization", dimensions.organization))
+            scopes.append(("org", dimensions.organization))
         if dimensions.branch:
             scopes.append(("branch", dimensions.branch))
     return scopes

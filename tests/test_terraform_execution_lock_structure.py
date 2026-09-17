@@ -13,6 +13,7 @@ the HCL is syntactically valid.
 
 from __future__ import annotations
 
+import json
 import pathlib
 
 import pytest
@@ -20,6 +21,14 @@ import pytest
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 DYNAMODB_TF = (REPO_ROOT / "terraform" / "dynamodb.tf").read_text()
 HISTORY_TF = (REPO_ROOT / "terraform" / "history.tf").read_text()
+
+# lambda_history_access moved out of history.tf's aws_iam_role_policy resource
+# and into this manually-managed JSON file (yobi-analytics-cli has no IAM
+# permissions at all -- see terraform/iam.tf's own note) -- its content, not
+# its location, is what this module's IAM least-privilege test cares about.
+LAMBDA_HISTORY_ACCESS_POLICY = json.loads(
+    (REPO_ROOT / "terraform" / "manual-iam" / "policy-lambda-history-access.json").read_text()
+)
 
 
 def _resource_block(source: str, resource_line: str) -> str:
@@ -81,21 +90,32 @@ def test_history_execution_lock_table_matches_existing_table_conventions():
     assert "deletion_protection_enabled = true" in block
 
 
-# --- terraform/history.tf: IAM least privilege ------------------------------
+# --- terraform/manual-iam/policy-lambda-history-access.json: IAM least privilege ---
+
+
+def _statements_naming_resource(policy: dict, needle: str) -> list[dict]:
+    """Every Statement entry whose Resource (a single ARN string or a list of
+    them) contains `needle` -- so this doesn't get confused by the *other*
+    statements in the same policy that legitimately grant GetItem/PutItem on
+    video_master/trending_cache, or s3:GetObject/PutObject on the history
+    bucket."""
+    matches = []
+    for statement in policy["Statement"]:
+        resource = statement["Resource"]
+        resources = [resource] if isinstance(resource, str) else resource
+        if any(needle in one for one in resources):
+            matches.append(statement)
+    return matches
 
 
 def test_lambda_history_access_grants_only_put_and_update_on_the_lock_table():
-    block = _resource_block(HISTORY_TF, 'resource "aws_iam_role_policy" "lambda_history_access"')
-    # Slice further to just the Statement entry naming the lock table's ARN,
-    # so this doesn't get confused by the *other* statements in the same
-    # policy that legitimately grant GetItem/PutItem on video_master/
-    # trending_cache.
-    lock_statement_start = block.index("aws_dynamodb_table.history_execution_lock.arn")
-    statement_slice = block[max(0, lock_statement_start - 400) : lock_statement_start + 50]
-    assert '"dynamodb:PutItem"' in statement_slice
-    assert '"dynamodb:UpdateItem"' in statement_slice
-    assert '"dynamodb:GetItem"' not in statement_slice
-    assert '"dynamodb:DeleteItem"' not in statement_slice
+    matches = _statements_naming_resource(LAMBDA_HISTORY_ACCESS_POLICY, "YobiHistoryExecutionLock")
+    assert len(matches) == 1, f"expected exactly one Statement naming the lock table, found {len(matches)}"
+    actions = matches[0]["Action"]
+    assert "dynamodb:PutItem" in actions
+    assert "dynamodb:UpdateItem" in actions
+    assert "dynamodb:GetItem" not in actions
+    assert "dynamodb:DeleteItem" not in actions
 
 
 # --- terraform/history.tf: ASL structure ------------------------------------

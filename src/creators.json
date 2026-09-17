@@ -1227,7 +1227,7 @@
     "creatorId": "elizabeth_rose_bloodflame",
     "displayName": "Elizabeth Rose Bloodflame",
     "organization": "hololive",
-    "youtubeChannelId": "UC--YolkGxqTiZtZss9ug3uQ",
+    "youtubeChannelId": "UCW5uhrG1eCBYditmhL0Ykjw",
     "active": true,
     "branch": "holo_en",
     "channelType": "member",
@@ -1240,7 +1240,7 @@
     "creatorId": "gigi_murin",
     "displayName": "Gigi Murin",
     "organization": "hololive",
-    "youtubeChannelId": "UC_8AmCWUFI3laCeY3TTIHDA",
+    "youtubeChannelId": "UCDHABijvPBnJm7F-KlNME3w",
     "active": true,
     "branch": "holo_en",
     "channelType": "member",
@@ -1478,6 +1478,19 @@
     "active": true,
     "branch": "vspo_en",
     "channelType": "member",
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
+  },
+  {
+    "creatorId": "vspo_official",
+    "displayName": "ぶいすぽっ!【公式】",
+    "organization": "vspo",
+    "youtubeChannelId": "UCuI5XaO-6VkOEhHao6ij7JA",
+    "active": true,
+    "branch": "vspo_jp",
+    "channelType": "group",
     "lifecycleStage": "active",
     "groupKey": [
       "NO"

@@ -7,9 +7,11 @@ import read_api
 from creator_master import Creator
 from read_api import (
     ClientError,
+    RankingNotReadyError,
     VideoNotFoundError,
     _compute_growth_results,
     _load_videos_for_creators,
+    _trending_response,
     get_creator_trending,
     get_organization_trending,
     get_video_growth,
@@ -23,6 +25,7 @@ from read_api import (
     parse_video_id,
 )
 from snapshot_store import Snapshot
+from trending import rank_videos
 from video_master import Video
 
 
@@ -398,199 +401,35 @@ def test_get_creator_trending_caps_a_cache_hit_at_max_limit_even_if_the_cached_p
     assert len(response["results"]) == read_api.MAX_LIMIT
 
 
-def test_get_creator_trending_ignores_cache_when_limit_is_absent(monkeypatch):
-    """An unbounded request (no limit) never serves a cache entry that only ever holds MAX_LIMIT rows."""
-    _trending_fixture(
-        monkeypatch,
-        creators=[_creator()],
-        videos=[_video(video_id="v1", creator_id="aizawa_ema")],
-        snapshots={
-            ("v1", "2026-09-01"): _snapshot("2026-09-01", 110, video_id="v1"),
-            ("v1", "2026-08-31"): _snapshot("2026-08-31", 100, video_id="v1"),
-        },
-    )
-    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: {"results": []})
+def test_get_creator_trending_uses_cache_when_limit_is_absent(monkeypatch):
+    """V5.9: an unbounded request (no limit) now DOES use an existing canonical cache
+    entry — this is the exact bug that caused sakura_miko's real cache to be skipped
+    and vspo_official's live fallback to time out (V5.7/V5.8)."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("a cache hit must never touch live catalog/snapshot storage")
+
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+    cached_payload = {"results": [{"rank": 1, "videoId": "v1"}, {"rank": 2, "videoId": "v2"}]}
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: cached_payload)
 
     response = get_creator_trending(
         {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d"}
     )
 
-    assert [entry["videoId"] for entry in response["results"]] == ["v1"]
+    assert [entry["videoId"] for entry in response["results"]] == ["v1", "v2"]
 
 
-def test_get_creator_trending_ignores_cache_for_a_non_canonical_time_zone(monkeypatch):
-    """A request outside the precompute job's own time zone always computes live."""
-    _trending_fixture(
-        monkeypatch,
-        creators=[_creator()],
-        videos=[_video(video_id="v1", creator_id="aizawa_ema")],
-        snapshots={
-            ("v1", "2026-09-01"): _snapshot("2026-09-01", 110, video_id="v1"),
-            ("v1", "2026-08-31"): _snapshot("2026-08-31", 100, video_id="v1"),
-        },
-    )
-    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: {"results": []})
-
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d", "limit": "5"}
-    )
-
-    assert [entry["videoId"] for entry in response["results"]] == ["v1"]
-
-
-def test_get_creator_trending_falls_back_to_live_computation_on_cache_miss(monkeypatch):
-    """A cache miss (None) still returns a correct live-computed response."""
-    _trending_fixture(
-        monkeypatch,
-        creators=[_creator()],
-        videos=[_video(video_id="v1", creator_id="aizawa_ema")],
-        snapshots={
-            ("v1", "2026-09-01"): _snapshot("2026-09-01", 110, video_id="v1"),
-            ("v1", "2026-08-31"): _snapshot("2026-08-31", 100, video_id="v1"),
-        },
-    )
-    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
-
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
-    )
-
-    assert [entry["videoId"] for entry in response["results"]] == ["v1"]
-
-
-def test_get_creator_trending_refuses_an_oversized_cache_miss_instead_of_computing_it_live(monkeypatch):
-    """A cache miss for a scope beyond MAX_LIVE_FALLBACK_VIDEOS must be refused (503-worthy),
-    not computed live — an attacker forcing a miss (e.g. a non-canonical timeZone) against a
-    huge scope must not be able to fan out into thousands of snapshot reads per request."""
-
-    def _boom(*args, **kwargs):
-        raise AssertionError("an oversized scope must be refused before touching snapshot storage")
-
-    videos = [_video(video_id=f"v{i}", creator_id="aizawa_ema") for i in range(read_api.MAX_LIVE_FALLBACK_VIDEOS + 1)]
+def test_get_creator_trending_omitted_limit_returns_up_to_max_limit_cached_rows(monkeypatch):
+    """An omitted limit is bounded by MAX_LIMIT — the same cap the writer itself already
+    enforces — never unbounded, and never more than the canonical cache could ever hold."""
     monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
-    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
-    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
-    monkeypatch.setattr(read_api, "get_snapshot", _boom)
-
-    with pytest.raises(read_api.TrendingNotReadyError):
-        get_creator_trending(
-            {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
-        )
-
-
-def test_get_creator_trending_refuses_an_oversized_cache_miss_even_with_limit_1(monkeypatch):
-    """The guardrail must trip on the scope's own catalog size alone — a caller cannot dodge it
-    by asking for a tiny `limit`, since the expensive part is computing growth for every
-    candidate video, not the size of the final ranked response."""
-
-    def _boom(*args, **kwargs):
-        raise AssertionError("an oversized scope must be refused regardless of the requested limit")
-
-    videos = [_video(video_id=f"v{i}", creator_id="aizawa_ema") for i in range(read_api.MAX_LIVE_FALLBACK_VIDEOS + 1)]
-    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
-    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
-    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
-    monkeypatch.setattr(read_api, "get_snapshot", _boom)
-
-    with pytest.raises(read_api.TrendingNotReadyError):
-        get_creator_trending(
-            {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "1"}
-        )
-
-
-def test_get_creator_trending_still_computes_live_at_exactly_the_fallback_limit(monkeypatch):
-    """The boundary itself must still be servable live — only strictly over the limit is refused."""
-    videos = [_video(video_id=f"v{i}", creator_id="aizawa_ema") for i in range(read_api.MAX_LIVE_FALLBACK_VIDEOS)]
-    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
-    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
-    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
-    monkeypatch.setattr(read_api, "get_snapshot", lambda video_id, snapshot_date: None)
-
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
-    )
-
-    assert response["creatorId"] == "aizawa_ema"
-
-
-def test_get_organization_trending_refuses_an_oversized_cache_miss_instead_of_computing_it_live(monkeypatch):
-    """Same guardrail for the organization scope, where per-request amplification is worst:
-    many creators' catalogs are combined before ranking (see _load_videos_for_creators)."""
-
-    def _boom(*args, **kwargs):
-        raise AssertionError("an oversized scope must be refused before touching snapshot storage")
-
-    huge_catalog = {
-        "c1": [_video(video_id=f"c1_v{i}", creator_id="c1") for i in range(read_api.MAX_LIVE_FALLBACK_VIDEOS)],
-        "c2": [_video(video_id=f"c2_v{i}", creator_id="c2") for i in range(2)],
+    oversized_payload = {
+        "results": [{"rank": i, "videoId": f"v{i}", "lastUpdatedAt": None} for i in range(1, read_api.MAX_LIMIT + 51)]
     }
-    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(creator_id="c1"), _creator(creator_id="c2")])
-    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: huge_catalog[creator_id])
-    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
-    monkeypatch.setattr(read_api, "get_snapshot", _boom)
-
-    with pytest.raises(read_api.TrendingNotReadyError):
-        get_organization_trending(
-            {"organization": "vspo", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
-        )
-
-
-# --- _reject_oversized_live_fallback ----------------------------------------
-
-
-def test_reject_oversized_live_fallback_error_does_not_leak_the_video_count():
-    """The 503 an unauthenticated caller receives must not reveal how large the real
-    catalog behind a scope is — that's server-side operational detail, not public
-    response data, even when the server is refusing the request."""
-    videos = [_video(video_id=f"v{i}") for i in range(read_api.MAX_LIVE_FALLBACK_VIDEOS + 1)]
-
-    with pytest.raises(read_api.TrendingNotReadyError) as exc_info:
-        read_api._reject_oversized_live_fallback(videos, scope={"creatorId": "aizawa_ema"})
-
-    message = str(exc_info.value)
-    assert str(len(videos)) not in message
-    assert "aizawa_ema" in message  # echoing the caller's own requested scope back is fine
-
-
-def test_reject_oversized_live_fallback_threshold_is_a_tunable_module_constant(monkeypatch):
-    """MAX_LIVE_FALLBACK_VIDEOS must be read fresh at call time (not baked into a closure),
-    so it can be overridden per-deployment via YOBI_MAX_TRENDING_LIVE_FALLBACK_VIDEOS
-    without a code change."""
-    monkeypatch.setattr(read_api, "MAX_LIVE_FALLBACK_VIDEOS", 3)
-
-    read_api._reject_oversized_live_fallback([_video(video_id=f"v{i}") for i in range(3)], scope={})
-
-    with pytest.raises(read_api.TrendingNotReadyError):
-        read_api._reject_oversized_live_fallback([_video(video_id=f"v{i}") for i in range(4)], scope={})
-
-
-# --- _bounded_live_limit -----------------------------------------------------
-
-
-def test_bounded_live_limit_passes_through_a_given_limit_unchanged():
-    assert read_api._bounded_live_limit(5) == 5
-
-
-def test_bounded_live_limit_defaults_an_absent_limit_to_max_limit():
-    assert read_api._bounded_live_limit(None) == read_api.MAX_LIMIT
-
-
-def test_get_creator_trending_live_fallback_caps_an_absent_limit_at_max_limit(monkeypatch):
-    """_bounded_live_limit must only change what the *live* path ranks down to — an
-    omitted `limit` must still return at most MAX_LIMIT rows once it falls through to
-    _compute_growth_results/rank_videos, not the unbounded "every rankable result"
-    rank_videos itself would default to."""
-    video_count = read_api.MAX_LIMIT + 50
-    assert video_count <= read_api.MAX_LIVE_FALLBACK_VIDEOS  # must stay under the other guardrail to reach ranking at all
-    videos = [_video(video_id=f"v{i}", creator_id="aizawa_ema") for i in range(video_count)]
-    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
-    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
-    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
-    monkeypatch.setattr(
-        read_api,
-        "get_snapshot",
-        lambda video_id, snapshot_date: _snapshot(snapshot_date.isoformat(), 100, video_id=video_id),
-    )
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: oversized_payload)
 
     response = get_creator_trending(
         {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d"}
@@ -599,37 +438,138 @@ def test_get_creator_trending_live_fallback_caps_an_absent_limit_at_max_limit(mo
     assert len(response["results"]) == read_api.MAX_LIMIT
 
 
-def test_bounded_live_limit_is_never_applied_on_the_cache_hit_path(monkeypatch):
-    """_cached_trending must keep truncating to the caller's own raw `limit` — it must
-    never see _bounded_live_limit's substitute value, since an omitted limit (None) is
-    itself one of _cached_trending's own signals to never serve a cache hit at all
-    (see its docstring). Sets a cached payload larger than a 5-row limit but smaller
-    than MAX_LIMIT, so a MAX_LIMIT-substitution bug (instead of the caller's real
-    limit=5) would be caught by returning too many rows."""
+def test_get_creator_trending_treats_non_canonical_time_zone_as_ranking_not_ready(monkeypatch):
+    """The cache only ever exists for CANONICAL_CACHE_TIME_ZONE (Asia/Tokyo) — a request in
+    any other zone can never be satisfied by it. V5.9 removed the live-fallback recomputation
+    that previously served this case, so it now behaves exactly like any other genuine miss:
+    RankingNotReadyError (503, RANKING_NOT_READY), not a new error shape and not silent
+    recomputation in the caller's own requested zone."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("a non-canonical timeZone must never reach live catalog/snapshot storage")
+
     monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
-    cached_payload = {"results": [{"rank": i, "videoId": f"v{i}", "lastUpdatedAt": None} for i in range(1, 21)]}
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: {"results": [{"rank": 1, "videoId": "v1"}]})
+
+    with pytest.raises(RankingNotReadyError):
+        get_creator_trending(
+            {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d", "limit": "5"}
+        )
+
+
+def test_get_creator_trending_raises_ranking_not_ready_on_genuine_cache_miss(monkeypatch):
+    """V5.9: a genuine cache miss (an existing, valid creator with no cached ranking yet)
+    raises RankingNotReadyError — never a live recomputation, regardless of catalog size."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("a cache miss must never fall through to live catalog/snapshot storage")
+
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+    monkeypatch.setattr(read_api, "_compute_growth_results", _boom)
+    monkeypatch.setattr(read_api, "ThreadPoolExecutor", _boom)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
+
+    with pytest.raises(RankingNotReadyError):
+        get_creator_trending(
+            {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
+        )
+
+
+def test_get_organization_trending_serves_a_cache_hit_without_touching_live_storage(monkeypatch):
+    """Organization scope mirrors the creator-scope cache-hit contract exactly."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("a cache hit must never touch live catalog/snapshot storage")
+
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(organization="vspo")])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+    cached_payload = {"organization": "vspo", "results": [{"rank": 1, "videoId": "v1"}]}
     monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: cached_payload)
 
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
+    response = get_organization_trending(
+        {"organization": "vspo", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d"}
     )
 
-    assert len(response["results"]) == 5
+    assert response["results"] == [{"rank": 1, "videoId": "v1"}]
 
 
-# --- get_creator_trending --------------------------------------------------
+def test_get_organization_trending_raises_ranking_not_ready_on_genuine_cache_miss(monkeypatch):
+    """Same cache-only contract as the creator-scoped endpoint: a genuine miss raises
+    RankingNotReadyError — never a live recomputation across the organization's
+    combined catalog, no matter how many creators/videos it has."""
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("a cache miss must never fall through to live catalog/snapshot storage")
+
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(organization="vspo")])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+    monkeypatch.setattr(read_api, "_compute_growth_results", _boom)
+    monkeypatch.setattr(read_api, "ThreadPoolExecutor", _boom)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
+
+    with pytest.raises(RankingNotReadyError):
+        get_organization_trending(
+            {"organization": "vspo", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d"}
+        )
 
 
-def _trending_fixture(monkeypatch, *, creators, videos, snapshots):
-    """Wire load_creators/get_videos_by_creator/get_video/get_snapshot for a trending test.
+def test_get_creator_trending_behavior_is_identical_regardless_of_catalog_size(monkeypatch):
+    """V5.9's whole point: HTTP request cost/behavior must never depend on catalog size.
+    get_videos_by_creator is never even called — not for a 172-video creator, not for a
+    2204-video creator (the exact real sakura_miko/vspo_official shapes from V5.7), not for
+    a hypothetical 10,000-video one — on either the cache-hit or cache-miss path."""
 
-    `snapshots` maps (video_id, snapshot_date_iso) -> Snapshot.
+    def _boom(*args, **kwargs):
+        raise AssertionError("catalog size must never be queried by the HTTP trending path")
+
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
+    monkeypatch.setattr(read_api, "get_snapshot", _boom)
+
+    for catalog_size, cached in [(172, None), (2204, None), (10_000, {"results": [{"rank": 1, "videoId": "v1"}]})]:
+        monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key, _c=cached: _c)
+        if cached is None:
+            with pytest.raises(RankingNotReadyError):
+                get_creator_trending(
+                    {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d"}
+                )
+        else:
+            response = get_creator_trending(
+                {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d"}
+            )
+            assert response["results"] == cached["results"]
+
+
+# --- ranking computation (V5.9: rehomed from the HTTP live path) -----------
+#
+# get_creator_trending/get_organization_trending are cache-only now — this
+# exact _compute_growth_results -> rank_videos -> _trending_response pipeline
+# only runs in trending_precompute.py's scheduled job. These tests moved from
+# exercising it through the (now-removed) HTTP live-fallback branch to calling
+# it directly, so ranking-correctness coverage (order, growth values,
+# timestamp aggregation, legacy-video inclusion, full-catalog consideration)
+# is preserved rather than lost when the HTTP fallback was removed.
+
+
+def _ranking_fixture(monkeypatch, *, creators, snapshots, videos=()):
+    """Wire load_creators/get_video/get_snapshot for a ranking-computation test.
+
+    Unlike the old _trending_fixture, this never wires get_videos_by_creator:
+    _compute_growth_results takes its candidate video list as a plain
+    argument, exactly as trending_precompute.py already calls it. `videos` is
+    only needed here to serve get_video's own by-id lookup (used by
+    _ranked_entry_to_dict's title/creatorId enrichment); pass the same list
+    given to _compute_ranked_response. `snapshots` maps
+    (video_id, snapshot_date_iso) -> Snapshot.
     """
     videos_by_id = {video.video_id: video for video in videos}
     monkeypatch.setattr(read_api, "load_creators", lambda: creators)
-    monkeypatch.setattr(
-        read_api, "get_videos_by_creator", lambda creator_id: [v for v in videos if v.creator_id == creator_id]
-    )
     monkeypatch.setattr(read_api, "get_video", lambda video_id: videos_by_id.get(video_id))
     monkeypatch.setattr(
         read_api,
@@ -638,16 +578,27 @@ def _trending_fixture(monkeypatch, *, creators, videos, snapshots):
     )
 
 
-def test_get_creator_trending_returns_ranked_response(monkeypatch):
+def _compute_ranked_response(videos, *, report_date, period, ranking_type, scope, limit=None):
+    """The same three-step pipeline trending_precompute._cache_one runs in
+    production for every scope/period/rankingType, once a day."""
+    growth_results = _compute_growth_results(videos, report_date=report_date, period=period)
+    ranked = rank_videos(growth_results, ranking_type, limit=limit or read_api.MAX_LIMIT)
+    return _trending_response(
+        ranked, scope=scope, report_date=report_date, period=period, ranking_type=ranking_type, time_zone="UTC"
+    )
+
+
+def test_ranking_computation_returns_ranked_response(monkeypatch):
     """Two videos for one creator are ranked by growth, most-grown first, and
     each result row carries classification fields joined from Creator Master."""
-    _trending_fixture(
+    videos = [
+        _video(video_id="v1", creator_id="aizawa_ema"),
+        _video(video_id="v2", creator_id="aizawa_ema", title="Video Two"),
+    ]
+    _ranking_fixture(
         monkeypatch,
         creators=[_creator()],
-        videos=[
-            _video(video_id="v1", creator_id="aizawa_ema"),
-            _video(video_id="v2", creator_id="aizawa_ema", title="Video Two"),
-        ],
+        videos=videos,
         snapshots={
             ("v1", "2026-09-01"): _snapshot("2026-09-01", 1240, video_id="v1"),
             ("v1", "2026-08-25"): _snapshot("2026-08-25", 1000, video_id="v1"),
@@ -656,8 +607,8 @@ def test_get_creator_trending_returns_ranked_response(monkeypatch):
         },
     )
 
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "7d"}
+    response = _compute_ranked_response(
+        videos, report_date=date(2026, 9, 1), period="7d", ranking_type="7d_trending", scope={"creatorId": "aizawa_ema"}
     )
 
     assert response["creatorId"] == "aizawa_ema"
@@ -685,19 +636,20 @@ def test_get_creator_trending_returns_ranked_response(monkeypatch):
     assert response["results"][1]["rank"] == 2
 
 
-def test_get_creator_trending_reports_the_oldest_result_as_last_updated_at(monkeypatch):
+def test_ranking_computation_reports_the_oldest_result_as_last_updated_at(monkeypatch):
     """The trending list's own lastUpdatedAt is the oldest among its results
     (Roadmap 4.1's normalized contract), not the freshest — a list is only
     as current as its stalest entry. Both videos share the same report_date
     (both status "ok", so both are ranked), but v2's point was actually
     observed earlier in that day's collection run than v1's."""
-    _trending_fixture(
+    videos = [
+        _video(video_id="v1", creator_id="aizawa_ema"),
+        _video(video_id="v2", creator_id="aizawa_ema", title="Video Two"),
+    ]
+    _ranking_fixture(
         monkeypatch,
         creators=[_creator()],
-        videos=[
-            _video(video_id="v1", creator_id="aizawa_ema"),
-            _video(video_id="v2", creator_id="aizawa_ema", title="Video Two"),
-        ],
+        videos=videos,
         snapshots={
             ("v1", "2026-09-01"): _snapshot("2026-09-01", 1240, video_id="v1"),
             ("v1", "2026-08-25"): _snapshot("2026-08-25", 1000, video_id="v1"),
@@ -708,27 +660,28 @@ def test_get_creator_trending_reports_the_oldest_result_as_last_updated_at(monke
         },
     )
 
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "7d"}
+    response = _compute_ranked_response(
+        videos, report_date=date(2026, 9, 1), period="7d", ranking_type="7d_trending", scope={"creatorId": "aizawa_ema"}
     )
 
     assert {entry["videoId"] for entry in response["results"]} == {"v1", "v2"}
     assert response["lastUpdatedAt"] == "2026-09-01T10:00:00+09:00"
 
 
-def test_get_creator_trending_compares_last_updated_at_by_instant_not_string(monkeypatch):
+def test_ranking_computation_compares_last_updated_at_by_instant_not_string(monkeypatch):
     """Two offset-bearing ISO 8601 timestamps don't sort the same
     lexicographically as they do chronologically: "2026-09-01T10:00:00+09:00"
     (01:00 UTC) is the earlier instant, but "2026-09-01T01:30:00+00:00"
     (01:30 UTC) sorts first as a raw string. The aggregate must pick the
     former, and must return its original string, not a reformatted one."""
-    _trending_fixture(
+    videos = [
+        _video(video_id="v1", creator_id="aizawa_ema"),
+        _video(video_id="v2", creator_id="aizawa_ema", title="Video Two"),
+    ]
+    _ranking_fixture(
         monkeypatch,
         creators=[_creator()],
-        videos=[
-            _video(video_id="v1", creator_id="aizawa_ema"),
-            _video(video_id="v2", creator_id="aizawa_ema", title="Video Two"),
-        ],
+        videos=videos,
         snapshots={
             ("v1", "2026-09-01"): _snapshot(
                 "2026-09-01", 1240, video_id="v1", observed_at="2026-09-01T10:00:00+09:00"
@@ -741,32 +694,33 @@ def test_get_creator_trending_compares_last_updated_at_by_instant_not_string(mon
         },
     )
 
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "7d"}
+    response = _compute_ranked_response(
+        videos, report_date=date(2026, 9, 1), period="7d", ranking_type="7d_trending", scope={"creatorId": "aizawa_ema"}
     )
 
     assert response["lastUpdatedAt"] == "2026-09-01T10:00:00+09:00"
 
 
-def test_get_creator_trending_reports_no_last_updated_at_when_there_are_no_results(monkeypatch):
-    _trending_fixture(monkeypatch, creators=[_creator()], videos=[], snapshots={})
+def test_ranking_computation_reports_no_last_updated_at_when_there_are_no_results(monkeypatch):
+    _ranking_fixture(monkeypatch, creators=[_creator()], snapshots={})
 
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "7d"}
+    response = _compute_ranked_response(
+        [], report_date=date(2026, 9, 1), period="7d", ranking_type="7d_trending", scope={"creatorId": "aizawa_ema"}
     )
 
     assert response["results"] == []
     assert response["lastUpdatedAt"] is None
 
 
-def test_get_creator_trending_respects_limit(monkeypatch):
-    _trending_fixture(
+def test_ranking_computation_respects_limit(monkeypatch):
+    videos = [
+        _video(video_id="v1", creator_id="aizawa_ema"),
+        _video(video_id="v2", creator_id="aizawa_ema"),
+    ]
+    _ranking_fixture(
         monkeypatch,
         creators=[_creator()],
-        videos=[
-            _video(video_id="v1", creator_id="aizawa_ema"),
-            _video(video_id="v2", creator_id="aizawa_ema"),
-        ],
+        videos=videos,
         snapshots={
             ("v1", "2026-09-01"): _snapshot("2026-09-01", 1240, video_id="v1"),
             ("v1", "2026-08-31"): _snapshot("2026-08-31", 1000, video_id="v1"),
@@ -775,23 +729,29 @@ def test_get_creator_trending_respects_limit(monkeypatch):
         },
     )
 
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d", "limit": "1"}
+    response = _compute_ranked_response(
+        videos,
+        report_date=date(2026, 9, 1),
+        period="1d",
+        ranking_type="daily_trending",
+        scope={"creatorId": "aizawa_ema"},
+        limit=1,
     )
 
     assert len(response["results"]) == 1
     assert response["results"][0]["videoId"] == "v2"
 
 
-def test_get_creator_trending_includes_legacy_cold_videos(monkeypatch):
+def test_ranking_computation_includes_legacy_cold_videos(monkeypatch):
     """Legacy activity state no longer excludes a tracked video from ranking."""
-    _trending_fixture(
+    videos = [
+        _video(video_id="v1", creator_id="aizawa_ema", activity_state="Warm"),
+        _video(video_id="v_cold", creator_id="aizawa_ema", activity_state="Cold"),
+    ]
+    _ranking_fixture(
         monkeypatch,
         creators=[_creator()],
-        videos=[
-            _video(video_id="v1", creator_id="aizawa_ema", activity_state="Warm"),
-            _video(video_id="v_cold", creator_id="aizawa_ema", activity_state="Cold"),
-        ],
+        videos=videos,
         snapshots={
             ("v1", "2026-09-01"): _snapshot("2026-09-01", 110, video_id="v1"),
             ("v1", "2026-08-31"): _snapshot("2026-08-31", 100, video_id="v1"),
@@ -800,8 +760,8 @@ def test_get_creator_trending_includes_legacy_cold_videos(monkeypatch):
         },
     )
 
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d"}
+    response = _compute_ranked_response(
+        videos, report_date=date(2026, 9, 1), period="1d", ranking_type="daily_trending", scope={"creatorId": "aizawa_ema"}
     )
 
     assert [entry["videoId"] for entry in response["results"]] == ["v_cold", "v1"]
@@ -869,14 +829,15 @@ def test_compute_growth_results_creates_its_own_executor_when_none_given(monkeyp
     assert len(results) == 1
 
 
-def test_get_creator_trending_considers_every_tracked_video(monkeypatch):
+def test_ranking_computation_considers_every_tracked_video(monkeypatch):
+    """_compute_growth_results (still trending_precompute.py's own computation
+    engine) must fetch snapshots for every supplied candidate, not silently
+    drop any — exact ranking cannot discard a video before its real gain is
+    known. Rehomed from the HTTP live path; see this section's own header."""
     videos = [
         _video(video_id=f"v{i}", creator_id="aizawa_ema", activity_state="Warm", last_checked_at="2026-09-01T00:00:00Z")
         for i in range(550)
     ]
-    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
-    monkeypatch.setattr(read_api, "get_videos_by_creator", lambda creator_id: videos)
-
     fetch_calls = []
 
     def _counting_get_snapshot(video_id, snapshot_date):
@@ -885,11 +846,9 @@ def test_get_creator_trending_considers_every_tracked_video(monkeypatch):
 
     monkeypatch.setattr(read_api, "get_snapshot", _counting_get_snapshot)
 
-    response = get_creator_trending(
-        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d"}
-    )
+    results = _compute_growth_results(videos, report_date=date(2026, 9, 1), period="1d")
 
-    assert response["creatorId"] == "aizawa_ema"
+    assert len(results) == 550
     assert len({video_id for video_id in fetch_calls}) == 550
 
 
@@ -930,7 +889,7 @@ def test_get_creator_trending_rejects_every_invalid_param_before_touching_storag
     """No malformed query parameter — timeZone, period, rankingType, reportDate, or an
     oversized creatorId — may ever reach live storage (Creator Master or video lookup):
     an attacker probing with garbage values must never trigger a DynamoDB read, let
-    alone the live-fallback ranking computation."""
+    alone a YobiTrendingCache lookup."""
 
     def _boom(*args, **kwargs):
         raise AssertionError(f"storage should not be touched for an invalid request: {bad_overrides}")
@@ -946,35 +905,15 @@ def test_get_creator_trending_rejects_every_invalid_param_before_touching_storag
 
 
 # --- get_organization_trending ----------------------------------------------
-
-
-def test_get_organization_trending_scopes_to_organization_creators(monkeypatch):
-    """A video belonging to a creator in a different organization must never
-    leak into another organization's trending list."""
-    _trending_fixture(
-        monkeypatch,
-        creators=[
-            _creator(creator_id="aizawa_ema", organization="vspo"),
-            _creator(creator_id="other_org_creator", organization="hololive", youtube_channel_id="UC_other"),
-        ],
-        videos=[
-            _video(video_id="v1", creator_id="aizawa_ema"),
-            _video(video_id="v_other", creator_id="other_org_creator"),
-        ],
-        snapshots={
-            ("v1", "2026-09-01"): _snapshot("2026-09-01", 1240, video_id="v1"),
-            ("v1", "2026-08-31"): _snapshot("2026-08-31", 1000, video_id="v1"),
-            ("v_other", "2026-09-01"): _snapshot("2026-09-01", 9999, video_id="v_other", creator_id="other_org_creator"),
-            ("v_other", "2026-08-31"): _snapshot("2026-08-31", 1, video_id="v_other", creator_id="other_org_creator"),
-        },
-    )
-
-    response = get_organization_trending(
-        {"organization": "vspo", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d"}
-    )
-
-    assert response["organization"] == "vspo"
-    assert [entry["videoId"] for entry in response["results"]] == ["v1"]
+#
+# V5.9 removed get_organization_trending's own cross-org leak-prevention test
+# from this file: that behavior (a video from a different organization's
+# creator never leaking into another org's cached entry) lived in the now-
+# removed live-fallback branch. It's still real production behavior, just
+# owned entirely by the writer now — see
+# tests/test_trending_precompute.py::test_run_caches_an_organizations_trending_scoped_to_its_own_creators,
+# which already covers it at the layer where the org's creator set is
+# actually assembled.
 
 
 def test_get_organization_trending_raises_for_an_organization_with_no_creators(monkeypatch):

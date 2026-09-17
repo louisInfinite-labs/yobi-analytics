@@ -27,7 +27,7 @@ resource "aws_sqs_queue_policy" "scheduler_dlq_allow_scheduler_role" {
         Principal = {
           AWS = [
             local.scheduler_role_arn,
-            aws_iam_role.history_scheduler.arn,
+            local.history_scheduler_role_arn,
           ]
         }
         Action    = "sqs:SendMessage"
@@ -49,6 +49,17 @@ resource "aws_sqs_queue_policy" "scheduler_dlq_allow_scheduler_role" {
 # project's scope entirely (see iam.tf's own note: yobi-analytics-cli has no
 # IAM access at all, not even read).
 
+# PHASE B cutover (prepared, not yet applied -- PB1): retargeted from the
+# legacy collector Lambda to the new daily_history Step Functions state
+# machine, using the history-scheduler role (states:StartExecution on this
+# exact state machine only -- see terraform/manual-iam/policy-history-
+# scheduler.json). Same schedule name and 18:00 Asia/Tokyo timing as
+# before; only the target changed. `input` supplies $.shards directly on
+# the execution's raw input -- history.tf's own ValidateShardsInput state
+# reads it via "shards.$" = "$.shards" before any other state runs, so it
+# must be present here, not derived internally. Rollback is reverting
+# `target` back to {arn = aws_lambda_function.collector.arn, role_arn =
+# local.scheduler_role_arn, no input}.
 resource "aws_scheduler_schedule" "daily_collection" {
   name                          = "yobi-analytics-daily-collection"
   group_name                    = "default"
@@ -61,7 +72,7 @@ resource "aws_scheduler_schedule" "daily_collection" {
 
   target {
     arn      = aws_sfn_state_machine.daily_history.arn
-    role_arn = aws_iam_role.history_scheduler.arn
+    role_arn = local.history_scheduler_role_arn
     input    = jsonencode({ shards = range(16) })
 
     dead_letter_config {
@@ -84,6 +95,91 @@ resource "aws_scheduler_schedule" "discovery_only" {
     arn      = aws_lambda_function.collector.arn
     role_arn = local.scheduler_role_arn
     input    = jsonencode({ mode = "discovery_only" })
+
+    dead_letter_config {
+      arn = aws_sqs_queue.scheduler_dlq.arn
+    }
+  }
+}
+
+# PHASE B cutover (prepared, not yet applied -- PB1): disabled, not deleted
+# or replaced -- the new ranking_reducer pipeline now owns YobiTrendingCache
+# (V5.12/V5.13 aligned its organization namespace with the existing public
+# API contract). Kept as real resources purely so rollback is flipping
+# `state` back to "ENABLED", not recreating six schedules from scratch.
+#
+# 2026-09-07: moved off the 19:00-21:00 JST evening window and split each
+# period into 2 batches (_PRECOMPUTE_BATCH_COUNT, trending_precompute.py) --
+# not because of memory (each invocation's memory is flat regardless of
+# batch size, confirmed against the real Lambda) but for two other reasons:
+# 1. 01:00-03:00 JST is this project's lowest-traffic window, away from
+#    the 00:00 discovery_only trigger and the 18:00 daily_collection run
+#    on the same Lambda -- this account's Lambda concurrency quota was 10
+#    (account-wide, shared across every function) when this schedule was
+#    designed, since raised to 1000 (2026-09-13), so keeping invocations
+#    spread out and off-peak is no longer load-bearing against throttling
+#    the same way, but stays good practice regardless.
+# 2. Batching halves each invocation's duration (~120s instead of ~240s
+#    for the current 112-creator roster) -- pure headroom against the
+#    roster continuing to grow (more agencies, more clip/highlight
+#    channels) well before any single invocation approaches the 900s
+#    Lambda timeout again.
+#
+# Each batch within a period is spaced 30 minutes apart (batch_index * 30)
+# -- exactly Lambda's own hard maximum single-invocation duration (900s =
+# 15 minutes), doubled. Even a future invocation that runs the full 900s
+# (the absolute worst case, not just today's ~120s) still finishes with
+# 15 minutes to spare before the next batch's scheduled start, so two
+# batches can never overlap and contend for a concurrency slot at once --
+# a tighter gap (the original 10 minutes) would only guarantee that at
+# today's much smaller duration, not as the roster keeps growing.
+locals {
+  _PRECOMPUTE_BATCH_COUNT = 2
+
+  precompute_schedule_times = {
+    "1d"  = { hour = 1, base_minute = 0 }
+    "7d"  = { hour = 2, base_minute = 0 }
+    "30d" = { hour = 3, base_minute = 0 }
+  }
+
+  precompute_batches = {
+    for pair in flatten([
+      for period, timing in local.precompute_schedule_times : [
+        for batch_index in range(local._PRECOMPUTE_BATCH_COUNT) : {
+          key         = "${period}-${batch_index}"
+          period      = period
+          hour        = timing.hour
+          minute      = timing.base_minute + batch_index * 30
+          batch_index = batch_index
+        }
+      ]
+    ]) : pair.key => pair
+  }
+}
+
+resource "aws_scheduler_schedule" "trending_precompute_batches" {
+  for_each = local.precompute_batches
+
+  name                          = "yobi-analytics-trending-precompute-${each.value.period}-batch${each.value.batch_index}"
+  group_name                    = "default"
+  state                         = "DISABLED"
+  schedule_expression           = "cron(${each.value.minute} ${each.value.hour} * * ? *)"
+  schedule_expression_timezone  = "Asia/Tokyo"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.collector.arn
+    role_arn = local.scheduler_role_arn
+    input = jsonencode({
+      mode            = "precompute_trending"
+      period          = each.value.period
+      batchIndex      = each.value.batch_index
+      batchCount      = local._PRECOMPUTE_BATCH_COUNT
+      includeOrgScope = each.value.batch_index == 0
+    })
 
     dead_letter_config {
       arn = aws_sqs_queue.scheduler_dlq.arn

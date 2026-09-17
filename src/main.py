@@ -15,11 +15,8 @@ from config import MissingAPIKeyError, get_api_key
 from creator_master import Creator, get_active_creators
 from googleapiclient.discovery import Resource
 from snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
-from tracking_manifest import (
-    S3TrackingManifestStore,
-    TrackingManifestError,
-    publish_tracking_manifest,
-)
+from tracking_manifest import S3TrackingManifestStore, publish_tracking_manifest
+from tracking_schedule import select_due_video_ids
 from video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
 from video_master import Video, VideoMasterError, load_video_ids_for_creator
 from youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_client, get_video_statistics
@@ -27,8 +24,12 @@ from youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_c
 # Local/manual collection retains the existing JSON or DynamoDB adapter.
 # The scheduled production history path is now history_worker_handler:
 # manifest input and daily Parquet output in S3. This compatibility entry
-# point still shares discovery and run-summary behavior while no longer
-# applying adaptive eligibility or rewriting scheduler state.
+# point still shares discovery and run-summary behavior. Due-selection
+# (tracking_schedule.select_due_video_ids) reads each video's existing
+# published_at/activity_state to decide eligibility, but this entry point
+# still never rewrites scheduler state itself (activity_state, snapshot_count,
+# etc. stay exactly as Video Master already had them after a run) --
+# see test_successful_collection_does_not_rewrite_video_master_scheduler_state.
 if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
     from dynamodb_store import load_videos, save_daily_collection, save_run_summary, upsert_videos
     from notification_events_store import NotificationEventsStoreError, record_new_video_events
@@ -111,10 +112,10 @@ def main() -> int:
                 if newly_discovered:
                     try:
                         upsert_videos(newly_discovered)
-                        _publish_manifest_if_configured([*known_videos, *newly_discovered])
-                    except (VideoMasterError, TrackingManifestError) as upsert_exc:
+                    except VideoMasterError as upsert_exc:
                         print(f"Error: failed to persist discovered videos before stopping: {upsert_exc}")
                         return 1
+                    _publish_manifest_if_configured([*known_videos, *newly_discovered])
                     _record_new_video_events_best_effort(newly_discovered)
                 print(f"Error: YouTube quota exhausted during discovery: {exc}")
                 return 1
@@ -127,12 +128,26 @@ def main() -> int:
             _record_new_video_events_best_effort(newly_discovered)
         _publish_manifest_if_configured([*known_videos, *newly_discovered])
 
-        # Architecture reset: every tracked video is due every day. Legacy
-        # Hot/Warm/Cold fields remain readable for compatibility, but cannot
-        # suppress collection. Sorting makes batches deterministic and the
-        # set prevents duplicate requests if the catalog is malformed.
-        due_today = sorted(set(tracking_universe))
-        print(f"Tracking universe: {len(due_today)} video(s), all due for a check today\n")
+        # Restored tiered due-selection (Roadmap 1.5, tracking_schedule.py):
+        # a video published within the last 30 days is always due; beyond
+        # that, activity_state (Hot/Warm/Cold/Unknown) governs the cadence.
+        # The set prevents duplicate lookups if the catalog is malformed.
+        # video_by_id covers every id tracking_universe can contain (already-
+        # known videos plus this run's own newly_discovered ones); a video
+        # id somehow missing a record is included unconditionally, matching
+        # is_due_today's own "can't tell, so check it today" fallback.
+        video_by_id = {video.video_id: video for video in known_videos}
+        video_by_id.update({video.video_id: video for video in newly_discovered})
+        tracked_ids = set(tracking_universe)
+        as_of_date = collection_time.date()
+        known_candidates = [
+            (video_id, video_by_id[video_id].published_at, video_by_id[video_id].activity_state)
+            for video_id in tracked_ids
+            if video_id in video_by_id
+        ]
+        missing_record_ids = tracked_ids - video_by_id.keys()
+        due_today = sorted(set(select_due_video_ids(known_candidates, as_of=as_of_date)) | missing_record_ids)
+        print(f"Tracking universe: {len(tracked_ids)} video(s); {len(due_today)} due for a check today\n")
 
         videos, skip_reasons = get_video_statistics(youtube, due_today)
     except QuotaExhaustedError as exc:
@@ -148,7 +163,7 @@ def main() -> int:
             **exc.partial_skip_reasons,
             **{video_id: f"YouTube quota exhausted: {exc}" for video_id in exc.remaining_video_ids},
         }
-    except (YouTubeAPIError, VideoMasterError, TrackingManifestError) as exc:
+    except (YouTubeAPIError, VideoMasterError) as exc:
         print(f"Error: {exc}")
         return 1
 
@@ -293,11 +308,7 @@ def run_discovery() -> int:
             return 1
         _record_new_video_events_best_effort(newly_discovered)
 
-    try:
-        _publish_manifest_if_configured([*known_videos, *newly_discovered])
-    except TrackingManifestError as exc:
-        print(f"Error: failed to publish tracking manifest: {exc}")
-        return 1
+    _publish_manifest_if_configured([*known_videos, *newly_discovered])
 
     if quota_exhausted:
         return 1
@@ -322,17 +333,35 @@ def _record_new_video_events_best_effort(newly_discovered: list[Video]) -> None:
 
 
 def _publish_manifest_if_configured(videos: list[Video]) -> None:
-    """Publish the complete catalog only in the configured S3 architecture."""
+    """Publish the complete catalog only in the configured S3 architecture.
+
+    Best-effort, same reasoning as _record_new_video_events_best_effort's
+    own docstring: a failure here means history_worker's next run sees a
+    stale manifest (fixed by the next successful publish), which must never
+    abort the existing YouTube statistics collection this function's caller
+    is actually responsible for. Catches Exception, not just
+    TrackingManifestError: pyarrow's own import (wrapped as
+    TrackingManifestError by tracking_manifest._pyarrow) is not the only
+    thing that can fail here -- pa.table(...)/parquet.write_table(...) and
+    the S3 upload itself can each raise their own unwrapped exception types
+    (a pyarrow runtime error, a botocore error, ...), none of which this
+    function's caller is responsible for handling either. Deliberately
+    Exception, not BaseException: this must never swallow
+    KeyboardInterrupt/SystemExit.
+    """
     bucket_name = os.environ.get("YOBI_HISTORY_BUCKET")
     if not bucket_name:
         return
     # Last occurrence wins so a just-discovered record replaces an older
     # master copy if the caller supplied both.
     current = {video.video_id: video for video in videos}
-    publish_tracking_manifest(
-        list(current.values()),
-        S3TrackingManifestStore(bucket_name),
-    )
+    try:
+        publish_tracking_manifest(
+            list(current.values()),
+            S3TrackingManifestStore(bucket_name),
+        )
+    except Exception as exc:
+        print(f"Warning: failed to publish tracking manifest ({type(exc).__name__}): {exc}")
 
 
 def _discover_creator(

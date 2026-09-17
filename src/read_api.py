@@ -37,7 +37,6 @@ from trending import (
     SEVEN_DAY_TRENDING,
     THIRTY_DAY_TRENDING,
     RankedEntry,
-    rank_videos,
 )
 from trending_cache_keys import (
     CANONICAL_CACHE_TIME_ZONE,
@@ -62,7 +61,8 @@ else:
     from snapshot_store import get_snapshot
     from video_master import get_video, get_videos_by_creator
 
-    get_cached_trending = None  # no cache table in local/JSON dev — always compute live
+    get_cached_trending = None  # no cache table in local/JSON dev, and no live fallback (V5.9) —
+    # get_creator_trending/get_organization_trending always raise RankingNotReadyError here
 
 # Reverse of trending.py's private period->ranking-type map (Roadmap 3.2/3.3):
 # a period-trending ranking type only ranks GrowthResults computed for its
@@ -92,13 +92,12 @@ class VideoNotFoundError(ClientError):
 
 
 class TrendingNotReadyError(Exception):
-    """Raised instead of computing a trending ranking live when its scope is too large to compute on demand.
-
-    Deliberately not a ClientError subclass: the request itself can be
-    perfectly well-formed (a real, large organization) — this means the
-    server is choosing not to serve it live right now, not that the caller
-    did anything wrong. api_handler.py maps this to a 503 rather than a
-    4xx. See MAX_LIVE_FALLBACK_VIDEOS for why this exists.
+    """No longer raised by any code path (V5.9): the request-time live
+    ranking fallback and its oversized-catalog guard were removed once the
+    public trending API became cache-only (see RankingNotReadyError, which
+    a genuine cache miss raises instead). Kept only because api_handler.py
+    still maps it defensively to a 503, in case a future caller needs this
+    distinct "well-formed but refused" shape again.
     """
 
 
@@ -281,69 +280,6 @@ def parse_limit(raw: Any) -> int | None:
     return value
 
 
-# Roadmap 5.3's "cost and abuse containment": _compute_growth_results below
-# (the cache-miss live fallback) computes growth for every video in the
-# requested scope before ranking, no matter how small a `limit` the caller
-# asked for — its cost scales with the scope's own catalog size, not with
-# the response size. A cache miss is forced on every single request by
-# picking any non-canonical `timeZone` or omitting `limit` (see
-# _cached_trending's own docstring), so an organization with a large
-# catalog is a standing amplification target: one cheap request can still
-# fan out into thousands of paired DynamoDB snapshot reads. The scheduled
-# S3 pipeline (history_worker.py/ranking_reducer.py) populates
-# YobiTrendingCache for every real scope once a day, so a genuine miss
-# this large means either that pipeline hasn't run yet for a brand-new
-# scope, or the request itself is abusive — either way, silently computing
-# it live is the wrong response, and silently truncating the candidate
-# list would violate the exact-ranking guarantee (every tracked video must
-# be considered) instead of just refusing. Set well above the largest
-# single-creator catalog exercised in tests (550) so a real creator's own
-# live fallback is unaffected — this only ever trips for an
-# organization-scale (many-creator) request.
-#
-# This is a stopgap, not the end state: the long-term goal (per
-# local_tasks/phase1_architecture_reset.md.txt) is a cache-only trending
-# read (GET /trending reads YobiTrendingCache and nothing else), where this
-# guard — and the legacy live fallback it's guarding — no longer exist at
-# all. Kept env-overridable so it can be tuned in production without a code
-# change while that migration is still in progress.
-MAX_LIVE_FALLBACK_VIDEOS = int(os.environ.get("YOBI_MAX_TRENDING_LIVE_FALLBACK_VIDEOS") or 2000)
-
-
-def _reject_oversized_live_fallback(videos: list[Video], *, scope: dict[str, str]) -> None:
-    """Raise TrendingNotReadyError instead of computing growth for an oversized scope on a cache miss.
-
-    The exact catalog size is deliberately left out of the raised message
-    (and so out of the 503 response body an unauthenticated caller
-    receives) — how large a given scope's real catalog is isn't
-    information this public route should hand back to whoever asked, even
-    when refusing them. It's logged server-side instead, for operators.
-    """
-    video_count = len(videos)
-    if video_count > MAX_LIVE_FALLBACK_VIDEOS:
-        print(
-            f"Trending live-fallback refused for {scope}: {video_count} videos exceeds "
-            f"MAX_LIVE_FALLBACK_VIDEOS={MAX_LIVE_FALLBACK_VIDEOS}"
-        )
-        raise TrendingNotReadyError(
-            f"Trending for {scope} is not precomputed yet and is too large to compute on demand; "
-            "try again once the scheduled ranking pipeline has run for this scope."
-        )
-
-
-def _bounded_live_limit(limit: int | None) -> int:
-    """The limit to rank down to on the live-fallback path: the caller's own, or MAX_LIMIT if omitted.
-
-    `limit=None` must stay unbounded a moment longer, all the way into
-    _cached_trending (an omitted limit is one of its own signals to never
-    serve a cache hit, see that function's docstring) — but the live path
-    itself has no reason to ever return more rows than any cached response
-    ever could, so it's bounded here instead of trusting rank_videos'
-    own "None means every rankable result" default.
-    """
-    return limit if limit is not None else MAX_LIMIT
-
-
 def get_video_growth(query: dict[str, Any]) -> dict[str, Any]:
     """Validate a raw analytics query and return its normalized Roadmap 3.4 response.
 
@@ -378,17 +314,22 @@ def get_video_growth(query: dict[str, Any]) -> dict[str, Any]:
 def _cached_trending(
     *, scope_type: str, scope_value: str, report_date: date, time_zone: str, period: str, ranking_type: str, limit: int | None
 ) -> dict[str, Any] | None:
-    """Return a cached trending response if one exists and can satisfy this exact request, else None.
+    """Return a cached trending response if one exists for this exact scope/period/
+    rankingType/reportDate, else None (a genuine miss — the public trending
+    API is cache-only as of V5.9, with no live fallback to fall through to).
 
-    Only ever serves a hit for a *bounded* request (`limit` given) in the
-    canonical cache time zone — trending_precompute.py's own cached payload
-    holds at most MAX_LIMIT entries for CANONICAL_CACHE_TIME_ZONE's day
-    boundary, so an unbounded request (limit=None, "give me everything") or
-    a request in any other time zone always falls through to a live,
-    already-bounded computation instead of silently truncating a request
-    that expected more than the cache can ever hold.
+    Only ever attempted in the canonical cache time zone —
+    trending_precompute.py/ranking_reducer.py only ever write for
+    CANONICAL_CACHE_TIME_ZONE's own day boundary, so a request in any other
+    time zone can never be satisfied by this cache and is treated as a miss
+    without even building a key. An omitted `limit` no longer bypasses the
+    cache: it still looks up the same canonical entry and returns it bounded
+    by MAX_LIMIT, the same cap the writer itself already enforces (so this
+    is a no-op slice in practice, never a truncation of real data) — never a
+    live recomputation. An explicit `limit` slices the same cached rows to
+    fewer.
     """
-    if get_cached_trending is None or limit is None or time_zone != CANONICAL_CACHE_TIME_ZONE:
+    if get_cached_trending is None or time_zone != CANONICAL_CACHE_TIME_ZONE:
         return None
     key = trending_cache_key(
         scope_type=scope_type, scope_value=scope_value, period=period, ranking_type=ranking_type, report_date=report_date
@@ -396,12 +337,13 @@ def _cached_trending(
     cached = get_cached_trending(key)
     if cached is None:
         return None
+    effective_limit = limit if limit is not None else MAX_LIMIT
     # The cached payload's own top-level lastUpdatedAt is the oldest
     # timestamp across all MAX_LIMIT cached rows — after truncating to the
-    # caller's own limit, that aggregate can point at a row no longer in
+    # effective limit, that aggregate can point at a row no longer in
     # results, so it must be recomputed from just the rows actually
-    # returned (matching the live path's own _aggregate_last_updated_at).
-    results = cached["results"][:limit]
+    # returned.
+    results = cached["results"][:effective_limit]
     timestamps = [row["lastUpdatedAt"] for row in results if row.get("lastUpdatedAt") is not None]
     return {
         **cached,
@@ -416,6 +358,11 @@ def get_creator_trending(query: dict[str, Any]) -> dict[str, Any]:
     `query` needs at least `creatorId`, `reportDate`, `timeZone`, and
     `period`; `rankingType` and `limit` are optional. Mirrors
     `GET /creators/{creatorId}/trending?period=7d`.
+
+    Cache-only (V5.9): reads YobiTrendingCache via `_cached_trending` and
+    nothing else — cost never scales with this creator's own catalog size.
+    A genuine cache miss raises RankingNotReadyError (503,
+    code="RANKING_NOT_READY") instead of computing anything live.
     """
     creator_id = parse_creator_id(query.get("creatorId"))
     report_date = parse_report_date(query.get("reportDate"))
@@ -440,21 +387,9 @@ def get_creator_trending(query: dict[str, Any]) -> dict[str, Any]:
     if cached is not None:
         return cached
 
-    videos = get_videos_by_creator(creator_id)
-    _reject_oversized_live_fallback(videos, scope={"creatorId": creator_id})
-    ranked = rank_videos(
-        _compute_growth_results(videos, report_date=report_date, period=period),
-        ranking_type,
-        limit=_bounded_live_limit(limit),
-    )
-
-    return _trending_response(
-        ranked,
-        scope={"creatorId": creator_id},
-        report_date=report_date,
-        period=period,
-        ranking_type=ranking_type,
-        time_zone=time_zone,
+    raise RankingNotReadyError(
+        f"Trending for creatorId={creator_id!r} period={period!r} rankingType={ranking_type!r} "
+        f"reportDate={report_date.isoformat()!r} is not yet computed"
     )
 
 
@@ -464,6 +399,11 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
     `query` needs at least `organization`, `reportDate`, `timeZone`, and
     `period`; `rankingType` and `limit` are optional. Mirrors
     `GET /organizations/{organization}/trending?period=1d`.
+
+    Cache-only (V5.9): reads YobiTrendingCache via `_cached_trending` and
+    nothing else — cost never scales with the organization's member/catalog
+    size. A genuine cache miss raises RankingNotReadyError (503,
+    code="RANKING_NOT_READY") instead of computing anything live.
     """
     organization = parse_organization(query.get("organization"))
     report_date = parse_report_date(query.get("reportDate"))
@@ -488,21 +428,9 @@ def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
     if cached is not None:
         return cached
 
-    videos = _load_videos_for_creators(creator_ids)
-    _reject_oversized_live_fallback(videos, scope={"organization": organization})
-    ranked = rank_videos(
-        _compute_growth_results(videos, report_date=report_date, period=period),
-        ranking_type,
-        limit=_bounded_live_limit(limit),
-    )
-
-    return _trending_response(
-        ranked,
-        scope={"organization": organization},
-        report_date=report_date,
-        period=period,
-        ranking_type=ranking_type,
-        time_zone=time_zone,
+    raise RankingNotReadyError(
+        f"Trending for organization={organization!r} period={period!r} rankingType={ranking_type!r} "
+        f"reportDate={report_date.isoformat()!r} is not yet computed"
     )
 
 

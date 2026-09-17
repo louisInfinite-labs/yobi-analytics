@@ -262,12 +262,68 @@ def test_new_cache_namespace_never_collides_with_existing_scope_ranking_keys():
         trending_cache_key(
             scope_type=scope_type, scope_value=value, period="7d", ranking_type="7d_trending", report_date=report_date
         )
-        for scope_type, value in [("creator", "c1"), ("organization", "vspo"), ("branch", "vspo_jp"), ("global", "global")]
+        for scope_type, value in [("creator", "c1"), ("org", "vspo"), ("branch", "vspo_jp"), ("global", "global")]
     }
 
     assert new_creator_key not in existing_keys
     assert new_org_key not in existing_keys
     assert new_creator_key != new_org_key
+
+
+def test_organization_scope_write_key_matches_get_organization_trending_contract():
+    """Cross-contract regression (V5.11/V5.12): the exact cache key
+    persist_rankings writes for an organization-scoped ranking must be the
+    same key get_organization_trending's own cache lookup builds for the
+    identical organization/period/rankingType/reportDate.
+
+    Exercises the real history_ranking.top_n_by_scope computation -- not a
+    hand-constructed rankings dict -- so this fails if a future change ever
+    renames the reducer's own organization scope_type (history_ranking.
+    _scopes_for) without updating the API to match, or vice versa: exactly
+    the class of bug V5.11 found already shipped and undetected (reducer
+    wrote "organization:", the API read "org:", and every existing test
+    checked each side in isolation without ever comparing them).
+    """
+    from history_ranking import CreatorDimensions, top_n_by_scope
+    from history_store import HistoryRow
+    from read_api import trending_cache_key
+
+    report_date = date(2026, 9, 9)
+    today_row = HistoryRow(
+        video_id="v1", creator_id="c1", view_count=200, observed_at="2026-09-09T18:00:00+09:00",
+        availability_status="available",
+    )
+    anchor_row = HistoryRow(
+        video_id="v1", creator_id="c1", view_count=100, observed_at="2026-09-08T18:00:00+09:00",
+        availability_status="available",
+    )
+    dimensions = {"c1": CreatorDimensions(organization="vspo", branch="vspo_jp")}
+
+    rankings = top_n_by_scope(
+        [today_row], {1: [anchor_row], 7: [], 30: []}, report_date=report_date, dimensions_by_creator=dimensions
+    )
+
+    cache_writes: list[str] = []
+    ranking_reducer.persist_rankings(
+        rankings,
+        report_date=report_date,
+        creators={"c1": _creator("c1", organization="vspo")},
+        get_video=lambda video_id: None,
+        put_cached_trending=lambda key, payload, *, computed_at: cache_writes.append(key),
+        computed_at="2026-09-09T18:00:05+09:00",
+        wru_budget=_instant_budget(),
+    )
+
+    # ":vspo:" (with trailing colon) uniquely picks out the organization-scope
+    # write among global/creator(c1)/org(vspo)/branch(vspo_jp) -- branch's own
+    # key contains "vspo_jp:", never the bare "vspo:" segment.
+    actual_key = next(key for key in cache_writes if ":vspo:" in key)
+    expected_key = trending_cache_key(
+        scope_type="org", scope_value="vspo", period="1d", ranking_type="daily_trending", report_date=report_date
+    )
+
+    assert actual_key == expected_key
+    assert actual_key.startswith("org:")
 
 
 def test_lambda_handler_calls_load_creators_exactly_once(monkeypatch):

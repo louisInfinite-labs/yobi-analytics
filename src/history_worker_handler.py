@@ -7,6 +7,7 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import dynamodb_store
 import execution_lock
 from config import get_api_key
 from creator_master import load_creators
@@ -37,6 +38,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     built a YouTube client and loaded Creator Master — checking here fails
     before any of that setup cost.
 
+    `video_master_store=dynamodb_store` (the module itself, not a wrapper
+    instance — its module-level `get_video`/`upsert_videos` already match
+    `video_master.VideoMasterStore`'s shape) restores classify_after_
+    observation's scheduler-state write-back for Phase B (Roadmap 1.5),
+    using this Lambda's existing `local.lambda_role_arn` — the same
+    production role `collector` already writes Video Master under today, so
+    no new IAM grant is required for this.
+
     `reportDate`/`ownerToken` arrive explicitly in the event (the Map's own
     ItemSelector forwards them from AcquireExecutionLock's output) — this
     function never derives its own "today", so it can never disagree with
@@ -64,6 +73,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         youtube=build_youtube_client(get_api_key()),
         manifest_store=manifest_store,
         history_store=history_store,
+        video_master_store=dynamodb_store,
         collection_date=report_date,
         shard=shard,
         dimensions_by_creator=dimensions,

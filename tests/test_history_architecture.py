@@ -184,7 +184,7 @@ def test_top_n_ordering_and_scopes_consider_every_video():
     result = top_n_by_scope(today, anchors, report_date=date(2026, 9, 9), dimensions_by_creator=dimensions, limit=2)
     assert [entry.video_id for entry in result[("global", "global")]["1d"]] == ["v2", "v3"]
     assert [entry.video_id for entry in result[("creator", "c1")]["1d"]] == ["v2", "v1"]
-    assert [entry.video_id for entry in result[("organization", "org")]["1d"]] == ["v2", "v3"]
+    assert [entry.video_id for entry in result[("org", "org")]["1d"]] == ["v2", "v3"]
     assert [entry.video_id for entry in result[("branch", "branch-a")]["1d"]] == ["v2", "v1"]
 
 

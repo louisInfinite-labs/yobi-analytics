@@ -677,6 +677,23 @@ This does not make video/snapshot data durable — `/tmp` is wiped on cold start
 
 `creators.json` is deliberately excluded from this override. Nothing ever writes it at runtime — it's a fixed reference dataset — so it stays on the package path (`Path(__file__).parent`, unaffected by `YOBI_DATA_DIR`) in both environments. Lambda's package directory is read-only but still readable, so this works without any bootstrap/copy step. Redirecting it to `/tmp` too was tried and found to be a real bug: nothing copies the packaged file there on cold start, so it would silently load as empty and `main()` would exit 0 having collected nothing, with no error to indicate why.
 
+#### Known Constraint: Deployment Package Size (added with the history-storage redesign's `pyarrow` dependency)
+
+AWS Lambda enforces two independent size caps regardless of upload method (docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html): 50 MB zipped for a direct `update-function-code --zip-file` upload, and 250 MB unzipped total — the second one is not bypassed by uploading via S3 instead. Adding `pyarrow` (~140 MB unzipped, needed for `history_store.py`'s Parquet output) pushed the shared deployment package to 304 MB unzipped, over the 250 MB cap by itself.
+
+`scripts/package_lambda.py` now strips `googleapiclient/discovery_cache/documents/` before zipping — `youtube_client.py` calls `build(..., cache_discovery=False)`, so none of those ~600 bundled per-Google-API discovery JSON files (one for every API, not just YouTube) are ever read; removing them is zero-risk and brings the package to ~204 MB unzipped / ~72 MB zipped. The script now prints both sizes and fails the build if the unzipped total is ever over 250 MB again.
+
+72 MB zipped is still over the 50 MB direct-upload limit, so deploying `collector`, `history_worker`, or `ranking_reducer` requires the S3-based path instead of `--zip-file`:
+
+```bash
+aws s3 cp build/lambda_deployment.zip s3://<artifact-bucket>/lambda_deployment.zip
+aws lambda update-function-code --function-name yobi-analytics-collector --s3-bucket <artifact-bucket> --s3-key lambda_deployment.zip
+aws lambda update-function-code --function-name yobi-analytics-history-worker --s3-bucket <artifact-bucket> --s3-key lambda_deployment.zip
+aws lambda update-function-code --function-name yobi-analytics-ranking-reducer --s3-bucket <artifact-bucket> --s3-key lambda_deployment.zip
+```
+
+No dedicated deployment/artifact S3 bucket exists yet in this repo's Terraform or in the AWS account (checked both) — `<artifact-bucket>` above is a placeholder, not something this redesign creates. See this session's own report for a minimal proposed bucket resource, left unapplied pending a decision.
+
 #### Definition of Done
 
 - Python code can be packaged.

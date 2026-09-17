@@ -8,6 +8,7 @@ from moto import mock_aws
 
 from dynamodb_store import (
     CREATOR_ID_INDEX,
+    KNOWN_INCOMPLETE_LEGACY_DATES,
     RUN_SUMMARIES_TABLE,
     SNAPSHOTS_TABLE,
     TRENDING_CACHE_TABLE,
@@ -419,50 +420,6 @@ def test_save_daily_collection_rejects_video_id_both_collected_and_skipped(dynam
         save_daily_collection([_snapshot(video_id="v1")], bad_summary, date(2026, 9, 1))
 
 
-def test_save_daily_collection_keeps_reservation_when_cleanup_also_fails(dynamodb_tables, monkeypatch):
-    """If the snapshot batch write fails AND cleaning up the partial write also
-    fails, the run summary reservation must be kept rather than released over
-    data that was never confirmed clean."""
-    import dynamodb_store
-    from botocore.exceptions import ClientError
-
-    def _failing_snapshot_to_raw(snapshot):
-        """Force the snapshot batch write to fail on every item."""
-        raise ClientError({"Error": {"Code": "InternalServerError", "Message": "boom"}}, "PutItem")
-
-    monkeypatch.setattr(dynamodb_store, "_snapshot_to_raw", _failing_snapshot_to_raw)
-    monkeypatch.setattr(dynamodb_store, "_delete_snapshots_for_date", lambda snapshot_date: False)
-
-    with pytest.raises(SnapshotStoreError, match="deliberately left in place"):
-        save_daily_collection([_snapshot(video_id="v1")], _summary(collected=1), date(2026, 9, 1))
-
-    resource = boto3.resource("dynamodb", region_name=AWS_REGION)
-    assert "Item" in resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})
-
-
-def test_save_daily_collection_raises_when_summary_deletion_unconfirmed_after_cleanup_succeeds(
-    dynamodb_tables, monkeypatch
-):
-    """If the snapshot batch write fails, snapshot cleanup succeeds, but deleting
-    the run summary reservation itself cannot be confirmed, the caller must be
-    told explicitly — silently swallowing this would leave a stale reservation
-    that fails every future retry with FileExistsError, with only a misleading
-    'snapshot write failed' error to explain why."""
-    import dynamodb_store
-    from botocore.exceptions import ClientError
-
-    def _failing_snapshot_to_raw(snapshot):
-        """Force the snapshot batch write to fail on every item."""
-        raise ClientError({"Error": {"Code": "InternalServerError", "Message": "boom"}}, "PutItem")
-
-    monkeypatch.setattr(dynamodb_store, "_snapshot_to_raw", _failing_snapshot_to_raw)
-    monkeypatch.setattr(dynamodb_store, "_delete_snapshots_for_date", lambda snapshot_date: True)
-    monkeypatch.setattr(dynamodb_store, "_delete_run_summary", lambda snapshot_date: False)
-
-    with pytest.raises(SnapshotStoreError, match="could not be confirmed"):
-        save_daily_collection([_snapshot(video_id="v1")], _summary(collected=1), date(2026, 9, 1))
-
-
 def test_save_run_summary_standalone(dynamodb_tables):
     """save_run_summary alone (no snapshots) records a fully-failed run's completeness."""
     summary = _summary(collected=0, skipped=[SkippedVideo(video_id="v1", reason="YouTube API failure")])
@@ -475,26 +432,75 @@ def test_save_run_summary_standalone(dynamodb_tables):
     assert item["skipped"][0]["reason"] == "YouTube API failure"
 
 
-def test_save_daily_collection_rolls_back_run_summary_on_snapshot_write_failure(dynamodb_tables, monkeypatch):
-    """If the snapshot batch write fails partway through, both the partially
-    written snapshot items and the reserved run summary are rolled back, so
-    a retry for that date is not permanently blocked by a completion marker
-    for data that was never fully written, and no stray unowned items are
-    left behind under a date nothing claims responsibility for."""
+def test_save_run_summary_standalone_is_immediately_complete(dynamodb_tables):
+    """The zero-snapshot bootstrap path has nothing to protect against a
+    mid-write timeout — it must be COMPLETE the instant it succeeds, and a
+    later collection attempt for the same date must be rejected, exactly
+    like a normal successful save_daily_collection would be (item 7:
+    existing behavior stays compatible; item 6: a completed date stays
+    protected)."""
+    save_run_summary(_summary(collected=0, skipped=[SkippedVideo(video_id="v1", reason="x")]), date(2026, 9, 1))
+
+    resource = boto3.resource("dynamodb", region_name=AWS_REGION)
+    item = resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})["Item"]
+    assert item["status"] == "COMPLETE"
+
+    with pytest.raises(FileExistsError):
+        save_daily_collection([_snapshot(video_id="v1")], _summary(collected=1), date(2026, 9, 1))
+
+
+def test_save_run_summary_rejects_duplicate_date(dynamodb_tables):
+    """A second summary for an already-recorded, COMPLETE date is refused."""
+    save_run_summary(_summary(), date(2026, 9, 1))
+
+    with pytest.raises(FileExistsError):
+        save_run_summary(_summary(), date(2026, 9, 1))
+
+
+def test_normal_successful_collection_ends_up_complete(dynamodb_tables):
+    """The ordinary happy path (item 7): a clean, uninterrupted
+    save_daily_collection call ends with status COMPLETE, not merely a row
+    existing — proving the new two-phase write doesn't change behavior for
+    the common case."""
+    save_daily_collection(
+        [_snapshot(video_id="v1"), _snapshot(video_id="v2")], _summary(collected=2), date(2026, 9, 1)
+    )
+
+    resource = boto3.resource("dynamodb", region_name=AWS_REGION)
+    item = resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})["Item"]
+    assert item["status"] == "COMPLETE"
+    assert item["collectedCount"] == 2
+
+
+def _fail_on_nth_snapshot(monkeypatch, n: int):
+    """Make the batch write raise a ClientError partway through, simulating
+    the uncatchable-timeout scenario at the DynamoDB-item-boundary level:
+    everything up to (not including) the nth snapshot is really written,
+    the rest never are, and nothing here gets a chance to clean up (which is
+    exactly the point being tested — nothing should try to)."""
     import dynamodb_store
     from botocore.exceptions import ClientError
 
     real_snapshot_to_raw = dynamodb_store._snapshot_to_raw
     call_count = {"n": 0}
 
-    def _failing_snapshot_to_raw(snapshot):
-        """Let the first snapshot write through, then fail the second (partial-write simulation)."""
+    def _maybe_failing_snapshot_to_raw(snapshot):
         call_count["n"] += 1
-        if call_count["n"] == 2:
+        if call_count["n"] == n:
             raise ClientError({"Error": {"Code": "InternalServerError", "Message": "boom"}}, "PutItem")
         return real_snapshot_to_raw(snapshot)
 
-    monkeypatch.setattr(dynamodb_store, "_snapshot_to_raw", _failing_snapshot_to_raw)
+    monkeypatch.setattr(dynamodb_store, "_snapshot_to_raw", _maybe_failing_snapshot_to_raw)
+
+
+def test_partial_write_leaves_in_progress_state_that_a_retry_can_recover(dynamodb_tables, monkeypatch):
+    """This is the 2026-09-14 production incident, reproduced: a batch write
+    fails partway through (items 1 and 2), and neither the partial snapshot
+    rows nor the IN_PROGRESS run summary are deleted (item 1's setup). A
+    retry with the *complete* original list must then be able to finish the
+    date (items 1, 2) and end with exactly one row per videoId — no
+    duplicates from the earlier partial attempt (items 3, 5)."""
+    _fail_on_nth_snapshot(monkeypatch, n=3)
 
     with pytest.raises(SnapshotStoreError):
         save_daily_collection(
@@ -504,23 +510,146 @@ def test_save_daily_collection_rolls_back_run_summary_on_snapshot_write_failure(
         )
 
     resource = boto3.resource("dynamodb", region_name=AWS_REGION)
-    assert "Item" not in resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})
-    # v1 was already flushed to DynamoDB by batch_writer before the failure on
-    # v2 — it must be cleaned up too, not left behind as orphaned partial data.
-    assert resource.Table(SNAPSHOTS_TABLE).scan()["Items"] == []
-
-    # The rollback must actually unblock a retry, not just delete-and-still-fail.
-    save_daily_collection([_snapshot(video_id="v1")], _summary(collected=1), date(2026, 9, 1))
+    # Nothing was deleted: the reservation and the two snapshots that did
+    # make it through the batch writer before the failure are still there.
     summary_item = resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})["Item"]
-    assert summary_item["collectedCount"] == 1
+    assert summary_item["status"] == "IN_PROGRESS"
+    assert len(resource.Table(SNAPSHOTS_TABLE).scan()["Items"]) == 2
+
+    # A retry with the complete list (not just the missing one) must succeed
+    # -- existing partial state does not permanently block it.
+    save_daily_collection(
+        [_snapshot(video_id="v1"), _snapshot(video_id="v2"), _snapshot(video_id="v3")],
+        _summary(collected=3),
+        date(2026, 9, 1),
+    )
+
+    summary_item = resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})["Item"]
+    assert summary_item["status"] == "COMPLETE"
+    assert summary_item["collectedCount"] == 3
+    snapshot_items = resource.Table(SNAPSHOTS_TABLE).scan()["Items"]
+    # Exactly one logical row per (videoId, snapshotDate) -- no duplicates
+    # left behind from the interrupted first attempt.
+    assert sorted(item["videoId"] for item in snapshot_items) == ["v1", "v2", "v3"]
 
 
-def test_save_run_summary_rejects_duplicate_date(dynamodb_tables):
-    """A second summary for an already-recorded date is refused."""
-    save_run_summary(_summary(), date(2026, 9, 1))
+def test_run_summary_is_not_complete_until_every_snapshot_is_actually_written(dynamodb_tables, monkeypatch):
+    """Item 4: a row existing (even with the "right" collectedCount already
+    on it) must never be mistaken for the date being done -- only status
+    tells the truth about whether persistence actually finished."""
+    _fail_on_nth_snapshot(monkeypatch, n=2)
+
+    with pytest.raises(SnapshotStoreError):
+        save_daily_collection([_snapshot(video_id="v1"), _snapshot(video_id="v2")], _summary(collected=2), date(2026, 9, 1))
+
+    resource = boto3.resource("dynamodb", region_name=AWS_REGION)
+    summary_item = resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})["Item"]
+    # The row already carries the full intended collectedCount from the
+    # claim step -- exactly the misleading state that caused the real
+    # incident. status is what must actually gate completeness.
+    assert summary_item["collectedCount"] == 2
+    assert summary_item["status"] == "IN_PROGRESS"
+
+
+def test_retry_after_full_write_but_before_completion_mark_is_still_idempotent(dynamodb_tables, monkeypatch):
+    """Covers the narrower timeout window (task F.3): every snapshot was
+    actually written, but the process was killed before
+    _mark_run_summary_complete ever ran. A retry must still succeed and must
+    not create duplicate rows, even though nothing was actually missing."""
+    import dynamodb_store
+
+    def _simulate_kill_before_completion(snapshot_date):
+        raise SnapshotStoreError("simulated kill before completion")
+
+    monkeypatch.setattr(dynamodb_store, "_mark_run_summary_complete", _simulate_kill_before_completion)
+    with pytest.raises(SnapshotStoreError):
+        save_daily_collection(
+            [_snapshot(video_id="v1"), _snapshot(video_id="v2")], _summary(collected=2), date(2026, 9, 1)
+        )
+
+    resource = boto3.resource("dynamodb", region_name=AWS_REGION)
+    assert resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})["Item"]["status"] == "IN_PROGRESS"
+    assert len(resource.Table(SNAPSHOTS_TABLE).scan()["Items"]) == 2
+
+    monkeypatch.undo()
+    save_daily_collection(
+        [_snapshot(video_id="v1"), _snapshot(video_id="v2")], _summary(collected=2), date(2026, 9, 1)
+    )
+
+    summary_item = resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": "2026-09-01"})["Item"]
+    assert summary_item["status"] == "COMPLETE"
+    snapshot_items = resource.Table(SNAPSHOTS_TABLE).scan()["Items"]
+    assert sorted(item["videoId"] for item in snapshot_items) == ["v1", "v2"]
+
+
+def test_known_incomplete_legacy_date_with_no_status_field_is_still_retryable(dynamodb_tables):
+    """The one real, confirmed-incomplete row this fix exists to unblock
+    (2026-09-14) has no `status` attribute at all, predating this fix. It
+    must remain retryable via the explicit KNOWN_INCOMPLETE_LEGACY_DATES
+    allowlist -- otherwise deploying this fix would do nothing for the very
+    incident it was written to solve."""
+    known_incomplete_date = sorted(KNOWN_INCOMPLETE_LEGACY_DATES)[0]
+    resource = boto3.resource("dynamodb", region_name=AWS_REGION)
+    resource.Table(RUN_SUMMARIES_TABLE).put_item(
+        Item={
+            "snapshotDate": known_incomplete_date,
+            "requestedCount": 1,
+            "collectedCount": 1,
+            "skippedCount": 0,
+            "skipped": [],
+            # deliberately no "status" key
+        }
+    )
+
+    save_daily_collection(
+        [_snapshot(video_id="v1", snapshot_date=known_incomplete_date)],
+        _summary(snapshot_date=known_incomplete_date, collected=1),
+        date.fromisoformat(known_incomplete_date),
+    )
+
+    summary_item = resource.Table(RUN_SUMMARIES_TABLE).get_item(Key={"snapshotDate": known_incomplete_date})["Item"]
+    assert summary_item["status"] == "COMPLETE"
+
+
+def test_other_legacy_date_with_no_status_field_is_not_retryable(dynamodb_tables):
+    """A pre-fix row for a date that is NOT on the known-incomplete allowlist
+    (standing in for 2026-08-30 through 2026-09-13, each individually
+    confirmed complete during the T2.7 backfill scan) must be treated as
+    already COMPLETE by default -- treating every status-missing row as
+    retryable would let already-correct historical dates be silently
+    reclaimed and overwritten by anything that still calls
+    save_daily_collection with an explicit past date."""
+    assert "2026-09-01" not in KNOWN_INCOMPLETE_LEGACY_DATES
+    resource = boto3.resource("dynamodb", region_name=AWS_REGION)
+    resource.Table(RUN_SUMMARIES_TABLE).put_item(
+        Item={
+            "snapshotDate": "2026-09-01",
+            "requestedCount": 1,
+            "collectedCount": 1,
+            "skippedCount": 0,
+            "skipped": [],
+            # deliberately no "status" key -- a genuinely pre-fix, otherwise-good row
+        }
+    )
 
     with pytest.raises(FileExistsError):
-        save_run_summary(_summary(), date(2026, 9, 1))
+        save_daily_collection([_snapshot(video_id="v1")], _summary(collected=1), date(2026, 9, 1))
+
+
+def test_completed_date_still_rejects_a_fresh_duplicate_collection_attempt(dynamodb_tables):
+    """Item 6: once a date is genuinely COMPLETE, a brand-new (not a retry of
+    a failure) collection attempt for that same date must still be rejected
+    -- the original exclusivity guarantee, now correctly gated on actual
+    completion rather than on a row merely existing."""
+    save_daily_collection([_snapshot(video_id="v1")], _summary(collected=1), date(2026, 9, 1))
+
+    with pytest.raises(FileExistsError):
+        save_daily_collection(
+            [_snapshot(video_id="v1"), _snapshot(video_id="v2")], _summary(collected=2), date(2026, 9, 1)
+        )
+
+    resource = boto3.resource("dynamodb", region_name=AWS_REGION)
+    assert len(resource.Table(SNAPSHOTS_TABLE).scan()["Items"]) == 1
 
 
 def test_resource_is_cached_per_thread_not_shared_as_a_global_singleton(dynamodb_tables):

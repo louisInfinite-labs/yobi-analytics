@@ -49,7 +49,9 @@ def _wire_no_live_fallback(monkeypatch):
     monkeypatch.setattr(read_api, "get_videos_by_creator", _boom)
     monkeypatch.setattr(read_api, "get_snapshot", _boom)
     monkeypatch.setattr(read_api, "get_video", _boom)
-    monkeypatch.setattr(read_api, "rank_videos", _boom)
+    # rank_videos is no longer imported into read_api's own namespace at all
+    # (V5.9 removed it along with the HTTP live-fallback that used it) — its
+    # absence is a stronger guarantee than monkeypatching it here ever was.
     monkeypatch.setattr(read_api, "_compute_growth_results", _boom)
     monkeypatch.setattr(read_api, "_load_videos_for_creators", _boom)
 

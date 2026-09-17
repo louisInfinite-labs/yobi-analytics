@@ -54,6 +54,40 @@ TRENDING_CACHE_TABLE = os.environ.get("YOBI_TRENDING_CACHE_TABLE") or "YobiTrend
 SNAPSHOTS_TABLE = os.environ.get("YOBI_SNAPSHOTS_TABLE") or "YobiSnapshots"
 RUN_SUMMARIES_TABLE = os.environ.get("YOBI_RUN_SUMMARIES_TABLE") or "YobiRunSummaries"
 
+# A run summary's `status` attribute, added alongside its existing fields
+# (requestedCount/collectedCount/skipped from snapshot_store._summary_to_raw)
+# rather than on the shared SnapshotRunSummary dataclass itself -- this is a
+# DynamoDB-only recovery concern the local JSON backend has no equivalent
+# need for (see save_daily_collection's own docstring).
+RUN_SUMMARY_STATUS_IN_PROGRESS = "IN_PROGRESS"
+RUN_SUMMARY_STATUS_COMPLETE = "COMPLETE"
+
+# Every row written before this fix has no `status` attribute at all --
+# including every genuinely-COMPLETE historical date (2026-08-30 through
+# 2026-09-13, each individually confirmed by an actual full-table scan
+# during the T2.7 backfill attempt to have exactly as many YobiSnapshots
+# rows as its own collectedCount claims). Treating "status missing" as
+# retryable in general would let any of those already-correct dates be
+# silently reclaimed and overwritten by anything that still calls
+# save_daily_collection with an explicit past date (e.g.
+# scripts/seed_snapshots_dynamodb.py or scripts/migrate_to_dynamodb.py,
+# re-run for any reason) -- the ordinary scheduled/retried collector
+# invocation can never target a past date itself (main.py always computes
+# its own collection date from "now"), so that risk is narrow, but real.
+#
+# 2026-09-14 is the one specific date this fix exists to unblock (see its
+# own module-level incident notes in save_daily_collection): a Lambda
+# timeout killed that day's collection mid-batch-write, so its row is
+# genuinely, confirmedly incomplete despite predating this fix too. This
+# frozenset is the deliberately narrow, explicit, audited allowlist of
+# dates where "status missing" should still mean retryable -- the same
+# hardcoded-allowlist pattern already used in
+# scripts/backfill_video_master.py's CORRECTED_CHANNEL_IDS, rather than a
+# general migration or a broader time-based heuristic. Never grows after
+# 2026-09-14 is repaired; never needs entries for anything written after
+# this fix deploys, since every new write always sets a real `status`.
+KNOWN_INCOMPLETE_LEGACY_DATES = frozenset({"2026-09-14"})
+
 # The two float fields on Video that DynamoDB's Number type requires as
 # Decimal rather than Python float (see tracking_schedule.ClassificationResult).
 _VELOCITY_FIELDS = ("lastPercentGrowthPerDay", "lastAvgViewsPerDay")
@@ -215,8 +249,13 @@ def get_snapshot(video_id: str, snapshot_date: date) -> Snapshot | None:
 
 
 def save_run_summary(summary: SnapshotRunSummary, snapshot_date: date) -> str:
-    """Write a day's collection-run completeness summary, refusing to overwrite an existing one."""
-    _put_run_summary_exclusive(summary, snapshot_date)
+    """Write a day's collection-run completeness summary, refusing to overwrite
+    an already-COMPLETE date. Used for the zero-snapshot bootstrap path (every
+    due video failed, or none were due) where there is no bulk snapshot write
+    to protect against a mid-write timeout — this date is complete the moment
+    this single write succeeds, so it claims and completes back to back."""
+    _claim_run_summary(summary, snapshot_date)
+    _mark_run_summary_complete(snapshot_date)
     return f"DynamoDB table {RUN_SUMMARIES_TABLE} (snapshotDate={snapshot_date.isoformat()})"
 
 
@@ -225,25 +264,42 @@ def save_daily_collection(
 ) -> tuple[str, str]:
     """Write a day's snapshots and its run summary together as one recoverable pair.
 
-    The run summary's conditional put happens *first*: it's one small item,
-    so it's a cheap way to reserve the date and reject a concurrent/duplicate
-    run before committing to batch-writing tens of thousands of snapshot
-    items. If that batch write then fails partway through — a realistic risk
-    given it can take minutes and cross a Lambda timeout or hit throttling —
-    the rollback deletes whatever snapshot items *did* get written for this
-    date before releasing the run summary reservation. Releasing the
-    reservation while partial snapshot items remained would leave stray,
-    unowned data behind — a later successful run isn't guaranteed to rewrite
-    every one of those same items (e.g. a differently-scoped retry), so
-    without this cleanup a video could keep a snapshot from a run that was
-    never actually recorded as complete. Without releasing the reservation
-    at all, every retry would be rejected by the same exclusivity check with
-    no way to ever finish that date.
+    Two separate run-summary writes bracket the bulk snapshot write, rather
+    than one write moved to either end — a single end-of-day write would lose
+    the cheap early exclusivity claim that rejects a concurrent/duplicate run
+    before tens of thousands of snapshot items get written; a single
+    beginning-of-day write (the old design) let that same claim be
+    mistaken for *completion*, which is the actual bug this replaces:
+
+      1. `_claim_run_summary` marks this date IN_PROGRESS. This is a claim,
+         not a completion record — see its own docstring for exactly which
+         prior states it will and won't let a caller re-claim.
+      2. Every snapshot in `snapshots` is written via `batch_writer()`,
+         keyed by (videoId, snapshotDate) — replaying the *complete* list
+         here is always safe: DynamoDB's PutItem overwrite on that key means
+         a second full write of an already-written item is a no-op, and a
+         previously-missing item simply gets written for the first time.
+         Nothing is deleted here on failure (a hard Lambda timeout during
+         this step is not a catchable Python exception — no cleanup code
+         could ever run for that case anyway): a retry that calls this
+         function again with the same full `snapshots` list — including one
+         freshly recomputed from that retry's own collection run, which may
+         legitimately differ slightly from the interrupted attempt's list —
+         reconciles whatever partial state exists into one internally
+         consistent set of rows, reflecting whichever attempt actually
+         finishes. `except ClientError` still exists so a batch_writer
+         failure (e.g. it exhausts its own UnprocessedItems retries) raises
+         a typed error here instead of an unwrapped ClientError — the
+         IN_PROGRESS claim from step 1 is deliberately left exactly as it
+         is; leaving it in place is what a future retry needs.
+      3. Only once every item from step 2 has actually been written does
+         `_mark_run_summary_complete` transition the row to COMPLETE — a
+         date is never considered done just because a row for it exists.
     """
     expected_date = snapshot_date.isoformat()
     validate_daily_collection(snapshots, run_summary, snapshot_date)
 
-    _put_run_summary_exclusive(run_summary, snapshot_date)
+    _claim_run_summary(run_summary, snapshot_date)
 
     table = _resource().Table(SNAPSHOTS_TABLE)
     try:
@@ -251,22 +307,9 @@ def save_daily_collection(
             for snapshot in snapshots:
                 batch.put_item(Item=_snapshot_to_raw(snapshot))
     except ClientError as exc:
-        cleanup_succeeded = _delete_snapshots_for_date(snapshot_date)
-        if not cleanup_succeeded:
-            raise SnapshotStoreError(
-                f"Failed to write to {SNAPSHOTS_TABLE}: {exc}. Cleanup of the partial write also failed, "
-                f"so the {expected_date} run summary reservation was deliberately left in place rather than "
-                "released over unconfirmed-clean data — manual cleanup is required before this date can be retried."
-            ) from exc
-        summary_deleted = _delete_run_summary(snapshot_date)
-        if not summary_deleted:
-            raise SnapshotStoreError(
-                f"Failed to write to {SNAPSHOTS_TABLE}: {exc}. Snapshot cleanup succeeded, but deleting the "
-                f"{expected_date} run summary reservation could not be confirmed — manual cleanup is required "
-                "before this date can be retried, otherwise every retry will fail against a reservation that "
-                "may still exist."
-            ) from exc
         raise SnapshotStoreError(f"Failed to write to {SNAPSHOTS_TABLE}: {exc}") from exc
+
+    _mark_run_summary_complete(snapshot_date)
 
     return (
         f"DynamoDB table {SNAPSHOTS_TABLE} (snapshotDate={expected_date})",
@@ -274,82 +317,98 @@ def save_daily_collection(
     )
 
 
-def _delete_snapshots_for_date(snapshot_date: date) -> bool:
-    """Delete every YobiSnapshots item for one date, used to clean up a partial
-    write after a failed batch. Returns True if the cleanup completed, False
-    if it failed partway — the caller must not release the run summary
-    reservation on a False result, or a video could keep a snapshot from a
-    run that was never actually recorded as complete (see save_daily_collection).
-    No GSI on snapshotDate yet, so this is a filtered Scan (Roadmap 2.3's
-    documented "later optimization"), acceptable here since a rollback is an
-    exceptional path, not the steady state. ConsistentRead=True so this scan
-    cannot miss an item the just-failed batch write already committed — an
-    eventually-consistent read could otherwise return True over snapshots
-    that are still actually present, letting the caller release the run
-    summary reservation too early.
+def _claim_run_summary(summary: SnapshotRunSummary, snapshot_date: date) -> None:
+    """Claim snapshot_date for collection, marking it IN_PROGRESS.
+
+    Raises FileExistsError when this date is not safely claimable:
+      - COMPLETE: a finished day must never be silently recollected.
+      - missing `status` entirely, UNLESS this date is in
+        KNOWN_INCOMPLETE_LEGACY_DATES: a pre-this-fix row with no status is
+        assumed COMPLETE by default (see that constant's own docstring for
+        why treating every such row as retryable would be unsafely broad),
+        with a narrow, explicit, audited exception for the one date actually
+        confirmed incomplete.
+
+    Allowed through (not rejected):
+      - IN_PROGRESS: a still-running attempt, or — the production incident
+        this exists to unblock — one a hard Lambda timeout killed mid-write
+        with no chance to react. This function cannot tell those two apart:
+        an attempt that is *actually* still running and a second, genuinely
+        concurrent caller could both pass this check and both proceed to
+        write. That race is deliberately accepted rather than closed here,
+        the same way execution_lock.py's own docstring accepts the
+        equivalent race for the newer S3 history pipeline's per-shard
+        locking — closing it needs a real lease/owner-token protocol, more
+        machinery than this soon-retired legacy path warrants. This is a
+        real, not merely theoretical, risk: two overlapping invocations can
+        each persist a genuinely different snapshot list for the same date
+        (e.g. a video discovered in between their two attempts), so the
+        final collectedCount on whichever invocation's own claim write
+        happened to land last is not guaranteed to equal the true final
+        unique row count in YobiSnapshots afterward, and one invocation can
+        mark the date COMPLETE while another is still mid-write for it. The
+        cost is bad bookkeeping metadata and a misleading COMPLETE window,
+        never fabricated view-count data — every write still lands at the
+        real (videoId, snapshotDate) key with real YouTube API data.
+      - missing `status`, when this date IS in KNOWN_INCOMPLETE_LEGACY_DATES.
+      - no row at all: the normal first-ever attempt for this date.
+
+    Always overwrites the row's descriptive fields (requestedCount/
+    collectedCount/skipped) with *this* attempt's own values — whichever
+    attempt actually reaches _mark_run_summary_complete is the one whose
+    numbers end up authoritative, never a stale mix of an earlier
+    interrupted attempt's counts and a later one's data.
     """
-    expected_date = snapshot_date.isoformat()
-    table = _resource().Table(SNAPSHOTS_TABLE)
-    try:
-        keys_to_delete: list[dict] = []
-        scan_kwargs = {
-            "FilterExpression": "snapshotDate = :d",
-            "ProjectionExpression": "videoId, snapshotDate",
-            "ExpressionAttributeValues": {":d": expected_date},
-            "ConsistentRead": True,
-        }
-        while True:
-            response = table.scan(**scan_kwargs)
-            keys_to_delete.extend(
-                {"videoId": item["videoId"], "snapshotDate": item["snapshotDate"]} for item in response["Items"]
-            )
-            if "LastEvaluatedKey" not in response:
-                break
-            scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-
-        with table.batch_writer() as batch:
-            for key in keys_to_delete:
-                batch.delete_item(Key=key)
-        return True
-    except ClientError:
-        return False
-
-
-def _delete_run_summary(snapshot_date: date) -> bool:
-    """Delete a run summary reservation after a failed snapshot batch write.
-
-    Returns True if the deletion completed, False if it failed — the caller
-    must not treat a False result as "reservation gone", or every retry for
-    this date will keep failing FileExistsError against a reservation that
-    may still be present (see save_daily_collection).
-    """
-    try:
-        _resource().Table(RUN_SUMMARIES_TABLE).delete_item(Key={"snapshotDate": snapshot_date.isoformat()})
-        return True
-    except ClientError:
-        return False
-
-
-def _put_run_summary_exclusive(summary: SnapshotRunSummary, snapshot_date: date) -> None:
-    """Write summary to RUN_SUMMARIES_TABLE, raising FileExistsError if that date is already recorded."""
     expected_date = snapshot_date.isoformat()
     if summary.snapshot_date != expected_date:
         raise SnapshotStoreError(
             f"Snapshot Run Summary snapshotDate {summary.snapshot_date!r} does not match the requested {expected_date}"
         )
 
+    item = _summary_to_raw(summary)
+    item["status"] = RUN_SUMMARY_STATUS_IN_PROGRESS
+    condition = "attribute_not_exists(snapshotDate) OR #status = :in_progress"
+    if expected_date in KNOWN_INCOMPLETE_LEGACY_DATES:
+        condition += " OR attribute_not_exists(#status)"
+
     table = _resource().Table(RUN_SUMMARIES_TABLE)
     try:
         table.put_item(
-            Item=_summary_to_raw(summary),
-            ConditionExpression="attribute_not_exists(snapshotDate)",
+            Item=item,
+            ConditionExpression=condition,
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":in_progress": RUN_SUMMARY_STATUS_IN_PROGRESS},
         )
     except ClientError as exc:
         if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
             raise FileExistsError(
-                f"Snapshot run summary for {expected_date} already exists in {RUN_SUMMARIES_TABLE}"
+                f"Snapshot run summary for {expected_date} already exists in {RUN_SUMMARIES_TABLE} and is complete"
             ) from None
         raise SnapshotStoreError(f"Failed to write run summary to {RUN_SUMMARIES_TABLE}: {exc}") from exc
+
+
+def _mark_run_summary_complete(snapshot_date: date) -> None:
+    """Transition snapshot_date's run summary from IN_PROGRESS to COMPLETE.
+
+    Called only after every snapshot item has actually been written — this
+    is the sole thing that makes a date "done" for _claim_run_summary's own
+    re-claim check. Unconditional (no ownerToken to check against, matching
+    the accepted race documented on _claim_run_summary): two concurrent
+    completions of the same date both set the same COMPLETE value, which is
+    harmless.
+    """
+    table = _resource().Table(RUN_SUMMARIES_TABLE)
+    try:
+        table.update_item(
+            Key={"snapshotDate": snapshot_date.isoformat()},
+            UpdateExpression="SET #status = :complete",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":complete": RUN_SUMMARY_STATUS_COMPLETE},
+        )
+    except ClientError as exc:
+        raise SnapshotStoreError(
+            f"Failed to mark {snapshot_date.isoformat()} complete in {RUN_SUMMARIES_TABLE}: {exc}"
+        ) from exc
 
 
 def _video_to_item(video: Video) -> dict[str, Any]:

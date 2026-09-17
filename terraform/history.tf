@@ -1,5 +1,10 @@
+# Fixed name (not bucket_prefix) is required here: the manually-managed
+# lambda_history_access/history_orchestrator/history_scheduler IAM policies
+# below reference this bucket's ARN in their literal JSON, produced BEFORE
+# this bucket exists -- bucket_prefix's random suffix would make that ARN
+# unknowable ahead of time.
 resource "aws_s3_bucket" "history" {
-  bucket_prefix = "yobi-analytics-history-"
+  bucket        = "yobi-analytics-history"
   force_destroy = false
 }
 
@@ -29,115 +34,18 @@ resource "aws_s3_bucket_public_access_block" "history" {
   restrict_public_buckets = true
 }
 
-resource "aws_iam_role" "history_orchestrator" {
-  name = "yobi-analytics-history-orchestrator"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "states.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "history_orchestrator" {
-  name = "InvokeHistoryWorkers"
-  role = aws_iam_role.history_orchestrator.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = "lambda:InvokeFunction"
-      Resource = [
-        aws_lambda_function.history_worker.arn,
-        aws_lambda_function.ranking_reducer.arn,
-      ]
-    }]
-  })
-}
-
-resource "aws_iam_role" "history_scheduler" {
-  name = "yobi-analytics-history-scheduler"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "scheduler.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "history_scheduler" {
-  name = "StartDailyHistoryCollection"
-  role = aws_iam_role.history_scheduler.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = "states:StartExecution"
-        Resource = aws_sfn_state_machine.daily_history.arn
-      },
-      {
-        Effect   = "Allow"
-        Action   = "sqs:SendMessage"
-        Resource = aws_sqs_queue.scheduler_dlq.arn
-      },
-    ]
-  })
-}
-
-resource "aws_iam_role_policy" "lambda_history_access" {
-  name = "YobiHistoryStorage"
-  role = "yobi-analytics-lambda-role"
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-        ]
-        Resource = "${aws_s3_bucket.history.arn}/*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-        ]
-        Resource = [
-          aws_dynamodb_table.video_master.arn,
-          aws_dynamodb_table.trending_cache.arn,
-        ]
-      },
-      {
-        # execution_lock.py's own operations: acquire is a conditional
-        # PutItem, renew/mark_execution_complete/mark_execution_failed are
-        # conditional UpdateItems -- no GetItem/DeleteItem is ever issued
-        # against this table (a COMPLETE/FAILED row is updated in place,
-        # never read back or deleted; DynamoDB's own TTL sweep removes it
-        # later using an AWS-internal service principal, not this role), so
-        # neither is granted here.
-        Effect = "Allow"
-        Action = [
-          "dynamodb:PutItem",
-          "dynamodb:UpdateItem",
-        ]
-        Resource = aws_dynamodb_table.history_execution_lock.arn
-      },
-    ]
-  })
-}
+# history_orchestrator / history_scheduler roles and their inline policies,
+# and lambda_history_access (an inline policy on the pre-existing
+# yobi-analytics-lambda-role), are manually managed via root Console --
+# yobi-analytics-cli has no IAM permissions (iam:CreateRole/PutRolePolicy/
+# AttachRolePolicy/DeleteRole included), matching the other three
+# manually-managed roles (see iam.tf). Their exact trust/inline policy JSON
+# is produced alongside this change, not re-derived here. Referenced below
+# as local.history_orchestrator_role_arn / local.history_scheduler_role_arn.
 
 resource "aws_sfn_state_machine" "daily_history" {
   name     = "yobi-analytics-daily-history"
-  role_arn = aws_iam_role.history_orchestrator.arn
+  role_arn = local.history_orchestrator_role_arn
 
   definition = jsonencode({
     StartAt = "ValidateShardsInput"

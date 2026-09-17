@@ -186,8 +186,20 @@ def acquire_execution_lock(
         " OR #status = :failed"
         " OR (#status = :in_progress AND expiresAt <= :now)"
     )
+    expression_values: dict[str, Any] = {
+        ":failed": STATUS_FAILED,
+        ":in_progress": STATUS_IN_PROGRESS,
+        ":now": now_epoch,
+    }
+    # :complete must only be declared when the condition actually references it
+    # (the force_recovery branch just below) -- DynamoDB's PutItem rejects any
+    # ExpressionAttributeValues key not used somewhere in ConditionExpression
+    # with a ValidationException, which every normal (non-recovery) acquire
+    # was hitting before this fix, since :complete was previously declared
+    # unconditionally here regardless of force_recovery.
     if force_recovery:
         condition += " OR #status = :complete"
+        expression_values[":complete"] = STATUS_COMPLETE
     try:
         _table().put_item(
             Item={
@@ -201,12 +213,7 @@ def acquire_execution_lock(
             },
             ConditionExpression=condition,
             ExpressionAttributeNames={"#status": "status"},
-            ExpressionAttributeValues={
-                ":failed": STATUS_FAILED,
-                ":in_progress": STATUS_IN_PROGRESS,
-                ":complete": STATUS_COMPLETE,
-                ":now": now_epoch,
-            },
+            ExpressionAttributeValues=expression_values,
         )
     except ClientError as exc:
         _raise_if_conditional_check_failed(

@@ -12,6 +12,7 @@ from botocore.exceptions import ClientError
 
 from history_ranking import UNKNOWN_DISCOVERED_DATE
 from history_store import HISTORY_SHARD_COUNT, shard_for_video
+from video_master import VALID_ACTIVITY_STATES
 
 MANIFEST_PREFIX = "catalog/current"
 
@@ -30,12 +31,29 @@ class ManifestEntry:
     deserialize_manifest), so its absence must never be treated as "this
     video is new"; see discovered_dates_by_video's own UNKNOWN_DISCOVERED_DATE
     fallback for the one place that distinction actually gets made.
+
+    `published_at`/`activity_state` (Roadmap 1.5 tier scheduler inputs, mirror
+    Video.published_at/Video.activity_state) follow the exact same optional/
+    nullable precedent as `discovered_at` above, for the exact same reason: a
+    manifest object written before this pair of fields existed still
+    deserializes, with both read as None. None here means "this manifest
+    object predates the field, no data available" — it must never be
+    defaulted to a real business value (e.g. treating a missing
+    activity_state as "Unknown", which is itself a real classification
+    meaning "observed but not yet enough evidence"; or treating a missing
+    published_at as `discovered_at`, a different concept entirely). Callers
+    needing tier-scheduler data from an entry with either field None should
+    fall back to on-demand behavior (e.g. tracking_schedule.is_due_today's
+    own "can't tell, so check it today" handling for an unrecognized/
+    unparsable value), not invent a guessed classification here.
     """
 
     video_id: str
     creator_id: str
     active: bool = True
     discovered_at: str | None = None
+    published_at: str | None = None
+    activity_state: str | None = None
 
 
 class TrackingManifestStore(Protocol):
@@ -74,6 +92,8 @@ def serialize_manifest(entries: list[ManifestEntry]) -> bytes:
             "creatorId": pa.array([entry.creator_id for entry in entries], type=pa.string()),
             "active": pa.array([entry.active for entry in entries], type=pa.bool_()),
             "discoveredAt": pa.array([entry.discovered_at for entry in entries], type=pa.string()),
+            "publishedAt": pa.array([entry.published_at for entry in entries], type=pa.string()),
+            "activityState": pa.array([entry.activity_state for entry in entries], type=pa.string()),
         }
     )
     output = io.BytesIO()
@@ -97,7 +117,10 @@ def deserialize_manifest(payload: bytes) -> list[ManifestEntry]:
     Parquet file with no such column at all still deserializes instead of
     raising KeyError — its ManifestEntry.discovered_at is just None, the
     same "unknown, never assumed new" value discovered_dates_by_video
-    already falls back to for that case.
+    already falls back to for that case. `publishedAt`/`activityState` use
+    the identical `.get(...)` pattern for the identical reason: a manifest
+    object written before this task extended the schema still deserializes,
+    with both fields read as None rather than KeyError or a guessed value.
     """
     _, parquet = _pyarrow()
     try:
@@ -108,6 +131,8 @@ def deserialize_manifest(payload: bytes) -> list[ManifestEntry]:
                 creator_id=entry["creatorId"],
                 active=entry["active"],
                 discovered_at=entry.get("discoveredAt"),
+                published_at=entry.get("publishedAt"),
+                activity_state=entry.get("activityState"),
             )
             for entry in raw_entries
         ]
@@ -200,6 +225,10 @@ def publish_tracking_manifest(videos, store: TrackingManifestStore) -> list[str]
     The caller supplies Video-like objects to avoid coupling the manifest
     abstraction to one metadata backend. All 16 keys are written, including
     empty shards, so removed/deactivated catalog entries cannot linger.
+
+    published_at/activity_state are read directly off each Video-like object
+    (already the authoritative Video Master values) — no separate lookup, since
+    the caller already loaded them to build `videos` in the first place.
     """
     entries = [
         ManifestEntry(
@@ -207,6 +236,8 @@ def publish_tracking_manifest(videos, store: TrackingManifestStore) -> list[str]
             creator_id=video.creator_id,
             active=True,
             discovered_at=video.discovered_at,
+            published_at=video.published_at,
+            activity_state=video.activity_state,
         )
         for video in videos
     ]
@@ -222,6 +253,13 @@ def _validate_shard(shard: int) -> None:
 def _validate_entry(entry: ManifestEntry) -> None:
     if not entry.video_id or not entry.creator_id or not isinstance(entry.active, bool):
         raise TrackingManifestError(f"Manifest entry has invalid required data: {entry!r}")
+    # published_at/activity_state are optional (None on a manifest object that predates
+    # this schema extension, or that genuinely has no data yet) -- only validated when
+    # actually present, never required, and never given a guessed non-None default here.
+    if entry.published_at is not None and not entry.published_at:
+        raise TrackingManifestError(f"Manifest entry has invalid 'publishedAt': {entry!r}")
+    if entry.activity_state is not None and entry.activity_state not in VALID_ACTIVITY_STATES:
+        raise TrackingManifestError(f"Manifest entry has invalid 'activityState': {entry!r}")
 
 
 def _reject_duplicate_video_ids(entries: list[ManifestEntry]) -> None:

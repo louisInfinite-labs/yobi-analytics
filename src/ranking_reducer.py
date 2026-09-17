@@ -431,9 +431,16 @@ def _comparison_date(report_date: date, period: str) -> date:
 
 
 def _scope_field(scope_type: str, scope_value: str) -> dict[str, str]:
+    """Map a scope key to its own response payload field.
+
+    Keyed by scope_type exactly as history_ranking._scopes_for produces it
+    ("org", not "organization" -- V5.12) -- the payload's own field name
+    stays the descriptive "organization" regardless, since that's what an
+    API consumer reads, unrelated to the cache key namespace.
+    """
     return {
         "creator": {"creatorId": scope_value},
-        "organization": {"organization": scope_value},
+        "org": {"organization": scope_value},
         "branch": {"branch": scope_value},
         "global": {"scope": "global"},
     }[scope_type]

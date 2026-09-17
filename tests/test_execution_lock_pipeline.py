@@ -147,7 +147,17 @@ def _wire_shard_branch(monkeypatch, *, collect_spy=None):
     monkeypatch.setattr(history_worker_handler, "S3TrackingManifestStore", lambda bucket_name: object())
     monkeypatch.setattr(history_worker_handler, "S3PartialRankingStore", _FakePartialStore)
 
-    def fake_collect(*, youtube, manifest_store, history_store, collection_date, shard, dimensions_by_creator, observed_at):
+    def fake_collect(
+        *,
+        youtube,
+        manifest_store,
+        history_store,
+        video_master_store,
+        collection_date,
+        shard,
+        dimensions_by_creator,
+        observed_at,
+    ):
         if collect_spy is not None:
             collect_spy(collection_date=collection_date, shard=shard)
         return _FakeCollectResult()

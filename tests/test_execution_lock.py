@@ -71,10 +71,86 @@ def test_acquire_allowed_when_no_row_exists(lock_table):
     assert int(row["expiresAt"]) == int(_now().timestamp()) + execution_lock.ACQUIRE_LEASE_SECONDS
 
 
+class _SpyTable:
+    """Wraps the real (moto-backed) table, recording every put_item call's kwargs.
+
+    Needed because moto does not enforce DynamoDB's real "every declared
+    ExpressionAttributeValues key must be referenced somewhere in the
+    request's own expressions" validation -- the exact rule the production
+    ValidationException (H1) violated. Asserting against these captured
+    kwargs directly is what actually proves the fix, since moto accepting
+    the call proves nothing about real DynamoDB accepting it too.
+    """
+
+    def __init__(self, real_table):
+        self._real = real_table
+        self.calls: list[dict] = []
+
+    def put_item(self, **kwargs):
+        self.calls.append(kwargs)
+        return self._real.put_item(**kwargs)
+
+
 def test_acquire_rejected_when_in_progress_and_not_expired(lock_table):
     acquire_execution_lock(report_date=REPORT_DATE, owner_token="exec-1", now=_now())
     with pytest.raises(ExecutionLockHeldError):
         acquire_execution_lock(report_date=REPORT_DATE, owner_token="exec-2", now=_now(60))
+
+
+# --- H1 hotfix: ExpressionAttributeValues must match ConditionExpression ----
+
+
+def test_normal_acquire_does_not_declare_unused_complete_value(lock_table, monkeypatch):
+    """force_recovery=False (every normal scheduled acquire): the generated
+    ConditionExpression must not reference :complete, and ExpressionAttributeValues
+    must not declare it either -- declaring a key the condition never uses is exactly
+    what real DynamoDB's PutItem rejects with ValidationException (the H1 production
+    bug). Also asserts the general invariant: every declared value key must actually
+    appear in the condition string, not just spot-checking :complete specifically."""
+    spy = _SpyTable(execution_lock._table())
+    monkeypatch.setattr(execution_lock, "_table", lambda: spy)
+
+    acquire_execution_lock(report_date=REPORT_DATE, owner_token="exec-1", now=_now())
+
+    assert len(spy.calls) == 1
+    condition = spy.calls[0]["ConditionExpression"]
+    values = spy.calls[0]["ExpressionAttributeValues"]
+    assert ":complete" not in condition
+    assert ":complete" not in values
+    for key in values:
+        assert key in condition, f"{key!r} is declared in ExpressionAttributeValues but never used in ConditionExpression"
+
+    # Normal acquisition still actually succeeds against the real (moto) backend.
+    monkeypatch.undo()
+    row = _row()
+    assert row["status"] == "IN_PROGRESS"
+    assert row["ownerToken"] == "exec-1"
+
+
+def test_force_recovery_acquire_declares_and_uses_complete_value(lock_table, monkeypatch):
+    """force_recovery=True: the condition's recovery clause references :complete, so
+    ExpressionAttributeValues must declare it -- and recovering a COMPLETE row still
+    works correctly end to end."""
+    acquire_execution_lock(report_date=REPORT_DATE, owner_token="exec-1", now=_now())
+    mark_execution_complete(report_date=REPORT_DATE, owner_token="exec-1", now=_now(10))
+
+    spy = _SpyTable(execution_lock._table())
+    monkeypatch.setattr(execution_lock, "_table", lambda: spy)
+
+    acquire_execution_lock(report_date=REPORT_DATE, owner_token="exec-2", now=_now(20), force_recovery=True)
+
+    assert len(spy.calls) == 1
+    condition = spy.calls[0]["ConditionExpression"]
+    values = spy.calls[0]["ExpressionAttributeValues"]
+    assert "OR #status = :complete" in condition
+    assert values.get(":complete") == execution_lock.STATUS_COMPLETE
+    for key in values:
+        assert key in condition, f"{key!r} is declared in ExpressionAttributeValues but never used in ConditionExpression"
+
+    monkeypatch.undo()
+    row = _row()
+    assert row["ownerToken"] == "exec-2"
+    assert row["status"] == "IN_PROGRESS"
 
 
 def test_acquire_allowed_takeover_when_in_progress_and_expired(lock_table):

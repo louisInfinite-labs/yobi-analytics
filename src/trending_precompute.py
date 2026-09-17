@@ -25,7 +25,7 @@ from typing import Any
 from creator_master import load_creators
 from dynamodb_store import get_videos_by_creator, put_cached_trending
 from read_api import (
-    _CANONICAL_CACHE_TIME_ZONE,
+    CANONICAL_CACHE_TIME_ZONE,
     MAX_LIMIT,
     _compute_growth_results,
     _trending_response,
@@ -250,7 +250,7 @@ def _cache_one(
         report_date=report_date,
         period=period,
         ranking_type=ranking_type,
-        time_zone=_CANONICAL_CACHE_TIME_ZONE,
+        time_zone=CANONICAL_CACHE_TIME_ZONE,
     )
     key = trending_cache_key(
         scope_type=scope_type, scope_value=scope_value, period=period, ranking_type=ranking_type, report_date=report_date
