@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo, useState, type CSSProperties } from "react"
 import { Button, ConfigProvider, Drawer, Dropdown, Input, Switch } from "antd"
 import { DownOutlined, SearchOutlined } from "@ant-design/icons"
 import { useLocale } from "../../hooks/useLocale"
@@ -17,7 +17,22 @@ import { sortFlatNotificationCreatorsLikeLiveStatus } from "../../lib/notificati
 import { getAvailableTopics, type TopicCatalogId } from "../../lib/notificationTopicCatalog"
 import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, type ReminderTimeValue } from "../../lib/notificationTopics"
 import { t, type Locale } from "../../i18n/translations"
-import { useMemberTheme } from "../../theme/ThemeContext"
+import { getMemberAccent } from "../../theme/memberAccent"
+
+const NOTIFICATION_ACCENT = "#c779a3"
+
+type CreatorAccentStyle = CSSProperties & {
+  "--creator-accent": string
+  "--creator-accent-soft": string
+}
+
+function creatorAccentStyle(creator: NotificationCreator): CreatorAccentStyle {
+  const accent = getMemberAccent(creator.youtubeChannelId)
+  return {
+    "--creator-accent": accent.primary,
+    "--creator-accent-soft": accent.soft,
+  }
+}
 
 interface TopicCreatorManagementDrawerProps {
   /** null closes the drawer -- also doubles as "which topic is open". */
@@ -159,7 +174,7 @@ function CreatorRow({ topicId, creator }: { topicId: TopicCatalogId; creator: No
   const { isLiveEnabled, setLiveEnabled, isNewVideoEnabled, setNewVideoEnabled } = useTopicNotificationPreferences()
 
   return (
-    <div className="topic-creator-drawer__row">
+    <div className="topic-creator-drawer__row" style={creatorAccentStyle(creator)}>
       <span className="topic-creator-drawer__avatar" aria-hidden="true">
         {creator.displayName.trim().charAt(0)}
       </span>
@@ -199,7 +214,6 @@ function CreatorRow({ topicId, creator }: { topicId: TopicCatalogId; creator: No
  * Live/New Video switches (useCreatorNotificationPreferences, untouched). */
 export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorManagementDrawerProps) {
   const [locale] = useLocale()
-  const { theme } = useMemberTheme()
   const { favorites } = useFavoriteCreators()
   const [searchQuery, setSearchQuery] = useState("")
 
@@ -224,7 +238,44 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
   const drawerTitle = topicDef ? t(locale, "notificationSettings.managementDrawerTitle", { topic: t(locale, topicDef.labelKey) }) : ""
 
   return (
-    <ConfigProvider theme={{ token: { colorPrimary: theme.primary } }}>
+    <ConfigProvider
+      theme={{
+        token: { colorPrimary: NOTIFICATION_ACCENT },
+        components: {
+          Drawer: {
+            colorBgElevated: "#17141d",
+            colorText: "#f3eff7",
+            colorIcon: "#b9b1c5",
+            colorIconHover: "#f3eff7",
+          },
+          Input: {
+            colorBgContainer: "#211d29",
+            colorBorder: "#393342",
+            colorText: "#f3eff7",
+            colorTextPlaceholder: "#948b9f",
+          },
+          Switch: {
+            colorPrimary: NOTIFICATION_ACCENT,
+            colorPrimaryHover: "#d28db2",
+            colorTextQuaternary: "#4a4452",
+          },
+          Button: {
+            defaultBg: "#211d29",
+            defaultBorderColor: "#4a4352",
+            defaultColor: "#f3eff7",
+            defaultHoverBg: "#292432",
+            defaultHoverBorderColor: NOTIFICATION_ACCENT,
+            defaultHoverColor: "#f3eff7",
+          },
+          Dropdown: {
+            colorBgElevated: "#211d29",
+            colorText: "#f3eff7",
+            controlItemBgActive: "rgba(199, 121, 163, 0.18)",
+            controlItemBgActiveHover: "rgba(199, 121, 163, 0.24)",
+          },
+        },
+      }}
+    >
       <Drawer open={topicId !== null} onClose={onClose} title={drawerTitle} size={480} className="topic-creator-drawer">
         {topicId && (
           <div className="topic-creator-drawer__content">

@@ -210,7 +210,6 @@ export function MyOshiSettings() {
                         onChange={setDefaultOshiId}
                         options={subgroup.creators.map((creator) => ({
                           value: creator.channelId,
-                          title: creator.channelName.replace(/\n/g, " "),
                           label: <CreatorSegmentLabel creator={creator} />,
                         }))}
                       />

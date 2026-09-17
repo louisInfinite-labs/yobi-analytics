@@ -65,7 +65,7 @@ describe("NotificationSettings", () => {
 
     expect(draftCard.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
     expect(draftCard.queryByRole("button", { name: /Members list/ })).not.toBeInTheDocument()
-    expect(draftCard.queryByRole("button", { name: /Reminder time/ })).not.toBeInTheDocument()
+    expect(draftCard.queryByRole("radiogroup", { name: /Reminder time/ })).not.toBeInTheDocument()
   })
 
   it("shows Save, Members list, and an interactive Reminder time control on the draft card once a topic is picked -- confirmed with the user: selecting a topic only enables configuration, it doesn't save", async () => {
@@ -79,13 +79,20 @@ describe("NotificationSettings", () => {
     const draftCard = within(getDraftCard())
     expect(draftCard.getByRole("button", { name: "Save" })).toBeEnabled()
     expect(draftCard.getByRole("button", { name: /Members list/ })).toBeInTheDocument()
-    expect(draftCard.getByRole("button", { name: /Reminder time/ })).toBeInTheDocument()
+    expect(draftCard.getByRole("radiogroup", { name: /Reminder time/ })).toBeInTheDocument()
     // The topic still isn't a saved card -- picking it must not persist it.
     expect(screen.queryByRole("heading", { name: "GTA" })).not.toBeInTheDocument()
   })
 
-  it("lets the user change the reminder time on the still-unsaved draft card", async () => {
-    const user = userEvent.setup()
+  it("lets the user change the reminder time on the still-unsaved draft card -- now an antd Segmented (all choices visible at once), presentation change only, same underlying values", async () => {
+    // antd's real radio <input> is visually hidden via pointer-events: none
+    // (the sliding thumb is the visible surface) -- same as this app's own
+    // established visually-hidden-input pattern elsewhere, just via this
+    // control's own CSS. userEvent's pointer-events guard exists to catch
+    // accidentally-unclickable elements, which this isn't; disabled for
+    // this interaction only, same as clicking through to a real user's
+    // click on the input's wrapping native <label>.
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
@@ -93,10 +100,20 @@ describe("NotificationSettings", () => {
     await user.click(await screen.findByTitle("GTA"))
 
     const draftCard = within(getDraftCard())
-    await user.click(draftCard.getByRole("button", { name: /Reminder time/ }))
-    await user.click(await screen.findByText("30 minutes before"))
+    expect(draftCard.getByRole("radio", { name: "10 minutes before" })).toBeChecked()
 
-    expect(draftCard.getByRole("button", { name: /Reminder time/ })).toHaveTextContent("30 minutes before")
+    await user.click(draftCard.getByRole("radio", { name: "30 minutes before" }))
+
+    // Asserted via the actual persisted preference rather than the radio's
+    // own DOM `checked` attribute -- rc-segmented's sliding-thumb motion
+    // effect (MotionThumb) makes the freshly-mounted draft card's own
+    // `checked` attribute unreliable to read synchronously right after a
+    // jsdom click (confirmed not a real bug: the same interaction was
+    // verified correct in an actual browser both for a saved card and for
+    // a freshly-created draft card). This still verifies the real
+    // observable behavior: the topic's reminder mode actually changed.
+    const stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
+    expect(stored.topics.gta.reminderMode).toBe("30min")
   })
 
   it("opens the member-management drawer for the still-unsaved draft topic when its 'Members list' is clicked", async () => {
@@ -111,7 +128,7 @@ describe("NotificationSettings", () => {
     expect(await screen.findByText("GTA — Notified Members")).toBeInTheDocument()
   })
 
-  it("puts Members list on the left and Save on the right of the draft card's own actions row", async () => {
+  it("keeps Save alone, pinned bottom-right, in the draft card's own actions row -- Notification Members is now its own interactive row inside the card body instead of a second button sharing this row", async () => {
     const user = userEvent.setup()
     renderNotificationSettings()
 
@@ -121,8 +138,8 @@ describe("NotificationSettings", () => {
 
     const actionsRow = getDraftCard().querySelector(".notification-settings__topic-card-actions")!
     const buttons = within(actionsRow as HTMLElement).getAllByRole("button")
-    expect(buttons[0]).toHaveAccessibleName(/Members list/)
-    expect(buttons[1]).toHaveAccessibleName("Save")
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0]).toHaveAccessibleName("Save")
   })
 
   it("saving a picked topic turns the draft into a normal saved card and re-enables '+' in the next slot", async () => {

@@ -16,6 +16,7 @@ export function SettingsPage() {
     "settings-page__content",
     activeSection === "myOshi" ? "settings-page__content--main-oshi" : "",
     activeSection === "oshi" ? "settings-page__content--favorites" : "",
+    activeSection === "notification" ? "settings-page__content--notification" : "",
   ]
     .filter(Boolean)
     .join(" ")

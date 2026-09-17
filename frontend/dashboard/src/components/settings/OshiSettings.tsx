@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type CSSProperties } from "react"
 import { Checkbox, ConfigProvider, Segmented } from "antd"
 import { Heart } from "lucide-react"
 import type { MockCreator } from "../../data/mockCreators"
@@ -24,6 +24,28 @@ function subgroupTitle(locale: Locale, label: string): string {
 }
 
 type ViewMode = "all" | "favorites"
+
+type CreatorAccentStyle = CSSProperties & {
+  "--creator-accent": string
+  "--creator-accent-soft": string
+  "--creator-accent-text": string
+}
+
+/** Same per-creator accent variables, same helper shape, as Oshi Settings'
+ * own creatorAccentStyle (MyOshiSettings.tsx) -- confirmed with the user:
+ * bring that hover-name-color logic over to this page too. Kept as its own
+ * copy rather than importing from a sibling page component (that page's
+ * own internal helper, not a shared module) to avoid coupling the two
+ * pages together over an implementation detail neither exposes on
+ * purpose. */
+function creatorAccentStyle(creator: MockCreator): CreatorAccentStyle {
+  const accent = getMemberAccent(creator.channelId)
+  return {
+    "--creator-accent": accent.primary,
+    "--creator-accent-soft": accent.soft,
+    "--creator-accent-text": accent.textAccent,
+  }
+}
 
 /** One roster tile: avatar + name + a favorite indicator, all reading/
  * writing the SAME shared favorites store Live Status itself uses
@@ -64,6 +86,7 @@ function FavoriteTile({ creator }: { creator: MockCreator }) {
   return (
     <Checkbox
       className={`favorites-roster__tile${isFavorite ? " favorites-roster__tile--selected" : ""}`}
+      style={creatorAccentStyle(creator)}
       checked={isFavorite}
       onChange={() => toggleFavorite(creator.channelId)}
       aria-label={t(locale, isFavorite ? "oshiSettings.removeFavoriteAria" : "oshiSettings.addFavoriteAria", {
