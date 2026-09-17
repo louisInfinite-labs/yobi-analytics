@@ -953,3 +953,28 @@ button.video-table__title-cell {
   font-size: 0.9em;
   z-index: 1100;
 }
+
+/* ============ Comparison order badge (MT-10) ============ */
+
+/* Anchored via `position: absolute` at the top-right corner of a
+   `position: relative` avatar wrapper (owned by whichever later microtask
+   renders a real selectable creator avatar; see ComparisonOrderBadge.tsx). */
+.comparison-order-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--theme-primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  box-shadow: var(--shadow-sm);
+}
