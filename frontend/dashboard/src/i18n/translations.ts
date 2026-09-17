@@ -15,6 +15,8 @@ export type TranslationKey =
   | "creatorStatusList.emptyFavorites"
   | "creatorStatusList.emptySearch"
   | "creatorStatusList.switchOshiTo"
+  | "creatorStatusList.otherGroupLabel"
+  | "creatorStatusList.gamersGroupLabel"
   | "recentVideos.tag.latestVideos"
   | "recentVideos.tag.latestLive"
   | "recentVideos.tag.all"
@@ -55,10 +57,23 @@ export type TranslationKey =
   | "mainNavbar.settings"
   | "settingsSecondaryNavbar.title"
   | "settingsSecondaryNavbar.navAriaLabel"
+  | "settingsSecondaryNavbar.myOshiSettings"
   | "settingsSecondaryNavbar.oshiSettings"
   | "settingsSecondaryNavbar.notificationSettings"
-  | "settingsSecondaryNavbar.languageSettings"
-  | "oshiSettings.comingSoon"
+  | "myOshiSettings.selectAria"
+  | "myOshiSettings.pageTitle"
+  | "myOshiSettings.statusMarker"
+  | "myOshiSettings.presentationAria"
+  | "myOshiSettings.rosterAria"
+  | "oshiSettings.searchPlaceholder"
+  | "oshiSettings.noResults"
+  | "oshiSettings.addFavoriteAria"
+  | "oshiSettings.removeFavoriteAria"
+  | "oshiSettings.otherGroupLabel"
+  | "oshiSettings.gamersGroupLabel"
+  | "oshiSettings.pageTitle"
+  | "oshiSettings.selectedCountLabel"
+  | "oshiSettings.viewFilter.favoritesOnly"
   | "notificationSettings.liveColumnHeader"
   | "notificationSettings.newVideoColumnHeader"
   | "notificationSettings.liveSwitchAriaLabel"
@@ -67,7 +82,31 @@ export type TranslationKey =
   | "notificationSettings.gamersGroupLabel"
   | "notificationSettings.searchPlaceholder"
   | "notificationSettings.noResults"
-  | "languageSettings.comingSoon"
+  | "notificationSettings.defaultReminderLabel"
+  | "notificationSettings.reminder.atStart"
+  | "notificationSettings.reminder.10min"
+  | "notificationSettings.reminder.30min"
+  | "notificationSettings.reminder.1hour"
+  | "notificationSettings.reminderColumnHeader"
+  | "notificationSettings.reminderSelectAriaLabel"
+  | "notificationSettings.topicReminderMode.memberChoice"
+  | "notificationSettings.reminderNotInEffectHint"
+  | "notificationSettings.notifiedMembersLabel"
+  | "notificationSettings.selectedCountLabel"
+  | "notificationSettings.namePreviewSeparator"
+  | "notificationSettings.noSelectedMembers"
+  | "notificationSettings.manageMembersButton"
+  | "notificationSettings.managementDrawerTitle"
+  | "notificationSettings.favoritesGroupLabel"
+  | "notificationSettings.topic.all"
+  | "notificationSettings.topicCatalog.gta"
+  | "notificationSettings.topicCatalog.sevenDaysToDie"
+  | "notificationSettings.topicCatalog.mahjongSoul"
+  | "notificationSettings.topicCatalog.endfield"
+  | "notificationSettings.saveTopicButton"
+  | "notificationSettings.topicSelectPlaceholder"
+  | "notificationSettings.topicSelectAriaLabel"
+  | "notificationSettings.addTopicButtonAriaLabel"
   | "languageSettings.picker.zhTW"
   | "languageSettings.picker.en"
   | "languageSettings.picker.ja"
@@ -83,6 +122,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.emptyFavorites": "尚未有收藏。",
     "creatorStatusList.emptySearch": "找不到符合的創作者。",
     "creatorStatusList.switchOshiTo": "切換推し為 {{creatorName}}",
+    "creatorStatusList.otherGroupLabel": "其他",
+    "creatorStatusList.gamersGroupLabel": "Gamers",
     "recentVideos.tag.latestVideos": "最新影片",
     "recentVideos.tag.latestLive": "最新直播",
     "recentVideos.tag.all": "ALL",
@@ -123,19 +164,56 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "設定",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
-    "settingsSecondaryNavbar.oshiSettings": "我推設定",
-    "settingsSecondaryNavbar.notificationSettings": "推送設定",
-    "settingsSecondaryNavbar.languageSettings": "語言設定",
-    "oshiSettings.comingSoon": "我推設定即將推出。",
+    "settingsSecondaryNavbar.myOshiSettings": "我推設定",
+    "settingsSecondaryNavbar.oshiSettings": "收藏名單",
+    "settingsSecondaryNavbar.notificationSettings": "推送通知(直播 / 新片)",
+    "oshiSettings.searchPlaceholder": "搜尋成員",
+    "oshiSettings.noResults": "找不到符合的成員",
+    "oshiSettings.addFavoriteAria": "將 {{name}} 加入我推",
+    "oshiSettings.removeFavoriteAria": "將 {{name}} 從我推移除",
+    "oshiSettings.otherGroupLabel": "其他",
+    "oshiSettings.gamersGroupLabel": "Gamers",
+    "oshiSettings.pageTitle": "我的收藏",
+    "oshiSettings.selectedCountLabel": "已選 {{count}} 人",
+    "oshiSettings.viewFilter.favoritesOnly": "收藏",
     "notificationSettings.liveColumnHeader": "直播",
     "notificationSettings.newVideoColumnHeader": "新片",
     "notificationSettings.liveSwitchAriaLabel": "{{name}} 直播通知",
     "notificationSettings.newVideoSwitchAriaLabel": "{{name}} 新片通知",
     "notificationSettings.otherGroupLabel": "其他",
     "notificationSettings.gamersGroupLabel": "Gamers",
-    "notificationSettings.searchPlaceholder": "搜尋成員...",
+    "notificationSettings.searchPlaceholder": "搜尋成員",
     "notificationSettings.noResults": "找不到符合的成員",
-    "languageSettings.comingSoon": "語言設定即將推出。",
+    "notificationSettings.defaultReminderLabel": "提醒時間",
+    "notificationSettings.reminder.atStart": "開播時",
+    "notificationSettings.reminder.10min": "10 分鐘前",
+    "notificationSettings.reminder.30min": "30 分鐘前",
+    "notificationSettings.reminder.1hour": "1 小時前",
+    "notificationSettings.reminderColumnHeader": "提醒時間",
+    "notificationSettings.reminderSelectAriaLabel": "{{name}} 的提醒時間",
+    "notificationSettings.topicReminderMode.memberChoice": "各成員為準",
+    "notificationSettings.reminderNotInEffectHint": "未生效（套用主題時間）",
+    "notificationSettings.notifiedMembersLabel": "通知成員",
+    "notificationSettings.selectedCountLabel": "已選 {{count}} 人",
+    "notificationSettings.namePreviewSeparator": "、",
+    "notificationSettings.noSelectedMembers": "尚未選擇任何成員",
+    "notificationSettings.manageMembersButton": "成員名單",
+    "notificationSettings.managementDrawerTitle": "{{topic}} — 通知成員",
+    "notificationSettings.favoritesGroupLabel": "收藏",
+    "notificationSettings.topic.all": "全部",
+    "notificationSettings.topicCatalog.gta": "GTA",
+    "notificationSettings.topicCatalog.sevenDaysToDie": "7 DAYS TO DIE",
+    "notificationSettings.topicCatalog.mahjongSoul": "雀魂",
+    "notificationSettings.topicCatalog.endfield": "終末地",
+    "notificationSettings.saveTopicButton": "儲存",
+    "notificationSettings.topicSelectPlaceholder": "選擇主題",
+    "notificationSettings.topicSelectAriaLabel": "選擇通知主題",
+    "notificationSettings.addTopicButtonAriaLabel": "新增主題",
+    "myOshiSettings.selectAria": "將 {{name}} 設為我推",
+    "myOshiSettings.pageTitle": "MAIN OSHI SELECT",
+    "myOshiSettings.statusMarker": "MAIN OSHI",
+    "myOshiSettings.presentationAria": "目前主推: {{name}}",
+    "myOshiSettings.rosterAria": "我推成員選擇列表",
     "languageSettings.picker.zhTW": "繁體中文",
     "languageSettings.picker.en": "英文",
     "languageSettings.picker.ja": "日文",
@@ -150,6 +228,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.emptyFavorites": "No favorites yet.",
     "creatorStatusList.emptySearch": "No matching creator.",
     "creatorStatusList.switchOshiTo": "Switch Oshi to {{creatorName}}",
+    "creatorStatusList.otherGroupLabel": "Other",
+    "creatorStatusList.gamersGroupLabel": "Gamers",
     "recentVideos.tag.latestVideos": "Latest Videos",
     "recentVideos.tag.latestLive": "Latest Live",
     "recentVideos.tag.all": "ALL",
@@ -190,19 +270,56 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "Settings",
     "settingsSecondaryNavbar.title": "Settings",
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
-    "settingsSecondaryNavbar.oshiSettings": "Oshi Settings",
-    "settingsSecondaryNavbar.notificationSettings": "Notification Settings",
-    "settingsSecondaryNavbar.languageSettings": "Language Settings",
-    "oshiSettings.comingSoon": "Oshi Settings is coming soon.",
+    "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
+    "settingsSecondaryNavbar.oshiSettings": "Favorites List",
+    "settingsSecondaryNavbar.notificationSettings": "Live/Video Notifications",
+    "oshiSettings.searchPlaceholder": "Search creators",
+    "oshiSettings.noResults": "No creators found",
+    "oshiSettings.addFavoriteAria": "Add {{name}} to favorites",
+    "oshiSettings.removeFavoriteAria": "Remove {{name}} from favorites",
+    "oshiSettings.otherGroupLabel": "Other",
+    "oshiSettings.gamersGroupLabel": "Gamers",
+    "oshiSettings.pageTitle": "My Favorites",
+    "oshiSettings.selectedCountLabel": "{{count}} selected",
+    "oshiSettings.viewFilter.favoritesOnly": "Favorites",
     "notificationSettings.liveColumnHeader": "Live",
     "notificationSettings.newVideoColumnHeader": "New Video",
     "notificationSettings.liveSwitchAriaLabel": "{{name}} live notifications",
     "notificationSettings.newVideoSwitchAriaLabel": "{{name}} new video notifications",
     "notificationSettings.otherGroupLabel": "Other",
     "notificationSettings.gamersGroupLabel": "Gamers",
-    "notificationSettings.searchPlaceholder": "Search creators...",
+    "notificationSettings.searchPlaceholder": "Search creators",
     "notificationSettings.noResults": "No creators found",
-    "languageSettings.comingSoon": "Language Settings is coming soon.",
+    "notificationSettings.defaultReminderLabel": "Reminder time",
+    "notificationSettings.reminder.atStart": "At start",
+    "notificationSettings.reminder.10min": "10 minutes before",
+    "notificationSettings.reminder.30min": "30 minutes before",
+    "notificationSettings.reminder.1hour": "1 hour before",
+    "notificationSettings.reminderColumnHeader": "Reminder time",
+    "notificationSettings.reminderSelectAriaLabel": "{{name}}'s reminder time",
+    "notificationSettings.topicReminderMode.memberChoice": "Member's choice",
+    "notificationSettings.reminderNotInEffectHint": "Not in effect (using topic time)",
+    "notificationSettings.notifiedMembersLabel": "Notified members",
+    "notificationSettings.selectedCountLabel": "{{count}} selected",
+    "notificationSettings.namePreviewSeparator": ", ",
+    "notificationSettings.noSelectedMembers": "No members selected yet",
+    "notificationSettings.manageMembersButton": "Members list",
+    "notificationSettings.managementDrawerTitle": "{{topic}} — Notified Members",
+    "notificationSettings.favoritesGroupLabel": "Favorites",
+    "notificationSettings.topic.all": "All",
+    "notificationSettings.topicCatalog.gta": "GTA",
+    "notificationSettings.topicCatalog.sevenDaysToDie": "7 DAYS TO DIE",
+    "notificationSettings.topicCatalog.mahjongSoul": "雀魂",
+    "notificationSettings.topicCatalog.endfield": "Endfield",
+    "notificationSettings.saveTopicButton": "Save",
+    "notificationSettings.topicSelectPlaceholder": "Select a topic",
+    "notificationSettings.topicSelectAriaLabel": "Select notification topic",
+    "notificationSettings.addTopicButtonAriaLabel": "Add topic",
+    "myOshiSettings.selectAria": "Set {{name}} as my Oshi",
+    "myOshiSettings.pageTitle": "MAIN OSHI SELECT",
+    "myOshiSettings.statusMarker": "MAIN OSHI",
+    "myOshiSettings.presentationAria": "Current Main Oshi: {{name}}",
+    "myOshiSettings.rosterAria": "Main Oshi creator selector",
     "languageSettings.picker.zhTW": "Traditional Chinese",
     "languageSettings.picker.en": "English",
     "languageSettings.picker.ja": "Japanese",
@@ -217,6 +334,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.emptyFavorites": "まだお気に入りがありません。",
     "creatorStatusList.emptySearch": "該当する配信者が見つかりません。",
     "creatorStatusList.switchOshiTo": "推しを{{creatorName}}に切り替える",
+    "creatorStatusList.otherGroupLabel": "その他",
+    "creatorStatusList.gamersGroupLabel": "ゲーマーズ",
     "recentVideos.tag.latestVideos": "最新動画",
     "recentVideos.tag.latestLive": "最新配信",
     "recentVideos.tag.all": "ALL",
@@ -257,19 +376,56 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "設定",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
-    "settingsSecondaryNavbar.oshiSettings": "推し設定",
-    "settingsSecondaryNavbar.notificationSettings": "通知設定",
-    "settingsSecondaryNavbar.languageSettings": "言語設定",
-    "oshiSettings.comingSoon": "推し設定は近日公開予定です。",
+    "settingsSecondaryNavbar.myOshiSettings": "推し設定",
+    "settingsSecondaryNavbar.oshiSettings": "お気に入りリスト",
+    "settingsSecondaryNavbar.notificationSettings": "通知設定(配信 / 新着動画)",
+    "oshiSettings.searchPlaceholder": "メンバーを検索",
+    "oshiSettings.noResults": "該当するメンバーが見つかりません",
+    "oshiSettings.addFavoriteAria": "{{name}}を推しに追加",
+    "oshiSettings.removeFavoriteAria": "{{name}}を推しから削除",
+    "oshiSettings.otherGroupLabel": "その他",
+    "oshiSettings.gamersGroupLabel": "ゲーマーズ",
+    "oshiSettings.pageTitle": "マイお気に入り",
+    "oshiSettings.selectedCountLabel": "{{count}} 人選択中",
+    "oshiSettings.viewFilter.favoritesOnly": "お気に入り",
     "notificationSettings.liveColumnHeader": "配信",
     "notificationSettings.newVideoColumnHeader": "新着動画",
     "notificationSettings.liveSwitchAriaLabel": "{{name}} の配信通知",
     "notificationSettings.newVideoSwitchAriaLabel": "{{name}} の新着動画通知",
     "notificationSettings.otherGroupLabel": "その他",
     "notificationSettings.gamersGroupLabel": "ゲーマーズ",
-    "notificationSettings.searchPlaceholder": "メンバーを検索...",
+    "notificationSettings.searchPlaceholder": "メンバーを検索",
     "notificationSettings.noResults": "該当するメンバーが見つかりません",
-    "languageSettings.comingSoon": "言語設定は近日公開予定です。",
+    "notificationSettings.defaultReminderLabel": "リマインド時間",
+    "notificationSettings.reminder.atStart": "配信開始時",
+    "notificationSettings.reminder.10min": "10分前",
+    "notificationSettings.reminder.30min": "30分前",
+    "notificationSettings.reminder.1hour": "1時間前",
+    "notificationSettings.reminderColumnHeader": "リマインド時間",
+    "notificationSettings.reminderSelectAriaLabel": "{{name}} のリマインド時間",
+    "notificationSettings.topicReminderMode.memberChoice": "各メンバーの設定",
+    "notificationSettings.reminderNotInEffectHint": "現在は無効（トピックの時間を使用中）",
+    "notificationSettings.notifiedMembersLabel": "通知メンバー",
+    "notificationSettings.selectedCountLabel": "{{count}} 人選択中",
+    "notificationSettings.namePreviewSeparator": "、",
+    "notificationSettings.noSelectedMembers": "まだメンバーが選択されていません",
+    "notificationSettings.manageMembersButton": "リスト管理",
+    "notificationSettings.managementDrawerTitle": "{{topic}} — 通知メンバー",
+    "notificationSettings.favoritesGroupLabel": "お気に入り",
+    "notificationSettings.topic.all": "全部",
+    "notificationSettings.topicCatalog.gta": "GTA",
+    "notificationSettings.topicCatalog.sevenDaysToDie": "7 DAYS TO DIE",
+    "notificationSettings.topicCatalog.mahjongSoul": "雀魂",
+    "notificationSettings.topicCatalog.endfield": "エンドフィールド",
+    "notificationSettings.saveTopicButton": "保存",
+    "notificationSettings.topicSelectPlaceholder": "トピックを選択",
+    "notificationSettings.topicSelectAriaLabel": "通知トピックを選択",
+    "notificationSettings.addTopicButtonAriaLabel": "トピックを追加",
+    "myOshiSettings.selectAria": "{{name}} を推しに設定",
+    "myOshiSettings.pageTitle": "MAIN OSHI SELECT",
+    "myOshiSettings.statusMarker": "MAIN OSHI",
+    "myOshiSettings.presentationAria": "現在の推し: {{name}}",
+    "myOshiSettings.rosterAria": "推しメンバー選択リスト",
     "languageSettings.picker.zhTW": "繁体中国語",
     "languageSettings.picker.en": "英語",
     "languageSettings.picker.ja": "日本語",

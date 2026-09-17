@@ -548,6 +548,17 @@
   padding: var(--space-2) var(--space-3) var(--space-1);
 }
 
+/* One level below .creator-status-list__group-label (branch, e.g. "VSPO
+   JP") -- the generation/unit heading within it (e.g. "1期生", "Gamers"),
+   same subgroup breakdown Notification Settings/Oshi Settings already
+   show. Smaller and unstyled (no uppercase/letter-spacing) so the branch
+   label above it stays the more prominent of the two. */
+.creator-status-list__subgroup-label {
+  font-size: 0.6rem;
+  color: rgba(242, 240, 245, 0.38);
+  padding: var(--space-1) var(--space-3) 0;
+}
+
 /* Rows stack as flex items (not plain block flow) purely so adjacent rows'
    vertical margins do NOT collapse -- each row donates 5px top + 5px bottom,
    so two neighboring rows add up to exactly 10px between them (5+5), while
@@ -572,13 +583,15 @@
   margin: 5px 10px;
 }
 
-/* The first row in each group needs a full 10px from the group label above
-   it (spec: icon-to-organization-label = 10px, not the 5px used between two
-   icons) -- override just this row's own top margin rather than touching
-   the label's spacing (its own padding stays exactly as it was). Adjacent-
-   sibling combinator, not :first-of-type -- the label is also a <div>, so
-   it (not the first row) already counts as "first of type" among divs. */
-.creator-status-list__group-label + .creator-status-list__swipe-row {
+/* The first row after EITHER label (branch, or -- when present -- the
+   subgroup beneath it) needs a full 10px above it (spec: icon-to-
+   organization-label = 10px, not the 5px used between two icons) --
+   override just this row's own top margin rather than touching either
+   label's own spacing. Adjacent-sibling combinator, not :first-of-type --
+   the labels are also <div>s, so one of them (not the first row) already
+   counts as "first of type" among divs. */
+.creator-status-list__group-label + .creator-status-list__swipe-row,
+.creator-status-list__subgroup-label + .creator-status-list__swipe-row {
   margin-top: 10px;
 }
 

@@ -1,14 +1,21 @@
 import { useLocale } from "../../hooks/useLocale"
 import { t, type TranslationKey } from "../../i18n/translations"
+import { LanguagePicker } from "./LanguagePicker"
 
-export type SettingsSection = "oshi" | "notification" | "language"
+export type SettingsSection = "myOshi" | "oshi" | "notification"
 
-/** Fixed order per this feature's own spec -- Oshi Settings, Notification
- * Settings, Language Settings -- not to be reordered. */
+/** Fixed order -- confirmed with the user: 我推設定 (myOshi, a new blank
+ * placeholder section -- see MyOshiSettings.tsx) now leads, followed by the
+ * pre-existing Favorites List (oshi, this feature's own original "oshi"
+ * section id -- kept as-is since nothing besides its own display label
+ * changed) and Notification Settings. Language switching isn't a nav
+ * section/page of its own -- LanguagePicker below is pinned to this
+ * navbar's own bottom instead, always visible regardless of which section
+ * is active. */
 const NAV_ITEMS: { section: SettingsSection; labelKey: TranslationKey }[] = [
+  { section: "myOshi", labelKey: "settingsSecondaryNavbar.myOshiSettings" },
   { section: "oshi", labelKey: "settingsSecondaryNavbar.oshiSettings" },
   { section: "notification", labelKey: "settingsSecondaryNavbar.notificationSettings" },
-  { section: "language", labelKey: "settingsSecondaryNavbar.languageSettings" },
 ]
 
 /** Settings' own secondary nav, to MainNavbar's right -- Mantine's
@@ -43,6 +50,7 @@ export function SettingsSecondaryNavbar({
           {t(locale, item.labelKey)}
         </button>
       ))}
+      <LanguagePicker />
     </nav>
   )
 }

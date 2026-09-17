@@ -1,5 +1,9 @@
 import rawCreators from "../data/creators.json"
+import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY, subgroupsForBranch } from "./hololiveSubgrouping"
+import { sortNotificationCreatorsLikeLiveStatus } from "./notificationCreatorOrder"
 import type { BranchKey } from "../types/domain"
+
+export { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY }
 
 /** The real Creator Master roster (backend's src/creators.json, copied
  * here as this app's only source for "every creator" -- 112 entries as of
@@ -61,6 +65,16 @@ function withDisplayNameOverride(creator: NotificationCreator): NotificationCrea
 
 const ALL_CREATORS = (rawCreators as NotificationCreator[]).map(withDisplayNameOverride)
 
+/** The same real Creator Master roster ALL_CREATORS above already loads,
+ * exposed flat (not grouped) -- for consumers that need to resolve a
+ * creatorId to its creator record (e.g. the topic Notification Settings'
+ * compact "already selected" name preview) or filter/partition the whole
+ * roster themselves (e.g. TopicCreatorManagementDrawer's own Favorites vs.
+ * agency-group split) rather than walking the grouped tree. */
+export function getAllNotificationCreators(): NotificationCreator[] {
+  return ALL_CREATORS
+}
+
 export interface CreatorSubgroup {
   /** null for a branch with no generation/unit subdivision (VSPO JP/EN,
    * per this feature's own spec) -- rendered with no subgroup header. */
@@ -92,157 +106,26 @@ const AGENCY_REGION_ORDER: { agencyLabel: string; branch: BranchKey; regionLabel
   { agencyLabel: "HOLOLIVE", branch: "holo_id", regionLabel: "ID" },
 ]
 
-function primaryGroupKey(creator: NotificationCreator): string {
-  return creator.groupKey[0] ?? ""
-}
-
-/** Sentinel subgroup label for the catch-all "Other" bucket (see
- * groupHololiveJp below) -- never rendered directly; the caller looks up
- * this exact string and renders `t(locale, "notificationSettings.
- * otherGroupLabel")` in its place, so the label reads correctly in
- * whichever locale is active instead of one fixed spelling. */
-export const OTHER_GROUP_LABEL_KEY = "__other__"
-
-/** Sentinel subgroup label for the Gamers unit (see groupHololiveJp
- * below) -- never rendered directly; the caller looks up this exact
- * string and renders `t(locale, "notificationSettings.gamersGroupLabel")`
- * in its place (confirmed wording: "Gamers" in both zh-TW and English,
- * "ゲーマーズ" in Japanese -- not a plain pass-through of one fixed
- * spelling like Myth/Promise/ReGLOSS/FLOW GLOW below). */
-export const GAMERS_GROUP_LABEL_KEY = "__gamers__"
-
-const NUMBERED_GENERATION_PATTERN = /^(\d+)期生$/
-
-/** A unit's own official channel entry (channelType "group", e.g.
- * "hololive DEV_IS ReGLOSS") sorted before its individual members,
- * confirmed ordering for ReGLOSS/FLOW GLOW below -- members otherwise
- * keep the roster's own existing order. */
-function groupChannelFirst(creators: NotificationCreator[]): NotificationCreator[] {
-  return [...creators].sort((a, b) => (a.channelType === "group" ? -1 : 0) - (b.channelType === "group" ? -1 : 0))
-}
-
-/** hololive JP's own real groupKey values include "ReGLOSS" and "FLOWGLOW"
- * (no literal "Dev_IS" tag exists in the roster) -- confirmed as two
- * separate named sections (FLOW GLOW, then ReGLOSS), each its own unit
- * channel first followed by its members, not one combined "Dev_IS"
- * section. Gamers membership is checked against a creator's FULL groupKey
- * array, not just their primary tag -- confirmed that a creator whose
- * primary tag is a numbered generation (e.g. Shirakami Fubuki, primary
- * "1期生") but who also carries the Gamers tag second still shows under
- * both her own generation AND Gamers, rather than Gamers requiring a
- * creator's primary tag to be Gamers. Anything else unrecognized (e.g. a
- * staff channel's own tag) falls into a catch-all "Other" bucket
- * (OTHER_GROUP_LABEL_KEY, not a display string -- unlike every other
- * label here, "Other" needs its own locale-specific wording rather than
- * one fixed spelling, so the caller renders it through t()) rather than
- * being silently dropped. */
-function groupHololiveJp(creators: NotificationCreator[]): CreatorSubgroup[] {
-  const numbered = new Map<number, NotificationCreator[]>()
-  const gamers: NotificationCreator[] = []
-  const flowGlow: NotificationCreator[] = []
-  const reGloss: NotificationCreator[] = []
-  const other: NotificationCreator[] = []
-
-  for (const creator of creators) {
-    const key = primaryGroupKey(creator)
-    const numberedMatch = key.match(NUMBERED_GENERATION_PATTERN)
-    if (numberedMatch) {
-      const gen = Number(numberedMatch[1])
-      const bucket = numbered.get(gen)
-      if (bucket) bucket.push(creator)
-      else numbered.set(gen, [creator])
-    } else if (key === "FLOWGLOW") {
-      flowGlow.push(creator)
-    } else if (key === "ReGLOSS") {
-      reGloss.push(creator)
-    } else if (key !== "ゲーマーズ") {
-      other.push(creator)
-    }
-
-    if (creator.groupKey.includes("ゲーマーズ")) gamers.push(creator)
-  }
-
-  const subgroups: CreatorSubgroup[] = [...numbered.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([gen, members]) => ({ label: `${gen}期生`, creators: members }))
-
-  if (gamers.length > 0) subgroups.push({ label: GAMERS_GROUP_LABEL_KEY, creators: gamers })
-  if (flowGlow.length > 0) subgroups.push({ label: "FLOW GLOW", creators: groupChannelFirst(flowGlow) })
-  if (reGloss.length > 0) subgroups.push({ label: "ReGLOSS", creators: groupChannelFirst(reGloss) })
-  if (other.length > 0) {
-    const sortedOther = [...other].sort((a, b) => a.displayName.toLowerCase().localeCompare(b.displayName.toLowerCase()))
-    subgroups.push({ label: OTHER_GROUP_LABEL_KEY, creators: sortedOther })
-  }
-  return subgroups
-}
-
-/** hololive EN's real groupKey values (Myth/Promise/Advent/Justice, in
- * debut order) -- FUWAMOCO carries ["Advent", "FUWAMOCO"], so its primary
- * key already buckets it under Advent correctly. Any future/unrecognized
- * group name is appended at the end rather than dropped. */
-const HOLOLIVE_EN_FIXED_ORDER = ["Myth", "Promise", "Advent", "Justice"]
-
-/** Shared numbered-generation grouping. Labels are the real groupKey
- * values as-is by default (e.g. hololive ID's own "1期生"/"2期生"/"3期生",
- * the same Japanese numbered-generation convention as hololive JP) --
- * formatLabel exists only for branches that need a display-only
- * transform. */
-function groupByFixedOrThenNumbered(
-  creators: NotificationCreator[],
-  fixedOrder: string[],
-  formatLabel: (key: string) => string = (key) => key,
-): CreatorSubgroup[] {
-  const byKey = new Map<string, NotificationCreator[]>()
-  for (const creator of creators) {
-    const key = primaryGroupKey(creator)
-    const bucket = byKey.get(key)
-    if (bucket) bucket.push(creator)
-    else byKey.set(key, [creator])
-  }
-
-  const numberedKeys = [...byKey.keys()]
-    .filter((key) => NUMBERED_GENERATION_PATTERN.test(key))
-    .sort((a, b) => Number(a.match(NUMBERED_GENERATION_PATTERN)![1]) - Number(b.match(NUMBERED_GENERATION_PATTERN)![1]))
-  const fixedKeys = fixedOrder.filter((key) => byKey.has(key))
-  const leftoverKeys = [...byKey.keys()].filter((key) => !numberedKeys.includes(key) && !fixedKeys.includes(key))
-
-  return [...numberedKeys, ...fixedKeys, ...leftoverKeys].map((key) => ({
-    label: formatLabel(key),
-    creators: byKey.get(key)!,
-  }))
-}
-
-/** VSPO JP/EN carry no generation/unit distinction in the real roster
- * (groupKey is always the placeholder "NO") -- a single, unlabeled
- * subgroup per this feature's own spec. */
-function groupFlat(creators: NotificationCreator[]): CreatorSubgroup[] {
-  return creators.length > 0 ? [{ label: null, creators }] : []
-}
-
-function subgroupsForBranch(branch: BranchKey, creators: NotificationCreator[]): CreatorSubgroup[] {
-  switch (branch) {
-    case "holo_jp":
-      return groupHololiveJp(creators)
-    case "holo_en":
-      return groupByFixedOrThenNumbered(creators, HOLOLIVE_EN_FIXED_ORDER)
-    case "holo_id":
-      return groupByFixedOrThenNumbered(creators, [])
-    case "vspo_jp":
-    case "vspo_en":
-      return groupFlat(creators)
-  }
-}
-
 /** Every creator in the roster, grouped into the spec's own three-level
  * tree -- Agency (VSPO/HOLOLIVE) > Region (JP/EN/ID) > Generation/Unit >
- * Creators -- in the spec's own fixed order (AGENCY_REGION_ORDER). */
+ * Creators -- in the spec's own fixed order (AGENCY_REGION_ORDER). Each
+ * branch's creators are ordered to match Live Status's own display order
+ * (sortNotificationCreatorsLikeLiveStatus) before being partitioned into
+ * generations/units -- subgroupsForBranch itself never reorders a
+ * subgroup's members (only its "Other" catch-all re-sorts, alphabetically,
+ * on its own), so feeding it an already-ordered list is what makes each
+ * subgroup come out ordered too. */
 export function groupCreatorsForNotificationSettings(): CreatorAgencyGroup[] {
   const regionGroups: CreatorRegionGroup[] = AGENCY_REGION_ORDER.map(({ branch, regionLabel }) => ({
     branch,
     regionLabel,
     subgroups: subgroupsForBranch(
       branch,
-      ALL_CREATORS.filter((creator) => creator.branch === branch),
+      sortNotificationCreatorsLikeLiveStatus(
+        branch,
+        ALL_CREATORS.filter((creator) => creator.branch === branch),
+      ),
+      (c) => c.displayName,
     ),
   })).filter((region) => region.subgroups.length > 0)
 
