@@ -26,3 +26,14 @@ build/
 
 # Kept locally for reference, deliberately not tracked/committed
 docs/aws-setup.zh-TW.md
+
+# Phase B local backfill / validation artifacts
+history_backfill_staging/
+history_backfill_run.log
+history_reducer_compat_report.json
+report_hw.json
+
+# Terraform local artifacts
+terraform/*.tfplan
+terraform/tfplan
+terraform/*_full.log

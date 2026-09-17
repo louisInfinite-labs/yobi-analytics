@@ -80,6 +80,11 @@ resource "aws_lambda_function" "api" {
   timeout                        = 60
   memory_size                    = 1024
   filename                       = local.lambda_placeholder_zip
+  # Codifies the live value (confirmed intentional, 2026-09-13) -- was
+  # previously undeclared here, so terraform wanted to strip it back to
+  # the unreserved default (-1) on every plan/apply, unrelated to any
+  # actual config change anyone made.
+  reserved_concurrent_executions = 50
 
   environment {
     variables = {
