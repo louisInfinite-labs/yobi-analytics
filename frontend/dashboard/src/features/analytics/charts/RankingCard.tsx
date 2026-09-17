@@ -1,7 +1,7 @@
 import { useState } from "react"
-import type { DailyVideoStat } from "../types/domain"
-import { formatCompactNumber, formatSignedCompactNumber } from "../lib/format"
-import { rankVideos, type RankingType } from "../lib/rankVideos"
+import type { DailyVideoStat } from "../../../types/domain"
+import { formatCompactNumber, formatSignedCompactNumber } from "../../../lib/format"
+import { rankVideos, type RankingType } from "../utils/rankVideos"
 import { GrowthBadge } from "./GrowthBadge"
 
 const TABS: { value: RankingType; label: string }[] = [

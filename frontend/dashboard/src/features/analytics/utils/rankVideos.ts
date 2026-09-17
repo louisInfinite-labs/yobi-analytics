@@ -1,4 +1,4 @@
-import type { DailyVideoStat } from "../types/domain"
+import type { DailyVideoStat } from "../../../types/domain"
 
 export type RankingType = "most_viewed" | "fastest_growing" | "trending"
 

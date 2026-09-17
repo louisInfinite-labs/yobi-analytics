@@ -2,8 +2,8 @@ import { render } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { mockVideoStats } from "../data/mockVideoStats"
 import { MemberThemeProvider } from "../theme/MemberThemeProvider"
-import { deriveChannelContribution, deriveKpis } from "./deriveAnalytics"
-import { deriveInsights } from "./deriveInsights"
+import { deriveChannelContribution, deriveKpis } from "../features/analytics/utils/deriveAnalytics"
+import { deriveInsights } from "../features/analytics/utils/deriveInsights"
 import { ALL_WIDGET_TYPES, getWidgetDefinition, renderWidget, type DashboardWidgetData } from "./widgetRegistry"
 
 const filteredStats = mockVideoStats

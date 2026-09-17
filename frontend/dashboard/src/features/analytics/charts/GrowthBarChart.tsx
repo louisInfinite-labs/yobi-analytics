@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from "recharts"
-import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion"
-import { formatCompactNumber } from "../lib/format"
-import { useMemberTheme } from "../theme/ThemeContext"
+import { usePrefersReducedMotion } from "../../../hooks/usePrefersReducedMotion"
+import { formatCompactNumber } from "../../../lib/format"
+import { useMemberTheme } from "../../../theme/ThemeContext"
 
 export interface GrowthBarChartPoint {
   label: string

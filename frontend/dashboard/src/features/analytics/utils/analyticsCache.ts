@@ -1,4 +1,4 @@
-import type { DailyVideoStat, Period } from "../types/domain"
+import type { DailyVideoStat, Period } from "../../../types/domain"
 
 const CACHE_PREFIX = "yobi-analytics-cache"
 

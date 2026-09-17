@@ -1,4 +1,4 @@
-import type { Period } from "../types/domain"
+import type { Period } from "../../../types/domain"
 
 const PERIODS: { value: Period; label: string }[] = [
   { value: "1d", label: "Today" },

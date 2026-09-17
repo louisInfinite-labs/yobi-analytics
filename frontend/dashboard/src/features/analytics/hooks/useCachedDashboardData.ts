@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { isNewer, readCache, writeCache, type CacheEntry, type CacheKey } from "../lib/analyticsCache"
+import { isNewer, readCache, writeCache, type CacheEntry, type CacheKey } from "../utils/analyticsCache"
 
 interface UseCachedDashboardDataResult {
   entry: CacheEntry | null

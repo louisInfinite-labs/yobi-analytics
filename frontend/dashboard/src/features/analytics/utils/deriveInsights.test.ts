@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { DailyVideoStat } from "../types/domain"
+import type { DailyVideoStat } from "../../../types/domain"
 import { deriveInsights } from "./deriveInsights"
 
 /** Build a minimal DailyVideoStat for a test, overriding only the given fields. */

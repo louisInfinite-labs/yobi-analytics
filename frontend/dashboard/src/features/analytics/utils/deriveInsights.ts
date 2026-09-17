@@ -1,5 +1,5 @@
-import type { DailyVideoStat, Period } from "../types/domain"
-import { formatCompactNumber, formatSignedPercent } from "./format"
+import type { DailyVideoStat, Period } from "../../../types/domain"
+import { formatCompactNumber, formatSignedPercent } from "../../../lib/format"
 import { deriveChannelContribution } from "./deriveAnalytics"
 import { rankVideos } from "./rankVideos"
 

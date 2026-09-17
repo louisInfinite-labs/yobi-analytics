@@ -1,13 +1,13 @@
 import type { ReactNode } from "react"
 import type { DailyVideoStat, Period } from "../types/domain"
 import type { WidgetDefinition, WidgetTypeId } from "../types/widget"
-import { AnimatedRingChart } from "../components/AnimatedRingChart"
-import { GrowthBarChart, type GrowthBarChartPoint } from "../components/GrowthBarChart"
-import { InsightCard } from "../components/InsightCard"
-import { KpiCard } from "../components/KpiCard"
-import { RankingCard } from "../components/RankingCard"
-import { VideoStatsTable } from "../components/VideoStatsTable"
-import type { DashboardKpis, ChannelContribution } from "./deriveAnalytics"
+import { AnimatedRingChart } from "../features/analytics/charts/AnimatedRingChart"
+import { GrowthBarChart, type GrowthBarChartPoint } from "../features/analytics/charts/GrowthBarChart"
+import { InsightCard } from "../features/analytics/charts/InsightCard"
+import { KpiCard } from "../features/analytics/charts/KpiCard"
+import { RankingCard } from "../features/analytics/charts/RankingCard"
+import { VideoStatsTable } from "../features/analytics/charts/VideoStatsTable"
+import type { DashboardKpis, ChannelContribution } from "../features/analytics/utils/deriveAnalytics"
 
 /** Every value a widget's renderer might need, already computed once by DashboardPage
  * and threaded through unchanged — Phase 7 wraps *placement*, not data computation. */

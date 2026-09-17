@@ -1,4 +1,4 @@
-import type { DailyVideoStat, Period } from "../types/domain"
+import type { DailyVideoStat, Period } from "../../../types/domain"
 
 const PERIOD_DAYS: Record<Period, number> = { "1d": 1, "7d": 7, "30d": 30 }
 

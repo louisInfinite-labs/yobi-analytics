@@ -1,4 +1,4 @@
-import { formatSignedPercent } from "../lib/format"
+import { formatSignedPercent } from "../../../lib/format"
 
 interface GrowthBadgeProps {
   percent: number | null

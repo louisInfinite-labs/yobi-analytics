@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
-import { writeCache, type CacheEntry, type CacheKey } from "../lib/analyticsCache"
+import { writeCache, type CacheEntry, type CacheKey } from "../utils/analyticsCache"
 import { useCachedDashboardData } from "./useCachedDashboardData"
 
 const key: CacheKey = { timeZone: "Asia/Tokyo", reportDate: "2026-09-03", period: "1d", dataSource: "mock" }

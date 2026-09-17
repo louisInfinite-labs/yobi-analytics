@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { formatCompactNumber } from "../lib/format"
+import { formatCompactNumber } from "../../../lib/format"
 import { GrowthBadge } from "./GrowthBadge"
 
 interface KpiCardProps {
