@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Iterable
 
 RECENT_MAX_AGE_DAYS = 30
 
@@ -81,6 +82,29 @@ def is_due_today(video_id: str, published_at: str, activity_state: str, as_of: d
     if cycle_days is None:
         return True  # unrecognized state; check it today to be safe
     return _rotation_slot(video_id, cycle_days) == as_of.toordinal() % cycle_days
+
+
+def select_due_video_ids(candidates: Iterable[tuple[str, str, str]], *, as_of: date) -> list[str]:
+    """Filter (video_id, published_at, activity_state) triples down to the
+    ones due for a fresh statistics check today, sorted for deterministic
+    batching.
+
+    Deliberately takes plain triples rather than a storage-specific record
+    type (e.g. video_master.Video): this module has no dependency on any
+    collection backend's own data model, so both the legacy Phase A
+    collector (main.py, Video Master-backed) and a future Phase B per-shard
+    collector (manifest/HistoryRow-backed) can share this exact selection
+    logic without either depending on the other's video representation. A
+    caller missing published_at/activity_state for some candidate should
+    resolve that itself (e.g. by including that id unconditionally) rather
+    than passing an incomplete triple — this function does not guess on a
+    caller's behalf beyond what is_due_today already does per-video.
+    """
+    return sorted(
+        video_id
+        for video_id, published_at, activity_state in candidates
+        if is_due_today(video_id, published_at, activity_state, as_of)
+    )
 
 
 @dataclass(frozen=True)

@@ -12,6 +12,7 @@ duplicated per scope.
 
 from __future__ import annotations
 
+import heapq
 from dataclasses import dataclass
 
 from view_growth_analytics import STATUS_OK, GrowthResult
@@ -63,16 +64,23 @@ def rank_videos(results: list[GrowthResult], ranking_type: str, limit: int | Non
             f"Unsupported ranking type {ranking_type!r}; expected one of {sorted(RANKING_TYPES)}"
         )
 
-    rankable = [(result, _metric_value(result, ranking_type)) for result in results]
-    rankable = [(result, value) for result, value in rankable if value is not None]
-    rankable.sort(key=lambda pair: pair[1], reverse=True)
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 0):
+        raise ValueError(f"limit must be a non-negative integer or None, got {limit!r}")
 
-    if limit is not None:
-        rankable = rankable[:limit]
+    rankable = (
+        (result, value)
+        for result in results
+        if (value := _metric_value(result, ranking_type)) is not None
+    )
+    if limit is None:
+        ordered = sorted(rankable, key=lambda pair: pair[1], reverse=True)
+    else:
+        # Keep only O(limit) candidates while considering every result.
+        ordered = heapq.nlargest(limit, rankable, key=lambda pair: pair[1])
 
     return [
         RankedEntry(rank=position, video_id=result.video_id, value=value, result=result)
-        for position, (result, value) in enumerate(rankable, start=1)
+        for position, (result, value) in enumerate(ordered, start=1)
     ]
 
 

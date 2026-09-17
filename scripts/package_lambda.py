@@ -19,6 +19,33 @@ WHEELHOUSE_DIR = ROOT / "build" / "wheelhouse"
 ZIP_PATH = ROOT / "build" / "lambda_deployment.zip"
 SRC_DIR = ROOT / "src"
 
+# AWS Lambda's own hard caps (docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html):
+# 50 MB zipped for a direct `update-function-code --zip-file` upload (an
+# S3-based upload bypasses only this one), and 250 MB unzipped total
+# regardless of upload method — there is no way around the second limit
+# except shrinking the package itself.
+LAMBDA_ZIPPED_LIMIT_BYTES = 50 * 1024 * 1024
+LAMBDA_UNZIPPED_LIMIT_BYTES = 250 * 1024 * 1024
+
+# youtube_client.py calls googleapiclient's build("youtube", "v3", ...,
+# cache_discovery=False). `cache_discovery` and `static_discovery` are two
+# separate build() parameters: cache_discovery=False only disables the
+# *runtime* discovery-cache lookup (discovery_cache.autodetect(), for docs
+# already fetched over the network) -- it has no effect on static_discovery,
+# which build() defaults to True whenever discoveryServiceUrl isn't passed
+# (as here). With static_discovery=True, build() always tries the bundled
+# discovery_cache/documents/{name}.{version}.json file first and raises
+# UnknownApiNameOrVersion immediately -- before any network request -- if
+# that file is missing (confirmed against googleapiclient 2.199.0's own
+# discovery.py/discovery_cache/__init__.py). So youtube.v3.json must stay
+# bundled. Every OTHER API's discovery document (Drive, BigQuery, Compute,
+# ...) is still dead weight, since nothing in this codebase calls build()
+# for them (confirmed via `grep -rn discovery_cache src/` turning up nothing
+# but that one YouTube v3 call) -- ~100MB removed here, minus the one file
+# in REQUIRED_DISCOVERY_DOCUMENTS below.
+DISCOVERY_CACHE_DOCUMENTS_DIR = Path("googleapiclient") / "discovery_cache" / "documents"
+REQUIRED_DISCOVERY_DOCUMENTS = {"youtube.v3.json"}
+
 # Packages in requirements.txt that main.py/lambda_handler.py never import at
 # runtime — kept out of the Lambda package rather than duplicated by version
 # here, so requirements.txt stays the single source of truth. moto is a
@@ -49,6 +76,20 @@ def _load_runtime_dependencies() -> list[str]:
         for line in lines
         if line.strip() and line.split("==")[0].strip() not in DEV_ONLY_PACKAGES
     ]
+
+
+def prune_discovery_documents(build_dir: Path) -> None:
+    """Delete every discovery_cache/documents/*.json file except REQUIRED_DISCOVERY_DOCUMENTS.
+
+    See DISCOVERY_CACHE_DOCUMENTS_DIR's own comment above for why
+    youtube.v3.json specifically must survive this prune.
+    """
+    discovery_documents = build_dir / DISCOVERY_CACHE_DOCUMENTS_DIR
+    if not discovery_documents.exists():
+        return
+    for doc_file in discovery_documents.iterdir():
+        if doc_file.is_file() and doc_file.name not in REQUIRED_DISCOVERY_DOCUMENTS:
+            doc_file.unlink()
 
 
 def main() -> int:
@@ -100,6 +141,8 @@ def main() -> int:
         check=True,
     )
 
+    prune_discovery_documents(BUILD_DIR)
+
     for py_file in SRC_DIR.glob("*.py"):
         shutil.copy(py_file, BUILD_DIR / py_file.name)
     shutil.copy(SRC_DIR / "creators.json", BUILD_DIR / "creators.json")
@@ -109,7 +152,24 @@ def main() -> int:
             if file_path.is_file():
                 zf.write(file_path, file_path.relative_to(BUILD_DIR))
 
-    print(f"Packaged: {ZIP_PATH} ({ZIP_PATH.stat().st_size / 1024 / 1024:.1f} MB)")
+    uncompressed_bytes = sum(f.stat().st_size for f in BUILD_DIR.rglob("*") if f.is_file())
+    compressed_bytes = ZIP_PATH.stat().st_size
+    print(f"Packaged: {ZIP_PATH}")
+    print(f"  Uncompressed: {uncompressed_bytes / 1024 / 1024:.1f} MB (Lambda limit: 250 MB, any upload method)")
+    print(f"  Zipped:       {compressed_bytes / 1024 / 1024:.1f} MB (Lambda limit: 50 MB for direct --zip-file upload)")
+
+    if uncompressed_bytes > LAMBDA_UNZIPPED_LIMIT_BYTES:
+        print(
+            f"ERROR: uncompressed size exceeds Lambda's 250 MB limit by "
+            f"{(uncompressed_bytes - LAMBDA_UNZIPPED_LIMIT_BYTES) / 1024 / 1024:.1f} MB. "
+            "No upload method (zip-file or S3) can deploy this package as-is."
+        )
+        return 1
+    if compressed_bytes > LAMBDA_ZIPPED_LIMIT_BYTES:
+        print(
+            "NOTE: zipped size exceeds the 50 MB direct-upload limit - "
+            "upload via S3 (aws s3 cp + aws lambda update-function-code --s3-bucket/--s3-key) instead of --zip-file."
+        )
     return 0
 
 
