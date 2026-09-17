@@ -23,3 +23,6 @@ src/snapshots/
 
 # Lambda deployment package (rebuilt by scripts/package_lambda.py)
 build/
+
+# Kept locally for reference, deliberately not tracked/committed
+docs/aws-setup.zh-TW.md
