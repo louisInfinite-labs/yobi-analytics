@@ -5,12 +5,25 @@ interface EditModeToolbarProps {
   onSave: () => void
   onCancel: () => void
   onResetToDefault: () => void
+  /** Overrides the reset button's label -- defaults to this component's
+   * original legacy-Dashboard wording so every existing caller renders
+   * identically. MT-07's canonical editor passes "Restore Default" to
+   * match `DASHBOARD_LAYOUT_GUIDELINES.md`'s exact action name. */
+  resetToDefaultLabel?: string
 }
 
 /** Enter/exit Edit Layout mode, plus Save/Cancel/Reset while editing.
  * Normal mode is locked (a single "Edit Layout" button); edit mode exposes
  * the rest, per Roadmap Phase 7. */
-export function EditModeToolbar({ editMode, isDirty, onEnterEditMode, onSave, onCancel, onResetToDefault }: EditModeToolbarProps) {
+export function EditModeToolbar({
+  editMode,
+  isDirty,
+  onEnterEditMode,
+  onSave,
+  onCancel,
+  onResetToDefault,
+  resetToDefaultLabel = "Reset to Default",
+}: EditModeToolbarProps) {
   if (!editMode) {
     return (
       <button type="button" className="soft-button edit-mode-toolbar__enter" onClick={onEnterEditMode}>
@@ -23,7 +36,7 @@ export function EditModeToolbar({ editMode, isDirty, onEnterEditMode, onSave, on
     <div className="edit-mode-toolbar" role="toolbar" aria-label="Layout editing">
       <span className="edit-mode-toolbar__label">Editing layout{isDirty ? " (unsaved changes)" : ""}</span>
       <button type="button" className="soft-button" onClick={onResetToDefault}>
-        Reset to Default
+        {resetToDefaultLabel}
       </button>
       <button type="button" className="soft-button" onClick={onCancel}>
         Cancel
