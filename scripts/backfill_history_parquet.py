@@ -282,8 +282,9 @@ def scan_snapshots_into_spool(
     while True:
         response = table.scan(**scan_kwargs)
         for item in response.get("Items", []):
-            snapshot_date, row = _history_row_from_snapshot_item(item)
+            snapshot_date = item["snapshotDate"]
             if snapshot_date in dates:
+                _, row = _history_row_from_snapshot_item(item)
                 shard = shard_for_video(row.video_id)
                 spool.write(snapshot_date, shard, row)
                 forensics.stage_counts[snapshot_date] += 1

@@ -106,7 +106,14 @@ def test_add_shard_never_lets_a_key_grow_past_its_limit_even_transiently():
     merger = IncrementalRankingMerger(scope_limit=3, creator_limit=3)
     for shard_index in range(16):
         rows = [_row(f"s{shard_index}_v{i}", 1000 * shard_index + i, "c1") for i in range(50)]
-        scope = top_n_by_scope(rows, {1: [], 7: [], 30: []}, report_date=REPORT_DATE, limit=3)
+        discovered = {row.video_id: REPORT_DATE for row in rows}
+        scope = top_n_by_scope(
+            rows,
+            {1: [], 7: [], 30: []},
+            report_date=REPORT_DATE,
+            discovered_date_by_video=discovered,
+            limit=3,
+        )
         creator = creator_period_partials(rows, {1: [], 7: [], 30: []}, report_date=REPORT_DATE, limit=3)
 
         merger.add_shard(scope, creator)

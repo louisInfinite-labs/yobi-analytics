@@ -692,7 +692,7 @@ aws lambda update-function-code --function-name yobi-analytics-history-worker --
 aws lambda update-function-code --function-name yobi-analytics-ranking-reducer --s3-bucket <artifact-bucket> --s3-key lambda_deployment.zip
 ```
 
-No dedicated deployment/artifact S3 bucket exists yet in this repo's Terraform or in the AWS account (checked both) — `<artifact-bucket>` above is a placeholder, not something this redesign creates. See this session's own report for a minimal proposed bucket resource, left unapplied pending a decision.
+`terraform/lambda_artifacts.tf` now defines `aws_s3_bucket.lambda_artifacts` (`yobi-analytics-lambda-artifacts-${data.aws_caller_identity.current.account_id}`), managing the bucket itself; `<artifact-bucket>` above stays a placeholder because this codebase does not establish that `terraform apply` has actually run or that the bucket exists live in AWS. Deployment scripts upload the ZIP objects and update the Lambda function code outside Terraform, same as the rest of this project's deploy flow.
 
 #### Definition of Done
 

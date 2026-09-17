@@ -171,7 +171,12 @@ resource "aws_sfn_state_machine" "daily_history" {
                 }
               }
               Retry = [{
-                ErrorEquals     = ["Lambda.ServiceException", "Lambda.TooManyRequestsException", "States.TaskFailed"]
+                ErrorEquals = [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException",
+                ]
                 IntervalSeconds = 30
                 MaxAttempts     = 3
                 BackoffRate     = 2

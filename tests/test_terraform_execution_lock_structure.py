@@ -199,5 +199,16 @@ def test_mark_execution_failed_always_reaches_fail_even_if_it_fails_itself():
     Catch must lead to Fail."""
     block = _resource_block(HISTORY_TF, 'resource "aws_sfn_state_machine" "daily_history"')
     mark_failed_block = block[block.index("MarkExecutionFailed = {") : block.index("Fail = {")]
-    assert 'ErrorEquals = ["States.ALL"]' in mark_failed_block
-    assert mark_failed_block.count('Next        = "Fail"') + mark_failed_block.count('Next = "Fail"') >= 1
+
+    catch_start = mark_failed_block.index("Catch = [{")
+    catch_end = mark_failed_block.index("}]", catch_start) + len("}]")
+    catch_section = mark_failed_block[catch_start:catch_end]
+    after_catch = mark_failed_block[catch_end:]
+
+    # The Catch path (this task itself fails, e.g. a lost lock) must reach Fail.
+    assert 'ErrorEquals = ["States.ALL"]' in catch_section
+    assert 'Next        = "Fail"' in catch_section or 'Next = "Fail"' in catch_section
+
+    # The normal-completion path (this task succeeds) must independently reach
+    # Fail too -- it is only ever invoked to fail the overall execution.
+    assert 'Next        = "Fail"' in after_catch or 'Next = "Fail"' in after_catch

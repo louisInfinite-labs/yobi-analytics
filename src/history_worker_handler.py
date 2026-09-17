@@ -89,10 +89,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # reclaimed by someone else) is deliberately left to propagate: an
     # uncaught exception fails this Task with that exception's own class
     # name, which does not match CollectShard's Retry ErrorEquals list
-    # (Lambda.ServiceException/Lambda.TooManyRequestsException/
-    # States.TaskFailed — invocation-level errors only), so Step Functions
-    # does not waste three more retries on a lock this execution no longer
-    # holds — it fails straight to the Map's own Catch.
+    # (Lambda.ServiceException/Lambda.AWSLambdaException/
+    # Lambda.SdkClientException/Lambda.TooManyRequestsException —
+    # invocation-level errors only), so Step Functions does not waste three
+    # more retries on a lock this execution no longer holds — it fails
+    # straight to the Map's own Catch.
     execution_lock.renew_execution_lock(
         report_date=report_date,
         owner_token=owner_token,

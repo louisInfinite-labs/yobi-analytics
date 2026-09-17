@@ -409,14 +409,32 @@ def test_canonicalize_report_date_handles_a_missing_forceRecovery_key_safely():
 # --- normal-execution write-count / WRU cost estimate -----------------------
 
 
-def test_normal_execution_costs_exactly_19_lock_writes(lock_table):
+def test_normal_execution_costs_exactly_19_lock_writes(lock_table, monkeypatch):
     """1 acquire + 16 per-shard renews + 1 pre-reducer renew + 1 complete --
-    the corrected write count for a normal (no-failure) daily execution."""
-    writes = 0
+    the corrected write count for a normal (no-failure) daily execution.
+    Counts actual put_item/update_item calls against the real (moto-backed)
+    table, not a manual per-call tally, so an implementation that sneaks in
+    an extra DynamoDB write would fail this assertion."""
+    real_table = execution_lock._table()
+    write_calls: list[str] = []
+
+    class _CountingTable:
+        def __getattr__(self, name):
+            return getattr(real_table, name)
+
+        def put_item(self, **kwargs):
+            write_calls.append("put_item")
+            return real_table.put_item(**kwargs)
+
+        def update_item(self, **kwargs):
+            write_calls.append("update_item")
+            return real_table.update_item(**kwargs)
+
+    monkeypatch.setattr(execution_lock, "_table", lambda: _CountingTable())
+
     owner = "exec-1"
 
     acquire_execution_lock(report_date=REPORT_DATE, owner_token=owner, now=_now())
-    writes += 1
 
     for shard in range(16):
         renew_execution_lock(
@@ -424,18 +442,15 @@ def test_normal_execution_costs_exactly_19_lock_writes(lock_table):
             lease_seconds=execution_lock.SHARD_RENEW_LEASE_SECONDS,
             phase=execution_lock.PHASE_COLLECTING, completed_shard=shard,
         )
-        writes += 1
 
     renew_execution_lock(
         report_date=REPORT_DATE, owner_token=owner, now=_now(20),
         lease_seconds=execution_lock.REDUCER_RENEW_LEASE_SECONDS, phase=execution_lock.PHASE_REDUCING,
     )
-    writes += 1
 
     mark_execution_complete(report_date=REPORT_DATE, owner_token=owner, now=_now(25))
-    writes += 1
 
-    assert writes == 19
+    assert len(write_calls) == 19
     row = _row()
     assert row["status"] == "COMPLETE"
     assert set(int(s) for s in row["completedShards"]) == set(range(16))

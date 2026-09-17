@@ -139,15 +139,15 @@ def upload_all(s3_client) -> UploadResult:
     for collection_date in STAGE_DATES:
         for shard in range(HISTORY_SHARD_COUNT):
             key = daily_history_key(date.fromisoformat(collection_date), shard)
-            body = _local_path_for(collection_date, shard).read_bytes()
             try:
+                body = _local_path_for(collection_date, shard).read_bytes()
                 s3_client.put_object(
                     Bucket=HISTORY_BUCKET,
                     Key=key,
                     Body=body,
                     ContentType="application/vnd.apache.parquet",
                 )
-            except ClientError as exc:
+            except (ClientError, OSError) as exc:
                 result.failed.append((key, str(exc)))
                 return result
             result.succeeded.append(key)

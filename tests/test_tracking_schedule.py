@@ -232,6 +232,17 @@ def test_select_due_video_ids_preserves_unknown_cadence_behavior():
     assert select_due_video_ids(candidates, as_of=not_due_day) == []
 
 
+def _not_due_sibling(prefix: str, published_at: str, activity_state: str, as_of: date) -> str:
+    """Return a video_id sharing this published_at/activity_state but landing
+    on a different rotation slot than `as_of`, so it is guaranteed not due --
+    found via is_due_today itself rather than assumed."""
+    for i in range(50):
+        candidate = f"{prefix}-not-due-sibling-{i}"
+        if not is_due_today(candidate, published_at, activity_state, as_of):
+            return candidate
+    raise AssertionError(f"could not find a non-due sibling id for {prefix!r} at {as_of}")
+
+
 def test_select_due_video_ids_excludes_non_due_warm_and_cold_from_a_mixed_batch():
     """Non-due Warm/Cold videos are dropped even when mixed in with due ones, and the
     result is sorted for deterministic batching."""
@@ -240,31 +251,32 @@ def test_select_due_video_ids_excludes_non_due_warm_and_cold_from_a_mixed_batch(
     cold_published = _published_days_ago(200, today)
     recent_published = _published_days_ago(0, today)
 
-    warm_due_offset, warm_not_due_offset = _first_due_and_not_due_offset(
-        "warm-due", warm_published, "Warm", today, WARM_CYCLE_DAYS
-    )
-    cold_due_offset, cold_not_due_offset = _first_due_and_not_due_offset(
-        "cold-due", cold_published, "Cold", today, COLD_CYCLE_DAYS
-    )
-    # Pick a day that is simultaneously Warm-due, Cold-due, Warm-not-due (for a second
-    # warm id) and Cold-not-due (for a second cold id) by reusing each id's own found
-    # offset against a distinct sibling id that lands on the opposite phase.
+    warm_due_offset, _ = _first_due_and_not_due_offset("warm-due", warm_published, "Warm", today, WARM_CYCLE_DAYS)
+    # Pick a day that is Warm-due for "warm-due" by construction.
     as_of = today + timedelta(days=warm_due_offset)
+
+    warm_not_due_sibling = _not_due_sibling("warm-due", warm_published, "Warm", as_of)
+    cold_not_due_sibling = _not_due_sibling("cold-due", cold_published, "Cold", as_of)
 
     candidates = [
         ("recent-video", recent_published, "Cold"),
         ("warm-due", warm_published, "Warm"),
         ("cold-due", cold_published, "Cold"),
+        (warm_not_due_sibling, warm_published, "Warm"),
+        (cold_not_due_sibling, cold_published, "Cold"),
     ]
     # warm-due is guaranteed due at `as_of` by construction; recent-video is always due;
     # cold-due may or may not land on its own due day at this particular `as_of` -- both
     # are legitimate outcomes of independent per-id rotation, so assert only what the
-    # cadence guarantees rather than assuming cross-tier alignment.
+    # cadence guarantees rather than assuming cross-tier alignment. The two siblings are
+    # constructed to be guaranteed non-due at this exact `as_of`.
     result = select_due_video_ids(candidates, as_of=as_of)
 
     assert result == sorted(result)
     assert "recent-video" in result
     assert "warm-due" in result
+    assert warm_not_due_sibling not in result
+    assert cold_not_due_sibling not in result
 
 
 # --- classify_after_observation: bootstrap ----------------------------------

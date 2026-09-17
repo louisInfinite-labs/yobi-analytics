@@ -233,9 +233,16 @@ def _build_scheduler_updates(rows: list[HistoryRow], *, video_master_store: Vide
         if existing is None:
             print(f"Warning: {row.video_id!r} has no existing Video Master row; skipping scheduler-state update")
             continue
-        if existing.last_checked_at is not None and _parse_observed_at(
-            existing.last_checked_at
-        ) >= _parse_observed_at(row.observed_at):
+        existing_checked_at = (
+            _parse_observed_at(existing.last_checked_at)
+            if existing.last_checked_at is not None
+            else None
+        )
+        if (
+            existing_checked_at is not None
+            and existing_checked_at.tzinfo is not None
+            and existing_checked_at >= _parse_observed_at(row.observed_at)
+        ):
             # Already applied (equal), or this row is an OLDER observation than
             # what Video Master already reflects (an out-of-order/old-shard
             # replay) -- either way, never overwrite newer scheduler state

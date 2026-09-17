@@ -248,6 +248,7 @@ class ProbeResult:
     latency_seconds: float
     body: dict | str
     error: str | None = None
+    expected_status: int = 200
 
 
 def _http_get(url: str) -> ProbeResult:
@@ -269,25 +270,27 @@ def _http_get(url: str) -> ProbeResult:
 
 def stage_https_probes(today_jst: str) -> list[ProbeResult]:
     print("=== V5.10.5: public HTTPS production regression (real GET requests only) ===")
-    probes: list[tuple[str, str]] = [
+    probes: list[tuple[str, str, int]] = [
         ("A: sakura_miko cache hit, limit omitted",
-         f"{API_ENDPOINT}/creators/sakura_miko/trending?reportDate={today_jst}&timeZone=Asia/Tokyo&period=1d"),
+         f"{API_ENDPOINT}/creators/sakura_miko/trending?reportDate={today_jst}&timeZone=Asia/Tokyo&period=1d", 200),
         ("B: sakura_miko cache hit, limit=10",
-         f"{API_ENDPOINT}/creators/sakura_miko/trending?reportDate={today_jst}&timeZone=Asia/Tokyo&period=1d&limit=10"),
+         f"{API_ENDPOINT}/creators/sakura_miko/trending?reportDate={today_jst}&timeZone=Asia/Tokyo&period=1d&limit=10", 200),
         ("C: vspo_official genuine cache miss",
-         f"{API_ENDPOINT}/creators/vspo_official/trending?reportDate={today_jst}&timeZone=Asia/Tokyo&period=1d"),
+         f"{API_ENDPOINT}/creators/vspo_official/trending?reportDate={today_jst}&timeZone=Asia/Tokyo&period=1d", 503),
         ("D: organization vspo cache hit (verified row: 2026-09-12)",
-         f"{API_ENDPOINT}/organizations/vspo/trending?reportDate=2026-09-12&timeZone=Asia/Tokyo&period=1d"),
+         f"{API_ENDPOINT}/organizations/vspo/trending?reportDate=2026-09-12&timeZone=Asia/Tokyo&period=1d", 200),
         ("E (optional): sakura_miko non-canonical timeZone",
-         f"{API_ENDPOINT}/creators/sakura_miko/trending?reportDate={today_jst}&timeZone=UTC&period=1d"),
+         f"{API_ENDPOINT}/creators/sakura_miko/trending?reportDate={today_jst}&timeZone=UTC&period=1d", 200),
     ]
     results = []
-    for label, url in probes:
+    for label, url, expected_status in probes:
         result = _http_get(url)
         result.label = label
+        result.expected_status = expected_status
         results.append(result)
         body_preview = result.body if isinstance(result.body, str) else json.dumps(result.body)[:300]
-        print(f"  {label}\n    -> HTTP {result.status} in {result.latency_seconds:.2f}s\n    body: {body_preview}")
+        match = "OK" if result.status == expected_status else f"MISMATCH (expected {expected_status})"
+        print(f"  {label}\n    -> HTTP {result.status} [{match}] in {result.latency_seconds:.2f}s\n    body: {body_preview}")
     print()
     return results
 
@@ -357,7 +360,8 @@ def main() -> int:
     print(f"s3Key: {s3_key}")
     print(f"api CodeSha256: {before.code_sha256} -> {after.code_sha256}")
 
-    overall_ok = not verify_result["anomalies"]
+    probes_ok = all(r.status == r.expected_status for r in probe_results)
+    overall_ok = not verify_result["anomalies"] and probes_ok
     print(f"\nOVERALL: {'PASS' if overall_ok else 'FAIL'}")
     return 0 if overall_ok else 1
 
