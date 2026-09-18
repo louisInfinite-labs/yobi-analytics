@@ -203,6 +203,15 @@ Do not repeatedly reconstruct architectural understanding that was already estab
 
 Modify only what the task requires.
 
+For a microtask, change only the code required by its explicit acceptance criteria.
+
+- Do not implement future-microtask work early.
+- Do not perform adjacent refactors, cleanup, architecture redesign, or speculative abstraction.
+- Once the relevant implementation path is known, do not continue scanning unrelated repository areas.
+- Prefer the smallest correct diff that satisfies the owned criteria and preserves protected behavior.
+- Do not add comments, docstrings, helpers, wrappers, or abstractions for obvious logic or already-established patterns.
+- Add explanatory code comments only when they document a non-obvious behavior, safety constraint, browser quirk, or interaction invariant.
+
 Do NOT perform unsolicited:
 
 - Refactoring
@@ -575,29 +584,54 @@ Do not run the broadest possible validation for every frontend change.
 
 Use existing project scripts.
 
-Typical levels:
+Validation is selected by change risk and explicit acceptance criteria, not by a desire to make a report look stronger.
 
-## Small local component change
+## Local, module, or component microtask
 
-Run:
+Required:
 
-- Relevant targeted test(s)
-- Typecheck if appropriate
+- Relevant targeted tests.
 
-## Page-level React change
+Add typecheck only when TypeScript types, shared interfaces, hooks, or changed production TS/TSX code make it materially useful.
 
-Run:
+## Shared state, canonical core, or integration-sensitive microtask
 
-- Targeted tests
-- Frontend typecheck/build as appropriate
+Required:
 
-## Shared component/state/infrastructure change
+- Relevant targeted tests.
+- Directly affected integration tests.
+- Frontend typecheck.
 
-Run:
+## Full frontend test suite
 
-- Targeted tests first
-- Broader frontend test suite
-- Production build
+Run the full frontend test suite only when:
+
+- The change affects broad or shared infrastructure and targeted coverage is insufficient.
+- An accumulated accepted batch is about to be committed or pushed.
+- The task explicitly requires full regression.
+- MT-17 is running.
+- The user explicitly requests it.
+
+## Production build
+
+Run the production build only when:
+
+- Bundling or build behavior is relevant to the change.
+- A commit or push checkpoint requires accumulated-batch validation.
+- MT-17 requires it.
+- The user explicitly requests it.
+
+## Lint
+
+Run lint only when:
+
+- Changed files need lint verification under repository rules.
+- A commit or push checkpoint requires accumulated-batch validation.
+- The task or user explicitly requires it.
+
+Do not repeat full-suite, build, or lint checks after every microtask when no commit or push is planned. Do not run broad checks merely to strengthen the wording of a report.
+
+MT-17 remains the strict final regression owner. Its documented full tests, typecheck, build, acceptance matrix, browser evidence, network evidence, and save/reload evidence must not be reduced by this risk-based policy.
 
 Do not run backend tests for frontend-only work.
 
@@ -637,7 +671,7 @@ They are not proof that the requested design was implemented accurately.
 
 ---
 
-# 31. Acceptance Criteria Matrix
+# 31. Acceptance Criteria Matrix and Scope Status
 
 For substantial frontend work, evaluate every explicit acceptance criterion individually.
 
@@ -646,6 +680,14 @@ Use:
 - `PASS`
 - `FAIL`
 - `UNVERIFIED`
+
+An explicit acceptance criterion marked `UNVERIFIED` prevents the task from receiving a `PASS` verdict.
+
+Work that is not an acceptance criterion and is outside the owning microtask must be labeled:
+
+`OUT OF SCOPE / NOT REQUIRED`
+
+Do not mark out-of-scope future integration, optional inspection, or optional polish as `UNVERIFIED`. Voluntarily mentioning optional work does not create a new completion requirement. Existing documented dependencies and ownership gaps remain dependencies, not failures of a microtask that does not own them.
 
 Do not collapse multiple requirements into:
 
@@ -765,6 +807,30 @@ Never use destructive Git operations merely to obtain a clean working tree.
 
 Preserve user-owned untracked files unless explicitly instructed otherwise.
 
+For a normal microtask:
+
+- Do not commit.
+- Do not push.
+- Do not stage files unless staging is explicitly requested.
+- Do not treat `git status --short`, `git diff --cached --name-only`, or staging details as mandatory report content.
+
+Report Git state only when:
+
+- Commit, push, or staging is part of the current instruction.
+- Unexpected unrelated changes are discovered.
+- Branch state affects correctness.
+- The user explicitly asks for it.
+
+When the user explicitly says an accumulated batch is ready to commit or push, validate that accepted batch once with:
+
+- The relevant full frontend test suite.
+- Frontend typecheck.
+- Production build.
+- Lint where applicable.
+- Git diff, check, and status review.
+
+Only after that checkpoint may files be staged, committed, or pushed, and each of those actions still requires explicit authorization. Never stage local-only or unrelated files.
+
 ---
 
 # 38. User-Owned Local Files
@@ -796,57 +862,29 @@ A small and accurate diff is preferred over a large "cleaner" diff.
 
 # 40. Final Report
 
-Keep the final report concise.
+Keep the final report concise. For a normal microtask, use:
 
-For a normal React task, report:
+```text
+Microtask:
+Files changed:
+Acceptance criteria:
+- AC1 PASS | FAIL | UNVERIFIED — concise evidence
+- AC2 PASS | FAIL | UNVERIFIED — concise evidence
+Validation:
+- command → exit code
+Remaining dependency:
+Verdict: PASS | FAIL | INCOMPLETE
+```
 
-## Files changed
+Reporting rules:
 
-List only relevant files.
-
-## Implementation
-
-Briefly explain what changed.
-
-## Behavior preserved
-
-State the important existing behavior that was intentionally kept unchanged.
-
-## Acceptance criteria
-
-For each explicit criterion:
-
-- PASS
-- FAIL
-- UNVERIFIED
-
-## Validation
-
-Report:
-
-- Targeted tests
-- Typecheck
-- Build
-- Visual verification where applicable
-
-## Existing failures
-
-List only pre-existing failures relevant to interpreting validation.
-
-## Remaining issues
-
-List blockers or unresolved items.
-
-## Verdict
-
-Use a concise result such as:
-
-- `PASS`
-- `PASS WITH UNVERIFIED VISUAL ITEMS`
-- `PARTIAL`
-- `BLOCKED`
-
-Do not rewrite the entire task specification in the report.
+- Do not restate the entire task.
+- Do not list every assertion unless needed to explain a failure.
+- Do not list the full test-suite count unless the full suite was actually required and run.
+- Do not report Git status, cached diff names, or staging details unless Git-state reporting is required by Section 37.
+- Keep evidence next to the relevant acceptance criterion when practical instead of repeating it in a separate evidence section.
+- Report only validation commands actually run. Do not imply that omitted broad checks were required when the risk policy did not require them.
+- When validation passes, report only the command plus PASS / exit code / relevant test count. Do not paste full successful command output.
 
 ---
 

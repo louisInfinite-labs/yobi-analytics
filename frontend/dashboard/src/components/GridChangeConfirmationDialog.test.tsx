@@ -1,5 +1,7 @@
+import { useState } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { GridChangeConfirmationDialog } from "./GridChangeConfirmationDialog"
 import type { GridChangeConfirmation } from "../hooks/useDashboardEditor"
 
@@ -42,5 +44,84 @@ describe("GridChangeConfirmationDialog", () => {
     render(<GridChangeConfirmationDialog confirmation={CONFIRMATION} disabled onCancel={vi.fn()} onConfirm={vi.fn()} />)
 
     expect(screen.getByRole("button", { name: "Continue and Save" })).toBeDisabled()
+  })
+
+  it("MT-16 AC7/AC9: focus moves into the dialog on open, landing on Cancel", () => {
+    render(<GridChangeConfirmationDialog confirmation={CONFIRMATION} disabled={false} onCancel={vi.fn()} onConfirm={vi.fn()} />)
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }))
+  })
+
+  it("MT-16 AC9: Escape closes the dialog (calls onCancel)", async () => {
+    const onCancel = vi.fn()
+    render(<GridChangeConfirmationDialog confirmation={CONFIRMATION} disabled={false} onCancel={onCancel} onConfirm={vi.fn()} />)
+    const user = userEvent.setup()
+
+    await user.keyboard("{Escape}")
+
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it("MT-16 AC9: Tab from the last focusable action wraps back to Cancel", async () => {
+    render(<GridChangeConfirmationDialog confirmation={CONFIRMATION} disabled={false} onCancel={vi.fn()} onConfirm={vi.fn()} />)
+    const user = userEvent.setup()
+    const cancelButton = screen.getByRole("button", { name: "Cancel" })
+    const confirmButton = screen.getByRole("button", { name: "Continue and Save" })
+
+    confirmButton.focus()
+    await user.tab()
+
+    expect(document.activeElement).toBe(cancelButton)
+  })
+
+  it("MT-16 AC9: Shift+Tab from Cancel wraps to the last focusable action", async () => {
+    render(<GridChangeConfirmationDialog confirmation={CONFIRMATION} disabled={false} onCancel={vi.fn()} onConfirm={vi.fn()} />)
+    const user = userEvent.setup()
+    const confirmButton = screen.getByRole("button", { name: "Continue and Save" })
+
+    screen.getByRole("button", { name: "Cancel" }).focus()
+    await user.tab({ shift: true })
+
+    expect(document.activeElement).toBe(confirmButton)
+  })
+
+  function TriggerAndDialog() {
+    const [open, setOpen] = useState(false)
+    return (
+      <div>
+        <button type="button" onClick={() => setOpen(true)}>
+          Open
+        </button>
+        {open && (
+          <GridChangeConfirmationDialog confirmation={CONFIRMATION} disabled={false} onCancel={() => setOpen(false)} onConfirm={vi.fn()} />
+        )}
+      </div>
+    )
+  }
+
+  it("MT-16 AC10: closing the dialog returns focus to the control that triggered it", async () => {
+    const openButton = document.createElement("button")
+    openButton.textContent = "Open"
+    document.body.appendChild(openButton)
+    openButton.focus()
+
+    const { unmount } = render(<GridChangeConfirmationDialog confirmation={CONFIRMATION} disabled={false} onCancel={vi.fn()} onConfirm={vi.fn()} />)
+    expect(document.activeElement).not.toBe(openButton)
+
+    unmount()
+
+    expect(document.activeElement).toBe(openButton)
+    document.body.removeChild(openButton)
+  })
+
+  it("MT-16 AC10: Escape-driven close (real trigger/dialog composition) returns focus to the opener", async () => {
+    render(<TriggerAndDialog />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Open" }))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
+    await user.keyboard("{Escape}")
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open" }))
   })
 })

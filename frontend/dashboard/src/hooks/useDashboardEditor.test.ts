@@ -312,6 +312,132 @@ describe("useDashboardEditor", () => {
     })
   })
 
+  describe("comparison selection (MT-11)", () => {
+    const COMPARISON_LAYOUT: CanonicalLayout = {
+      grid: { columns: 2, rows: 2 },
+      widgets: [
+        {
+          widgetId: "comparison-widget",
+          widgetType: "creator-comparison-chart",
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+          comparison: { creatorIds: ["creator-a", "creator-b"], comparisonItemIds: [] },
+        },
+        { widgetId: "unrelated-widget", widgetType: "kpi-summary", x: 1, y: 0, width: 1, height: 1 },
+      ],
+    }
+
+    it("MT-11 AC4/AC7: applies A/B to only the target widget's draft, leaving canonical state untouched", () => {
+      const { result } = renderHook(() => useDashboardEditor(COMPARISON_LAYOUT))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.updateDraftWidgetComparison("comparison-widget", ["creator-a", "creator-b"]))
+
+      expect(result.current.draftLayout.widgets.find((w) => w.widgetId === "comparison-widget")?.comparison?.creatorIds).toEqual([
+        "creator-a",
+        "creator-b",
+      ])
+      expect(result.current.draftLayout.widgets.find((w) => w.widgetId === "unrelated-widget")).toEqual(COMPARISON_LAYOUT.widgets[1])
+      expect(result.current.layout).toEqual(COMPARISON_LAYOUT) // canonical unchanged
+      expect(result.current.layout).toBe(COMPARISON_LAYOUT)
+    })
+
+    it("MT-11 AC5: adding C preserves A/B order in the draft", () => {
+      const { result } = renderHook(() => useDashboardEditor(COMPARISON_LAYOUT))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.updateDraftWidgetComparison("comparison-widget", ["creator-a", "creator-b", "creator-c"]))
+
+      expect(result.current.draftLayout.widgets.find((w) => w.widgetId === "comparison-widget")?.comparison?.creatorIds).toEqual([
+        "creator-a",
+        "creator-b",
+        "creator-c",
+      ])
+    })
+
+    it("MT-11 AC6: Cancel (never calling the update) leaves the pre-edit comparison configuration exactly as it was", () => {
+      const { result } = renderHook(() => useDashboardEditor(COMPARISON_LAYOUT))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.cancel())
+
+      expect(result.current.draftLayout).toEqual(COMPARISON_LAYOUT)
+      expect(result.current.layout).toEqual(COMPARISON_LAYOUT)
+    })
+
+    it("geometry (widgetId, x, y, width, height) is unchanged after applying a comparison selection", () => {
+      const { result } = renderHook(() => useDashboardEditor(COMPARISON_LAYOUT))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.updateDraftWidgetComparison("comparison-widget", ["creator-a", "creator-b", "creator-c"]))
+
+      const target = result.current.draftLayout.widgets.find((w) => w.widgetId === "comparison-widget")!
+      expect({ widgetId: target.widgetId, x: target.x, y: target.y, width: target.width, height: target.height }).toEqual({
+        widgetId: "comparison-widget",
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+      })
+    })
+
+    it("MT-11 AC7: does not send a save request and does not affect gridChangeConfirmation", async () => {
+      const submitSave = resolvingSubmitSave()
+      const { result } = renderHook(() => useDashboardEditor(COMPARISON_LAYOUT, submitSave))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.updateDraftWidgetComparison("comparison-widget", ["creator-a", "creator-b", "creator-c"]))
+
+      expect(submitSave).not.toHaveBeenCalled()
+      expect(result.current.gridChangeConfirmation).toBeNull()
+      expect(result.current.layout).toEqual(COMPARISON_LAYOUT)
+    })
+
+    it("an incompatible (non-comparison) widget is not silently mutated", () => {
+      const { result } = renderHook(() => useDashboardEditor(COMPARISON_LAYOUT))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.updateDraftWidgetComparison("unrelated-widget", ["creator-a", "creator-b"]))
+
+      expect(result.current.draftLayout).toEqual(COMPARISON_LAYOUT)
+      expect(result.current.draftLayout.widgets.find((w) => w.widgetId === "unrelated-widget")?.comparison).toBeUndefined()
+    })
+  })
+
+  describe("creator drag drop (MT-13)", () => {
+    const COMPARISON_LAYOUT: CanonicalLayout = {
+      grid: { columns: 2, rows: 2 },
+      widgets: [
+        {
+          widgetId: "comparison-widget",
+          widgetType: "creator-comparison-chart",
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+          comparison: { creatorIds: ["creator-a"], comparisonItemIds: [] },
+        },
+        { widgetId: "unrelated-widget", widgetType: "kpi-summary", x: 1, y: 0, width: 1, height: 1 },
+      ],
+    }
+
+    it("AC8/AC10: a dropped creator updates only the target widget's draft, leaving canonical state untouched", () => {
+      const { result } = renderHook(() => useDashboardEditor(COMPARISON_LAYOUT))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.updateDraftWidgetByCreatorDrop("comparison-widget", "creator-b"))
+
+      expect(result.current.draftLayout.widgets.find((w) => w.widgetId === "comparison-widget")?.comparison?.creatorIds).toEqual([
+        "creator-a",
+        "creator-b",
+      ])
+      expect(result.current.draftLayout.widgets.find((w) => w.widgetId === "unrelated-widget")).toBe(COMPARISON_LAYOUT.widgets[1])
+      expect(result.current.layout).toBe(COMPARISON_LAYOUT)
+    })
+
+    it("AC7: never calling the drop handler (a cancelled drag) leaves the draft exactly as it was", () => {
+      const { result } = renderHook(() => useDashboardEditor(COMPARISON_LAYOUT))
+      act(() => result.current.enterEditMode())
+
+      expect(result.current.draftLayout).toEqual(COMPARISON_LAYOUT)
+    })
+  })
+
   describe("insertion preview (MT-08)", () => {
     it("given A|B, previewing the middle slot writes A|E|B into draftLayout, not canonical (AC1, AC4, AC5)", () => {
       const { result } = renderHook(() => useDashboardEditor(ROW))

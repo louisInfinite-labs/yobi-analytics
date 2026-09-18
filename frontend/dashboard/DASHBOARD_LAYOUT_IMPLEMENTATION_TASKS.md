@@ -8,14 +8,13 @@ It is written for coding agents such as Claude Code and Codex. An agent must not
 
 A microtask is complete only when every acceptance criterion under that task has objective evidence.
 
-Required evidence:
+Criterion-relevant evidence may include:
 
-1. Exact test command.
-2. Process exit code.
-3. Names of the tests that passed.
-4. For rendered behavior, measured DOM values or browser assertions.
-5. For network behavior, captured request counts and request parameters.
-6. For persistence behavior, state before the action, state after the action, and state after reload.
+1. The exact targeted test command and process exit code.
+2. The relevant test name or source assertion when needed to identify the evidence.
+3. For rendered behavior, measured DOM values or browser assertions.
+4. For network behavior, captured request counts and request parameters.
+5. For persistence behavior, state before the action, state after the action, and state after reload.
 
 The following are not completion evidence:
 
@@ -29,7 +28,93 @@ The following are not completion evidence:
 
 If an acceptance criterion cannot be executed, mark it `UNVERIFIED`. The microtask remains incomplete.
 
+An item that is not an acceptance criterion and is outside the owning microtask is `OUT OF SCOPE / NOT REQUIRED`, not `UNVERIFIED`. Optional visual inspection, future integration work, and existing documented ownership gaps do not become completion criteria merely because they are mentioned. An existing dependency or gap remains a dependency, not a failure, unless the current microtask owns it.
+
 Do not combine microtasks unless the user explicitly changes the scope. Complete them in dependency order.
+
+## Microtask Coding Scope
+
+- Change only code required by the current microtask's explicit acceptance criteria.
+- Do not perform adjacent refactors, cleanup, architecture redesign, speculative abstraction, or work assigned to a future microtask.
+- Once the relevant implementation path is known, do not repeatedly scan unrelated repository areas.
+- Prefer the smallest correct diff.
+- Do not add unnecessary comments, docstrings, helpers, wrappers, abstractions, or future-proofing structures.
+- Reuse an existing helper or abstraction when it already owns the required behavior; do not create a new one merely to make the current microtask look cleaner.
+- If an acceptance criterion requires substantial work outside the owning microtask, stop and report the dependency or ownership gap. Do not silently expand scope.
+
+## Risk-Based Validation Policy
+
+Every microtask does not require the full frontend suite. Explicit acceptance criteria and Required Evidence in the owning microtask remain mandatory; the rules below determine the breadth of additional validation.
+
+### Local, module, or component microtask
+
+Required:
+
+- Relevant targeted tests.
+
+Add typecheck only when TypeScript types, shared interfaces, hooks, or changed production TS/TSX code make it materially useful.
+
+### Shared state, canonical core, or integration-sensitive microtask
+
+Required:
+
+- Relevant targeted tests.
+- Directly affected integration tests.
+- Frontend typecheck.
+
+### Full frontend test suite
+
+Run the full frontend test suite only when:
+
+- Broad or shared infrastructure is affected and targeted coverage is insufficient.
+- An accumulated accepted batch is about to be committed or pushed.
+- A task explicitly requires full regression.
+- MT-17 is running.
+- The user explicitly requests it.
+
+### Production build
+
+Run the production build only when:
+
+- Bundling or build behavior is relevant.
+- A commit or push checkpoint requires accumulated-batch validation.
+- MT-17 requires it.
+- The user explicitly requests it.
+
+### Lint
+
+Run lint only when:
+
+- Changed files need lint verification under repository rules.
+- A commit or push checkpoint requires accumulated-batch validation.
+- The task or user explicitly requires it.
+
+Do not run broad checks merely to make a microtask report appear stronger.
+
+When targeted validation passes, record only the command, exit code, and relevant test count or concise evidence. Do not include full successful command output.
+
+Do not repeat MT-17-level validation after every microtask.
+
+## Commit Checkpoints and Git State
+
+For normal microtasks:
+
+- Do not commit.
+- Do not push.
+- Do not stage files unless explicitly requested.
+- Do not run or report Git-status and cached-diff commands as mandatory handoff evidence.
+
+Report Git state only when commit, push, or staging is in scope; unexpected unrelated changes are discovered; branch state affects correctness; or the user explicitly asks.
+
+When the user explicitly says an accumulated accepted batch is ready to commit or push, run once for that batch:
+
+- The relevant full frontend test suite.
+- Frontend typecheck.
+- Production build.
+- Lint where applicable.
+- Git diff, check, and status review.
+
+Stage, commit, or push only with explicit authorization. Never stage local-only or unrelated files.
 
 ## Shared Deterministic Fixtures
 
@@ -700,6 +785,8 @@ MT-06 through MT-15.
 
 Prove that the complete Dashboard layout behavior satisfies every prior microtask without relying on agent judgment.
 
+MT-17 is intentionally stricter than a normal microtask. The risk-based validation policy does not reduce its complete regression requirements: all required tests, typecheck, production build, acceptance matrix, browser and network evidence, and save/reload evidence remain mandatory.
+
 ### Dependencies
 
 MT-01 through MT-16.
@@ -736,13 +823,22 @@ After each microtask, report exactly:
 ```text
 Microtask:
 Files changed:
-Acceptance criteria passed:
-Acceptance criteria failed:
-Acceptance criteria unverified:
-Commands and exit codes:
-Evidence paths:
+Acceptance criteria:
+- AC1 PASS | FAIL | UNVERIFIED — concise evidence
+- AC2 PASS | FAIL | UNVERIFIED — concise evidence
+Validation:
+- command → exit code
 Remaining dependency:
 Verdict: PASS | FAIL | INCOMPLETE
 ```
 
 The only valid `PASS` condition is that every acceptance criterion for that microtask has objective evidence and none are failed or unverified.
+
+Handoff rules:
+
+- Do not restate the entire microtask.
+- Do not list every assertion unless needed to explain a failure.
+- Do not list a full-suite count unless the full suite was required and run.
+- Do not report Git status, cached diff names, or staging details unless Git-state reporting is required.
+- Evidence paths may be included inline with the relevant acceptance criterion rather than repeated in a separate long section.
+- Label non-criterion work outside the microtask as `OUT OF SCOPE / NOT REQUIRED`; do not add it to the unverified list.

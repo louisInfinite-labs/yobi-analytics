@@ -29,6 +29,12 @@ export interface DashboardWidget {
   y: number
   width: number
   height: WidgetHeight
+  /** MT-11 "Flow 1: In-Widget Creator Picker" (Section 3.4 Flow 1): present
+   * only on a comparison-capable widget that has an in-progress or saved
+   * creator comparison. Optional and additive so every existing widget,
+   * fixture, and validation path from MT-01 through MT-10 is unaffected by
+   * a widget that never sets it. */
+  comparison?: CreatorComparisonConfig
 }
 
 export interface CanonicalLayout {

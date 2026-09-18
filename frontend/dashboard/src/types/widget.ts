@@ -2,6 +2,8 @@
  * instance ID, a versioned config schema, and a layout format that stores
  * each instance's position/size/settings independently per breakpoint. */
 
+import type { WidgetHeight } from "./dashboardLayout"
+
 export type WidgetTypeId =
   | "kpi-summary"
   | "growth-bar-chart"
@@ -26,6 +28,12 @@ export interface WidgetDefinition<TSettings = Record<string, never>> {
   title: string
   description: string
   sizeLimits: WidgetSizeLimits
+  /** GAP-2D: which canonical heights (dashboardLayout.ts's own WidgetHeight,
+   * 0.5X/1X) this widget type is evidence-verified to render correctly at
+   * (GAP-2C/GAP-2C1's real-browser results) -- not every legal canonical
+   * height is supported by every widget type. Reuses the canonical type
+   * directly rather than a second 0.5 | 1 union. */
+  allowedHeights: WidgetHeight[]
   /** Reserved for future scoped-data widgets (Roadmap Phase 9+); empty for every v1 widget. */
   permissions: readonly string[]
   defaultSettings: TSettings

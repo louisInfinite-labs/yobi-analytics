@@ -31,7 +31,8 @@
  */
 
 import { validateLayout } from "./dashboardLayoutValidation"
-import type { CanonicalLayout, DashboardWidget, LayoutValidationResult } from "../types/dashboardLayout"
+import { isAllowedWidgetHeight } from "./widgetHeightCapabilities"
+import type { CanonicalLayout, DashboardWidget, LayoutValidationError, LayoutValidationResult } from "../types/dashboardLayout"
 
 export type WidgetPlacement = Pick<DashboardWidget, "x" | "y" | "width" | "height">
 export type WidgetPosition = Pick<DashboardWidget, "x" | "y">
@@ -41,6 +42,34 @@ export interface LayoutMutationOutcome {
   layout: CanonicalLayout
   committed: boolean
   result: LayoutValidationResult
+}
+
+/** GAP-2E: per-widget-type height capability (widgetHeightCapabilities.ts's
+ * WIDGET_ALLOWED_HEIGHTS, GAP-2D's evidence-backed metadata), layered on top
+ * of validateLayout's own generic canonical-height-unit check. Reuses the
+ * existing INVALID_HEIGHT code -- "this height is invalid for this widget"
+ * is the same failure category as "this height is not a legal canonical
+ * unit", not a new one. A widgetType with no capability entry (e.g. the
+ * comparison widget type) is never restricted here. */
+function capabilityErrors(widgets: readonly DashboardWidget[]): LayoutValidationError[] {
+  const offending = widgets.filter((widget) => !isAllowedWidgetHeight(widget.widgetType, widget.height))
+  if (offending.length === 0) return []
+  return [
+    {
+      code: "INVALID_HEIGHT",
+      widgetIds: offending.map((widget) => widget.widgetId),
+      message: `Height not supported by widget type: ${offending
+        .map((widget) => `${widget.widgetId} (${widget.widgetType} at ${widget.height}X)`)
+        .join(", ")}.`,
+    },
+  ]
+}
+
+function validateCandidate(candidate: CanonicalLayout): LayoutValidationResult {
+  const result = validateLayout(candidate)
+  const extra = capabilityErrors(candidate.widgets)
+  if (extra.length === 0) return result
+  return { valid: false, errors: [...result.errors, ...extra] }
 }
 
 /** Unique per call: matches the existing project convention
@@ -58,7 +87,7 @@ export function createWidget(widgetType: string, placement: WidgetPlacement): Da
  * other validation failure. */
 export function addWidget(layout: CanonicalLayout, widget: DashboardWidget): LayoutMutationOutcome {
   const candidate: CanonicalLayout = { ...layout, widgets: [...layout.widgets, widget] }
-  const result = validateLayout(candidate)
+  const result = validateCandidate(candidate)
   if (!result.valid) return { layout, committed: false, result }
   return { layout: candidate, committed: true, result }
 }
@@ -75,7 +104,7 @@ export function updateWidgetGeometry(
     ...layout,
     widgets: layout.widgets.map((widget) => (widget.widgetId === widgetId ? { ...widget, ...patch } : widget)),
   }
-  const result = validateLayout(candidate)
+  const result = validateCandidate(candidate)
   if (!result.valid) return { layout, committed: false, result }
   return { layout: candidate, committed: true, result }
 }

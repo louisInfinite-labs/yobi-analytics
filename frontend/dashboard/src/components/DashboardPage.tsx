@@ -3,6 +3,7 @@ import { mockDailySeries } from "../data/mockDailySeries"
 import { describeApiFailure } from "../lib/apiClient"
 import { useBreakpoint } from "../hooks/useBreakpoint"
 import { useCachedDashboardData } from "../features/analytics/hooks/useCachedDashboardData"
+import { useChartCatalog } from "../hooks/useChartCatalog"
 import { useEditableLayout } from "../hooks/useEditableLayout"
 import { useFilterState } from "../hooks/useFilterState"
 import { useHeartbeat } from "../hooks/useHeartbeat"
@@ -11,6 +12,7 @@ import { deriveChannelContribution, deriveKpis } from "../features/analytics/uti
 import { deriveInsights } from "../features/analytics/utils/deriveInsights"
 import { matchesClassification, matchesContent } from "../lib/filterState"
 import { fetchMockAnalytics, fetchRealAnalytics, MOCK_REPORT_DATE } from "../features/analytics/utils/dashboardAnalyticsSource"
+import { fetchMockChartCatalog } from "../lib/dashboardChartCatalogSource"
 import { detectDeviceTimeZone } from "../lib/timezone"
 import type { Period } from "../types/domain"
 import type { DashboardWidgetData } from "../lib/widgetRegistry"
@@ -52,6 +54,16 @@ export function DashboardPage() {
     addWidget,
     removeWidget,
   } = useEditableLayout(LAYOUT_PROFILE_ID, breakpoint)
+
+  // GAP-1A: mounted here -- the one component that survives Edit/Cancel
+  // toggling (`editMode` above is local state, never an unmount) -- rather
+  // than inside a conditionally-rendered component like `WidgetTray`, which
+  // would issue a fresh request every time Edit is re-entered (see
+  // useChartCatalog.ts's own docstring). No production UI reads
+  // `chartCatalog` yet (see this task's report: the live edit path still
+  // uses the legacy `WidgetTray`/`ALL_WIDGET_TYPES`, not this catalog);
+  // this only proves the load *lifecycle* is owned at the correct level.
+  const chartCatalog = useChartCatalog(fetchMockChartCatalog)
 
   const fetchFn = useCallback(() => {
     const fetchPromise =
@@ -149,6 +161,15 @@ export function DashboardPage() {
               onResetToDefault={resetToDefault}
             />
           </div>
+
+          {/* GAP-1A: test-observable proof that the catalog loader is
+           * mounted at this page level and that view/edit mode share the
+           * same result (Section 3.3 rule 3) -- not a real add-widget UI
+           * (GAP-2, still unowned; the legacy WidgetTray below is
+           * unaffected and still drives the live Add flow). */}
+          <span data-testid="chart-catalog-status" className="sr-only">
+            {chartCatalog.state.status}
+          </span>
 
           {editMode && <WidgetTray onAddWidget={addWidget} />}
 

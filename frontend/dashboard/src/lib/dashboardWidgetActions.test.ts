@@ -188,6 +188,110 @@ describe("resizeWidget", () => {
   })
 })
 
+describe("GAP-2E: per-widget-type height capability enforcement", () => {
+  describe("addWidget", () => {
+    it("rejects growth-bar-chart at 0.5X and leaves the input layout untouched", () => {
+      const base = layout({ widgets: [] })
+      const outcome = addWidget(base, widget({ widgetId: "a", widgetType: "growth-bar-chart", x: 0, y: 0, width: 1, height: 0.5 }))
+
+      expect(outcome.committed).toBe(false)
+      expect(outcome.result.errors.map((e) => e.code)).toContain("INVALID_HEIGHT")
+      expect(outcome.layout).toBe(base)
+    })
+
+    it("rejects contribution-ring at 0.5X and leaves the input layout untouched", () => {
+      const base = layout({ widgets: [] })
+      const outcome = addWidget(base, widget({ widgetId: "a", widgetType: "contribution-ring", x: 0, y: 0, width: 1, height: 0.5 }))
+
+      expect(outcome.committed).toBe(false)
+      expect(outcome.result.errors.map((e) => e.code)).toContain("INVALID_HEIGHT")
+      expect(outcome.layout).toBe(base)
+    })
+
+    it.each(["growth-bar-chart", "contribution-ring"])("commits %s at 1X", (widgetType) => {
+      const base = layout({ widgets: [] })
+      const outcome = addWidget(base, widget({ widgetId: "a", widgetType, x: 0, y: 0, width: 1, height: 1 }))
+
+      expect(outcome.committed).toBe(true)
+    })
+
+    it.each(["kpi-summary", "ranking", "insights", "video-stats-table"])(
+      "commits %s stacked at 0.5X (paired to fill the column) and standalone at 1X",
+      (widgetType) => {
+        const base = layout({ widgets: [widget({ widgetId: "top-half", widgetType, x: 0, y: 0, width: 1, height: 0.5 })] })
+        const outcomeHalf = addWidget(base, widget({ widgetId: "bottom-half", widgetType, x: 0, y: 0.5, width: 1, height: 0.5 }))
+        expect(outcomeHalf.committed).toBe(true)
+
+        const outcomeFull = addWidget(layout({ widgets: [] }), widget({ widgetId: "full", widgetType, x: 0, y: 0, width: 1, height: 1 }))
+        expect(outcomeFull.committed).toBe(true)
+      },
+    )
+
+    it("does not restrict an unregistered widgetType (e.g. the comparison widget type)", () => {
+      const base = layout({
+        widgets: [widget({ widgetId: "top-half", widgetType: "creator-comparison-chart", x: 0, y: 0, width: 1, height: 0.5 })],
+      })
+      const outcome = addWidget(base, widget({ widgetId: "bottom-half", widgetType: "creator-comparison-chart", x: 0, y: 0.5, width: 1, height: 0.5 }))
+
+      expect(outcome.committed).toBe(true)
+    })
+  })
+
+  describe("updateWidgetGeometry / resizeWidget", () => {
+    it("rejects resizing growth-bar-chart down to 0.5X, preserving widgetId and the prior geometry", () => {
+      const base = layout({ widgets: [widget({ widgetId: "a", widgetType: "growth-bar-chart", x: 0, y: 0, width: 1, height: 1 })] })
+      const outcome = resizeWidget(base, "a", { width: 1, height: 0.5 })
+
+      expect(outcome.committed).toBe(false)
+      expect(outcome.result.errors.map((e) => e.code)).toContain("INVALID_HEIGHT")
+      expect(outcome.layout).toBe(base)
+      expect(outcome.layout.widgets.find((w) => w.widgetId === "a")).toEqual(base.widgets[0])
+    })
+
+    it("rejects resizing contribution-ring down to 0.5X, preserving widgetId and the prior geometry", () => {
+      const base = layout({ widgets: [widget({ widgetId: "a", widgetType: "contribution-ring", x: 0, y: 0, width: 1, height: 1 })] })
+      const outcome = resizeWidget(base, "a", { width: 1, height: 0.5 })
+
+      expect(outcome.committed).toBe(false)
+      expect(outcome.result.errors.map((e) => e.code)).toContain("INVALID_HEIGHT")
+      expect(outcome.layout).toBe(base)
+      expect(outcome.layout.widgets.find((w) => w.widgetId === "a")).toEqual(base.widgets[0])
+    })
+
+    it("commits resizing ranking between 0.5X and 1X in both directions", () => {
+      // "a" starts full-height and "b" already occupies the bottom half slot
+      // it will shrink into -- overlapping until the resize below lands "a"
+      // in the top half, completing the stacked pair. Only the post-resize
+      // candidate is ever validated (never this base state on its own).
+      const toHalf = updateWidgetGeometry(
+        layout({
+          widgets: [
+            widget({ widgetId: "a", widgetType: "ranking", x: 0, y: 0, width: 1, height: 1 }),
+            widget({ widgetId: "b", widgetType: "ranking", x: 0, y: 0.5, width: 1, height: 0.5 }),
+          ],
+        }),
+        "a",
+        { height: 0.5 },
+      )
+      expect(toHalf.committed).toBe(true)
+
+      const toFull = updateWidgetGeometry(
+        layout({ widgets: [widget({ widgetId: "a", widgetType: "ranking", x: 0, y: 0, width: 1, height: 0.5 })] }),
+        "a",
+        { height: 1 },
+      )
+      expect(toFull.committed).toBe(true)
+    })
+
+    it("a move (x/y only) on growth-bar-chart at its existing 1X height still commits", () => {
+      const base = layout({ widgets: [widget({ widgetId: "a", widgetType: "growth-bar-chart", x: 0, y: 0, width: 1, height: 1 })] })
+      const outcome = moveWidget(base, "a", { x: 1, y: 1 })
+
+      expect(outcome.committed).toBe(true)
+    })
+  })
+})
+
 describe("widgetId survives a save/reload round trip", () => {
   it("preserves the complete ordered widgetId list through JSON serialize + parse", () => {
     let current = layout({ widgets: [] })

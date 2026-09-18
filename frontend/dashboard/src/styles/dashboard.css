@@ -381,6 +381,17 @@
   flex-wrap: wrap;
 }
 
+/* GAP-2C1: lets GrowthBarChart's ResponsiveContainer fill whatever height
+   its parent widget box actually has (canonical 0.5X/1X or any other),
+   instead of a fixed 280px -- flex-basis 0% + flex-grow 1 makes it consume
+   exactly the space .chart-card__toolbar above it doesn't use; min-height:0
+   is required so it can shrink below its content's intrinsic size in a
+   flex column, the standard fix for this exact overflow pattern. */
+.chart-card__plot {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
 .ring-chart {
   display: flex;
   flex-direction: column;
@@ -664,6 +675,35 @@ button.video-table__title-cell {
     animation: none;
     background-position: 0 50%;
   }
+}
+
+/* MT-16 AC8 correction (Guidelines Section 0.2: "Do not communicate ...
+ * drag state by color alone"). Border *style* (solid vs dashed) is the
+ * structural cue -- readable with color perception removed entirely --
+ * with color as a secondary reinforcement, never the only signal. The
+ * label text itself (rendered by the component, not this file) is the
+ * primary, always-present non-color distinction. */
+.drop-indicator {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+}
+
+.drop-indicator--active {
+  border: 3px solid var(--theme-primary, currentColor);
+  color: var(--theme-primary, currentColor);
+}
+
+.drop-indicator--disabled {
+  border: 3px dashed var(--text-tertiary, currentColor);
+  color: var(--text-tertiary, currentColor);
 }
 
 @keyframes skeleton-shimmer {
@@ -959,6 +999,118 @@ button.video-table__title-cell {
 /* Anchored via `position: absolute` at the top-right corner of a
    `position: relative` avatar wrapper (owned by whichever later microtask
    renders a real selectable creator avatar; see ComparisonOrderBadge.tsx). */
+/* ============ Creator comparison picker (MT-11) ============ */
+
+.creator-comparison-picker__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 24, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-5);
+}
+
+.creator-comparison-picker__panel {
+  width: min(360px, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.creator-comparison-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.creator-comparison-picker__creator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+}
+
+/* Anchors ComparisonOrderBadge's `position: absolute` top-right placement. */
+.creator-comparison-picker__avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  flex-shrink: 0;
+}
+
+.creator-comparison-picker__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* ============ Comparison mapping dialog (MT-12) ============ */
+
+.comparison-mapping-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 24, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-5);
+}
+
+.comparison-mapping-dialog__panel {
+  width: min(480px, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.comparison-mapping-dialog__creator-list,
+.comparison-mapping-dialog__item-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.comparison-mapping-dialog__creator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+}
+
+.comparison-mapping-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 .comparison-order-badge {
   position: absolute;
   top: -6px;

@@ -8,6 +8,7 @@ import { KpiCard } from "../features/analytics/charts/KpiCard"
 import { RankingCard } from "../features/analytics/charts/RankingCard"
 import { VideoStatsTable } from "../features/analytics/charts/VideoStatsTable"
 import type { DashboardKpis, ChannelContribution } from "../features/analytics/utils/deriveAnalytics"
+import { WIDGET_ALLOWED_HEIGHTS } from "./widgetHeightCapabilities"
 
 /** Every value a widget's renderer might need, already computed once by DashboardPage
  * and threaded through unchanged — Phase 7 wraps *placement*, not data computation. */
@@ -34,6 +35,7 @@ const KPI_SUMMARY: WidgetRegistryEntry = {
     title: "KPI Summary",
     description: "Total views, daily gain, average growth, and top performer.",
     sizeLimits: { minW: 4, minH: 1, defaultW: 12, defaultH: 1 },
+    allowedHeights: WIDGET_ALLOWED_HEIGHTS["kpi-summary"],
     permissions: [],
     defaultSettings: {},
   },
@@ -63,6 +65,7 @@ const GROWTH_BAR_CHART: WidgetRegistryEntry = {
     title: "Growth Bar Chart",
     description: "View growth by day or by channel.",
     sizeLimits: { minW: 4, minH: 3, defaultW: 8, defaultH: 4 },
+    allowedHeights: WIDGET_ALLOWED_HEIGHTS["growth-bar-chart"],
     permissions: [],
     defaultSettings: {},
   },
@@ -80,6 +83,7 @@ const CONTRIBUTION_RING: WidgetRegistryEntry = {
     title: "Channel Contribution",
     description: "Each channel's share of total growth, as an animated ring.",
     sizeLimits: { minW: 3, minH: 3, defaultW: 4, defaultH: 4 },
+    allowedHeights: WIDGET_ALLOWED_HEIGHTS["contribution-ring"],
     permissions: [],
     defaultSettings: {},
   },
@@ -93,6 +97,7 @@ const RANKING: WidgetRegistryEntry = {
     title: "Rankings",
     description: "Top-growing videos and channels.",
     sizeLimits: { minW: 3, minH: 3, defaultW: 4, defaultH: 4 },
+    allowedHeights: WIDGET_ALLOWED_HEIGHTS["ranking"],
     permissions: [],
     defaultSettings: {},
   },
@@ -106,6 +111,7 @@ const INSIGHTS: WidgetRegistryEntry = {
     title: "Insights",
     description: "Short, data-focused observations about the current view.",
     sizeLimits: { minW: 4, minH: 1, defaultW: 12, defaultH: 1 },
+    allowedHeights: WIDGET_ALLOWED_HEIGHTS["insights"],
     permissions: [],
     defaultSettings: {},
   },
@@ -128,6 +134,7 @@ const VIDEO_STATS_TABLE: WidgetRegistryEntry = {
     title: "Video Stats Table",
     description: "Detailed per-video statistics with search, filters, sorting, and pagination.",
     sizeLimits: { minW: 6, minH: 4, defaultW: 12, defaultH: 6 },
+    allowedHeights: WIDGET_ALLOWED_HEIGHTS["video-stats-table"],
     permissions: [],
     defaultSettings: {},
   },

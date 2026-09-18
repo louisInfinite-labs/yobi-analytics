@@ -61,7 +61,18 @@ export function GrowthBarChart({ byDay, byChannel }: GrowthBarChartProps) {
         <p style={{ color: "var(--text-tertiary)", fontSize: 13 }}>No data for this view.</p>
       ) : (
         <>
-          <ResponsiveContainer width="100%" height={280}>
+          {/* GAP-2C1 correction: minHeight must stay a positive floor, not 0.
+           * At a small enough parent (e.g. canonical 0.5X), the flex-computed
+           * height available to this container can resolve to ~0; with
+           * minHeight={0}, Recharts correctly (by its own design) renders no
+           * <svg> at all rather than an invalid-size one -- which is not a
+           * crash by itself, but leaves nothing for anything waiting on the
+           * chart to ever appear. A 1px floor guarantees a real, positive
+           * height so the chart always renders something (visually
+           * inadequate at very small sizes is expected and fine; rendering
+           * nothing is not). Does not affect 1X, which already has ample
+           * flex-computed height above this floor. */}
+          <ResponsiveContainer width="100%" height="100%" minHeight={1} className="chart-card__plot">
             <BarChart data={data} onMouseLeave={() => setActiveIndex(null)}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-border)" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--text-tertiary)" }} axisLine={{ stroke: "var(--surface-border)" }} tickLine={false} />

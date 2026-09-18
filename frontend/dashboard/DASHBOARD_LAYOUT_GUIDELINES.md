@@ -55,8 +55,25 @@ Recharts is the approved chart implementation for this Dashboard. Reuse existing
 
 - Do not add, replace, remove, or upgrade a UI, chart, icon, grid, or drag-and-drop dependency unless a microtask explicitly authorizes it.
 - A proposed library change requires an approved architecture decision covering ownership, provider placement, theme integration, bundle impact, migration scope, compatibility risk, and rollback.
-- Every UI microtask report must list the shared components and libraries it reused, any custom CSS it added, and confirmation that no dependency or provider changed.
+- Report shared-component, library, custom-CSS, dependency, or provider details only when the current microtask changed them or when they are necessary to prove an acceptance criterion. Always report any dependency or provider change explicitly.
 - Visual evidence must cover the affected view mode, edit mode, dialog/overlay state, and supported breakpoints. Passing TypeScript or unit tests alone is not visual verification.
+
+### 0.4 Lean microtask execution
+
+Dashboard requirements in this document define the complete product contract. They do not require every microtask to reimplement, retest, or rereport the complete contract.
+
+For normal microtasks:
+
+- Change only the code required by the owning microtask's acceptance criteria.
+- Prefer the smallest correct production diff.
+- Do not add unnecessary comments, docstrings, helpers, wrappers, abstractions, refactors, or future-proofing structures.
+- Test detailed behavior at the lowest owning layer. Higher layers should test only the integration behavior or risk they uniquely own.
+- Do not repeat the same detailed test matrix across canonical state, component, integration, and E2E layers unless a distinct integration risk requires it.
+- Run only the targeted validation required by the owning microtask and the shared frontend rules.
+- Do not run the complete Section 13 test matrix after each microtask.
+- Broader regression, production build, complete visual verification, and the full acceptance matrix belong to the documented final/commit checkpoints, especially MT-17.
+- Successful validation reports should contain only concise command/result evidence, not full successful logs.
+- Do not repeat already-accepted lower-layer behavior in a microtask report unless it is necessary to explain a regression, failure, or dependency.
 
 ## 1. Goals
 
