@@ -168,7 +168,7 @@ None.
 
 ### Acceptance Criteria
 
-1. The grid type rejects column or row values outside 1 through 5.
+1. The grid type accepts column and row values from 1 through 3 and rejects values outside 1 through 3.
 2. The widget height type accepts only `0.5` and `1`.
 3. Every widget instance requires `widgetId` and `widgetType`.
 4. Comparison configuration requires ordered `creatorIds` and `comparisonItemIds`.
@@ -350,8 +350,8 @@ MT-01.
 
 ### Acceptance Criteria
 
-1. Every integer grid from `1x1` through `5x5` is accepted.
-2. `0x3`, `2.5x4`, and `6x5` are rejected.
+1. Every integer grid from `1x1` through `3x3` is accepted.
+2. `0x3`, `2.5x2`, `4x3`, `3x4`, `4x4`, `5x5`, and `6x5` are rejected.
 3. Widget heights `0.5X` and `1X` are accepted.
 4. Heights `0.25X`, `0.75X`, and `1.25X` are rejected.
 5. A column containing one `1X` widget passes fill validation.
@@ -388,13 +388,14 @@ would invert that dependency order.
   handles to supported sizes, and validating before accepting a drop. No
   microtask in this document builds that interaction for the canonical
   model. MT-06 AC8 ("Drag placeholders and saved widgets produce the same
-  16px measurements"), MT-16 AC6 ("Drag/resize has a keyboard-accessible
-  equivalent"), and MT-17 AC9 (search proving "add, drag, resize, editor
-  preview, load, and save all import the same canonical `validateLayout`
-  implementation") all treat a working drag/resize interaction as an
-  already-existing fact by the time they run, but none of MT-06 through
-  MT-17 assigns the task that actually builds the pointer/keyboard gesture
-  handling and wires it to `moveWidget`/`resizeWidget`. The existing live
+  16px measurements") and MT-17 AC9 (search proving "add, drag, resize,
+  editor preview, load, and save all import the same canonical
+  `validateLayout` implementation") both treat a working drag/resize
+  interaction as an already-existing fact by the time they run, but none of
+  MT-06 through MT-17 assigns the task that actually builds the pointer
+  drag/resize handling and wires it to `moveWidget`/`resizeWidget`. (Product
+  decision: keyboard-equivalent widget move/resize is not required; pointer
+  drag/resize is the accepted interaction.) The existing live
   drag/resize path (`DashboardGrid.tsx`'s GridStack `"change"` event →
   `useEditableLayout.ts`'s `updateWidgetPositions`) is a different, legacy
   12-column/`instanceId` model and does not call `moveWidget`/`resizeWidget`
@@ -739,6 +740,10 @@ MT-02, MT-05, MT-09, and MT-14.
 7. Recovery does not delete server data without explicit user action.
 8. Save failure restores the last persisted canonical layout.
 
+### Implementation dependency: persisted 4/5-column layouts
+
+The canonical grid range is `1x1` through `3x3`. A layout persisted earlier with 4 or 5 columns or rows is outside that range. Existing persisted 4/5-column layouts require a defined migration/recovery behavior before the 3x3 implementation is considered complete. This document does not yet define whether such a layout is reflowed, truncated, migrated, rejected, or reset, and it must not be silently discarded; a product/spec decision is required first.
+
 ### Required Evidence
 
 - Migration fixture tests.
@@ -764,17 +769,19 @@ MT-06 through MT-15.
 3. Every adjacent-element gap measures 16px at every breakpoint.
 4. Widget IDs are identical before and after responsive reflow.
 5. Charts do not render below the documented minimum readable width.
-6. Drag/resize has a keyboard-accessible equivalent.
-7. Focus is visible on every editor action.
-8. Valid and invalid targets are distinguishable without color.
-9. Dialog focus is trapped and `Escape` closes it.
-10. Closing a dialog returns focus to its triggering control.
-11. Insertion position and creator comparison order are exposed to assistive technology.
+6. Focus is visible on every editor action.
+7. Valid and invalid targets are distinguishable without color.
+8. Dialog focus is trapped and `Escape` closes it.
+9. Closing a dialog returns focus to its triggering control.
+10. Insertion position and creator comparison order are exposed to assistive technology.
+11. Product maximum canonical/editable grid is `3x3` on desktop and `3x3` on tablet; mobile is view-only. The minimum-readable-width cap may reduce the usable column count below 3 at a given width and must never raise it above 3.
+
+Widget drag/resize is pointer-driven; a keyboard-equivalent move/resize interface is not required.
 
 ### Required Evidence
 
 - Automated accessibility results.
-- Keyboard-only E2E test.
+- Keyboard-only E2E test of the ordinary editor controls, focus order, insertion controls, and dialogs (not widget move/resize).
 - Per-breakpoint bounding-rectangle and ID snapshots.
 
 ---
@@ -786,6 +793,8 @@ MT-06 through MT-15.
 Prove that the complete Dashboard layout behavior satisfies every prior microtask without relying on agent judgment.
 
 MT-17 is intentionally stricter than a normal microtask. The risk-based validation policy does not reduce its complete regression requirements: all required tests, typecheck, production build, acceptance matrix, browser and network evidence, and save/reload evidence remain mandatory.
+
+MT-17 evaluates the `1x1` through `3x3` grid contract. It must not require evidence that `4x4` or `5x5` grids are supported; the matrix rows for MT-01 and MT-05 expect those sizes to be rejected. MT-17 cannot be marked complete while the MT-15 implementation dependency on persisted 4/5-column layouts remains undefined.
 
 ### Dependencies
 

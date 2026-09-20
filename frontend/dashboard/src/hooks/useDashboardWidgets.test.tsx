@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 import { useDashboardWidgets } from "./useDashboardWidgets"
 import type { CanonicalLayout } from "../types/dashboardLayout"
 
-const EMPTY_LAYOUT: CanonicalLayout = { grid: { columns: 5, rows: 5 }, widgets: [] }
+const EMPTY_LAYOUT: CanonicalLayout = { grid: { columns: 3, rows: 3 }, widgets: [] }
 
 /** Renders the widget list keyed by `widgetId` (Section 4, rule 7) plus an
  * Add button wired straight to the production `addWidget` path — this is
@@ -12,7 +12,7 @@ const EMPTY_LAYOUT: CanonicalLayout = { grid: { columns: 5, rows: 5 }, widgets: 
  * (MT-07 "Editor Shell and Draft Isolation" onward). */
 function Harness({ initialLayout }: { initialLayout: CanonicalLayout }) {
   const { layout, lastError, addWidget, moveWidget, resizeWidget } = useDashboardWidgets(initialLayout)
-  const nextSlot = { x: layout.widgets.length % 5, y: Math.floor(layout.widgets.length / 5), width: 1, height: 1 as const }
+  const nextSlot = { x: layout.widgets.length % 3, y: Math.floor(layout.widgets.length / 3), width: 1, height: 1 as const }
   return (
     <div>
       <button onClick={() => addWidget("kpi-summary", nextSlot)}>Add</button>
@@ -53,8 +53,8 @@ describe("useDashboardWidgets", () => {
     // Placed on a grid cell that the Harness's own Add clicks never touch,
     // so the seeded row's identity is the only thing under test.
     const seeded: CanonicalLayout = {
-      grid: { columns: 5, rows: 5 },
-      widgets: [{ widgetId: "seed-1", widgetType: "kpi-summary", x: 4, y: 4, width: 1, height: 1 }],
+      grid: { columns: 3, rows: 3 },
+      widgets: [{ widgetId: "seed-1", widgetType: "kpi-summary", x: 2, y: 2, width: 1, height: 1 }],
     }
     render(<Harness initialLayout={seeded} />)
 
@@ -99,7 +99,7 @@ describe("useDashboardWidgets", () => {
 
   it("a successful move changes only that widget's geometry, never its widgetId", () => {
     const seeded: CanonicalLayout = {
-      grid: { columns: 5, rows: 5 },
+      grid: { columns: 3, rows: 3 },
       widgets: [{ widgetId: "a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 }],
     }
     render(<Harness initialLayout={seeded} />)
@@ -115,7 +115,7 @@ describe("useDashboardWidgets", () => {
 
   it("a successful resize changes only that widget's geometry, never its widgetId", () => {
     const seeded: CanonicalLayout = {
-      grid: { columns: 5, rows: 5 },
+      grid: { columns: 3, rows: 3 },
       widgets: [{ widgetId: "a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 }],
     }
     render(<Harness initialLayout={seeded} />)

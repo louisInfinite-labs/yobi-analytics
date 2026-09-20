@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { dropCreatorOntoWidget } from "./dashboardCreatorDrop"
+import { describeCreatorDrop, dropCreatorOntoWidget } from "./dashboardCreatorDrop"
 import { COMPARISON_WIDGET_TYPE } from "./dashboardComparisonWidgets"
 import type { CanonicalLayout } from "../types/dashboardLayout"
 
@@ -78,5 +78,27 @@ describe("dropCreatorOntoWidget", () => {
   it("a nonexistent widgetId leaves the layout unchanged", () => {
     const result = dropCreatorOntoWidget(LAYOUT, "does-not-exist", "creator-b")
     expect(result).toBe(LAYOUT)
+  })
+})
+
+describe("describeCreatorDrop (GAP-9)", () => {
+  it("classifies an accepted drop with the comparison order the creator receives", () => {
+    expect(describeCreatorDrop(LAYOUT, "comparison-widget", "creator-b")).toEqual({ status: "added", order: 2 })
+  })
+
+  it("classifies a creator already in the comparison as a duplicate", () => {
+    expect(describeCreatorDrop(LAYOUT, "comparison-widget", "creator-a")).toEqual({ status: "duplicate" })
+  })
+
+  it("classifies a non-comparison widget as incompatible and an unknown widget as missing", () => {
+    expect(describeCreatorDrop(LAYOUT, "unrelated-widget", "creator-b")).toEqual({ status: "incompatible" })
+    expect(describeCreatorDrop(LAYOUT, "nope", "creator-b")).toEqual({ status: "missing" })
+  })
+
+  it("agrees with dropCreatorOntoWidget: only an 'added' outcome changes the layout", () => {
+    for (const [widgetId, creatorId] of [["comparison-widget", "creator-b"], ["comparison-widget", "creator-a"], ["unrelated-widget", "creator-b"], ["nope", "creator-b"]]) {
+      const changed = dropCreatorOntoWidget(LAYOUT, widgetId, creatorId) !== LAYOUT
+      expect(changed).toBe(describeCreatorDrop(LAYOUT, widgetId, creatorId).status === "added")
+    }
   })
 })

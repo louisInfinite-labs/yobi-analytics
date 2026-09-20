@@ -47,13 +47,45 @@
  * `save()` behavior (now asynchronous), not a silent one: MT-07's own
  * criteria never specified synchronous timing, only that canonical state
  * isn't mutated before an explicit save.
+ *
+ * Closes the
+ * two gaps that blocked switching DashboardPage.tsx's live state from legacy
+ * `useEditableLayout` onto this hook (the chosen architecture) --
+ * `removeDraftWidget` (reusing `dashboardWidgetActions.ts`'s new
+ * `removeWidget`, the same filter-then-`validateCandidate` shape `addWidget`
+ * already uses, not a second removal model) and `addWidgetAtSlot`. Neither
+ * is a catalog Add UI or a GridStack wiring change -- both are pure
+ * hook-level actions a future caller (of either kind) can call.
+ *
+ * `addWidgetAtSlot` deliberately does NOT call `beginInsertion` then
+ * `previewInsertionAtSlot` back-to-back in one synchronous function body.
+ * `previewInsertionAtSlot`'s closure reads the `insertionCandidate` *state*
+ * set by `beginInsertion`, and React state updates are not visible
+ * synchronously within the same call -- exactly why every existing
+ * test above calls them from two separate `act()` blocks. `addWidgetAtSlot`
+ * instead composes the same underlying canonical building blocks those two
+ * stateful actions already share (`createWidgetId`, `computeRowInsertionPreview`,
+ * `validateLayout`) directly, so one synchronous call is correct without
+ * depending on `insertionCandidate` state at all. `beginInsertion` /
+ * `previewInsertionAtSlot` / `commitInsertion` / `cancelInsertion` are
+ * unchanged and remain the live-preview (drag) path.
+ *
+ * Live canonical state cutover and GridStack pointer wiring:
+ * `updateDraftWidget` now returns whether its patch committed. This is the
+ * only behavior change to it -- given the same `widgetId`/`patch`, the
+ * resulting `draftLayout` is identical to before. The synchronous boolean
+ * lets `DashboardGrid.tsx`'s GridStack `dragstop`/`resizestop` handlers
+ * decide, in the same tick, whether to roll GridStack's own visual node back
+ * to its last valid geometry -- a rejected patch never changes `draftLayout`
+ * (same object reference returned), so React's `Object.is` bailout means no
+ * re-render (and no prop-driven resync) would otherwise happen for that case.
  */
 import { useCallback, useMemo, useRef, useState } from "react"
 import { buildDefaultLayout } from "../lib/dashboardDefaultLayout"
-import { createWidgetId, updateWidgetGeometry, type WidgetPlacement } from "../lib/dashboardWidgetActions"
+import { createWidgetId, removeWidget, updateWidgetGeometry, type WidgetPlacement } from "../lib/dashboardWidgetActions"
 import { applyCreatorComparisonSelection } from "../lib/dashboardComparisonWidgets"
 import { dropCreatorOntoWidget } from "../lib/dashboardCreatorDrop"
-import { computeRowInsertionPreview, type InsertionCandidate } from "../lib/dashboardInsertionPreview"
+import { computeRowInsertionPreview, computeValidatedRowInsertion, type InsertionCandidate } from "../lib/dashboardInsertionPreview"
 import { computeAffectedWidgetIds, submitLayoutSave } from "../lib/dashboardLayoutSave"
 import { validateLayout } from "../lib/dashboardLayoutValidation"
 import type { CanonicalLayout, DashboardWidget, GridSize, LayoutValidationResult } from "../types/dashboardLayout"
@@ -62,6 +94,14 @@ export interface GridChangeConfirmation {
   currentGrid: GridSize
   targetGrid: GridSize
   affectedWidgetIds: string[]
+}
+
+/** Result of one atomic `addWidgetAtSlot` call. `widgetId` is
+ * `null` on rejection -- the id was never placed into `draftLayout`, so
+ * there is nothing a caller could legitimately do with it. */
+export interface AddWidgetAtSlotResult {
+  widgetId: string | null
+  accepted: boolean
 }
 
 /** No production save endpoint (or even a decided localStorage-vs-backend
@@ -104,8 +144,16 @@ export interface UseDashboardEditorResult {
   isSaving: boolean
   /** Set only when the most recent submission was rejected; cleared on the next save attempt. */
   saveError: string | null
-  /** Mutates only the draft's geometry for one widget, reusing MT-02's canonical mutation primitive (AC8). */
-  updateDraftWidget: (widgetId: string, patch: Partial<WidgetPlacement>) => void
+  /** Mutates only the draft's geometry for one widget, reusing the
+   * canonical mutation primitive (AC8). Returns whether the patch committed
+   * (a GridStack pointer-gesture caller needs this synchronously to
+   * decide whether to roll its own visual state back). */
+  updateDraftWidget: (widgetId: string, patch: Partial<WidgetPlacement>) => boolean
+  /** Removes one widget from the draft only, reusing the canonical
+   * `removeWidget` (filter + `validateCandidate`, same gate every other
+   * draft mutation here uses). Rejected removals (e.g. leaving an
+   * unresolvable `INCOMPLETE_COLUMN` gap) leave `draftLayout` unchanged. */
+  removeDraftWidget: (widgetId: string) => void
   /** MT-11 Flow 1 (Section 3.4): applies a confirmed creator selection to
    * exactly one compatible widget's draft `comparison.creatorIds`. Never
    * touches `layout` (canonical state) -- the picker's Apply action commits
@@ -115,6 +163,11 @@ export interface UseDashboardEditorResult {
    * compatible widget's draft `comparison.creatorIds`. Never touches `layout`
    * (canonical state) until the normal Dashboard Save flow runs. */
   updateDraftWidgetByCreatorDrop: (widgetId: string, creatorId: string) => void
+  /** Adopts a layout Flow 2's own atomic transaction
+   * already persisted as the new committed layout (and its draft baseline).
+   * Only meaningful outside edit mode -- Flow 2 is offered in view mode, so
+   * it can never discard an unsaved draft. */
+  commitExternalLayout: (committed: CanonicalLayout) => void
   /** Non-null only while an insertion preview is active. */
   insertionCandidate: InsertionCandidate | null
   /** Creates a candidate with a stable `widgetId` (MT-02's canonical id-creation path) and snapshots the current draft to restore on cancel. */
@@ -125,6 +178,17 @@ export interface UseDashboardEditorResult {
   cancelInsertion: () => void
   /** The drop succeeds: keeps the current (already-validated) preview as the draft and clears the candidate. Draft coordinates are identical before and after (AC9). */
   commitInsertion: () => void
+  /** A minimal canonical "add by widget type" bridge for a future
+   * non-drag Add UI -- an explicit `existingRow`/`slotIndex` target is
+   * required (no auto-computed or append-to-end placement); rejects (no
+   * draft change, `widgetId: null`) exactly when the equivalent
+   * `previewInsertionAtSlot` call would. See this module's own docstring
+   * for why this composes `computeRowInsertionPreview`/`validateLayout`
+   * directly instead of calling `beginInsertion`/`previewInsertionAtSlot`
+   * back-to-back. An optional `candidateWidgetId` lets a caller that
+   * already previewed the insertion (DashboardPage's derived Add preview)
+   * commit under the same id instead of minting a second one. */
+  addWidgetAtSlot: (widgetType: string, existingRow: DashboardWidget[], slotIndex: number, candidateWidgetId?: string) => AddWidgetAtSlotResult
 }
 
 export function useDashboardEditor(
@@ -190,8 +254,17 @@ export function useDashboardEditor(
     setGridChangeConfirmation(null)
   }, [])
 
-  const updateDraftWidget = useCallback((widgetId: string, patch: Partial<WidgetPlacement>) => {
-    setDraftLayout((current) => updateWidgetGeometry(current, widgetId, patch).layout)
+  const updateDraftWidget = useCallback(
+    (widgetId: string, patch: Partial<WidgetPlacement>): boolean => {
+      const outcome = updateWidgetGeometry(draftLayout, widgetId, patch)
+      if (outcome.committed) setDraftLayout(outcome.layout)
+      return outcome.committed
+    },
+    [draftLayout],
+  )
+
+  const removeDraftWidget = useCallback((widgetId: string) => {
+    setDraftLayout((current) => removeWidget(current, widgetId).layout)
   }, [])
 
   const updateDraftWidgetComparison = useCallback((widgetId: string, creatorIds: string[]) => {
@@ -200,6 +273,11 @@ export function useDashboardEditor(
 
   const updateDraftWidgetByCreatorDrop = useCallback((widgetId: string, creatorId: string) => {
     setDraftLayout((current) => dropCreatorOntoWidget(current, widgetId, creatorId))
+  }, [])
+
+  const commitExternalLayout = useCallback((committed: CanonicalLayout) => {
+    setLayout(committed)
+    setDraftLayout(committed)
   }, [])
 
   const [insertionCandidate, setInsertionCandidate] = useState<InsertionCandidate | null>(null)
@@ -237,6 +315,17 @@ export function useDashboardEditor(
     setInsertionCandidate(null)
   }, [])
 
+  const addWidgetAtSlot = useCallback(
+    (widgetType: string, existingRow: DashboardWidget[], slotIndex: number, candidateWidgetId?: string): AddWidgetAtSlotResult => {
+      const candidate: InsertionCandidate = { widgetId: candidateWidgetId ?? createWidgetId(widgetType), widgetType }
+      const { layout: candidateLayout, valid } = computeValidatedRowInsertion(draftLayout, existingRow, candidate, slotIndex)
+      if (!valid) return { widgetId: null, accepted: false }
+      setDraftLayout(candidateLayout)
+      return { widgetId: candidate.widgetId, accepted: true }
+    },
+    [draftLayout],
+  )
+
   return {
     layout,
     draftLayout,
@@ -253,12 +342,15 @@ export function useDashboardEditor(
     isSaving,
     saveError,
     updateDraftWidget,
+    removeDraftWidget,
     updateDraftWidgetComparison,
     updateDraftWidgetByCreatorDrop,
+    commitExternalLayout,
     insertionCandidate,
     beginInsertion,
     previewInsertionAtSlot,
     cancelInsertion,
     commitInsertion,
+    addWidgetAtSlot,
   }
 }

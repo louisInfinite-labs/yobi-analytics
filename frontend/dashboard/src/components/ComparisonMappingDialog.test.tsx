@@ -146,4 +146,31 @@ describe("ComparisonMappingDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
+
+  it("moves focus into the dialog, and Escape cancels without saving", () => {
+    const onCancel = vi.fn()
+    const onSave = vi.fn()
+    const preview = computeComparisonMapping(LAYOUT, ["creator-a", "creator-b"], ["revenue"])
+    render(
+      <ComparisonMappingDialog
+        creators={CREATORS}
+        availableComparisonItems={ITEMS}
+        orderedCreatorIds={["creator-a", "creator-b"]}
+        onToggleCreator={vi.fn()}
+        orderedItemIds={["revenue"]}
+        onToggleItem={vi.fn()}
+        preview={preview}
+        canSave
+        isSaving={false}
+        error={null}
+        onSave={onSave}
+        onCancel={onCancel}
+      />,
+    )
+
+    expect(screen.getByRole("dialog", { name: "Add Comparison Charts" })).toContainElement(document.activeElement as HTMLElement)
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(onSave).not.toHaveBeenCalled()
+  })
 })

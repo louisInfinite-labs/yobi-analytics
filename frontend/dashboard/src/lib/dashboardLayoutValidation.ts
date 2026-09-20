@@ -43,7 +43,7 @@ function validateGridSize(columns: number, rows: number): LayoutValidationError[
   return [
     {
       code: "INVALID_GRID_SIZE",
-      message: `Grid size ${columns}x${rows} is outside the supported 1x1-5x5 range.`,
+      message: `Grid size ${columns}x${rows} is outside the supported 1x1-3x3 range.`,
     },
   ]
 }

@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
+import { useModalFocus } from "../hooks/useModalFocus"
 import { useOrderedCreatorSelection } from "../hooks/useOrderedCreatorSelection"
 import { ComparisonOrderBadge } from "./ComparisonOrderBadge"
 import { creatorMatchesSearch, groupCreatorsForDock } from "../lib/dockCreatorOrder"
@@ -48,13 +49,13 @@ export interface CreatorComparisonPickerProps {
  * reimplementing either. Follows this project's existing hand-rolled dialog
  * convention (backdrop + `role="dialog"` `aria-modal`, a secondary Cancel and
  * a primary confirm action -- see `GridChangeConfirmationDialog`), since no
- * shared, generic Dialog/Modal component exists to reuse instead. Like that
- * dialog, this deliberately does not implement focus-trapping, `Escape`-to-
- * close, or focus restoration on close -- those are explicit MT-16
- * acceptance criteria, not MT-11's. */
+ * shared, generic Dialog/Modal component exists to reuse instead. Focus
+ * trapping, `Escape` and focus restoration come from `useModalFocus`. */
 export function CreatorComparisonPicker({ creators, initialSelectedIds, onCancel, onApply }: CreatorComparisonPickerProps) {
   const selection = useOrderedCreatorSelection(initialSelectedIds)
   const [query, setQuery] = useState("")
+  const panelRef = useRef<HTMLDivElement>(null)
+  useModalFocus(panelRef, onCancel)
 
   const orderedCreators = groupCreatorsForDock(creators).flatMap((group) => group.creators)
   const visibleCreators = orderedCreators.filter((creator) => creatorMatchesSearch(creator, query))
@@ -67,7 +68,7 @@ export function CreatorComparisonPicker({ creators, initialSelectedIds, onCancel
       aria-modal="true"
       aria-label="Select Creators"
     >
-      <div className="creator-comparison-picker__panel" onClick={(event) => event.stopPropagation()}>
+      <div ref={panelRef} className="creator-comparison-picker__panel" onClick={(event) => event.stopPropagation()}>
         <input
           type="search"
           className="creator-comparison-picker__search"

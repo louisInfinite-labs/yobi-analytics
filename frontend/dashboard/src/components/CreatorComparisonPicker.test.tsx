@@ -97,4 +97,15 @@ describe("CreatorComparisonPicker", () => {
     render(<CreatorComparisonPicker creators={CREATORS} initialSelectedIds={["creator-a"]} onCancel={vi.fn()} onApply={vi.fn()} />)
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled()
   })
+
+  it("moves focus into the dialog, and Escape cancels without applying", () => {
+    const onCancel = vi.fn()
+    const onApply = vi.fn()
+    render(<CreatorComparisonPicker creators={CREATORS} initialSelectedIds={["creator-a", "creator-b"]} onCancel={onCancel} onApply={onApply} />)
+
+    expect(screen.getByRole("dialog", { name: "Select Creators" })).toContainElement(document.activeElement as HTMLElement)
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(onApply).not.toHaveBeenCalled()
+  })
 })

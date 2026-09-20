@@ -1,4 +1,6 @@
+import { useRef } from "react"
 import { ComparisonOrderBadge } from "./ComparisonOrderBadge"
+import { useModalFocus } from "../hooks/useModalFocus"
 import { groupCreatorsForDock } from "../lib/dockCreatorOrder"
 import type { MockCreator } from "../data/mockCreators"
 import type { ComparisonMappingResult } from "../lib/dashboardComparisonMapping"
@@ -53,10 +55,12 @@ export function ComparisonMappingDialog({
 }: ComparisonMappingDialogProps) {
   const orderedCreators = groupCreatorsForDock(creators).flatMap((group) => group.creators)
   const itemLabelById = new Map(availableComparisonItems.map((item) => [item.comparisonItemId, item.label]))
+  const panelRef = useRef<HTMLDivElement>(null)
+  useModalFocus(panelRef, onCancel)
 
   return (
     <div className="comparison-mapping-dialog__backdrop" onClick={onCancel} role="dialog" aria-modal="true" aria-label="Add Comparison Charts">
-      <div className="comparison-mapping-dialog__panel" onClick={(event) => event.stopPropagation()}>
+      <div ref={panelRef} className="comparison-mapping-dialog__panel" onClick={(event) => event.stopPropagation()}>
         <section aria-label="Creators">
           <ul className="comparison-mapping-dialog__creator-list">
             {orderedCreators.map((creator) => {

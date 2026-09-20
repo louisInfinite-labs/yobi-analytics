@@ -40,3 +40,16 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as unknown as MediaQueryList
 }
+
+// jsdom (this project's Vitest environment) has no ResizeObserver either
+// (GAP-5B1's DashboardPage.tsx reads real content width via one) --
+// jsdom's layout engine never computes real box sizes anyway (see
+// dashboardSpacing.dom.test.tsx's own docstring), so this never fires with
+// a real width in tests; it only needs to exist so mounting doesn't throw.
+if (typeof window.ResizeObserver === "undefined") {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+}

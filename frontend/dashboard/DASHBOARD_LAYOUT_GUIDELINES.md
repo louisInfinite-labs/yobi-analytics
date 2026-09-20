@@ -37,7 +37,7 @@ The current Dashboard package provides these implementation libraries:
 | Existing drag-and-drop interactions | `@dnd-kit/core` where already used or explicitly assigned by a microtask |
 | Dashboard-specific geometry | Existing scoped CSS and project design tokens |
 
-GridStack's current 12-column representation is an implementation detail. It must not replace or weaken the canonical `1x1` through `5x5` Dashboard contract defined below. Any GridStack adapter must translate to and from canonical layout data and run the canonical validator.
+GridStack's current 12-column representation is an implementation detail. It must not replace or weaken the canonical `1x1` through `3x3` Dashboard contract defined below. Any GridStack adapter must translate to and from canonical layout data and run the canonical validator.
 
 Recharts is the approved chart implementation for this Dashboard. Reuse existing chart components, tooltip conventions, legends, colors, and responsive containers. Do not introduce another chart library or create a parallel chart abstraction during the layout rebuild.
 
@@ -95,7 +95,7 @@ Required outcomes:
 - `0.5X`: half of one standard row height.
 - `columns x rows`: the dimensions of the editable Dashboard grid.
 - `2x2`: two columns and two rows.
-- `1x1` to `5x5`: the supported custom grid range. Both values must be integers from 1 through 5.
+- `1x1` to `3x3`: the supported custom grid range. Both values must be integers from 1 through 3.
 - `canonicalLayout`: the current saved layout.
 - `draftLayout`: the isolated layout used while the editor is open.
 - `insertion slot`: an explicit drop target between widgets or at the beginning/end of a row or column.
@@ -299,10 +299,10 @@ type DashboardWidget = {
 
 ### 5.1 Custom grid range
 
-Users may select a grid from `1x1` through `5x5`.
+Users may select a grid from `1x1` through `3x3`.
 
-- Column count and row count must both be integers from 1 through 5.
-- Reject invalid values such as `0x3`, `2.5x4`, or `6x5`.
+- Column count and row count must both be integers from 1 through 3.
+- Reject invalid values such as `0x3`, `2.5x2`, `4x3`, `3x4`, `4x4`, `5x5`, or `6x5`. `4x4` and `5x5` are not supported product configurations.
 - Show the target column count, row count, and grid preview before applying a manual grid-size change.
 - An empty Dashboard may apply a valid grid size directly.
 - A Dashboard containing widgets must follow the confirmation rules in Section 8 when a grid change will alter those widgets.
@@ -579,7 +579,7 @@ type LayoutValidationResult = {
 Validate in this order:
 
 1. Schema and required fields.
-2. Grid size is between `1x1` and `5x5`.
+2. Grid size is between `1x1` and `3x3`.
 3. Unique `widgetId` values.
 4. Supported widget dimensions.
 5. Grid boundaries.
@@ -590,9 +590,13 @@ Reject the save if any validation fails.
 
 An invalid legacy layout must enter a recoverable error or an explicit, tested migration. Do not silently render overlapping widgets.
 
+A previously saved layout with 4 or 5 columns or rows is outside the `1x1` through `3x3` contract and is a legacy layout under this rule. Existing persisted 4/5-column layouts require a defined migration/recovery behavior before the 3x3 implementation is considered complete. This document does not yet define that behavior, and such layouts must not be silently discarded.
+
 ## 11. Responsive Behavior
 
 - Define supported column counts and widths for every existing breakpoint.
+- Product maximum canonical/editable grid: desktop `3x3`, tablet `3x3`, mobile view-only.
+- The minimum-readable-width rule may reduce the usable column count below 3 at a given width. It must never raise the usable column count above the product maximum of 3.
 - Responsive reflow must preserve `widgetId`.
 - Reflow must not create overlaps or overflow.
 - On small screens, use deterministic stacking rather than shrinking charts below their readable size.
@@ -601,7 +605,7 @@ An invalid legacy layout must enter a recoverable error or an explicit, tested m
 
 ## 12. Accessibility and Feedback
 
-- Do not make drag and resize mouse-only. Provide keyboard controls or an equivalent position/size interface.
+- Widget drag and resize may be pointer-driven (mouse/touch). A keyboard-equivalent move/resize interface is not required. Pointer drag/resize must still expose validity/error feedback and preserve the canonical validation rules; all other controls keep their normal keyboard-accessibility requirements.
 - Provide visible focus and selected states.
 - Do not communicate valid and invalid slots by color alone.
 - Announce the targeted insertion position and pending layout change to assistive technology.
@@ -612,7 +616,8 @@ An invalid legacy layout must enter a recoverable error or an explicit, tested m
 
 ### 13.1 Unit tests
 
-- Accept every integer grid from `1x1` through `5x5`.
+- Accept every integer grid from `1x1` through `3x3`.
+- Reject `4x3`, `3x4`, `4x4`, and `5x5`.
 - Reject out-of-range or non-integer grid sizes.
 - Create the default `2x2` layout only when no saved layout exists.
 - Do not overwrite a valid saved layout with the default.
@@ -714,7 +719,7 @@ Dashboard layout work is complete only when:
 - Dashed edit guides add no margin or geometry and do not shift the preview relative to the saved widget.
 - Forced saved-layout changes require confirmation.
 - There are no overlaps, overflows, duplicate IDs, or unusable `0.25X` gaps.
-- Custom grid dimensions are limited to `1x1` through `5x5`.
+- Custom grid dimensions are limited to `1x1` through `3x3`.
 - Add, drag, resize, cancel, restore, save, load, and responsive paths use consistent validation.
 - Relevant unit and E2E tests pass.
 - Supported desktop, tablet, and mobile breakpoints receive visual verification.
@@ -748,7 +753,7 @@ Dashboard layout work is complete only when:
 - [ ] Dashed edit guides are geometry-neutral; edit preview and saved view mode use identical widget boxes.
 - [ ] Insertion placeholders use the exact border-box geometry of the resulting widgets.
 - [ ] Forced changes require confirmation before canonical state is updated.
-- [ ] The custom grid is restricted to `1x1` through `5x5`.
+- [ ] The custom grid is restricted to `1x1` through `3x3`.
 - [ ] Widget height is restricted to `0.5X` or `1X`.
 - [ ] Add, move, resize, preview, and save run collision and boundary validation.
 - [ ] Invalid legacy layouts have an explicit migration or recoverable error.

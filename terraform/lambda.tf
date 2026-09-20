@@ -17,8 +17,8 @@ resource "aws_lambda_function" "collector" {
   environment {
     variables = {
       YOUTUBE_API_KEY_SECRET_NAME = "yobi-analytics/youtube-api-key"
-      YOBI_DATA_DIR                = "/tmp"
-      YOBI_STORAGE_BACKEND          = "dynamodb"
+      YOBI_DATA_DIR               = "/tmp"
+      YOBI_STORAGE_BACKEND        = "dynamodb"
     }
   }
 
@@ -68,7 +68,7 @@ resource "aws_lambda_function" "notification_dispatcher" {
 
   environment {
     variables = {
-      VAPID_CLAIMS_SUB             = var.vapid_claims_sub
+      VAPID_CLAIMS_SUB              = var.vapid_claims_sub
       VAPID_PRIVATE_KEY_SECRET_NAME = "yobi-analytics/vapid-private-key"
     }
   }

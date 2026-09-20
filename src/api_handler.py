@@ -53,7 +53,9 @@ from typing import Any, Callable
 
 import client_credential_api
 import client_credential_store
+import comparison_api
 import config
+import dashboard_catalog_api
 import heartbeat_api
 import heartbeat_store
 import notification_dispatch
@@ -145,6 +147,18 @@ def _handle_get_creator_trending(event: dict[str, Any]) -> dict[str, Any]:
 
 def _handle_get_organization_trending(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_organization_trending(_merged_params(event))
+
+
+def _handle_get_chart_catalog(event: dict[str, Any]) -> dict[str, Any]:
+    return dashboard_catalog_api.get_chart_catalog(_merged_params(event))
+
+
+def _handle_get_comparison_items(event: dict[str, Any]) -> dict[str, Any]:
+    return dashboard_catalog_api.get_comparison_items(_merged_params(event))
+
+
+def _handle_get_comparison_data(event: dict[str, Any]) -> dict[str, Any]:
+    return comparison_api.get_comparison_data(_merged_params(event))
 
 
 def _handle_post_heartbeat(event: dict[str, Any]) -> dict[str, Any]:
@@ -286,6 +300,9 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /videos/{videoId}/growth": _handle_get_video_growth,
     "GET /creators/{creatorId}/trending": _handle_get_creator_trending,
     "GET /organizations/{organization}/trending": _handle_get_organization_trending,
+    "GET /dashboard/chart-catalog": _handle_get_chart_catalog,
+    "GET /dashboard/comparison-items": _handle_get_comparison_items,
+    "GET /dashboard/comparison-data": _handle_get_comparison_data,
     "POST /heartbeat": _handle_post_heartbeat,
     "GET /heartbeat/{clientId}/status": _handle_get_heartbeat_status,
     "POST /clients/{clientId}/credential": _handle_post_client_credential,

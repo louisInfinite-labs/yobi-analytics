@@ -23,3 +23,21 @@ export function dropCreatorOntoWidget(layout: CanonicalLayout, widgetId: string,
     widgets: layout.widgets.map((widget) => (widget.widgetId === widgetId ? { ...widget, comparison: nextComparison } : widget)),
   }
 }
+
+export type CreatorDropOutcome =
+  | { status: "added"; order: number }
+  | { status: "duplicate" }
+  | { status: "incompatible" }
+  | { status: "missing" }
+
+/** Classifies what `dropCreatorOntoWidget` would do, so the live page
+ * can announce the result without re-deriving compatibility or duplicate
+ * rules. `order` is the 1-based comparison order the new creator receives. */
+export function describeCreatorDrop(layout: CanonicalLayout, widgetId: string, creatorId: string): CreatorDropOutcome {
+  const target = layout.widgets.find((widget) => widget.widgetId === widgetId)
+  if (!target) return { status: "missing" }
+  if (!isComparisonCapableWidget(target)) return { status: "incompatible" }
+  const existing = target.comparison?.creatorIds ?? []
+  if (existing.includes(creatorId)) return { status: "duplicate" }
+  return { status: "added", order: existing.length + 1 }
+}

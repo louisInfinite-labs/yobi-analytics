@@ -33,11 +33,11 @@ function codesOf(result: ReturnType<typeof validateLayout>): string[] {
 }
 
 describe("isGridDimension", () => {
-  it.each([1, 2, 3, 4, 5])("accepts %i", (value) => {
+  it.each([1, 2, 3])("accepts %i", (value) => {
     expect(isGridDimension(value)).toBe(true)
   })
 
-  it.each([0, 6, -1, 2.5, 3.1, NaN])("rejects %s", (value) => {
+  it.each([0, 4, 5, 6, -1, 2.5, 3.1, NaN])("rejects %s", (value) => {
     expect(isGridDimension(value)).toBe(false)
   })
 })
@@ -55,15 +55,27 @@ describe("isWidgetHeight", () => {
 describe("validateLayout — grid size", () => {
   it.each([
     [1, 1],
-    [5, 5],
+    [3, 3],
     [3, 2],
+    [2, 3],
   ])("accepts a %ix%i grid", (columns, rows) => {
-    const result = validateLayout(layout({ grid: { columns: columns as 1 | 5 | 3, rows: rows as 1 | 5 | 2 } }))
+    const result = validateLayout(layout({ grid: { columns: columns as 1 | 2 | 3, rows: rows as 1 | 2 | 3 } }))
     expect(codesOf(result)).not.toContain("INVALID_GRID_SIZE")
+  })
+
+  it("accepts every integer grid from 1x1 through 3x3 (all nine combinations)", () => {
+    const sizes = [1, 2, 3] as const
+    const results = sizes.flatMap((columns) => sizes.map((rows) => ({ grid: `${columns}x${rows}`, valid: validateLayout({ grid: { columns, rows }, widgets: [] }).valid })))
+    expect(results).toHaveLength(9)
+    expect(results.filter((r) => !r.valid)).toEqual([])
   })
 
   it.each([
     [0, 3],
+    [4, 3],
+    [3, 4],
+    [4, 4],
+    [5, 5],
     [6, 5],
   ])("rejects a %ix%i grid as INVALID_GRID_SIZE", (columns, rows) => {
     // @ts-expect-error deliberately out-of-range at the type boundary

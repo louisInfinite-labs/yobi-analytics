@@ -10,6 +10,10 @@ interface EditModeToolbarProps {
    * identically. MT-07's canonical editor passes "Restore Default" to
    * match `DASHBOARD_LAYOUT_GUIDELINES.md`'s exact action name. */
   resetToDefaultLabel?: string
+  /** Disables Save independently of `isDirty` (e.g. while an Add
+   * preview's geometry is displayed but not part of the draft), so the
+   * "(unsaved changes)" indication still reflects the draft alone. */
+  saveDisabled?: boolean
 }
 
 /** Enter/exit Edit Layout mode, plus Save/Cancel/Reset while editing.
@@ -23,6 +27,7 @@ export function EditModeToolbar({
   onCancel,
   onResetToDefault,
   resetToDefaultLabel = "Reset to Default",
+  saveDisabled = false,
 }: EditModeToolbarProps) {
   if (!editMode) {
     return (
@@ -41,7 +46,7 @@ export function EditModeToolbar({
       <button type="button" className="soft-button" onClick={onCancel}>
         Cancel
       </button>
-      <button type="button" className="soft-button edit-mode-toolbar__save" onClick={onSave} disabled={!isDirty}>
+      <button type="button" className="soft-button edit-mode-toolbar__save" onClick={onSave} disabled={!isDirty || saveDisabled}>
         Save
       </button>
     </div>

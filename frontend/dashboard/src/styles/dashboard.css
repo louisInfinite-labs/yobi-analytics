@@ -935,6 +935,91 @@ button.video-table__title-cell {
   font-size: 0.82em;
 }
 
+.widget-tray__status {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  margin-top: var(--space-2);
+}
+
+.widget-insertion-slots {
+  margin-bottom: var(--space-4);
+}
+
+.widget-insertion-slots__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.widget-insertion-slots__error {
+  color: var(--negative);
+  font-size: 0.85em;
+}
+
+.widget-insertion-slots__empty {
+  color: var(--text-secondary);
+}
+
+.widget-insertion-slots__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.widget-insertion-slots__row-label {
+  color: var(--text-secondary);
+  font-size: 0.82em;
+  min-width: 4.5em;
+}
+
+.widget-insertion-slots__strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.widget-insertion-slots__existing {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+}
+
+.widget-insertion-slots__slot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px dashed var(--surface-border);
+  background: var(--surface-card);
+  cursor: pointer;
+}
+
+.widget-insertion-slots__slot:hover {
+  background: var(--surface-hover);
+}
+
+/* The slot whose preview is showing. Border *style* (solid vs the
+ * idle dashed) plus the "✓" glyph and `aria-pressed` are the non-color
+ * signals; the filled background is only reinforcement. */
+.widget-insertion-slots__slot--active {
+  border: 2px solid var(--theme-primary);
+  background: var(--theme-primary-soft);
+  font-weight: 700;
+}
+
+.widget-insertion-slots__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.widget-insertion-slots__status {
+  margin: var(--space-2) 0 0;
+  min-height: 1.4em;
+  color: var(--text-secondary);
+}
+
 .dashboard-grid-v2 {
   margin-top: var(--space-4);
 }
@@ -943,14 +1028,94 @@ button.video-table__title-cell {
   background: transparent;
 }
 
+/* Exact 16px gaps despite fractional column widths. GridStack
+ * positions every item with `calc(k * var(--gs-column-width))` where the
+ * variable is `100 / columns %` (inline style, e.g. 20% of a 1376px grid =
+ * 275.2px). The browser stores layout lengths in 1/64px units and truncates
+ * each computed edge independently, so an item's left edge (`k * c`
+ * truncated) can land 1/64px away from the previous item's right edge
+ * (`(k-1) * c` plus its own truncated width): the 8px + 8px margins are
+ * exact, yet the measured gap came out 16.015625px on a 1376px / 5 column
+ * grid. Rounding the column width *to the nearest whole 1/64px* makes
+ * every `k * c` and `w * c` an exact multiple of 1/64px, so no per-edge
+ * truncation remains and adjacent gaps are exactly 8 + 8. (`nearest`, not
+ * `down`: Blink resolves the percentage in float32, so an exact 256px
+ * column at a 768px grid arrives as 255.99999px, and rounding down would
+ * drop it to 255.984px -- a 239.984px widget, under the 240px minimum.)
+ * The grid's right edge moves by at most `columns / 128`px (< 0.03px).
+ * `!important` is required only to outrank GridStack's inline custom
+ * property. */
+.dashboard-grid-v2 > .grid-stack {
+  --gs-column-width: round(nearest, calc(100% / var(--gs-columns)), 0.015625px) !important;
+}
+
+/* The previous `inset: 0 !important` here overrode GridStack's own
+ * `.grid-stack-item-content { top/right/bottom/left: var(--gs-item-margin-*) }`
+ * rule (gridstack.css, loaded by DashboardGrid.tsx) to 0 on every side,
+ * forcing each widget's visible content box to fill its full outer
+ * `.grid-stack-item` cell -- the outer cells already touch by design (that's
+ * how GridStack lays out a track), so zeroing the margin-based inset left
+ * adjacent widgets' visible boxes touching too (measured 0px).
+ * GridStack's own `margin: 8` (DashboardGrid.tsx's `GridStack.init` call)
+ * already sets `--gs-item-margin-*: 8px`; removing the override lets that
+ * single existing margin mechanism produce the required 16px gap (8px
+ * contributed by each side) without a second, compensating margin rule
+ * (Guidelines' "one coherent geometry/margin rule"). `overflow: visible` is
+ * unrelated to spacing (it only stops GridStack's own `overflow-x: hidden`/
+ * `overflow-y: auto` from clipping widget content that intentionally
+ * overflows, e.g. the remove button) and is kept as-is. */
 .grid-stack-item-content {
-  inset: 0 !important;
   overflow: visible !important;
 }
 
 .widget-shell {
   position: relative;
   height: 100%;
+}
+
+/* Dashed edit guide (Guidelines Section 0.2/5.3: "the dashed widget guide ...
+ * must not add margin, padding, grid gap, width, or height"). `outline`
+ * never participates in the CSS box model regardless of its offset sign, so
+ * it cannot change a widget's border-box, GridStack track size, or the
+ * exact 16px neighbor gap; the negative offset only pulls the drawn line
+ * inward so it renders inside the existing border box instead of outside it. */
+.widget-shell--editing {
+  outline: 2px dashed var(--surface-border);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+/* In-progress drag/resize validity, shown before drop.
+ * Border *style* (solid vs dashed) is the primary, non-color signal -- the
+ * same convention `.drop-indicator--active`/`--disabled` above already
+ * establishes for this project; color is secondary reinforcement only.
+ * Declared after `.widget-shell--editing` so it wins (same specificity) on
+ * the one widget actually mid-gesture. */
+.widget-shell--gesture-valid {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: -2px;
+}
+
+.widget-shell--gesture-invalid {
+  outline: 3px dashed var(--negative);
+  outline-offset: -3px;
+}
+
+/* Preview-only stand-in for an Add candidate inside its own real
+ * GridStack node. Outline/background only -- no margin, padding, border, or
+ * size override -- so its border-box is exactly what the committed widget
+ * will occupy (Guidelines Section 5.3/7.3). Declared after the editing and
+ * gesture rules so its dashed outline wins on the placeholder. */
+.widget-shell--insertion-placeholder {
+  outline: 3px dashed var(--theme-primary);
+  outline-offset: -3px;
+  background: var(--theme-primary-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-weight: 600;
+  color: var(--theme-primary);
 }
 
 .widget-shell__body {
@@ -974,6 +1139,11 @@ button.video-table__title-cell {
   justify-content: center;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
+}
+
+.widget-shell__remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
 .widget-shell__remove:hover {
@@ -1129,4 +1299,124 @@ button.video-table__title-cell {
   font-variant-numeric: tabular-nums;
   line-height: 1;
   box-shadow: var(--shadow-sm);
+}
+
+/* Recovery notice for a saved layout from the former 4/5-column contract. */
+.legacy-layout-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.legacy-layout-banner__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.legacy-layout-banner p {
+  margin: 0;
+}
+
+.legacy-layout-banner__error {
+  color: var(--negative);
+}
+
+/* Live comparison widget (chart + ordered creator list). Lives
+ * inside the widget shell's body, so it adds no geometry to the widget box. */
+.comparison-widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  height: 100%;
+  padding: var(--space-2) var(--space-3);
+  box-sizing: border-box;
+}
+
+.comparison-widget__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.comparison-widget__select {
+  margin-left: auto;
+}
+
+.comparison-widget__title {
+  font-weight: 600;
+}
+
+.comparison-widget__creators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comparison-widget__creator {
+  position: relative;
+  padding-right: 22px;
+  font-size: 12px;
+}
+
+.comparison-widget__creator-order {
+  position: absolute;
+  top: -6px;
+  right: 0;
+}
+
+.comparison-widget__chart {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.comparison-widget__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.creator-drag-panel__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.dashboard-page__toolbar--view {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.creator-drag-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.draggable-creator-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.draggable-creator-cell {
+  cursor: grab;
+  touch-action: none;
+}
+
+.comparison-widget__sample {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  border: 1px dashed var(--surface-border);
+  border-radius: var(--radius-sm);
+  padding: 0 6px;
 }

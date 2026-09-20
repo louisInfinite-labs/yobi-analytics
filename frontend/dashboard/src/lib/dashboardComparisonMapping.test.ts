@@ -106,12 +106,12 @@ describe("computeComparisonMapping", () => {
 
   it("MT-12 AC10: with 5 widgets and 3 selected items, widgets 3 and 4 (visual index) remain completely unchanged", () => {
     const fiveWidgetLayout: CanonicalLayout = {
-      grid: { columns: 5, rows: 1 },
+      grid: { columns: 3, rows: 2 },
       widgets: Array.from({ length: 5 }, (_, i) => ({
         widgetId: `w${i}`,
         widgetType: "kpi-summary",
-        x: i,
-        y: 0,
+        x: i % 3,
+        y: Math.floor(i / 3),
         width: 1 as const,
         height: 1 as const,
       })),

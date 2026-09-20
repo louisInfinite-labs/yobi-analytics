@@ -20,7 +20,7 @@
  * Deliberately not wired into the live GridStack-backed dashboard
  * (../hooks/useEditableLayout.ts, ../components/DashboardGrid.tsx) yet.
  * That system renders a 12-column grid with arbitrary integer widget
- * heights, a different contract than this module's 1x1-5x5 / 0.5X-1X
+ * heights, a different contract than this module's 1x1-3x3 / 0.5X-1X
  * canonical model; running validateLayout against a literal translation of
  * its current data would reject the existing default layout outright.
  * Guidelines Section 0 treats GridStack as "an implementation detail" and
@@ -122,4 +122,18 @@ export function moveWidget(layout: CanonicalLayout, widgetId: string, position: 
  * incomplete column fill, or any other validation failure. */
 export function resizeWidget(layout: CanonicalLayout, widgetId: string, size: WidgetSize): LayoutMutationOutcome {
   return updateWidgetGeometry(layout, widgetId, size)
+}
+
+/** Removes the widget matching `widgetId`; every remaining widget is
+ * returned byte-for-byte untouched (same array-filter-then-validate shape as
+ * `addWidget`'s append, not a second mutation model). Rejects (leaving
+ * `layout` untouched) when removal would leave the remaining widgets failing
+ * validation -- e.g. removing one of a stacked 0.5X pair leaves an
+ * unresolvable `INCOMPLETE_COLUMN` gap. A `widgetId` not present in `layout`
+ * is a no-op commit (nothing to remove, nothing to reject). */
+export function removeWidget(layout: CanonicalLayout, widgetId: string): LayoutMutationOutcome {
+  const candidate: CanonicalLayout = { ...layout, widgets: layout.widgets.filter((widget) => widget.widgetId !== widgetId) }
+  const result = validateCandidate(candidate)
+  if (!result.valid) return { layout, committed: false, result }
+  return { layout: candidate, committed: true, result }
 }

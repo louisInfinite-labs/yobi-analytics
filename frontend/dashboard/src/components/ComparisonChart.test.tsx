@@ -150,6 +150,35 @@ describe("ComparisonChart", () => {
     expect(Array.from(tooltipNames).map((el) => el.textContent)).toEqual(["Creator A", "Creator B"])
   })
 
+  it("GAP-9: tooltip and legend follow creator order even when it is not alphabetical (Recharts sorts tooltip items by name by default)", async () => {
+    const zed = { channelId: "creator-zed", channelName: "Zed" }
+    const amy = { channelId: "creator-amy", channelName: "Amy" }
+    const mia = { channelId: "creator-mia", channelName: "Mia" }
+    const fetchComparisonData = vi.fn(() =>
+      Promise.resolve<ComparisonDataResponse>({
+        creators: [
+          { status: "ok", creatorId: "creator-zed", points: [{ label: "Mon", value: 30 }] },
+          { status: "ok", creatorId: "creator-amy", points: [{ label: "Mon", value: 10 }] },
+          { status: "ok", creatorId: "creator-mia", points: [{ label: "Mon", value: 20 }] },
+        ],
+      }),
+    )
+    const { container } = render(
+      <ComparisonChart creators={[zed, amy, mia]} comparisonItemId="revenue" availableComparisonItems={AVAILABLE_ITEMS} width={400} height={200} fetchComparisonData={fetchComparisonData} />,
+    )
+    await waitFor(() => expect(screen.getByTestId("comparison-chart")).toBeInTheDocument())
+
+    const surface = container.querySelector(".recharts-surface") as SVGSVGElement
+    surface.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, right: 400, bottom: 200, width: 400, height: 200, toJSON: () => ({}) }) as DOMRect
+    fireEvent.mouseOver(surface, { clientX: 200, clientY: 100 })
+    fireEvent.mouseMove(surface, { clientX: 200, clientY: 100 })
+
+    await waitFor(() => expect(document.querySelector(".recharts-tooltip-item-list")).not.toBeNull())
+    expect(Array.from(document.querySelectorAll(".recharts-tooltip-item-name")).map((el) => el.textContent)).toEqual(["Zed", "Amy", "Mia"])
+    expect(Array.from(document.querySelectorAll(".recharts-legend-item-text")).map((el) => el.textContent)).toEqual(["Zed", "Amy", "Mia"])
+    expect(Array.from(document.querySelectorAll(".recharts-line")).length).toBe(3)
+  })
+
   it("MT-14 AC6: a partial-error result identifies the failed creator without dropping the other creators' series", async () => {
     const fetchComparisonData = vi.fn(() =>
       Promise.resolve<ComparisonDataResponse>({

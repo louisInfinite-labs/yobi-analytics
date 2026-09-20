@@ -36,12 +36,15 @@ import type { ComparisonItem } from "../types/dashboardComparisonCatalog"
 
 const SERIES_COLORS = ["#6366f1", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6"]
 
+/** The only creator fields the chart reads: the stable id and the display name. */
+export type ComparisonChartCreator = Pick<MockCreator, "channelId" | "channelName">
+
 export interface ComparisonChartProps {
   /** Ordered exactly like click order (MT-10) -- the resulting legend and
    * tooltip series order follows this array's order (AC4). Injected rather
    * than owned here, the same convention `CreatorComparisonPicker` already
    * uses for `creators`. */
-  creators: readonly MockCreator[]
+  creators: readonly ComparisonChartCreator[]
   comparisonItemId: string
   /** AC2: the backend-supported comparison-item catalog -- the same
    * `ComparisonItem` contract `ComparisonMappingDialog.tsx`'s
@@ -96,6 +99,10 @@ export function ComparisonChart({ creators, comparisonItemId, availableCompariso
   const okResults = results.filter(isOkComparisonResult)
   const issueResults = results.filter((result) => !isOkComparisonResult(result))
   const rows = buildComparisonChartRows(okResults)
+  // Recharts 3's Tooltip sorts its items by name by default; comparison order
+  // is creator click order, so the tooltip is pinned to the same
+  // series order the legend and lines use.
+  const seriesIndexByCreatorId = new Map(okResults.map((result, index) => [result.creatorId, index]))
 
   return (
     <div data-testid="comparison-chart" style={{ width, height }}>
@@ -123,8 +130,11 @@ export function ComparisonChart({ creators, comparisonItemId, availableCompariso
             <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-border)" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--text-tertiary)" }} axisLine={{ stroke: "var(--surface-border)" }} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: "var(--text-tertiary)" }} axisLine={false} tickLine={false} width={48} />
-            <Tooltip contentStyle={{ borderRadius: 8, borderColor: "var(--surface-border)", fontSize: 12 }} />
-            <Legend />
+            <Tooltip
+              contentStyle={{ borderRadius: 8, borderColor: "var(--surface-border)", fontSize: 12 }}
+              itemSorter={(item) => seriesIndexByCreatorId.get(String(item.dataKey)) ?? 0}
+            />
+            <Legend itemSorter={null} />
             {okResults.map((result, index) => (
               <Line
                 key={result.creatorId}

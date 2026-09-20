@@ -4,13 +4,13 @@
  * This is a separate model from the pre-existing GridStack-backed
  * WidgetInstance/LayoutProfile types in ./widget.ts. Those model a 12-column
  * GridStack grid with arbitrary integer widget heights; this file models the
- * guidelines' 1x1-5x5 custom grid with 0.5X/1X widget heights that the
+ * guidelines' 1x1-3x3 custom grid with 0.5X/1X widget heights that the
  * layout editor rework (MT-02 onward) builds against. The two are not
  * interchangeable and neither replaces the other in this microtask.
  */
 
-/** Both grid dimensions (columns and rows) are restricted to integers 1-5. */
-export type GridDimension = 1 | 2 | 3 | 4 | 5
+/** Both grid dimensions (columns and rows) are restricted to integers 1-3. */
+export type GridDimension = 1 | 2 | 3
 
 export interface GridSize {
   columns: GridDimension
@@ -74,7 +74,7 @@ export interface LayoutValidationResult {
 }
 
 export function isGridDimension(value: number): value is GridDimension {
-  return Number.isInteger(value) && value >= 1 && value <= 5
+  return Number.isInteger(value) && value >= 1 && value <= 3
 }
 
 export function isWidgetHeight(value: number): value is WidgetHeight {

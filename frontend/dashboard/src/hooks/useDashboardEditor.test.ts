@@ -506,9 +506,9 @@ describe("useDashboardEditor", () => {
     })
 
     it("an invalid slot accepts no drop and changes no state (AC8)", () => {
-      const fiveWide: CanonicalLayout = {
-        grid: { columns: 5, rows: 1 },
-        widgets: Array.from({ length: 5 }, (_, i) => ({
+      const threeWide: CanonicalLayout = {
+        grid: { columns: 3, rows: 1 },
+        widgets: Array.from({ length: 3 }, (_, i) => ({
           widgetId: `w${i}`,
           widgetType: "kpi-summary",
           x: i,
@@ -517,18 +517,18 @@ describe("useDashboardEditor", () => {
           height: 1 as const,
         })),
       }
-      const { result } = renderHook(() => useDashboardEditor(fiveWide))
+      const { result } = renderHook(() => useDashboardEditor(threeWide))
       act(() => result.current.enterEditMode())
       act(() => result.current.beginInsertion("insights"))
 
       let accepted = true
       act(() => {
-        accepted = result.current.previewInsertionAtSlot(fiveWide.widgets, 2)
+        accepted = result.current.previewInsertionAtSlot(threeWide.widgets, 2)
       })
 
       expect(accepted).toBe(false)
-      expect(result.current.draftLayout).toEqual(fiveWide)
-      expect(result.current.draftLayout).toBe(fiveWide)
+      expect(result.current.draftLayout).toEqual(threeWide)
+      expect(result.current.draftLayout).toBe(threeWide)
     })
 
     it("preview and post-drop draft coordinates are identical (AC9)", () => {
@@ -543,5 +543,164 @@ describe("useDashboardEditor", () => {
       expect(result.current.draftLayout).toBe(previewDraft)
       expect(result.current.insertionCandidate).toBeNull()
     })
+  })
+
+  describe("removeDraftWidget (GAP-4B2 AC1-AC5)", () => {
+    it("removes only the targeted widget from the draft, preserving every remaining widget byte-for-byte (AC1, AC2)", () => {
+      const { result } = renderHook(() => useDashboardEditor(LAYOUT))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.removeDraftWidget("b"))
+
+      expect(result.current.draftLayout.widgets.map((w) => w.widgetId)).toEqual(["a"])
+      expect(result.current.draftLayout.widgets[0]).toEqual(LAYOUT.widgets[0])
+      expect(result.current.layout).toEqual(LAYOUT) // canonical untouched
+    })
+
+    it("Cancel after a removal restores the complete pre-edit canonical state (AC3)", () => {
+      const { result } = renderHook(() => useDashboardEditor(LAYOUT))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.removeDraftWidget("b"))
+      act(() => result.current.cancel())
+
+      expect(result.current.draftLayout).toEqual(LAYOUT)
+      expect(result.current.layout).toEqual(LAYOUT)
+      expect(result.current.editMode).toBe(false)
+    })
+
+    it("Save after a valid removal uses the existing canonical save boundary (AC4)", async () => {
+      const submitSave = resolvingSubmitSave()
+      const { result } = renderHook(() => useDashboardEditor(LAYOUT, submitSave))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.removeDraftWidget("b"))
+
+      await act(async () => {
+        await result.current.save()
+      })
+
+      expect(submitSave).toHaveBeenCalledTimes(1)
+      expect(submitSave).toHaveBeenCalledWith(expect.objectContaining({ widgets: [expect.objectContaining({ widgetId: "a" })] }))
+      expect(result.current.layout.widgets.map((w) => w.widgetId)).toEqual(["a"])
+      expect(result.current.editMode).toBe(false)
+    })
+
+    it("rejects a removal that would leave an incomplete column, leaving draftLayout unchanged (AC5)", () => {
+      const stacked: CanonicalLayout = {
+        grid: { columns: 1, rows: 1 },
+        widgets: [
+          { widgetId: "top", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 0.5 },
+          { widgetId: "bottom", widgetType: "kpi-summary", x: 0, y: 0.5, width: 1, height: 0.5 },
+        ],
+      }
+      const { result } = renderHook(() => useDashboardEditor(stacked))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.removeDraftWidget("top"))
+
+      expect(result.current.draftLayout).toEqual(stacked)
+    })
+
+    it("removing a widgetId absent from the draft is a no-op", () => {
+      const { result } = renderHook(() => useDashboardEditor(LAYOUT))
+      act(() => result.current.enterEditMode())
+      act(() => result.current.removeDraftWidget("does-not-exist"))
+
+      expect(result.current.draftLayout).toEqual(LAYOUT)
+    })
+  })
+
+  describe("addWidgetAtSlot (GAP-4B2 AC6-AC8)", () => {
+    it("delegates to the same canonical insertion computation as previewInsertionAtSlot, writing only into draftLayout (AC6, AC7)", () => {
+      const { result } = renderHook(() => useDashboardEditor(ROW))
+      act(() => result.current.enterEditMode())
+
+      let outcome!: { widgetId: string | null; accepted: boolean }
+      act(() => {
+        outcome = result.current.addWidgetAtSlot("insights", ROW.widgets, 1)
+      })
+
+      expect(outcome.accepted).toBe(true)
+      expect(outcome.widgetId).toEqual(expect.stringMatching(/^insights-/))
+      expect(result.current.draftLayout.widgets.map((w) => w.widgetType)).toEqual(["kpi-summary", "insights", "ranking"])
+      expect(result.current.draftLayout.widgets.map((w) => w.widgetId)).toEqual(["a", outcome.widgetId, "b"])
+      expect(result.current.layout).toEqual(ROW) // canonical untouched
+      expect(result.current.layout).toBe(ROW)
+    })
+
+    it("requires an explicit target slot: the same widgetType/row inserted at a different slot produces a different order", () => {
+      const { result } = renderHook(() => useDashboardEditor(ROW))
+      act(() => result.current.enterEditMode())
+      act(() => {
+        result.current.addWidgetAtSlot("insights", ROW.widgets, 2)
+      })
+
+      expect(result.current.draftLayout.widgets.map((w) => w.widgetType)).toEqual(["kpi-summary", "ranking", "insights"])
+    })
+
+    it("an invalid slot is rejected: no draft/canonical state changes and no widgetId is returned (AC8)", () => {
+      const threeWide: CanonicalLayout = {
+        grid: { columns: 3, rows: 1 },
+        widgets: Array.from({ length: 3 }, (_, i) => ({
+          widgetId: `w${i}`,
+          widgetType: "kpi-summary",
+          x: i,
+          y: 0,
+          width: 1 as const,
+          height: 1 as const,
+        })),
+      }
+      const { result } = renderHook(() => useDashboardEditor(threeWide))
+      act(() => result.current.enterEditMode())
+
+      let outcome!: { widgetId: string | null; accepted: boolean }
+      act(() => {
+        outcome = result.current.addWidgetAtSlot("insights", threeWide.widgets, 2)
+      })
+
+      expect(outcome).toEqual({ widgetId: null, accepted: false })
+      expect(result.current.draftLayout).toEqual(threeWide)
+      expect(result.current.draftLayout).toBe(threeWide)
+      expect(result.current.layout).toBe(threeWide)
+    })
+
+    it("GAP-7: commits under a caller-supplied candidateWidgetId instead of minting a second one", () => {
+      const { result } = renderHook(() => useDashboardEditor(ROW))
+      act(() => result.current.enterEditMode())
+
+      let outcome!: { widgetId: string | null; accepted: boolean }
+      act(() => {
+        outcome = result.current.addWidgetAtSlot("insights", ROW.widgets, 1, "preview-candidate-id")
+      })
+
+      expect(outcome).toEqual({ widgetId: "preview-candidate-id", accepted: true })
+      expect(result.current.draftLayout.widgets.map((w) => w.widgetId)).toEqual(["a", "preview-candidate-id", "b"])
+    })
+
+    it("does not depend on or interact with the beginInsertion/previewInsertionAtSlot preview state", () => {
+      const { result } = renderHook(() => useDashboardEditor(ROW))
+      act(() => result.current.enterEditMode())
+
+      act(() => {
+        result.current.addWidgetAtSlot("insights", ROW.widgets, 1)
+      })
+
+      // No live-preview candidate was ever started by the one-shot bridge.
+      expect(result.current.insertionCandidate).toBeNull()
+    })
+  })
+})
+
+describe("useDashboardEditor commitExternalLayout (GAP-9 Flow 2)", () => {
+  const BASE: CanonicalLayout = { grid: { columns: 2, rows: 1 }, widgets: [{ widgetId: "a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 }] }
+  const NEXT: CanonicalLayout = { grid: { columns: 2, rows: 1 }, widgets: [{ widgetId: "a", widgetType: "creator-comparison-chart", x: 0, y: 0, width: 1, height: 1, comparison: { creatorIds: ["c1", "c2"], comparisonItemIds: ["revenue"] } }] }
+
+  it("adopts a layout persisted by Flow 2's own transaction as both the committed layout and the draft baseline, without calling the normal save", () => {
+    const submitSave = vi.fn(() => Promise.resolve())
+    const { result } = renderHook(() => useDashboardEditor(BASE, submitSave))
+
+    act(() => result.current.commitExternalLayout(NEXT))
+
+    expect(result.current.layout).toBe(NEXT)
+    expect(result.current.draftLayout).toBe(NEXT)
+    expect(result.current.isDirty).toBe(false)
+    expect(submitSave).not.toHaveBeenCalled()
   })
 })

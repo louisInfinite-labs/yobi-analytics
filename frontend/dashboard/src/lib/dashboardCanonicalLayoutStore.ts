@@ -38,15 +38,37 @@
  * cover AC1/AC8 here for free.
  */
 import { validateLayout } from "./dashboardLayoutValidation"
-import { isCanonicalLayoutShape, migrateDuplicateWidgetIds } from "./dashboardLayoutMigration"
+import {
+  isCanonicalLayoutShape,
+  isLegacyGridPayload,
+  migrateDuplicateWidgetIds,
+  proposeLegacyMigration,
+  type LegacyGridLayout,
+} from "./dashboardLayoutMigration"
 import { resolveInitialLayout } from "./dashboardDefaultLayout"
 import type { CanonicalLayout, LayoutValidationError } from "../types/dashboardLayout"
 
 const CANONICAL_LAYOUT_STORAGE_KEY = "yobi-analytics-canonical-dashboard-layout"
 
+/** The one stable backup key for a legacy (pre-3x3) payload,
+ * derived from the canonical key. Written only by `convertLegacyLayout`,
+ * never deleted automatically. */
+export const LEGACY_LAYOUT_BACKUP_STORAGE_KEY = `${CANONICAL_LAYOUT_STORAGE_KEY}-legacy-backup`
+
+/** A payload saved under the former 1x1-5x5 contract. `raw` is the
+ * exact stored string; `parsed` the same data typed with plain-number grid
+ * dimensions; `proposed` a fully valid <=3x3 candidate that preserves every
+ * widget, or `null` when no lossless one exists. Never a valid layout. */
+export interface LegacyLayoutRecovery {
+  raw: string
+  parsed: LegacyGridLayout
+  proposed: CanonicalLayout | null
+}
+
 export type CanonicalLayoutLoadResult =
   | { status: "empty" }
   | { status: "valid"; layout: CanonicalLayout }
+  | ({ status: "legacy-grid" } & LegacyLayoutRecovery)
   | { status: "error"; reason: string }
 
 function attemptMigration(layout: CanonicalLayout, errors: LayoutValidationError[]): CanonicalLayout | null {
@@ -82,6 +104,10 @@ export function readCanonicalLayout(storage?: Storage): CanonicalLayoutLoadResul
   const result = validateLayout(parsed)
   if (result.valid) return { status: "valid", layout: parsed }
 
+  if (isLegacyGridPayload(parsed, result.errors)) {
+    return { status: "legacy-grid", raw, parsed, proposed: proposeLegacyMigration(parsed) }
+  }
+
   const migrated = attemptMigration(parsed, result.errors)
   if (migrated) return { status: "valid", layout: migrated }
 
@@ -101,6 +127,53 @@ export function loadInitialCanonicalLayout(storage?: Storage): CanonicalLayout {
   return resolveInitialLayout(result.status === "valid" ? result.layout : null)
 }
 
+/** The initial layout plus, when the stored payload is a legacy
+ * one, its recovery data. While `legacy` is non-null the returned layout is
+ * only the in-memory default; it must never be persisted over the legacy
+ * payload. */
+export function loadCanonicalLayoutState(storage?: Storage): { layout: CanonicalLayout; legacy: LegacyLayoutRecovery | null } {
+  const result = readCanonicalLayout(storage)
+  const legacy = result.status === "legacy-grid" ? { raw: result.raw, parsed: result.parsed, proposed: result.proposed } : null
+  return { layout: resolveInitialLayout(result.status === "valid" ? result.layout : null), legacy }
+}
+
+export type ConvertLegacyLayoutResult = { ok: true } | { ok: false; reason: string }
+
+/** The explicit migration boundary. In order: (1) confirm the
+ * primary key still holds exactly the payload the user was shown, (2) write
+ * that raw payload to the backup key and read it back, (3) only then write
+ * the validated <=3x3 proposal to the primary key. A failure at any step
+ * before (3) leaves the primary key byte-identical. An existing backup
+ * holding different data is never overwritten. */
+export function convertLegacyLayout(recovery: LegacyLayoutRecovery, storage?: Storage): ConvertLegacyLayoutResult {
+  const { proposed, raw } = recovery
+  if (!proposed) return { ok: false, reason: "This saved layout cannot be converted without removing or changing widgets." }
+  if (!validateLayout(proposed).valid) return { ok: false, reason: "The converted layout is not valid, so nothing was changed." }
+
+  let target: Storage
+  try {
+    target = storage ?? window.localStorage
+    if (target.getItem(CANONICAL_LAYOUT_STORAGE_KEY) !== raw) {
+      return { ok: false, reason: "The saved layout changed since it was loaded. Reload the page and try again." }
+    }
+    const existingBackup = target.getItem(LEGACY_LAYOUT_BACKUP_STORAGE_KEY)
+    if (existingBackup !== null && existingBackup !== raw) {
+      return { ok: false, reason: "A different layout backup already exists, so nothing was changed." }
+    }
+    target.setItem(LEGACY_LAYOUT_BACKUP_STORAGE_KEY, raw)
+    if (target.getItem(LEGACY_LAYOUT_BACKUP_STORAGE_KEY) !== raw) {
+      return { ok: false, reason: "The layout backup could not be verified, so your saved layout was left untouched." }
+    }
+  } catch {
+    return { ok: false, reason: "Saved layout storage is unavailable, so your saved layout was left untouched." }
+  }
+
+  if (!writeCanonicalLayout(proposed, target)) {
+    return { ok: false, reason: "The converted layout could not be saved. Your original layout is still preserved." }
+  }
+  return { ok: true }
+}
+
 /** Mirrors `layoutStore.ts`'s own `writeLayout`: a single `setItem` call,
  * never throws, returns whether it actually persisted. */
 export function writeCanonicalLayout(layout: CanonicalLayout, storage?: Storage): boolean {
@@ -118,6 +191,11 @@ export function writeCanonicalLayout(layout: CanonicalLayout, storage?: Storage)
  * without any additional rollback logic in this module. */
 export function createLocalCanonicalLayoutSubmit(storage?: Storage): (layout: CanonicalLayout) => Promise<void> {
   return async (layout) => {
+    // Defensive, storage-level guard independent of any UI state -- a
+    // normal save must never replace an unresolved legacy payload.
+    if (readCanonicalLayout(storage).status === "legacy-grid") {
+      throw new Error("A saved layout from an older grid size is awaiting conversion; saving is unavailable.")
+    }
     if (!writeCanonicalLayout(layout, storage)) {
       throw new Error("Failed to persist the dashboard layout.")
     }

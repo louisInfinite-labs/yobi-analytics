@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { addWidget, createWidget, createWidgetId, moveWidget, resizeWidget, updateWidgetGeometry } from "./dashboardWidgetActions"
+import { addWidget, createWidget, createWidgetId, moveWidget, removeWidget, resizeWidget, updateWidgetGeometry } from "./dashboardWidgetActions"
 import type { CanonicalLayout, DashboardWidget } from "../types/dashboardLayout"
 
 function widget(overrides: Partial<DashboardWidget> = {}): DashboardWidget {
@@ -185,6 +185,41 @@ describe("resizeWidget", () => {
     expect(outcome.result.errors.map((e) => e.code)).toContain("INVALID_HEIGHT")
     expect(outcome.layout).toBe(base)
     expect(outcome.layout.widgets[0].widgetId).toBe("a")
+  })
+})
+
+describe("removeWidget", () => {
+  it("commits removal and leaves every remaining widget byte-for-byte untouched", () => {
+    const remaining = widget({ widgetId: "b", x: 1, y: 0 })
+    const base = layout({ widgets: [widget({ widgetId: "a", x: 0, y: 0 }), remaining] })
+    const outcome = removeWidget(base, "a")
+
+    expect(outcome.committed).toBe(true)
+    expect(outcome.layout.widgets.map((w) => w.widgetId)).toEqual(["b"])
+    expect(outcome.layout.widgets[0]).toBe(remaining)
+  })
+
+  it("is a no-op commit when widgetId is not present", () => {
+    const base = layout({ widgets: [widget({ widgetId: "a", x: 0, y: 0 })] })
+    const outcome = removeWidget(base, "does-not-exist")
+
+    expect(outcome.committed).toBe(true)
+    expect(outcome.layout.widgets.map((w) => w.widgetId)).toEqual(["a"])
+  })
+
+  it("rejects a removal that leaves an incomplete column (one of a stacked 0.5X pair) and leaves the input layout untouched", () => {
+    const base = layout({
+      widgets: [
+        widget({ widgetId: "top", x: 0, y: 0, width: 1, height: 0.5 }),
+        widget({ widgetId: "bottom", x: 0, y: 0.5, width: 1, height: 0.5 }),
+      ],
+    })
+    const outcome = removeWidget(base, "top")
+
+    expect(outcome.committed).toBe(false)
+    expect(outcome.result.errors.map((e) => e.code)).toContain("INCOMPLETE_COLUMN")
+    expect(outcome.layout).toBe(base)
+    expect(outcome.layout.widgets).toHaveLength(2)
   })
 })
 
