@@ -6,13 +6,15 @@ HTTP server, against the local JSON storage backend (no AWS). It only serves
 the read routes that need no cloud service (`GET /dashboard/*`); every other
 route answers 404, so nothing here can reach DynamoDB or Secrets Manager.
 
-`--seed-fixture` writes a small deterministic fixture (Video Master +
-daily snapshots for a handful of real Creator Master creators) into a fresh
-temporary data directory before serving, so comparison series come from real
-stored snapshots. FIXTURE_CREATORS is the single source of those numbers:
-each entry is (starting view count on FIRST_DATE, views gained per day) per
-video, so a creator's total-views on day N is sum(start + N * gain) and its
-daily-view-growth is sum(gain).
+`--seed-fixture` stands in for YobiTrendingCache: it runs the real history
+pipeline code (history_ranking.creator_period_partials and
+ranking_reducer.persist_creator_and_organization_rankings) over a small
+deterministic set of history rows for a handful of real Creator Master
+creators, and serves the resulting creatorSummary items to the comparison
+endpoint through the same seam production uses. FIXTURE_CREATORS is the single
+source of those numbers: each entry is (starting view count on FIRST_DATE,
+views gained per day) per video, so a creator's total-views on day N is
+sum(start + N * gain) and its daily-view-growth is sum(gain).
 
     .venv/bin/python scripts/local_api_server.py --port 8787 --seed-fixture
 """
@@ -24,7 +26,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -45,43 +46,40 @@ FIXTURE_CREATORS: dict[str, list[tuple[int, int]]] = {
 }
 
 
-def seed_fixture() -> None:
-    from snapshot_store import Snapshot, save_daily_snapshot
-    from video_master import Video, upsert_videos
+def seed_fixture() -> dict[str, dict]:
+    """Return the creatorSummary cache items the real reducer writes for the fixture."""
+    import history_ranking
+    import ranking_reducer
+    from history_store import EXACT_ANCHOR_DAYS, HistoryRow
 
-    videos = []
-    for creator_id, streams in FIXTURE_CREATORS.items():
-        for index in range(len(streams)):
-            videos.append(
-                Video(
-                    video_id=f"{creator_id}-v{index + 1}",
-                    creator_id=creator_id,
-                    title=f"{creator_id} video {index + 1}",
-                    published_at="2026-08-01T00:00:00Z",
-                    activity_state="Hot",
-                )
-            )
-    upsert_videos(videos)
-
-    day = FIRST_DATE
-    while day <= LAST_DATE:
+    def rows_on(day: date) -> list[HistoryRow]:
         offset = (day - FIRST_DATE).days
-        snapshots = [
-            Snapshot(
-                snapshot_date=day.isoformat(),
-                observed_at=f"{day.isoformat()}T18:00:05+09:00",
-                creator_id=creator_id,
+        return [
+            HistoryRow(
                 video_id=f"{creator_id}-v{index + 1}",
-                title=f"{creator_id} video {index + 1}",
-                published_at="2026-08-01T00:00:00Z",
+                creator_id=creator_id,
                 view_count=start + offset * gain,
-                organization="hololive",
+                observed_at=f"{day.isoformat()}T18:00:05+09:00",
+                availability_status="available",
             )
             for creator_id, streams in FIXTURE_CREATORS.items()
             for index, (start, gain) in enumerate(streams)
         ]
-        save_daily_snapshot(snapshots, day)
+
+    stored: dict[str, dict] = {}
+    day = FIRST_DATE
+    while day <= LAST_DATE:
+        anchors = {days: (rows_on(day - timedelta(days=days)) if day - timedelta(days=days) >= FIRST_DATE else []) for days in EXACT_ANCHOR_DAYS}
+        ranking_reducer.persist_creator_and_organization_rankings(
+            history_ranking.creator_period_partials(rows_on(day), anchors, report_date=day),
+            report_date=day,
+            dimensions_by_creator={},
+            put_cached_trending=lambda key, payload, *, computed_at: stored.__setitem__(key, payload),
+            computed_at=f"{day.isoformat()}T18:05:00+09:00",
+            wru_budget=ranking_reducer.WruBudget(target_wru_per_second=1_000_000),
+        )
         day += timedelta(days=1)
+    return stored
 
 
 def _route_patterns(routes: dict) -> list[tuple[str, re.Pattern[str], str]]:
@@ -148,21 +146,20 @@ def make_handler(api_handler_module):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8787)
-    parser.add_argument("--seed-fixture", action="store_true", help="serve a fresh, seeded temporary data directory")
+    parser.add_argument("--seed-fixture", action="store_true", help="serve seeded creator summaries in place of YobiTrendingCache")
     args = parser.parse_args()
 
-    if args.seed_fixture:
-        # Must be set before any storage module is imported (json_store reads it at import).
-        os.environ["YOBI_DATA_DIR"] = tempfile.mkdtemp(prefix="yobi-local-api-")
-    os.environ.pop("YOBI_STORAGE_BACKEND", None)  # always the local JSON backend
+    os.environ.pop("YOBI_STORAGE_BACKEND", None)  # always the local backend
     sys.path.insert(0, str(ROOT / "src"))
 
     import api_handler
+    import comparison_api
 
     if args.seed_fixture:
-        seed_fixture()
+        cache = seed_fixture()
+        comparison_api.get_cached_trending = cache.get
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(api_handler))
-    print(f"local API server on http://127.0.0.1:{args.port} (data dir: {os.environ.get('YOBI_DATA_DIR', 'default')})", flush=True)
+    print(f"local API server on http://127.0.0.1:{args.port} (seeded: {args.seed_fixture})", flush=True)
     server.serve_forever()
 
 

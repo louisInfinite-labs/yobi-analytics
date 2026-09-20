@@ -13,8 +13,8 @@ addable charts belong here -- comparison items are a different concept and
 are never listed as charts.
 
 Comparison items: each item maps to a metric `comparison_api.py` really
-computes from stored snapshots (`metric` names its entry in that module's
-metric table); an item with no computable metric must not be listed. The
+serves from stored per-creator aggregates (`metric` names its entry in that
+module's metric table); an item with no stored source must not be listed. The
 description records the source and computation.
 """
 
@@ -43,7 +43,7 @@ CHART_CATALOG: tuple[ChartDefinition, ...] = (
 class ComparisonItemDefinition:
     comparison_item_id: str
     label: str
-    # Key into comparison_api.METRICS -- the computation that backs this item.
+    # Key into comparison_api.METRICS -- the stored aggregate that backs this item.
     metric: str
     # Source and computation, for maintainers (not sent to clients).
     description: str
@@ -55,9 +55,8 @@ COMPARISON_ITEMS: tuple[ComparisonItemDefinition, ...] = (
         label="Daily view growth",
         metric="daily_view_growth",
         description=(
-            "Per report date: the sum, over the creator's tracked non-Cold videos that have a raw snapshot on both "
-            "that date and the previous date, of view_count(date) - view_count(date - 1 day) "
-            "(view_growth_analytics.calculate_growth, period 1d, status ok only)."
+            "Per report date: the creator's stored 1d creatorSummary `viewSum` -- the sum of every eligible video's "
+            "exact gain against the previous day (history_ranking.creator_period_partials)."
         ),
     ),
     ComparisonItemDefinition(
@@ -65,9 +64,8 @@ COMPARISON_ITEMS: tuple[ComparisonItemDefinition, ...] = (
         label="Total views",
         metric="total_views",
         description=(
-            "Per report date: the sum of view_count on that date over the same videos daily-view-growth uses "
-            "(videos with a snapshot on both that date and the previous date), so the two items describe one "
-            "consistent video set per date."
+            "Per report date: the creator's stored all-period creatorSummary `viewSum` -- the sum of every video's "
+            "latest collected view count (history_ranking.creator_period_partials)."
         ),
     ),
 )
