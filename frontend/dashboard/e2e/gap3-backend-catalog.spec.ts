@@ -79,12 +79,12 @@ test("a catalog failure leaves the existing widgets in place and says Add is una
 })
 
 test("the plain dev server ships no hard-coded catalog, no mock comparison source and no test switches", async ({ request }) => {
-  const catalog = await (await request.get("/src/lib/dashboardChartCatalogSource.ts")).text()
+  const catalog = await (await request.get("/src/features/dashboard/catalog/data/dashboardChartCatalogSource.ts")).text()
   expect(catalog).toContain("/dashboard/chart-catalog")
   expect(catalog).not.toMatch(/kpi-summary|growth-bar-chart|contribution-ring/)
-  const wiring = await (await request.get("/src/lib/defaultComparisonSource.ts")).text()
+  const wiring = await (await request.get("/src/features/dashboard/comparison/data/defaultComparisonSource.ts")).text()
   expect(wiring).toContain("createBackendComparisonSource")
-  for (const file of ["/src/lib/backendComparisonSource.ts", "/src/lib/dashboardComparisonSource.ts", "/src/lib/defaultComparisonSource.ts", "/src/lib/dashboardChartCatalogSource.ts"]) {
+  for (const file of ["/src/features/dashboard/comparison/data/backendComparisonSource.ts", "/src/features/dashboard/comparison/data/dashboardComparisonSource.ts", "/src/features/dashboard/comparison/data/defaultComparisonSource.ts", "/src/features/dashboard/catalog/data/dashboardChartCatalogSource.ts"]) {
     const text = await (await request.get(file)).text()
     expect(text, file).not.toMatch(/localStorage|__yobi|__e2e|fakeComparisonSource|MOCK_COMPARISON/)
   }

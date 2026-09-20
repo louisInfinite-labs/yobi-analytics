@@ -1,8 +1,8 @@
 import type { CacheEntry } from "./analyticsCache"
-import { mockVideoStats, MOCK_REPORT_DATE } from "../../../data/mockVideoStats"
+import { mockVideoStats, MOCK_REPORT_DATE } from "../data/mockVideoStats"
 import { fetchLiveAnalytics } from "./liveAnalytics"
 import { comparisonDateFor, scaleStatsForPeriod } from "./period"
-import type { Period } from "../../../types/domain"
+import type { Period } from "../../../entities/creator/model/domain"
 
 export { MOCK_REPORT_DATE }
 

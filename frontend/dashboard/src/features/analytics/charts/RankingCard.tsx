@@ -1,6 +1,6 @@
 import { useState } from "react"
-import type { DailyVideoStat } from "../../../types/domain"
-import { formatCompactNumber, formatSignedCompactNumber } from "../../../lib/format"
+import type { DailyVideoStat } from "../../../entities/creator/model/domain"
+import { formatCompactNumber, formatSignedCompactNumber } from "../../../shared/i18n/format"
 import { rankVideos, type RankingType } from "../utils/rankVideos"
 import { GrowthBadge } from "./GrowthBadge"
 

@@ -1,11 +1,11 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import "../../src/index.css"
-import "../../src/styles/dashboard.css"
-import { DashboardCanonicalEditor } from "../../src/components/DashboardCanonicalEditor"
-import { COMPARISON_WIDGET_TYPE } from "../../src/lib/dashboardComparisonWidgets"
-import { mockCreators } from "../../src/data/mockCreators"
-import type { CanonicalLayout } from "../../src/types/dashboardLayout"
+import "../../src/app/styles/index.css"
+import "../../src/features/dashboard/styles/dashboard.css"
+import { DashboardCanonicalEditor } from "../../src/features/dashboard/editor/components/DashboardCanonicalEditor"
+import { COMPARISON_WIDGET_TYPE } from "../../src/features/dashboard/comparison/utils/dashboardComparisonWidgets"
+import { mockCreators } from "../../src/entities/creator/data/mockCreators"
+import type { CanonicalLayout } from "../../src/features/dashboard/editor/model/dashboardLayout"
 
 /** MT-16 AC7 correction: a separate harness page (never
  * `canonical-dashboard-harness.html`, whose fixture and geometry

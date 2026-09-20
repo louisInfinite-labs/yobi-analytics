@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react"
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react"
-import type { DailyVideoStat } from "../../../types/domain"
-import { CONTENT_FORMAT_LABELS, CONTENT_TAG_LABELS } from "../../../types/domain"
-import { formatFullNumber, formatTimeInZone } from "../../../lib/format"
+import type { DailyVideoStat } from "../../../entities/creator/model/domain"
+import { CONTENT_FORMAT_LABELS, CONTENT_TAG_LABELS } from "../../../entities/creator/model/domain"
+import { formatFullNumber, formatTimeInZone } from "../../../shared/i18n/format"
 import { GrowthBadge } from "./GrowthBadge"
-import { VideoPlayerModal } from "../../../components/VideoPlayerModal"
-import { EmptyState } from "../../../components/states/EmptyState"
+import { VideoPlayerModal } from "../../media-player/components/VideoPlayerModal"
+import { EmptyState } from "../../../shared/ui/states/EmptyState"
 
 type SortKey = "channelName" | "videoTitle" | "publishedAt" | "totalViews" | "dailyIncrease" | "growthPercent" | "sevenDayAverage" | "collectedAt"
 

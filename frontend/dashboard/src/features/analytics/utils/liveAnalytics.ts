@@ -1,5 +1,5 @@
-import { apiRequest } from "../../../lib/apiClient"
-import type { DailyVideoStat, OrganizationKey, Period } from "../../../types/domain"
+import { apiRequest } from "../../../shared/api/apiClient"
+import type { DailyVideoStat, OrganizationKey, Period } from "../../../entities/creator/model/domain"
 
 /** One row of `GET /organizations/{organization}/trending`'s `results` array
  * (src/read_api.py's `_ranked_entry_to_dict`) — the real backend's shape,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { DailyVideoStat } from "../../../types/domain"
+import type { DailyVideoStat } from "../../../entities/creator/model/domain"
 import { rankVideos } from "./rankVideos"
 
 /** Build a minimal DailyVideoStat for a test, overriding only the given fields. */
