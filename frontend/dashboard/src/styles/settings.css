@@ -5,24 +5,19 @@
   --settings-secondary-navbar-width: 240px;
 }
 
-/* height (not min-height) + overflow:hidden, same pattern as .home-page,
-   so SettingsSecondaryNavbar (a plain flex child, stretched to this
-   fixed height) stays put while only .settings-page__content scrolls
-   internally -- MainNavbar is already position:fixed, unaffected either
-   way. */
+/* Settings uses the document's scrollbar. Keep the page at least as tall
+   as the viewport, then let it grow with its content; locking this wrapper
+   to 100dvh and making __content scroll independently creates a second
+   vertical scrollbar and can expose the body's background below it. */
 .settings-page {
   display: flex;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .settings-page__content {
   flex: 1 1 auto;
   min-width: 0;
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
   box-sizing: border-box;
   padding: var(--space-5) var(--space-6);
 }
@@ -45,20 +40,36 @@
   --mantine-dark-0: #c9c9c9;
   --mantine-blue-filled: #1971c2;
 
+  position: relative;
   flex: 0 0 var(--settings-secondary-navbar-width);
   width: var(--settings-secondary-navbar-width);
   box-sizing: border-box;
   background-color: var(--mantine-dark-6);
 }
 
+/* The document owns scrolling, but the desktop settings navigation should
+   remain viewport-bound like the fixed main navigation. This also keeps
+   the absolutely positioned language picker at the visible bottom of the
+   secondary navigation instead of the bottom of the long roster. */
+@media (min-width: 901px) {
+  .settings-secondary-navbar {
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: 100vh;
+    height: 100dvh;
+  }
+}
+
 .settings-secondary-navbar__title {
+  display: flex;
+  align-items: center;
   font-weight: 500;
   background-color: var(--mantine-dark-7);
-  padding: 16px;
-  padding-top: 18px;
+  padding: 0 16px;
   height: 60px;
   box-sizing: border-box;
-  margin-bottom: 32px;
+  margin: 0;
   color: var(--mantine-dark-0);
   border-bottom: 1px solid var(--mantine-dark-7);
 }
@@ -103,6 +114,19 @@
     width: auto;
     flex: 0 0 auto;
   }
+
+  .language-picker {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    margin: var(--space-3) var(--space-4);
+  }
+
+  .language-picker__dropdown {
+    top: calc(100% + 5px);
+    bottom: auto;
+  }
 }
 
 /* ============ Language Settings' own picker, ported pixel-for-pixel
@@ -112,14 +136,20 @@
    approach as MainNavbar/SettingsSecondaryNavbar above, scoped to this
    component only. ============ */
 
+/* Pinned to SettingsSecondaryNavbar's own bottom edge -- 16px above it,
+   horizontally centered in the navbar's width -- rather than sitting inline
+   in the settings-page__content area as its own section (see
+   SettingsSecondaryNavbar.tsx). */
 .language-picker {
   --mantine-dark-4: #424242;
   --mantine-dark-5: #3b3b3b;
   --mantine-dark-6: #2e2e2e;
   --mantine-dark-0: #c9c9c9;
 
-  position: relative;
-  display: inline-block;
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
 }
 
 .language-picker__control {
@@ -174,9 +204,12 @@
   transform: rotate(180deg);
 }
 
+/* Opens UPWARD (`bottom`, not `top`) -- the trigger itself sits at the
+   very bottom of the screen (see .language-picker above), so a downward
+   dropdown would render off-screen. */
 .language-picker__dropdown {
   position: absolute;
-  top: calc(100% + 5px);
+  bottom: calc(100% + 5px);
   left: 0;
   width: 200px;
   box-sizing: border-box;
@@ -209,55 +242,475 @@
   background-color: var(--mantine-dark-4);
 }
 
-/* ============ Notification Settings' creator list -- this app's own
-   theme (no library style was specified for this component, unlike
-   SettingsSecondaryNavbar/LanguageSettings above); Mantine's Avatar/
-   Switch/Divider/ScrollArea are used only as a VISUAL reference (per
-   this feature's own decision (A)), not the actual library -- same
-   hand-ported-CSS approach as everywhere else in this app.
-
-   One creator is always exactly one full-width row (never two creators
-   sharing a row) -- .notification-settings__list is a plain vertical
-   stack, and .notification-settings__row/__column-header share the same
-   literal grid-template-columns (avatar / flexible name / two FIXED
-   switch columns), so the two switch columns stay vertically aligned
-   for every row regardless of name length -- this is a fixed grid, not
-   `justify-content: space-between` (decision's own explicit rule). ============ */
+/* ============ Notification Settings container -- this app's own theme
+   (no library style was specified for this component, unlike
+   SettingsSecondaryNavbar/LanguageSettings above). The topic-card layout
+   itself is defined further below, after Oshi Settings; the full
+   creator-roster styling this block used to hold (flat row/column-header
+   grid, agency/region/subgroup headings, search) moved into
+   TopicCreatorManagementDrawer's own .topic-creator-drawer__* rules,
+   since the roster itself no longer renders on this page directly. ============ */
 
 .notification-settings {
-  max-width: 720px;
+  max-width: 960px;
   margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
 }
 
-.notification-settings__row,
-.notification-settings__column-header {
+@media (max-width: 640px) {
+  .notification-settings {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============ Main Oshi Select: esports-style single creator selector ============ */
+
+.settings-page__content--main-oshi {
+  --main-oshi-bg: #17141d;
+  --main-oshi-surface: #211d29;
+  --main-oshi-surface-strong: #292432;
+  --main-oshi-border: #393342;
+  --main-oshi-text-primary: #f3eff7;
+  --main-oshi-text-secondary: #b9b1c5;
+  --main-oshi-text-tertiary: #948b9f;
+
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--theme-primary) 12%, transparent), transparent 38%),
+    var(--main-oshi-bg);
+  color: var(--main-oshi-text-primary);
+}
+
+/* ============ Notification Settings' own page background -- same dark
+   esports palette as Oshi Settings (confirmed with the user: "背景顏色要跟
+   我推設定同一套"), reusing the identical hex values under this page's own
+   --notif-page-* prefix (same convention .settings-page__content--main-oshi
+   and .settings-page__content--favorites already each use their own scoped
+   copy of this app's one shared dark palette) rather than inventing a
+   different dark theme for a third page. ============ */
+.settings-page__content--notification {
+  --notif-page-bg: #17141d;
+  --notif-page-surface: #211d29;
+  --notif-page-surface-strong: #292432;
+  --notif-page-border: #393342;
+  --notif-page-text-primary: #f3eff7;
+  --notif-page-text-secondary: #b9b1c5;
+  --notif-page-text-tertiary: #948b9f;
+  --notif-accent: #c779a3;
+  --notif-accent-muted: #684052;
+
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--notif-accent) 9%, transparent), transparent 38%),
+    var(--notif-page-bg);
+  color: var(--notif-page-text-primary);
+}
+
+.my-oshi-select {
+  min-height: calc(100vh - (var(--space-5) * 2));
+  min-height: calc(100dvh - (var(--space-5) * 2));
+}
+
+.my-oshi-select__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.my-oshi-select__eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--theme-primary);
+}
+
+.my-oshi-select__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--main-oshi-text-primary);
+}
+
+.my-oshi-select__search.ant-input-affix-wrapper {
+  width: 280px;
+  max-width: 100%;
+  flex-shrink: 0;
+  border-color: var(--main-oshi-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--main-oshi-surface) 86%, transparent);
+  color: var(--main-oshi-text-primary);
+}
+
+.my-oshi-select__search.ant-input-affix-wrapper:hover,
+.my-oshi-select__search.ant-input-affix-wrapper-focused {
+  border-color: var(--theme-primary);
+}
+
+.my-oshi-select__search .ant-input {
+  background: transparent;
+  color: var(--main-oshi-text-primary);
+}
+
+.my-oshi-select__search .ant-input::placeholder {
+  color: var(--main-oshi-text-tertiary);
+}
+
+.my-oshi-select__search .ant-input-prefix,
+.my-oshi-select__search .ant-input-clear-icon {
+  color: var(--main-oshi-text-tertiary);
+}
+
+.my-oshi-select__layout {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 72px 72px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.my-oshi-select__roster {
+  min-width: 0;
+}
+
+.my-oshi-select__region + .my-oshi-select__region {
+  margin-top: var(--space-6);
+}
+
+.my-oshi-select__region-header {
+  display: flex;
   align-items: center;
   gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
-.notification-settings__agency {
-  margin-bottom: var(--space-6);
+.my-oshi-select__region-header::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: linear-gradient(90deg, var(--main-oshi-border), transparent);
 }
 
-/* Applied via JSX to every agency section after the first SURVIVING one
-   (see NotificationSettings.tsx) -- not a `:not(:first-child)` selector,
-   since the search header above it always precedes every agency section
-   in the DOM, first one included. */
-.notification-settings__agency--divided {
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--surface-border);
+.my-oshi-select__region-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--main-oshi-text-secondary);
 }
 
-.notification-settings__empty-state {
+.my-oshi-select__subgroup + .my-oshi-select__subgroup {
+  margin-top: var(--space-4);
+}
+
+.my-oshi-select__subgroup-title {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--main-oshi-text-tertiary);
+}
+
+.my-oshi-select__empty-state {
+  margin: 0;
   padding: var(--space-6) var(--space-3);
   text-align: center;
   font-size: 14px;
-  color: var(--text-tertiary);
+  color: var(--main-oshi-text-tertiary);
 }
 
-.notification-settings__agency-header {
+.my-oshi-select__segmented.ant-segmented {
+  display: block;
+  background: transparent;
+}
+
+.my-oshi-select__segmented .ant-segmented-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 124px);
+  gap: var(--space-3);
+  justify-content: start;
+}
+
+.my-oshi-select__segmented .ant-segmented-thumb {
+  display: none !important;
+  position: absolute !important;
+}
+
+.my-oshi-select__segment-item {
+  width: 100%;
+  min-height: auto;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--main-oshi-text-secondary);
+}
+
+.my-oshi-select__segment-item.ant-segmented-item-selected {
+  background: transparent;
+}
+
+.my-oshi-select__segment-item::after {
+  display: none;
+}
+
+.my-oshi-select__segment-item:has(.ant-segmented-item-input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--creator-accent, var(--theme-primary)) 35%, transparent);
+}
+
+.my-oshi-select__segment-label {
+  display: block;
+  width: 100%;
+  padding: 0;
+}
+
+.my-oshi-select__slot {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.my-oshi-select__slot::after {
+  content: "";
+  width: 18px;
+  height: 2px;
+  margin-top: 1px;
+  background: transparent;
+  transform: skewX(-24deg);
+}
+
+.my-oshi-select__slot-avatar-frame {
+  display: inline-flex;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.my-oshi-select__avatar {
+  background: var(--creator-accent-soft);
+  color: var(--creator-accent-text);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.my-oshi-select__avatar--slot {
+  width: 48px;
+  height: 48px;
+  font-size: 0.9rem;
+}
+
+.my-oshi-select__avatar--hero {
+  width: 260px;
+  height: 260px;
+  font-size: 4.5rem;
+}
+
+.my-oshi-select__slot-name {
+  width: 100%;
+  min-width: 0;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  text-align: center;
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  color: var(--main-oshi-text-secondary);
+  transition: color 120ms ease;
+}
+
+.my-oshi-select__segment-item:hover .my-oshi-select__slot-avatar-frame {
+  border-color: color-mix(in srgb, var(--creator-accent) 48%, transparent);
+}
+
+.my-oshi-select__segment-item:hover .my-oshi-select__slot-name {
+  color: var(--creator-accent);
+}
+
+.my-oshi-select__segment-item.ant-segmented-item-selected .my-oshi-select__slot-avatar-frame {
+  border-color: var(--creator-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--creator-accent) 18%, transparent);
+}
+
+.my-oshi-select__segment-item.ant-segmented-item-selected .my-oshi-select__slot-name {
+  color: var(--main-oshi-text-primary);
+}
+
+.my-oshi-select__segment-item.ant-segmented-item-selected .my-oshi-select__slot::after {
+  background: var(--creator-accent);
+}
+
+.my-oshi-select__presentation {
+  position: sticky;
+  top: var(--space-5);
+  overflow: hidden;
+  min-height: 520px;
+  padding: var(--space-5);
+  border: 1px solid color-mix(in srgb, var(--creator-accent) 34%, var(--main-oshi-border));
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--creator-accent) 22%, transparent), transparent 42%),
+    var(--main-oshi-surface);
+}
+
+.my-oshi-select__presentation::before,
+.my-oshi-select__presentation::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.my-oshi-select__presentation::before {
+  inset: 18px;
+  border-top: 1px solid color-mix(in srgb, var(--creator-accent) 44%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--creator-accent) 24%, transparent);
+  clip-path: polygon(0 0, 100% 0, 100% 78%, 86% 100%, 0 100%);
+}
+
+.my-oshi-select__presentation::after {
+  right: -42px;
+  bottom: 42px;
+  width: 150px;
+  height: 20px;
+  background: color-mix(in srgb, var(--creator-accent) 34%, transparent);
+  transform: skewX(-28deg);
+}
+
+.my-oshi-select__presentation-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.16;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--creator-accent) 32%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--creator-accent) 32%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg, black, transparent 68%);
+}
+
+.my-oshi-select__status-marker {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  color: var(--main-oshi-text-primary);
+  background: color-mix(in srgb, var(--creator-accent) 26%, transparent);
+  border-left: 2px solid var(--creator-accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.my-oshi-select__hero-avatar-frame {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  margin: var(--space-6) 0 var(--space-5);
+}
+
+.my-oshi-select__hero-avatar-frame::before {
+  content: "";
+  position: absolute;
+  inset: 50%;
+  width: 294px;
+  height: 294px;
+  border: 1px solid color-mix(in srgb, var(--creator-accent) 56%, transparent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.my-oshi-select__avatar--hero {
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, var(--creator-accent) 82%, transparent),
+    0 18px 40px rgba(0, 0, 0, 0.34);
+}
+
+.my-oshi-select__identity {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+
+.my-oshi-select__selected-name {
+  margin: 0;
+  color: var(--main-oshi-text-primary);
+  font-size: 28px;
+  line-height: 1.2;
+  white-space: pre-line;
+}
+
+.my-oshi-select__selected-meta {
+  margin: var(--space-2) 0 0;
+  color: var(--creator-accent);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1180px) {
+  .my-oshi-select__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .my-oshi-select__presentation {
+    position: relative;
+    top: auto;
+    order: -1;
+    min-height: auto;
+  }
+
+  .my-oshi-select__avatar--hero {
+    width: 220px;
+    height: 220px;
+    font-size: 3.8rem;
+  }
+
+  .my-oshi-select__hero-avatar-frame::before {
+    width: 250px;
+    height: 250px;
+  }
+}
+
+@media (max-width: 640px) {
+  .my-oshi-select__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .my-oshi-select__search.ant-input-affix-wrapper {
+    width: 100%;
+  }
+
+  .my-oshi-select__presentation {
+    padding: var(--space-4);
+  }
+
+  .my-oshi-select__avatar--hero {
+    width: 180px;
+    height: 180px;
+    font-size: 3rem;
+  }
+
+  .my-oshi-select__hero-avatar-frame::before {
+    width: 206px;
+    height: 206px;
+  }
+}
+
+/* ============ Oshi Settings: favorite-creator management grid ============ */
+
+.oshi-settings__agency-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -267,99 +720,1087 @@
   border-bottom: 1px solid var(--surface-border);
 }
 
-.notification-settings__agency-title {
+.oshi-settings__agency-title {
   font-size: 20px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
 }
 
-.notification-settings__search {
+/* Same plain-<input>, instant-filter interaction as Live Status's own
+   search (dockCreatorOrder.ts's creatorMatchesSearch, live-schedule-dock
+   __search in home.css) -- colors use this page's own light Settings
+   tokens instead of that dark panel's hardcoded palette. */
+.oshi-settings__search {
   width: 260px;
   max-width: 100%;
   flex-shrink: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  padding: var(--space-1) var(--space-2);
+  font-size: 14px;
+  font-family: inherit;
 }
 
-.notification-settings__region {
+/* MyOshiSettings' own single-select Radio -- same absolute positioning
+   (16px right of the avatar, vertically centered) as .oshi-settings__checkbox
+   below, since MyOshiSettings.tsx reuses that exact same tile layout;
+   named separately only because the focus-visible rule below it needs its
+   own antd Radio (not Checkbox) selector. */
+.my-oshi-settings__radio {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 16px;
+  transform: translateY(-50%);
+}
+
+/* Square, not antd Radio's own default circle -- confirmed with the user:
+   switching between this page and 收藏名單 (Favorites List, whose own
+   Checkbox is a 4px-radius square) made the shape jump out as a jarring
+   difference. This is a pure shape override -- still a real antd Radio
+   underneath (single-select semantics untouched), just reshaped to match
+   Checkbox's own exact corner radius. */
+.my-oshi-settings__radio .ant-radio {
+  border-radius: 4px;
+}
+
+/* Checked state: a fully solid square, not a dot-in-a-ring -- antd Radio's
+   own checked look already fills .ant-radio itself with a solid tint (see
+   the theme's own colorPrimary), it's only this small white ::after dot
+   sitting on top that was leaving a visible gap in the middle; hiding it
+   here (rather than also reshaping it, now moot) is what actually makes
+   the square read as solid. */
+.my-oshi-settings__radio .ant-radio-checked::after {
+  background-color: transparent;
+}
+
+.my-oshi-settings__radio .ant-radio:has(.ant-radio-input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 30%, transparent);
+}
+
+.oshi-settings__search::placeholder {
+  color: var(--text-tertiary);
+}
+
+.oshi-settings__search:focus {
+  outline: none;
+  border-color: var(--theme-primary);
+}
+
+.oshi-settings__empty-state {
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.oshi-settings__agency {
+  margin-bottom: var(--space-6);
+}
+
+/* No border-top here -- confirmed with the user: the line that used to sit
+   between the last VSPO region's own member grid (VSPO EN) and the next
+   agency's own title ("Hololive") should not render. Only the spacing
+   (padding-top) that separates the two agencies stays. */
+.oshi-settings__agency--divided {
+  padding-top: var(--space-5);
+}
+
+.oshi-settings__region {
   margin-bottom: var(--space-5);
 }
 
-.notification-settings__region:not(:first-child) {
+/* Adjacent-sibling, not `:not(:first-child)` -- an agency section past the
+   first one (see .oshi-settings__agency--divided above) renders its own <h2>
+   title before its first region, which would otherwise count as that
+   region's "not first child" and wrongly draw this same line right under
+   the agency title (e.g. between "Hololive" and its own "JP" region) even
+   though no divider was intended there -- only between two regions. */
+.oshi-settings__region + .oshi-settings__region {
   padding-top: var(--space-4);
   border-top: 1px solid var(--surface-border);
 }
 
-.notification-settings__region-title {
+.oshi-settings__region-title {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-secondary);
   margin: 0 0 var(--space-3);
 }
 
-.notification-settings__subgroup {
+.oshi-settings__subgroup {
   margin-bottom: var(--space-3);
 }
 
-.notification-settings__subgroup-title {
+.oshi-settings__subgroup-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-tertiary);
   margin: 0 0 var(--space-1);
 }
 
-.notification-settings__column-header {
-  padding: 0 var(--space-3) var(--space-1);
+/* FIXED 96px columns, not `minmax(96px, 1fr)` -- each subgroup (Gamers,
+   FLOW GLOW, Other, ...) now renders its own separate grid, so a 1fr max
+   would stretch a sparsely-populated subgroup's cards to fill its row
+   (e.g. 4 Gamers members spread across the full row width, wider than
+   every other subgroup's cards) -- a real layout-consistency bug, not a
+   deliberate choice. `auto-fill` still computes however many fixed-width
+   columns fit the available width (so the page stays responsive:
+   4/3/2/1 on narrower viewports), it just never grows existing cards to
+   use up leftover space in an under-filled row. */
+.oshi-settings__grid,
+.favorites-roster__grid {
+  display: grid;
+  /* 124px, not 96px -- the roster's own longest single-line name
+     ("綺々羅々ヴィヴィ") measures ~103px unwrapped at this font-size, plus
+     the card's own 8px+8px padding (~119px) -- 124px keeps it on one line
+     with a small margin, still a single FIXED size (see the note above
+     this rule's own history) so every card stays the same width. */
+  grid-template-columns: repeat(auto-fill, 124px);
+  gap: var(--space-3);
 }
 
-.notification-settings__column-header-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-tertiary);
-  text-align: center;
-}
-
-.notification-settings__list {
+/* Card is a plain vertical stack: the avatar+checkbox row on top, name
+   underneath. */
+.oshi-settings__card,
+.favorites-roster__tile {
   display: flex;
   flex-direction: column;
-}
-
-.notification-settings__row {
-  padding: var(--space-2) var(--space-3);
+  gap: var(--space-1);
+  padding: var(--space-2);
   border-radius: var(--radius-sm);
+  min-width: 0;
 }
 
-.notification-settings__row:hover {
-  background: var(--surface-hover);
+/* Centers the avatar itself, independent of the checkbox: `justify-content:
+   center` centers .oshi-settings__avatar-wrap, whose own width is just the
+   avatar's (the checkbox is taken out of flow below), so the checkbox's
+   presence never pulls the avatar off-center the way centering an
+   avatar+checkbox row as one block would. */
+.oshi-settings__card-top {
+  display: flex;
+  justify-content: center;
 }
 
-.notification-settings__avatar {
-  width: 32px;
-  height: 32px;
+/* Sized to the avatar alone (the checkbox is `position: absolute`, out of
+   flow) so .oshi-settings__card-top centers the avatar itself, not an
+   avatar+checkbox pair. */
+.oshi-settings__avatar-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Same 48px size as Live Status's own creator avatar
+   (.creator-status-list__avatar, home.css) -- only the size is required to
+   match; colors use this page's own light Settings tokens rather than that
+   dark panel's hardcoded palette. */
+.oshi-settings__avatar {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: var(--surface-hover);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Same font-size as Live Status's own creator name
+   (.creator-status-list__creator-button, home.css: 0.82rem). Kept at the
+   card's default (stretched) width -- unlike .oshi-settings__card-top
+   above -- so a long name still has the full tile width to wrap/center
+   against instead of just the avatar+checkbox row's own width; centered
+   independently of that row (its own `text-align`, not tied to where the
+   avatar/checkbox block happens to sit). Wraps onto multiple lines instead
+   of truncating when a name doesn't fit on one line -- `overflow-wrap`
+   breaks a single long unbroken word (e.g. a long English name) if needed,
+   rather than overflowing the card; CJK names wrap between characters by
+   the browser's own default line-breaking rules (no spaces needed for
+   that). `pre-line` (not `normal`): a handful of names in mockCreators.ts
+   (e.g. "ACHRORA -\nmekPark") carry explicit `\n` line breaks at exact,
+   requested positions -- `pre-line` renders those breaks while every other
+   name (no `\n`) still wraps normally based on available width. */
+.oshi-settings__creator-name,
+.favorites-roster__name {
+  width: 100%;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  text-align: center;
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  line-height: 1.25;
+}
+
+/* Positioned relative to .oshi-settings__avatar-wrap (out of flow), a FIXED
+   16px to the right of the avatar and vertically centered on it -- keeps
+   the exact "checkbox 16px from avatar, same row" requirement without the
+   checkbox's own width affecting where the avatar centers (see
+   .oshi-settings__card-top above). */
+.oshi-settings__checkbox {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 16px;
+  transform: translateY(-50%);
+}
+
+/* Ant Design's own Checkbox already supplies the hover/checked states off
+   this component's ConfigProvider colorPrimary token (OshiSettings.tsx) --
+   the only gap is a focus-visible ring (antd's own default is easy to
+   miss), added here as a small, understated glow rather than overriding
+   the control's own look. antd 6's Checkbox has no separate
+   `.ant-checkbox-inner` box -- `.ant-checkbox` itself is the 16px square
+   (border/background directly on it), with the real, focusable
+   `<input>` nested inside it, hence `:has()` rather than a `+` sibling
+   selector. */
+.oshi-settings__checkbox .ant-checkbox:has(.ant-checkbox-input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 30%, transparent);
+}
+
+/* ============ Notification Settings: esports/control-panel redesign ======
+   Compact per-topic cards only -- the full ~122-creator roster never
+   renders on this page itself, only inside TopicCreatorManagementDrawer
+   (see below). UI/UX restyle only (confirmed with the user): topic
+   ordering, reminder values, member-selection logic, Local Storage
+   behavior and the Drawer itself are all unchanged -- only how a topic's
+   card LOOKS changes here.
+
+   Visual language reuses this app's own existing VSPO/esports vocabulary
+   instead of a new one-off design system: the --theme-primary accent bar
+   + uppercase tracked title echoes .section-header's own accent-bar
+   convention (dashboard.css). The page intentionally uses one muted pink
+   accent throughout instead of combining the active member theme with a
+   second warning color; shape presets still control corner geometry only.
+   ============ */
+
+.notification-settings__topic-card {
+  position: relative;
+  background: var(--notif-page-surface);
+  border: 1px solid var(--notif-page-border);
+  border-left: 3px solid var(--notif-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+/* A subtle themed glow instead of this app's light-calibrated
+   --shadow-sm/--shadow-md (barely visible against a dark surface) --
+   "subtle glow/focus treatment" per the redesign's own visual direction,
+   kept small (not a heavy HUD bloom). */
+.notification-settings__topic-card:hover {
+  border-color: color-mix(in srgb, var(--notif-accent) 68%, var(--notif-page-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--notif-accent) 18%, transparent);
+}
+
+/* Softer, fully rounded corners for Hololive JP's "soft idol" mode; a
+   tactical/momentum-style cut top-right corner for VSPO's two modes --
+   same shape system .soft-button/.soft-select already key off, applied
+   here instead of a bespoke card shape. */
+.shape-soft-angular .notification-settings__topic-card {
+  border-radius: var(--radius-lg);
+}
+
+.shape-sharp-angular .notification-settings__topic-card {
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+
+/* The not-yet-saved draft card reads as "in progress" via a dashed accent
+   edge instead of the solid one saved cards get -- a purely visual cue
+   (no new activation-state business logic; the card's persisted/
+   not-persisted status is exactly what it already was). */
+.notification-settings__topic-card--draft {
+  border-left-style: dashed;
+}
+
+.notification-settings__topic-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--notif-page-text-primary);
+  margin: 0 0 var(--space-3);
+}
+
+.notification-settings__topic-title svg {
+  color: var(--notif-accent);
   flex-shrink: 0;
 }
 
-.notification-settings__creator-name {
-  font-size: 14px;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Reminder Time's own label+control group. Renamed from the old
+   .notification-settings__topic-row (label+control side by side) since
+   Segmented's own option row needs its label ABOVE it, not beside it, to
+   have room for every choice to stay visible without opening a menu. */
+.notification-settings__group {
+  padding: 6.4px 0;
 }
 
-/* The switch itself is the real antd <Switch> (see NotificationSettings
-   .tsx) -- this is only a grid-cell wrapper, centering it within its
-   fixed 72px column. No custom track/thumb CSS here anymore: antd
-   renders and styles the control itself. */
-.notification-settings__switch-cell {
+.notification-settings__group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--notif-page-text-tertiary);
+  margin-bottom: var(--space-2);
+}
+
+.notification-settings__group-label svg {
+  flex-shrink: 0;
+  color: var(--notif-page-text-tertiary);
+}
+
+/* All 5 reminder choices stay visible at once (confirmed requirement) --
+   wrap onto a second line rather than overflow/scroll when a locale's
+   labels ("10 minutes before", ...) don't fit one row at this card width.
+   Selected/hover colors come from this page's own ConfigProvider
+   (components.Segmented, see NotificationSettings.tsx) using the active
+   member theme, same as every other themed control in this app. */
+.notification-settings__reminder-segmented.ant-segmented {
+  width: 100%;
+}
+
+.notification-settings__reminder-segmented .ant-segmented-group {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.notification-settings__reminder-segmented .ant-segmented-item {
+  text-align: center;
+}
+
+/* The Notification Members entry -- one full-width row that IS the "open
+   the member drawer" affordance (confirmed requirement: no separate
+   preview row plus separate button below it any more). Still a real antd
+   Button (type="text", block -- see MembersRow in NotificationSettings.tsx)
+   so focus/keyboard/wave interaction stay antd's own; only restyled to
+   read as a row, not a pill button. border-top makes the visual grouping
+   explicit: Reminder Time above the line, Notification Members below it. */
+.notification-settings__members-row.ant-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: auto;
+  margin-top: var(--space-2);
+  padding: var(--space-2) 2px 2px;
+  border-top: 1px solid var(--notif-page-border);
+  border-radius: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.notification-settings__members-row.ant-btn:hover {
+  background: color-mix(in srgb, var(--notif-accent) 9%, transparent);
+}
+
+.notification-settings__members-row.ant-btn:hover .notification-settings__group-label,
+.notification-settings__members-row.ant-btn:hover .notification-settings__group-label svg {
+  color: var(--notif-accent);
+}
+
+.notification-settings__members-row .notification-settings__group-label {
+  margin-bottom: 0;
+}
+
+.notification-settings__members-row-value {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* The selected-member count uses the same muted accent as the rest of the
+   notification surface, avoiding a competing high-contrast warning color. */
+.notification-settings__member-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--notif-accent);
+}
+
+.notification-settings__members-row-chevron {
+  color: var(--notif-page-text-tertiary);
+  transition: transform 150ms ease-out;
+}
+
+.notification-settings__members-row.ant-btn:hover .notification-settings__members-row-chevron {
+  transform: translateX(2px);
+  color: var(--notif-accent);
+}
+
+/* DraftTopicCard's own bottom row, once a topic is picked -- Save only
+   (confirmed requirement: Notification Members is no longer a separate
+   button here, see .notification-settings__members-row above), pinned
+   bottom-right. */
+.notification-settings__topic-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+/* The "+" tile -- extends .notification-settings__topic-card's own box
+   (border/radius/shape), restyled to read as an esports-style card action
+   (icon-in-a-ring + label) instead of a generic dashed admin box, while
+   staying a real antd Button (variant="dashed", confirmed requirement: no
+   new interaction system) so its click/focus/wave behavior is untouched.
+   The grid's own default align-items: stretch already matches its height
+   to a real card when they share a row; auto-height is fine when it
+   starts a row alone, since every card's own height is itself
+   content-driven, not fixed. */
+.notification-settings__add-topic-tile.ant-btn {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-2);
+  height: auto;
+  min-height: 96px;
+  background: transparent;
+  border-left: 3px dashed var(--notif-page-border);
+  color: var(--notif-page-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.notification-settings__add-topic-tile.ant-btn:hover {
+  border-color: var(--notif-accent);
+  background: color-mix(in srgb, var(--notif-accent) 8%, transparent);
+  color: var(--notif-page-text-primary);
+}
+
+.notification-settings__add-topic-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--notif-accent) 20%, var(--notif-page-surface-strong));
+  color: var(--notif-accent);
+  flex-shrink: 0;
+}
+
+/* Sits where a saved card's own <h2> topic title sits -- same
+   margin-bottom the title had, so the rows underneath (once a topic is
+   picked) land in the same position as a saved card's own rows. Dark
+   overrides for antd's own (light-by-default) Select surface/border/text,
+   matching this page's --notif-page-* palette -- the popup itself is
+   themed via this page's own ConfigProvider (components.Select, see
+   NotificationSettings.tsx) since it's portaled outside this element's
+   DOM subtree, where a scoped CSS custom property can't reach it. */
+.notification-settings__topic-select {
+  width: 100%;
+  margin-bottom: var(--space-3);
+}
+
+.notification-settings__topic-select.ant-select .ant-select-selector {
+  background: var(--notif-page-surface-strong);
+  border-color: var(--notif-page-border);
+  color: var(--notif-page-text-primary);
+}
+
+.notification-settings__topic-select.ant-select .ant-select-selection-placeholder {
+  color: var(--notif-page-text-tertiary);
+}
+
+.notification-settings__topic-select.ant-select .ant-select-arrow {
+  color: var(--notif-page-text-tertiary);
+}
+
+/* ============ Topic Creator Management Drawer: the full searchable
+   roster, Favorites-first, opened per topic from a topic card's own
+   "管理成員" button above -- same Agency > Region > Generation/Unit
+   hierarchy and search behavior as the old flat NotificationSettings list
+   this replaced, now scoped inside one topic at a time. Each row carries
+   this topic's own Live / New Video switches plus an optional reminder
+   override, independent of every other topic. ============ */
+
+.topic-creator-drawer {
+  --drawer-bg: #17141d;
+  --drawer-surface: #211d29;
+  --drawer-surface-strong: #292432;
+  --drawer-border: #393342;
+  --drawer-text-primary: #f3eff7;
+  --drawer-text-secondary: #b9b1c5;
+  --drawer-text-tertiary: #948b9f;
+  --drawer-accent: #c779a3;
+}
+
+.topic-creator-drawer .ant-drawer-content,
+.topic-creator-drawer .ant-drawer-header,
+.topic-creator-drawer .ant-drawer-body {
+  background: var(--drawer-bg);
+  color: var(--drawer-text-primary);
+}
+
+.topic-creator-drawer .ant-drawer-header {
+  min-height: 72px;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--drawer-border);
+}
+
+.topic-creator-drawer .ant-drawer-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--drawer-text-primary);
+}
+
+.topic-creator-drawer .ant-drawer-close {
+  color: var(--drawer-text-tertiary);
+}
+
+.topic-creator-drawer .ant-drawer-close:hover {
+  background: color-mix(in srgb, var(--drawer-accent) 8%, transparent);
+  color: var(--drawer-text-primary);
+}
+
+.topic-creator-drawer .ant-drawer-body {
+  padding: var(--space-5);
+}
+
+.topic-creator-drawer__content {
+  display: flex;
+  flex-direction: column;
+}
+
+.topic-creator-drawer__search.ant-input-affix-wrapper {
+  width: 100%;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-sm);
+  border-color: var(--drawer-border);
+  background: var(--drawer-surface);
+  color: var(--drawer-text-primary);
+}
+
+.topic-creator-drawer__search.ant-input-affix-wrapper:hover,
+.topic-creator-drawer__search.ant-input-affix-wrapper-focused {
+  border-color: var(--drawer-accent);
+}
+
+.topic-creator-drawer__search .ant-input {
+  background: transparent;
+  color: var(--drawer-text-primary);
+}
+
+.topic-creator-drawer__search .ant-input-prefix,
+.topic-creator-drawer__search .ant-input-clear-icon,
+.topic-creator-drawer__search .ant-input::placeholder {
+  color: var(--drawer-text-tertiary);
+}
+
+.topic-creator-drawer__empty-state {
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+  font-size: 14px;
+  color: var(--drawer-text-tertiary);
+}
+
+.topic-creator-drawer__group {
+  margin-bottom: var(--space-6);
+}
+
+.topic-creator-drawer__group-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--drawer-text-primary);
+  margin: 0 0 var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--drawer-border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topic-creator-drawer__group-title span {
+  color: var(--drawer-accent);
+}
+
+.topic-creator-drawer__region {
+  margin-bottom: var(--space-4);
+}
+
+.topic-creator-drawer__region:not(:first-child) {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--drawer-border);
+}
+
+.topic-creator-drawer__region-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--drawer-accent);
+  margin: 0 0 var(--space-3);
+}
+
+.topic-creator-drawer__subgroup {
+  margin-bottom: var(--space-3);
+}
+
+.topic-creator-drawer__subgroup-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--drawer-text-tertiary);
+  margin: 0 0 var(--space-1);
+}
+
+/* avatar / flexible name / Live / New Video / reminder -- same fixed-grid
+   reasoning as the old .notification-settings__row this replaced (see git
+   history): a plain flex row would let the switch/reminder columns drift
+   out of vertical alignment across rows of different name lengths. */
+.topic-creator-drawer__row,
+.topic-creator-drawer__column-header {
+  display: grid;
+  /* Reminder column widened from 112px to 150px -- 112px was too narrow
+     for the zh-TW "not in effect" hint (未生效（套用主題時間）) to fit on
+     one line, wrapping mid-parenthesis in an ugly spot. */
+  grid-template-columns: 28px minmax(0, 1fr) 56px 56px 150px;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.topic-creator-drawer__column-header {
+  padding: 0 var(--space-2) 6px;
+}
+
+.topic-creator-drawer__column-header-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--drawer-text-tertiary);
+  text-align: center;
+}
+
+.topic-creator-drawer__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.topic-creator-drawer__row {
+  min-height: 48px;
+  padding: 7px var(--space-2);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.topic-creator-drawer__row:hover {
+  border-left-color: var(--creator-accent);
+  background: color-mix(in srgb, var(--creator-accent) 11%, transparent);
+}
+
+.topic-creator-drawer__row:has(.ant-switch-checked) {
+  border-left-color: var(--drawer-accent);
+  background: color-mix(in srgb, var(--drawer-accent) 9%, transparent);
+}
+
+.topic-creator-drawer__row:has(.ant-switch-checked):hover {
+  border-left-color: var(--creator-accent);
+  background: color-mix(in srgb, var(--creator-accent) 11%, transparent);
+}
+
+.topic-creator-drawer__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--drawer-surface-strong);
+  border: 1px solid var(--drawer-border);
+  color: var(--drawer-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  transition: border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.topic-creator-drawer__row:hover .topic-creator-drawer__avatar {
+  border-color: var(--creator-accent);
+  color: var(--creator-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--creator-accent) 16%, transparent);
+}
+
+.topic-creator-drawer__creator-name {
+  font-size: 13px;
+  color: var(--drawer-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 120ms ease;
+}
+
+.topic-creator-drawer__row:hover .topic-creator-drawer__creator-name {
+  color: var(--creator-accent);
+}
+
+.topic-creator-drawer__switch-cell,
+.topic-creator-drawer__reminder-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topic-creator-drawer__reminder-cell-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+
+/* antd's own outlined/DownOutlined trigger Button, sized to fill the
+   grid's own reminder column exactly like the old Select did -- the
+   popup itself is left at antd's own default (content-based) width, no
+   custom classNames/styles needed here. */
+.topic-creator-drawer__reminder-trigger {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.topic-creator-drawer__reminder-empty {
+  color: var(--drawer-text-tertiary);
+  font-size: 13px;
+}
+
+/* Shown under a member's own reminder Select whenever the topic's own mode
+   isn't "member_choice" -- the topic's concrete time is forcing every
+   member's actual notification right now, so this member's own visible
+   selection is real (never cleared) but not currently in effect. */
+.topic-creator-drawer__reminder-not-in-effect {
+  font-size: 10px;
+  color: var(--drawer-text-tertiary);
+  text-align: center;
+  line-height: 1.2;
+}
+
+@media (max-width: 560px) {
+  .topic-creator-drawer .ant-drawer-body {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .topic-creator-drawer__row,
+  .topic-creator-drawer__column-header {
+    grid-template-columns: 28px minmax(92px, 1fr) 48px 48px minmax(112px, 136px);
+    gap: var(--space-1);
+  }
+}
+
+/* ============ Favorites Roster (My Favorites / 收藏名單): esports-style
+   squad-management redesign -- confirmed with the user, this page reads as
+   one unified dark roster surface, not individual settings cards, and is
+   deliberately its OWN class prefix (favorites-roster__*, not
+   oshi-settings__*, which no longer exists) so MyOshiSettings.tsx -- which
+   reuses .oshi-settings__* verbatim for its own, deliberately different
+   single-select "choose one Main Oshi" page -- stays completely
+   unaffected by anything below. ============ */
+
+/* Page background ownership follows the SAME pattern Oshi Settings already
+   uses: .settings-page__content itself (not a nested child) is the element
+   that visually paints the page background and owns the page padding --
+   .oshi-settings has no background/padding/border-radius of its own, it
+   just sits inside .settings-page__content's existing padding box. This ONE
+   page needs a dark background instead of the shared light one (esports
+   roster feel), so that same "content wrapper paints the background" job
+   moves to .settings-page__content--favorites (applied by SettingsPage.tsx
+   only while Favorites is the active section) instead of living on
+   .favorites-roster. .settings-page stretches this content column to at
+   least the full viewport and grows with it; the document therefore owns
+   the single scrollbar while this background covers the entire page.
+   There is no separate floating/rounded panel anymore, matching Oshi
+   Settings' own flush, panel-less page-background treatment exactly.
+   .favorites-roster below is now unstyled, like .oshi-settings. */
+.settings-page__content--favorites {
+  /* Page-scoped dark palette -- confirmed with the user: this ONE page
+     goes dark (esports roster feel), unlike the rest of Settings (light).
+     New tokens, not the app's light-tuned --text-primary/--surface-border/
+     etc (those are calibrated for a white background and fail contrast
+     here). Contrast against --roster-bg (#17141d): text-primary ~15:1,
+     text-secondary ~8:1, text-tertiary ~4.6:1 (small/muted labels only).
+     Member-accent tokens (--theme-primary etc, set by MemberThemeProvider)
+     still drive selection/hover accents on top of this neutral palette. */
+  --roster-bg: #17141d;
+  --roster-surface: #211d29;
+  --roster-border: #34303d;
+  --roster-text-primary: #f3eff7;
+  --roster-text-secondary: #b6aec2;
+  --roster-text-tertiary: #948b9f;
+
+  background: var(--roster-bg);
+  color: var(--roster-text-primary);
+}
+
+.favorites-roster__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.favorites-roster__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  /* No-op for CJK (no case distinction) -- stylizes the English/romaji
+     string per the spec's own "MY FAVORITES" example without hardcoding
+     caps into the translated string itself. */
+  text-transform: uppercase;
+  color: var(--roster-text-primary);
+}
+
+.favorites-roster__count {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--theme-primary);
+}
+
+.favorites-roster__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+
+.favorites-roster__search {
+  width: 240px;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--roster-border);
+  border-radius: var(--radius-sm);
+  background: var(--roster-surface);
+  color: var(--roster-text-primary);
+  padding: var(--space-1) var(--space-2);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.favorites-roster__search::placeholder {
+  color: var(--roster-text-tertiary);
+}
+
+.favorites-roster__search:focus {
+  outline: none;
+  border-color: var(--theme-primary);
+}
+
+.favorites-roster__empty-state {
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+  font-size: 14px;
+  color: var(--roster-text-tertiary);
+}
+
+.favorites-roster__agency + .favorites-roster__agency {
+  margin-top: var(--space-6);
+}
+
+.favorites-roster__region + .favorites-roster__region {
+  margin-top: var(--space-5);
+}
+
+.favorites-roster__region-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--roster-border);
+}
+
+.favorites-roster__region-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--roster-text-secondary);
+}
+
+.favorites-roster__region-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--roster-text-tertiary);
+}
+
+.favorites-roster__subgroup {
+  margin-bottom: var(--space-3);
+}
+
+.favorites-roster__subgroup-title {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--roster-text-tertiary);
+}
+
+/* This IS antd's own Checkbox root <label> (see FavoriteTile in
+   OshiSettings.tsx) -- confirmed with the user: keep the underlying
+   Checkbox/toggleFavorite state semantics, only the VISIBLE UI changes.
+   Native <label> behavior already makes clicking anywhere in here (avatar,
+   name, empty space) toggle the nested real <input>, with no extra JS. */
+/* Grid sizing, padding and internal spacing come from the shared
+   .oshi-settings__card rule above, so Favorites and My Oshi stay exactly
+   aligned. This rule contains only Favorites-specific interaction styles. */
+.favorites-roster__tile {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+/* antd renders a Checkbox's `children` inside its OWN wrapper,
+   `.ant-checkbox-label` -- the single in-flow child of the tile above (the
+   real `.ant-checkbox` square is taken out of flow by the visually-hidden
+   rule below). Give that wrapper the full 108px inner card width and the
+   same 4px avatar-to-name gap used by My Oshi. */
+.favorites-roster__tile .ant-checkbox-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+  padding-inline: 0;
+}
+
+/* antd's own checkbox visual (the small square + its real <input>) --
+   visually hidden (not display:none), so the real <input> stays in the tab
+   order and keyboard-operable (standard visually-hidden technique). */
+.favorites-roster__tile .ant-checkbox {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Same focus-ring box-shadow value as every other interactive control in
+   this app (see the old .oshi-settings__checkbox's own :has() rule) --
+   applied to the whole tile now, since the visible click target is the
+   whole tile, not a small checkbox. */
+.favorites-roster__tile:has(.ant-checkbox-input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 30%, transparent);
+}
+
+.favorites-roster__avatar-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.favorites-roster__avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  /* Transparent by default so the selected/hover ring never shifts layout
+     when it appears -- only its color changes. */
+  border: 2px solid transparent;
+  transition: border-color 120ms ease;
+  box-sizing: border-box;
+}
+
+.favorites-roster__avatar-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Per-member accent (--creator-accent, set inline per tile via
+   creatorAccentStyle -- see OshiSettings.tsx) -- same hover/selected logic
+   as Oshi Settings' own creator roster (.my-oshi-select__segment-item),
+   ported over per the user's own request, instead of the page-wide
+   --theme-primary this used before. */
+.favorites-roster__tile:hover .favorites-roster__avatar {
+  border-color: color-mix(in srgb, var(--creator-accent) 48%, transparent);
+}
+
+.favorites-roster__tile--selected .favorites-roster__avatar {
+  border-color: var(--creator-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--creator-accent) 18%, transparent);
+}
+
+/* Same filled-heart visual semantic as Live Status's own favorite
+   indicator (creator-status-list__favorite-indicator, home.css) -- reused
+   for recognizability, NOT its swipe-only/pointer-events:none/display-only
+   treatment, since this page's own click target is the whole tile, not a
+   gesture. --live-red (not a roster-specific color) is the same token
+   Live Status already uses for this exact semantic. */
+.favorites-roster__favorite-icon {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 16px;
+  height: 16px;
+  padding: 2px;
+  box-sizing: border-box;
+  color: var(--live-red);
+  background: var(--roster-bg);
+  border-radius: 50%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+/* Width, font size, line height and wrapping are shared directly with
+   .oshi-settings__creator-name above. Only Favorites-specific positioning
+   and dark-palette color live here. */
+.favorites-roster__name {
+  position: relative;
+  color: var(--roster-text-secondary);
+}
+
+.favorites-roster__tile:hover .favorites-roster__name {
+  color: var(--creator-accent);
+}
+
+.favorites-roster__tile--selected .favorites-roster__name {
+  color: var(--roster-text-primary);
+}
+
+@media (max-width: 640px) {
+  .favorites-roster__controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .favorites-roster__segmented.ant-segmented {
+    width: 100%;
+  }
+
+  .favorites-roster__search {
+    width: 100%;
+  }
 }

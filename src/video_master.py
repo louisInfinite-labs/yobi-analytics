@@ -6,6 +6,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Protocol
 
 from json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list
 
@@ -56,6 +57,26 @@ class Video:
     # COLLECTION_START_DATE in that case (Roadmap 3.4's documented
     # simplification for pre-existing records).
     discovered_at: str | None = None
+
+
+class VideoMasterStore(Protocol):
+    """Authoritative Video Master boundary a collection worker needs for post-observation
+    scheduler-state write-back (Roadmap 1.5).
+
+    Deliberately narrow — just the two operations classify-and-persist needs
+    (read one video's current authoritative state, then write updated rows
+    back) — so any backend satisfying this shape can be passed in, the same
+    way `dynamodb_store` (its `get_video`/`upsert_videos` module-level
+    functions already match this exact signature) is passed directly as a
+    module object by history_worker_handler.lambda_handler, with no adapter
+    class needed.
+    """
+
+    def get_video(self, video_id: str) -> Video | None:
+        """Return one video's current authoritative record, or None if not found."""
+
+    def upsert_videos(self, videos: list[Video]) -> None:
+        """Insert or update videos into the Video Master store."""
 
 
 def load_videos(path: Path = DEFAULT_VIDEO_MASTER_PATH) -> list[Video]:

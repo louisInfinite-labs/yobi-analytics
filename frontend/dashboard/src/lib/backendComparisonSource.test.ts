@@ -79,18 +79,18 @@ describe("createBackendComparisonSource", () => {
           comparisonItemId: "total-views",
           creators: [
             { creatorId: "gawr_gura", status: "ok", points: [{ label: "2026-09-07", value: 12 }] },
-            { creatorId: "vspo_en_member", status: "unavailable" },
+            { creatorId: "amelia_myth_graduated", status: "unavailable" },
             { creatorId: "airani_iofifteen", status: "error" },
           ],
         },
       ],
     })
 
-    const response = await source.fetchData({ creatorIds: ["ch_gawr_gura", "ch_vspo_en_member", "ch_iofi"], comparisonItemIds: ["total-views"] })
+    const response = await source.fetchData({ creatorIds: ["ch_gawr_gura", "ch_amelia_myth_graduated", "ch_iofi"], comparisonItemIds: ["total-views"] })
 
     expect(response.creators).toEqual([
       { status: "ok", creatorId: "ch_gawr_gura", points: [{ label: "2026-09-07", value: 12 }] },
-      { status: "unavailable", creatorId: "ch_vspo_en_member" },
+      { status: "unavailable", creatorId: "ch_amelia_myth_graduated" },
       { status: "error", creatorId: "airani_iofifteen" }, // unmatched backend id is passed through, never invented
     ])
   })

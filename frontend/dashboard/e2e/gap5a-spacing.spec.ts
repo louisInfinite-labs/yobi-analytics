@@ -128,7 +128,7 @@ test.describe("GAP-5A: live GridStack exact 16px spacing", () => {
   })
 
   test("AC8/AC10: a valid drag settles with exactly 16px gaps and no new overflow", async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.setViewportSize({ width: 1280, height: 1500 })
     await gotoFreshDashboard(page)
     await page.getByRole("button", { name: "Edit Layout" }).click()
 
@@ -158,7 +158,7 @@ test.describe("GAP-5A: live GridStack exact 16px spacing", () => {
   })
 
   test("AC9: a rejected resize's rollback retains exactly 16px gaps", async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.setViewportSize({ width: 1280, height: 1500 })
     await gotoFreshDashboard(page)
     await page.getByRole("button", { name: "Edit Layout" }).click()
 

@@ -12,8 +12,21 @@ def _terraform_routes() -> set[str]:
     return set(re.findall(r'"((?:GET|POST|PUT|DELETE) [^"]+)"', block.group(1)))
 
 
-def test_every_handler_route_is_configured_in_api_gateway_and_vice_versa():
-    assert _terraform_routes() == set(api_handler._ROUTES)
+# Handlers registered in api_handler that are intentionally not exposed through API Gateway yet.
+# Exact-set assertion below: adding a route to Terraform (or a new unexposed handler) fails the test
+# until this list is updated.
+_HANDLERS_NOT_YET_EXPOSED = {
+    "GET /creators/{creatorId}/summary",
+    "GET /organizations/{organization}/leaderboard",
+}
+
+
+def test_every_api_gateway_route_has_a_handler():
+    assert _terraform_routes() <= set(api_handler._ROUTES)
+
+
+def test_every_handler_route_is_exposed_except_the_known_unexposed_ones():
+    assert set(api_handler._ROUTES) - _terraform_routes() == _HANDLERS_NOT_YET_EXPOSED
 
 
 def test_dashboard_routes_are_wired():

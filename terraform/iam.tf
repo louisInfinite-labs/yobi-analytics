@@ -19,4 +19,14 @@ locals {
   lambda_role_arn         = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/yobi-analytics-lambda-role"
   emergency_stop_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/yobi-analytics-emergency-stop-role"
   scheduler_role_arn      = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/yobi-analytics-scheduler-role"
+
+  # history_orchestrator/history_scheduler: same reasoning as the three
+  # roles above -- yobi-analytics-cli has no IAM permissions at all
+  # (confirmed 403 even on plain GetRole), so terraform must never attempt
+  # to create, read, or manage these roles or their inline policies. Both
+  # are created manually via root Console (exact trust/inline policy JSON
+  # produced alongside this change) and referenced here as plain ARN
+  # strings, matching the existing three exactly.
+  history_orchestrator_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/yobi-analytics-history-orchestrator"
+  history_scheduler_role_arn    = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/yobi-analytics-history-scheduler"
 }

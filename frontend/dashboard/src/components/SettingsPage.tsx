@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { LanguageSettings } from "./settings/LanguageSettings"
+import { MyOshiSettings } from "./settings/MyOshiSettings"
 import { NotificationSettings } from "./settings/NotificationSettings"
 import { OshiSettings } from "./settings/OshiSettings"
 import { SettingsSecondaryNavbar, type SettingsSection } from "./settings/SettingsSecondaryNavbar"
@@ -12,14 +12,22 @@ import { SettingsSecondaryNavbar, type SettingsSection } from "./settings/Settin
  * own spec. */
 export function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingsSection>("oshi")
+  const contentClassName = [
+    "settings-page__content",
+    activeSection === "myOshi" ? "settings-page__content--main-oshi" : "",
+    activeSection === "oshi" ? "settings-page__content--favorites" : "",
+    activeSection === "notification" ? "settings-page__content--notification" : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
 
   return (
     <div className="settings-page">
       <SettingsSecondaryNavbar activeSection={activeSection} onSelect={setActiveSection} />
-      <div className="settings-page__content">
+      <div className={contentClassName}>
+        {activeSection === "myOshi" && <MyOshiSettings />}
         {activeSection === "oshi" && <OshiSettings />}
         {activeSection === "notification" && <NotificationSettings />}
-        {activeSection === "language" && <LanguageSettings />}
       </div>
     </div>
   )

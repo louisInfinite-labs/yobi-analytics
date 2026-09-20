@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::189461315571:role/yobi-analytics-lambda-role",
+        "arn:aws:iam::189461315571:role/yobi-analytics-history-orchestrator",
+        "arn:aws:iam::189461315571:role/yobi-analytics-history-scheduler"
+      ]
+    }
+  ]
+}

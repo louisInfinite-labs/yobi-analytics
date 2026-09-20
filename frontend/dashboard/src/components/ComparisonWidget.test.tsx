@@ -28,19 +28,19 @@ beforeEach(() => {
 
 describe("ComparisonWidget (GAP-9)", () => {
   it("lists the configured creators in exactly config order with numbered, labelled order badges", () => {
-    const ids = ["ch_vspo_en_member", "ch_gawr_gura", "ch_iofi"]
+    const ids = ["ch_kiryu_coco", "ch_gawr_gura", "ch_iofi"]
     render(<ComparisonWidget widget={widget(ids)} roster={mockCreators} availableComparisonItems={ITEMS} fetchComparisonData={() => new Promise(() => undefined)} />)
 
     const list = screen.getByRole("list", { name: "Comparison creators in order" })
     const items = within(list).getAllByRole("listitem")
     expect(items.map((item) => item.getAttribute("data-creator-id"))).toEqual(ids)
-    expect(items.map((item) => item.querySelector(".comparison-widget__creator-name")?.textContent)).toEqual(["Kurara Nyx", "Gawr Gura", "Airani Iofifteen"])
+    expect(items.map((item) => item.querySelector(".comparison-widget__creator-name")?.textContent)).toEqual(["桐生ココ", "Gawr Gura", "Airani Iofifteen"])
     expect(within(list).getAllByLabelText(/Comparison order/).map((badge) => badge.getAttribute("aria-label"))).toEqual(["Comparison order 1", "Comparison order 2", "Comparison order 3"])
     expect(items.map((item) => item.querySelector(".comparison-order-badge")?.textContent)).toEqual(["1", "2", "3"])
   })
 
   it("sends the configured creator order and only the widget's item in the request", async () => {
-    const ids = ["ch_vspo_en_member", "ch_gawr_gura", "ch_iofi"]
+    const ids = ["ch_kiryu_coco", "ch_gawr_gura", "ch_iofi"]
     const fetchComparisonData = vi.fn((request: ComparisonDataRequest) => Promise.resolve(okFor(request)))
     render(<ComparisonWidget widget={widget(ids, ["total-views"])} roster={mockCreators} availableComparisonItems={ITEMS} fetchComparisonData={fetchComparisonData} />)
 

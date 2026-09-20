@@ -483,7 +483,7 @@ describe("DashboardPage — GAP-9 live comparison integration (MT-10 through MT-
   const ACTIVE_CREATOR_KEY = "yobi.home.selectedCreatorId"
   const A = { id: "ch_gawr_gura", name: "Gawr Gura" }
   const B = { id: "ch_iofi", name: "Airani Iofifteen" }
-  const C = { id: "ch_vspo_en_member", name: "Kurara Nyx" }
+  const C = { id: "ch_kiryu_coco", name: "桐生ココ" }
   const unit = (widgetId: string, widgetType: string, x: number, y: number, extra: object = {}) => ({ widgetId, widgetType, x, y, width: 1, height: 1, ...extra })
   const TWO_WIDGETS_SHUFFLED = { grid: { columns: 2, rows: 2 }, widgets: [unit("w1", "ranking", 1, 0), unit("w0", "kpi-summary", 0, 0)] }
   const COMPARISON_LAYOUT = {

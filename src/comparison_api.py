@@ -40,8 +40,8 @@ from view_growth_analytics import STATUS_OK, GrowthResult, calculate_growth
 # same week the Read API's own "7d" period reports on.
 COMPARISON_WINDOW_DAYS = 7
 
-# Bounded reads only (Roadmap 5.3): each creator costs up to
-# _PER_CREATOR_CANDIDATE_CAP videos x (window + 1) snapshot lookups.
+# Bounded reads only (Roadmap 5.3): each creator costs one snapshot lookup per
+# tracked video per date in (window + 1), so the number of creators is capped.
 MAX_COMPARISON_CREATORS = 10
 
 
@@ -124,8 +124,8 @@ def _creator_outcome(creator_id: str, dates: list[date], executor: ThreadPoolExe
 
 
 def _daily_ok_results(creator_id: str, dates: list[date], executor: ThreadPoolExecutor) -> list[tuple[date, list[GrowthResult]]]:
-    videos = [video for video in read_api.get_videos_by_creator(creator_id) if video.activity_state != "Cold"]
-    videos = read_api._rank_and_cap_candidates(videos, cap=read_api._PER_CREATOR_CANDIDATE_CAP)
+    # Every tracked video counts, as in the rest of the Read API: no activity-state filter, no candidate cap.
+    videos = read_api.get_videos_by_creator(creator_id)
     snapshot_dates = [dates[0] - timedelta(days=1), *dates]
     lookups = [(video, snapshot_date) for video in videos for snapshot_date in snapshot_dates]
     fetched = list(executor.map(lambda pair: read_api.get_snapshot(pair[0].video_id, pair[1]), lookups))

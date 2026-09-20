@@ -969,7 +969,7 @@
   },
   {
     "creatorId": "unit_b_pre_debut",
-    "displayName": "UNIT B(Pre-Debut)",
+    "displayName": "UNIT B (Pre-Debut) - mekPark",
     "organization": "hololive",
     "youtubeChannelId": "UC3OH5FKQ3qtl4uRme_vZTgA",
     "active": true,
@@ -982,7 +982,7 @@
   },
   {
     "creatorId": "achrora",
-    "displayName": "ACHRORA",
+    "displayName": "ACHRORA - mekPark",
     "organization": "hololive",
     "youtubeChannelId": "UChpRPsAeSZn5DistGacR3iA",
     "active": true,
@@ -1008,7 +1008,7 @@
   },
   {
     "creatorId": "hololive_dev_is_regloss",
-    "displayName": "hololive DEV_IS ReGLOSS",
+    "displayName": "hololive ReGLOSS",
     "organization": "hololive",
     "youtubeChannelId": "UC10wVt6hoQiwySRhz7RdOUA",
     "active": true,
@@ -1021,7 +1021,7 @@
   },
   {
     "creatorId": "hololive_dev_is_flow_glow",
-    "displayName": "hololive DEV_IS FLOW GLOW",
+    "displayName": "hololive FLOW GLOW",
     "organization": "hololive",
     "youtubeChannelId": "UCu2n3qHuOuQIygREMnWeQWg",
     "active": true,
@@ -1227,7 +1227,7 @@
     "creatorId": "elizabeth_rose_bloodflame",
     "displayName": "Elizabeth Rose Bloodflame",
     "organization": "hololive",
-    "youtubeChannelId": "UC--YolkGxqTiZtZss9ug3uQ",
+    "youtubeChannelId": "UCW5uhrG1eCBYditmhL0Ykjw",
     "active": true,
     "branch": "holo_en",
     "channelType": "member",
@@ -1240,7 +1240,7 @@
     "creatorId": "gigi_murin",
     "displayName": "Gigi Murin",
     "organization": "hololive",
-    "youtubeChannelId": "UC_8AmCWUFI3laCeY3TTIHDA",
+    "youtubeChannelId": "UCDHABijvPBnJm7F-KlNME3w",
     "active": true,
     "branch": "holo_en",
     "channelType": "member",
@@ -1394,7 +1394,7 @@
   },
   {
     "creatorId": "jira_jisaki",
-    "displayName": "Jira Jisaki",
+    "displayName": "地崎ジラ",
     "organization": "vspo",
     "youtubeChannelId": "UCeCWj-SiJG9SWN6wGORiLmw",
     "active": true,
@@ -1407,7 +1407,7 @@
   },
   {
     "creatorId": "remia_aotsuki",
-    "displayName": "Remia Aotsuki",
+    "displayName": "青月レミア",
     "organization": "vspo",
     "youtubeChannelId": "UCCra1t-eIlO3ULyXQQMD9Xw",
     "active": true,
@@ -1420,7 +1420,7 @@
   },
   {
     "creatorId": "arya_kuroha",
-    "displayName": "Arya Kuroha",
+    "displayName": "黒刃アリヤ",
     "organization": "vspo",
     "youtubeChannelId": "UCLlJpxXt6L5d-XQ0cDdIyDQ",
     "active": true,
@@ -1433,7 +1433,7 @@
   },
   {
     "creatorId": "narin_mikure",
-    "displayName": "Narin Mikure",
+    "displayName": "美暮ナリン",
     "organization": "vspo",
     "youtubeChannelId": "UCKSpM183c85d5V2cW5qaUjA",
     "active": true,
@@ -1446,7 +1446,7 @@
   },
   {
     "creatorId": "riko_solari",
-    "displayName": "Riko Solari",
+    "displayName": "ソラリリコ",
     "organization": "vspo",
     "youtubeChannelId": "UC7Xglp1fske9zmRe7Oj8YyA",
     "active": true,
@@ -1459,7 +1459,7 @@
   },
   {
     "creatorId": "eris_suzukami",
-    "displayName": "Eris Suzukami",
+    "displayName": "涼上エリス",
     "organization": "vspo",
     "youtubeChannelId": "UCp_3ej2br9l9L1DSoHVDZGw",
     "active": true,
@@ -1472,12 +1472,25 @@
   },
   {
     "creatorId": "juno_umezono",
-    "displayName": "Juno Umezono",
+    "displayName": "梅園ジュノ",
     "organization": "vspo",
     "youtubeChannelId": "UCRJV_1aV4aZjFAEUn6o5arw",
     "active": true,
     "branch": "vspo_en",
     "channelType": "member",
+    "lifecycleStage": "active",
+    "groupKey": [
+      "NO"
+    ]
+  },
+  {
+    "creatorId": "vspo_official",
+    "displayName": "ぶいすぽっ!【公式】",
+    "organization": "vspo",
+    "youtubeChannelId": "UCuI5XaO-6VkOEhHao6ij7JA",
+    "active": true,
+    "branch": "vspo_jp",
+    "channelType": "group",
     "lifecycleStage": "active",
     "groupKey": [
       "NO"

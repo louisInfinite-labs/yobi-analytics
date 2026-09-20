@@ -1,196 +1,370 @@
-import { useState } from "react"
-import { ConfigProvider, Input, Switch } from "antd"
-import { SearchOutlined } from "@ant-design/icons"
+import { useEffect, useRef, useState } from "react"
+import { Button, ConfigProvider, Segmented, Select, Tooltip } from "antd"
+import type { ConfigProviderProps, GetProp } from "antd"
+import { ChevronRight, Clock3, Gamepad2, Plus, Users } from "lucide-react"
 import { useLocale } from "../../hooks/useLocale"
-import { useCreatorNotificationPreferences } from "../../hooks/useCreatorNotificationPreferences"
-import {
-  GAMERS_GROUP_LABEL_KEY,
-  groupCreatorsForNotificationSettings,
-  OTHER_GROUP_LABEL_KEY,
-  type CreatorAgencyGroup,
-  type NotificationCreator,
-} from "../../lib/notificationCreatorGrouping"
-import { t, type Locale } from "../../i18n/translations"
-import { useMemberTheme } from "../../theme/ThemeContext"
+import { useTopicNotificationPreferences } from "../../hooks/useTopicNotificationPreferences"
+import { getAllNotificationCreators } from "../../lib/notificationCreatorGrouping"
+import { getAvailableTopics, getSelectableTopics, type TopicCatalogId } from "../../lib/notificationTopicCatalog"
+import { MEMBER_CHOICE_MODE, REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, type TopicReminderMode } from "../../lib/notificationTopics"
+import { t } from "../../i18n/translations"
+import { TopicCreatorManagementDrawer } from "./TopicCreatorManagementDrawer"
 
-/** Every subgroup label is a real, locale-independent group/generation
- * name (e.g. "1期生", "Myth") EXCEPT the two sentinel keys below, each
- * swapped for its own translated wording here instead of being rendered
- * directly: the catch-all "Other" bucket (OTHER_GROUP_LABEL_KEY), and
- * Gamers (GAMERS_GROUP_LABEL_KEY, confirmed wording: "Gamers" in both
- * zh-TW and English, "ゲーマーズ" in Japanese -- not a plain pass-through
- * like the other proper-noun labels here). */
-function subgroupTitle(locale: Locale, label: string): string {
-  if (label === OTHER_GROUP_LABEL_KEY) return t(locale, "notificationSettings.otherGroupLabel")
-  if (label === GAMERS_GROUP_LABEL_KEY) return t(locale, "notificationSettings.gamersGroupLabel")
-  return label
+const NOTIFICATION_ACCENT = "#c779a3"
+
+/** How many enabled creator names the Notification Members row's own hover
+ * tooltip previews before trailing off with "..." -- this feature's own
+ * spec worked example (section 3) shows 4 named creators before the
+ * ellipsis. The redesigned row itself only shows the count (confirmed by
+ * the redesign's own "4 selected >" structure); the full name preview this
+ * page used to show inline moved into a Tooltip on that count instead of
+ * being dropped, so the information is still one hover away rather than
+ * gone. */
+const MAX_PREVIEW_NAMES = 4
+
+type WaveConfig = GetProp<ConfigProviderProps, "wave">
+
+/** "Inset" click-wave effect -- copied verbatim from Ant Design's own
+ * Button "Custom Wave" doc example (components/button/demo/wave.tsx,
+ * `showInsetEffect`): a small white dot grows from the click point to
+ * 200px while fading to transparent, instead of antd's default border
+ * ripple. Applied only to the Notification Members row (via its own nested
+ * ConfigProvider, see MembersRow below) -- every other button on this
+ * page, and everywhere else in the app, keeps antd's normal wave effect
+ * untouched. */
+const showInsetEffect: NonNullable<WaveConfig>["showEffect"] = (node, { event, component }) => {
+  if (component !== "Button") return
+
+  const { borderWidth } = getComputedStyle(node)
+  const borderWidthNum = Number.parseInt(borderWidth, 10)
+
+  const holder = document.createElement("div")
+  holder.style.position = "absolute"
+  holder.style.inset = `-${borderWidthNum}px`
+  holder.style.borderRadius = "inherit"
+  holder.style.background = "transparent"
+  holder.style.zIndex = "999"
+  holder.style.pointerEvents = "none"
+  holder.style.overflow = "hidden"
+  node.appendChild(holder)
+
+  const rect = holder.getBoundingClientRect()
+  const dot = document.createElement("div")
+  dot.style.position = "absolute"
+  dot.style.insetInlineStart = `${event.clientX - rect.left}px`
+  dot.style.top = `${event.clientY - rect.top}px`
+  dot.style.width = "0px"
+  dot.style.height = "0px"
+  dot.style.borderRadius = "50%"
+  dot.style.background = "rgba(255, 255, 255, 0.65)"
+  dot.style.transform = "translate3d(-50%, -50%, 0)"
+  dot.style.transition = "all 1s ease-out"
+  holder.appendChild(dot)
+
+  requestAnimationFrame(() => {
+    dot.ontransitionend = () => holder.remove()
+    dot.style.width = "200px"
+    dot.style.height = "200px"
+    dot.style.opacity = "0"
+  })
 }
 
-/** Instant client-side filter, matched against the creator's own
- * (possibly already Japanese-name-overridden) displayName -- an empty or
- * whitespace-only query matches everyone. Never touches notification
- * switch state, only which rows render. */
-function matchesSearch(creator: NotificationCreator, query: string): boolean {
-  const trimmed = query.trim().toLowerCase()
-  return trimmed === "" || creator.displayName.toLowerCase().includes(trimmed)
+/** Every reminder-mode option a topic card's own reminder-time control can
+ * show -- shared between TopicCard (real) and DraftTopicCard (preview)
+ * once a topic is picked, so the two never drift out of sync. "各成員為準"
+ * listed last, per the user's own confirmed ordering. */
+function reminderModeOptions(locale: ReturnType<typeof useLocale>[0]) {
+  return [
+    ...REMINDER_TIME_VALUES.map((value) => ({ value, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) })),
+    { value: MEMBER_CHOICE_MODE, label: t(locale, "notificationSettings.topicReminderMode.memberChoice") },
+  ]
 }
 
-/** Filters the WHOLE Agency > Region > Subgroup > Creator hierarchy, not
- * just individual creator rows -- a subgroup/region/agency is dropped
- * entirely once it has zero matching creators left, so a search never
- * leaves an empty heading, column header, or divider on screen (this is
- * the actual fix: the earlier version only filtered which CreatorRows
- * rendered while every parent heading stayed mounted regardless). */
-function filterAgencyGroups(agencyGroups: CreatorAgencyGroup[], query: string): CreatorAgencyGroup[] {
-  return agencyGroups
-    .map((agency) => ({
-      ...agency,
-      regions: agency.regions
-        .map((region) => ({
-          ...region,
-          subgroups: region.subgroups
-            .map((subgroup) => ({
-              ...subgroup,
-              creators: subgroup.creators.filter((creator) => matchesSearch(creator, query)),
-            }))
-            .filter((subgroup) => subgroup.creators.length > 0),
-        }))
-        .filter((region) => region.subgroups.length > 0),
-    }))
-    .filter((agency) => agency.regions.length > 0)
-}
-
-function CreatorRow({ creator }: { creator: NotificationCreator }) {
+/** The reminder-time row -- a real, interactive Segmented wired straight to
+ * useTopicNotificationPreferences for whatever `topicId` it's given, all
+ * choices visible at once instead of behind a menu (presentation change
+ * only -- same underlying TopicReminderMode values, same
+ * getReminderMode/setReminderMode). Shared between TopicCard (a saved
+ * card) and DraftTopicCard (once a topic is picked, before Save) so the
+ * two are pixel- and behavior-identical. This works safely against a
+ * not-yet-saved topicId too: setReminderMode/getReminderMode already
+ * read/write lazily (see useTopicNotificationPreferences' own topicState
+ * fallback), with no dependency on the id being in savedTopicIds yet. */
+function ReminderTimeRow({ topicId, topicLabel }: { topicId: TopicCatalogId; topicLabel: string }) {
   const [locale] = useLocale()
-  const { isLiveSubscribed, isNewVideoSubscribed, setLiveSubscribed, setNewVideoSubscribed } =
-    useCreatorNotificationPreferences()
+  const { getReminderMode, setReminderMode } = useTopicNotificationPreferences()
+  const options = reminderModeOptions(locale)
+  const reminderMode = getReminderMode(topicId)
 
   return (
-    <div className="notification-settings__row">
-      <span className="notification-settings__avatar" aria-hidden="true">
-        {creator.displayName.trim().charAt(0)}
+    <div className="notification-settings__group">
+      <span className="notification-settings__group-label">
+        <Clock3 size={14} aria-hidden="true" />
+        {t(locale, "notificationSettings.defaultReminderLabel")}
       </span>
-      <span className="notification-settings__creator-name">{creator.displayName}</span>
-      <span className="notification-settings__switch-cell">
-        <Switch
-          checked={isLiveSubscribed(creator.creatorId)}
-          onChange={(checked) => setLiveSubscribed(creator.creatorId, checked)}
-          aria-label={t(locale, "notificationSettings.liveSwitchAriaLabel", { name: creator.displayName })}
-        />
-      </span>
-      <span className="notification-settings__switch-cell">
-        <Switch
-          checked={isNewVideoSubscribed(creator.creatorId)}
-          onChange={(checked) => setNewVideoSubscribed(creator.creatorId, checked)}
-          aria-label={t(locale, "notificationSettings.newVideoSwitchAriaLabel", { name: creator.displayName })}
-        />
-      </span>
+      <Segmented
+        size="small"
+        className="notification-settings__reminder-segmented"
+        value={reminderMode}
+        options={options}
+        onChange={(value) => setReminderMode(topicId, value as TopicReminderMode)}
+        aria-label={t(locale, "notificationSettings.defaultReminderLabel") + " " + topicLabel}
+      />
     </div>
   )
 }
 
-function ColumnHeader() {
+/** The Notification Members entry -- one interactive row (icon, label,
+ * selected count, chevron) that IS the "manage members" affordance, not a
+ * separate preview row plus a separate button below it (confirmed by the
+ * redesign's own "[Users icon] Notification Members    4 selected >"
+ * structure). Still a real antd Button under the hood (block, type="text",
+ * restyled via .notification-settings__members-row) so it keeps antd's
+ * click/focus semantics -- clicking it opens the exact same
+ * TopicCreatorManagementDrawer as before, for the same topicId; nothing
+ * about the drawer or the underlying enabled-members data changes here.
+ * Shared between TopicCard and DraftTopicCard: opening the drawer for a
+ * not-yet-saved draft topic works exactly the same way as for a saved one
+ * (the drawer/hook already treat any topicId uniformly). */
+function MembersRow({ topicId, topicLabel, onManage }: { topicId: TopicCatalogId; topicLabel: string; onManage: () => void }) {
   const [locale] = useLocale()
+  const { getEnabledCreatorIds } = useTopicNotificationPreferences()
+  const enabledIds = getEnabledCreatorIds(topicId)
+  const enabledCreators = getAllNotificationCreators().filter((creator) => enabledIds.has(creator.creatorId))
+  const previewNames = enabledCreators.slice(0, MAX_PREVIEW_NAMES).map((creator) => creator.displayName)
+  const hasMore = enabledCreators.length > MAX_PREVIEW_NAMES
+  const separator = t(locale, "notificationSettings.namePreviewSeparator")
+  const previewText = enabledCreators.length > 0 ? `${previewNames.join(separator)}${hasMore ? `${separator}...` : ""}` : t(locale, "notificationSettings.noSelectedMembers")
+
   return (
-    <div className="notification-settings__column-header">
-      <span aria-hidden="true" />
-      <span aria-hidden="true" />
-      <span className="notification-settings__column-header-label">{t(locale, "notificationSettings.liveColumnHeader")}</span>
-      <span className="notification-settings__column-header-label">
-        {t(locale, "notificationSettings.newVideoColumnHeader")}
-      </span>
-    </div>
+    <ConfigProvider wave={{ showEffect: showInsetEffect }}>
+      <Tooltip title={previewText} placement="bottom">
+        <Button
+          type="text"
+          block
+          className="notification-settings__members-row"
+          onClick={onManage}
+          aria-label={`${t(locale, "notificationSettings.manageMembersButton")} ${topicLabel}`}
+        >
+          <span className="notification-settings__group-label">
+            <Users size={14} aria-hidden="true" />
+            {t(locale, "notificationSettings.notifiedMembersLabel")}
+          </span>
+          <span className="notification-settings__members-row-value">
+            <span className="notification-settings__member-count">
+              {t(locale, "notificationSettings.selectedCountLabel", { count: String(enabledCreators.length) })}
+            </span>
+            <ChevronRight size={16} aria-hidden="true" className="notification-settings__members-row-chevron" />
+          </span>
+        </Button>
+      </Tooltip>
+    </ConfigProvider>
   )
 }
 
-/** Notification Settings' content: every creator in the real Creator
- * Master roster (src/lib/notificationCreatorGrouping.ts -- 112 as of
- * this roster, not the small mockCreators.ts used elsewhere), in the
- * spec's own three-level hierarchy -- Agency (VSPO/HOLOLIVE) > Region
- * (JP/EN/ID) > Generation/Unit > one creator per row, never more than
- * one creator on a line. Each row has two independent switches (live,
- * then new video -- see useCreatorNotificationPreferences), both on by
- * default. */
+function TopicCard({ topicId, onManage }: { topicId: TopicCatalogId; onManage: () => void }) {
+  const [locale] = useLocale()
+  const topicDef = getAvailableTopics().find((entry) => entry.id === topicId)!
+  const topicLabel = t(locale, topicDef.labelKey)
+
+  return (
+    <section className="notification-settings__topic-card">
+      <h2 className="notification-settings__topic-title">
+        <Gamepad2 size={16} aria-hidden="true" />
+        {topicLabel}
+      </h2>
+      <ReminderTimeRow topicId={topicId} topicLabel={topicLabel} />
+      <MembersRow topicId={topicId} topicLabel={topicLabel} onManage={onManage} />
+    </section>
+  )
+}
+
+/** The one card in "draft" state at a time (see NotificationSettings' own
+ * `draft` state below) -- occupies the exact next grid slot a saved
+ * TopicCard would, same box/row styling, but its topic identity is still
+ * being picked (confirmed with the user: selection only, no free text) and
+ * the CARD ITSELF isn't persisted (added to savedTopicIds) until Save.
+ *
+ * Once a topic is picked, the rest of the card is the real thing, not a
+ * preview -- confirmed with the user: Reminder Time and Notification
+ * Members must be genuinely configurable here (ReminderTimeRow/MembersRow
+ * reused verbatim from TopicCard), not disabled/inert. This is safe
+ * against a not-yet-saved topicId (see those components' own comments) --
+ * Save's only actual job is to add this topicId to savedTopicIds, making
+ * the card permanent; whatever reminder/member config was already made
+ * stays exactly as configured. */
+function DraftTopicCard({
+  selectedTopicId,
+  selectableTopics,
+  onSelectTopic,
+  onManage,
+  onSave,
+}: {
+  selectedTopicId: TopicCatalogId | null
+  selectableTopics: ReturnType<typeof getSelectableTopics>
+  onSelectTopic: (topicId: TopicCatalogId) => void
+  onManage: () => void
+  onSave: () => void
+}) {
+  const [locale] = useLocale()
+  const selectOptions = selectableTopics.map((topic) => ({ value: topic.id, label: t(locale, topic.labelKey) }))
+  const selectedTopicLabel = selectedTopicId === null ? "" : t(locale, getAvailableTopics().find((entry) => entry.id === selectedTopicId)!.labelKey)
+
+  return (
+    <section className="notification-settings__topic-card notification-settings__topic-card--draft">
+      <Select
+        className="notification-settings__topic-select"
+        placeholder={t(locale, "notificationSettings.topicSelectPlaceholder")}
+        aria-label={t(locale, "notificationSettings.topicSelectAriaLabel")}
+        value={selectedTopicId ?? undefined}
+        options={selectOptions}
+        onChange={(value: TopicCatalogId) => onSelectTopic(value)}
+      />
+
+      {selectedTopicId !== null && (
+        <>
+          <ReminderTimeRow topicId={selectedTopicId} topicLabel={selectedTopicLabel} />
+          <MembersRow topicId={selectedTopicId} topicLabel={selectedTopicLabel} onManage={onManage} />
+
+          <div className="notification-settings__topic-card-actions">
+            <Button type="primary" size="small" onClick={onSave}>
+              {t(locale, "notificationSettings.saveTopicButton")}
+            </Button>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+/** The "+" tile -- confirmed with the user: renders AS a grid item, in the
+ * next open slot right after the last saved card, same box styling as a
+ * real card (not a separate toolbar). Still an antd Button (variant=
+ * "dashed"), preserving antd's own click/focus/wave interaction untouched
+ * -- only the visual treatment (icon-in-a-ring + label, esports-card
+ * accent) changes, matching the redesigned cards instead of a generic
+ * dashed admin box. */
+function AddTopicTile({ onClick }: { onClick: () => void }) {
+  const [locale] = useLocale()
+  return (
+    <Button
+      variant="dashed"
+      block
+      className="notification-settings__topic-card notification-settings__add-topic-tile"
+      onClick={onClick}
+      aria-label={t(locale, "notificationSettings.addTopicButtonAriaLabel")}
+    >
+      <span className="notification-settings__add-topic-icon">
+        <Plus size={18} aria-hidden="true" />
+      </span>
+      {t(locale, "notificationSettings.addTopicButtonAriaLabel")}
+    </Button>
+  )
+}
+
+/** Notification Settings' own content: a topic-centered summary per topic
+ * (this feature's own spec sections 2/3/14) -- never the full ~122-creator
+ * roster permanently on screen. Each topic card shows its own default
+ * reminder time and a compact "who's enabled" summary; the full creator
+ * roster (Agency > Region > Generation/Unit, Favorites-first, searchable)
+ * only ever renders inside TopicCreatorManagementDrawer, opened per topic
+ * via the Notification Members row.
+ *
+ * Topics are now a dynamic, user-added list (confirmed with the user,
+ * replacing the old fixed 8-topic set): the page starts with 5 permanent
+ * default cards, and "+"/Save (below) let the user add more from a
+ * catalog, one at a time, no duplicates. This redesign only restyles this
+ * component -- topic ordering, reminder values, member-selection logic,
+ * Local Storage behavior, and the Drawer itself are all unchanged. */
 export function NotificationSettings() {
-  const agencyGroups = groupCreatorsForNotificationSettings()
-  const { theme } = useMemberTheme()
-  const [locale] = useLocale()
-  const [searchQuery, setSearchQuery] = useState("")
+  const [managingTopicId, setManagingTopicId] = useState<TopicCatalogId | null>(null)
+  const { savedTopicIds, addTopic, discardUnsavedTopic } = useTopicNotificationPreferences()
 
-  const filteredAgencyGroups = filterAgencyGroups(agencyGroups, searchQuery)
-  const hasResults = filteredAgencyGroups.length > 0
-  // The search box's own heading row shows the first SURVIVING agency's
-  // label -- its position never moves, but which agency it sits beside
-  // can change as the query narrows results down to a single agency (see
-  // filterAgencyGroups above). Deliberately null (not a fallback to the
-  // real, unfiltered first agency) once nothing survives -- showing e.g.
-  // "VSPO" next to a zero-result query is exactly the "unrelated agency
-  // name" bug: that label has nothing to do with a search that matched
-  // nothing. The header row itself still renders (see below) so the
-  // search input's own position never shifts.
-  const headerAgencyLabel = filteredAgencyGroups[0]?.agencyLabel ?? null
+  // At most one draft at a time (confirmed with the user) -- plain
+  // component state, not shared/persisted: an in-progress, not-yet-saved
+  // pick has no reason to survive a reload. `topicId: null` distinguishes
+  // "a draft card is open, nothing picked yet" from "no draft at all"
+  // (the `active` flag) -- see saveDraft's own guard below.
+  const [draft, setDraft] = useState<{ active: boolean; topicId: TopicCatalogId | null }>({ active: false, topicId: null })
+  const draftTopicIdRef = useRef<TopicCatalogId | null>(null)
+  const selectableTopics = getSelectableTopics(savedTopicIds)
+
+  useEffect(
+    () => () => {
+      if (draftTopicIdRef.current !== null) discardUnsavedTopic(draftTopicIdRef.current)
+    },
+    [discardUnsavedTopic],
+  )
+
+  const startDraft = () => {
+    draftTopicIdRef.current = null
+    setDraft({ active: true, topicId: null })
+  }
+  // Only ever updates the LOCAL draft -- never calls addTopic. Picking an
+  // option must not immediately persist (confirmed with the user); only
+  // the explicit Save action below does.
+  const selectDraftTopic = (topicId: TopicCatalogId) => {
+    if (draft.topicId !== null && draft.topicId !== topicId) discardUnsavedTopic(draft.topicId)
+    draftTopicIdRef.current = topicId
+    setDraft({ active: true, topicId })
+  }
+  const saveDraft = () => {
+    if (draft.topicId === null) return
+    addTopic(draft.topicId)
+    draftTopicIdRef.current = null
+    setDraft({ active: false, topicId: null }) // clears the draft and re-enables "+" together
+  }
 
   return (
-    // Scoped to this component's own subtree only (antd's ConfigProvider
-    // affects only the antd components rendered inside it, and Switch is
-    // the only antd component used anywhere in this app) -- ON uses this
-    // app's own active theme primary color without any global antd theme
-    // setup or CSS reset.
-    <ConfigProvider theme={{ token: { colorPrimary: theme.primary } }}>
+    <ConfigProvider
+      theme={{
+        token: { colorPrimary: NOTIFICATION_ACCENT },
+        components: {
+          // Segmented/Select popups are portaled outside this page's own
+          // dark-scoped DOM subtree, so the --notif-page-* CSS custom
+          // properties (settings.css) can't reach them -- themed here via
+          // antd's own component tokens instead, matching the same dark,
+          // single-accent palette as Main Oshi Settings.
+          Segmented: {
+            trackBg: "#211d29",
+            itemColor: "#b9b1c5",
+            itemHoverColor: "#f3eff7",
+            itemHoverBg: "color-mix(in srgb, #f3eff7 8%, transparent)",
+            itemSelectedBg: "#684052",
+            itemSelectedColor: "#f7edf3",
+          },
+          Select: {
+            colorBgContainer: "#292432",
+            colorBorder: "#393342",
+            colorText: "#f3eff7",
+            colorTextPlaceholder: "#948b9f",
+            colorBgElevated: "#211d29",
+            optionSelectedBg: "rgba(199, 121, 163, 0.18)",
+            colorTextQuaternary: "#948b9f",
+          },
+        },
+      }}
+    >
       <div className="notification-settings">
-        <div className="notification-settings__agency-header">
-          {headerAgencyLabel ? (
-            <h2 className="notification-settings__agency-title">{headerAgencyLabel}</h2>
-          ) : (
-            // Keeps the header row a 2-child flex layout (so the search
-            // input stays pinned to the right edge, same as always) without
-            // showing a label that has nothing to do with a zero-result
-            // search.
-            <span className="notification-settings__agency-title" aria-hidden="true" />
-          )}
-          <Input
-            className="notification-settings__search"
-            prefix={<SearchOutlined />}
-            placeholder={t(locale, "notificationSettings.searchPlaceholder")}
-            allowClear
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-        </div>
-        {!hasResults && <p className="notification-settings__empty-state">{t(locale, "notificationSettings.noResults")}</p>}
-        {filteredAgencyGroups.map((agency, agencyIndex) => (
-          <section
-            key={agency.agencyLabel}
-            className={
-              agencyIndex === 0
-                ? "notification-settings__agency"
-                : "notification-settings__agency notification-settings__agency--divided"
-            }
-          >
-            {/* The first surviving agency's own title already renders in
-             * the search header above -- only later agencies repeat it
-             * here. */}
-            {agencyIndex > 0 && <h2 className="notification-settings__agency-title">{agency.agencyLabel}</h2>}
-            {agency.regions.map((region) => (
-              <div key={region.branch} className="notification-settings__region">
-                <h3 className="notification-settings__region-title">{region.regionLabel}</h3>
-                {region.subgroups.map((subgroup) => (
-                  <div key={subgroup.label ?? "__flat__"} className="notification-settings__subgroup">
-                    {subgroup.label && (
-                      <h4 className="notification-settings__subgroup-title">{subgroupTitle(locale, subgroup.label)}</h4>
-                    )}
-                    <ColumnHeader />
-                    <div className="notification-settings__list">
-                      {subgroup.creators.map((creator) => (
-                        <CreatorRow key={creator.creatorId} creator={creator} />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </section>
+        {savedTopicIds.map((topicId) => (
+          <TopicCard key={topicId} topicId={topicId} onManage={() => setManagingTopicId(topicId)} />
         ))}
+        {/* Exactly one of these renders in the next grid slot -- this
+         * ternary alone guarantees only one draft can ever exist and that
+         * "+" is unusable while one does (no separate `disabled` flag
+         * needed: there's simply nothing to click). */}
+        {draft.active ? (
+          <DraftTopicCard
+            selectedTopicId={draft.topicId}
+            selectableTopics={selectableTopics}
+            onSelectTopic={selectDraftTopic}
+            onManage={() => setManagingTopicId(draft.topicId)}
+            onSave={saveDraft}
+          />
+        ) : selectableTopics.length > 0 ? (
+          <AddTopicTile onClick={startDraft} />
+        ) : null}
+        <TopicCreatorManagementDrawer topicId={managingTopicId} onClose={() => setManagingTopicId(null)} />
       </div>
     </ConfigProvider>
   )

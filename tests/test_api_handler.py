@@ -132,6 +132,123 @@ def test_get_organization_trending_returns_200(monkeypatch):
     assert _body(response) == {"organization": "vspo"}
 
 
+def test_get_creator_trending_maps_trending_not_ready_to_503(monkeypatch):
+    """An oversized cache-miss fallback (read_api.TrendingNotReadyError) is a 503, not a 400/500 —
+    the request is well-formed, the server is just refusing to compute it live right now."""
+
+    def _boom(query):
+        raise read_api.TrendingNotReadyError("too large to compute on demand")
+
+    monkeypatch.setattr(read_api, "get_creator_trending", _boom)
+
+    response = lambda_handler(
+        _event("GET /creators/{creatorId}/trending", query={"period": "7d"}, path={"creatorId": "c1"}), None
+    )
+
+    assert response["statusCode"] == 503
+    assert _body(response)["error"] == "too large to compute on demand"
+
+
+# --- GET /creators/{creatorId}/summary & /organizations/{organization}/leaderboard --
+
+
+def test_get_creator_summary_returns_200(monkeypatch):
+    monkeypatch.setattr(read_api, "get_creator_summary", lambda query: {"creatorId": query["creatorId"]})
+
+    response = lambda_handler(
+        _event("GET /creators/{creatorId}/summary", query={"period": "7d"}, path={"creatorId": "c1"}), None
+    )
+
+    assert response["statusCode"] == 200
+    assert _body(response) == {"creatorId": "c1"}
+
+
+def test_get_organization_leaderboard_returns_200(monkeypatch):
+    monkeypatch.setattr(
+        read_api, "get_organization_leaderboard", lambda query: {"organization": query["organization"]}
+    )
+
+    response = lambda_handler(
+        _event("GET /organizations/{organization}/leaderboard", path={"organization": "vspo"}), None
+    )
+
+    assert response["statusCode"] == 200
+    assert _body(response) == {"organization": "vspo"}
+
+
+def test_get_creator_summary_maps_scope_not_found_to_404(monkeypatch):
+    def _boom(query):
+        raise read_api.ScopeNotFoundError("no such creator")
+
+    monkeypatch.setattr(read_api, "get_creator_summary", _boom)
+
+    response = lambda_handler(
+        _event("GET /creators/{creatorId}/summary", path={"creatorId": "no_such"}), None
+    )
+
+    assert response["statusCode"] == 404
+    assert _body(response)["error"] == "no such creator"
+
+
+def test_get_organization_leaderboard_maps_scope_not_found_to_404(monkeypatch):
+    def _boom(query):
+        raise read_api.ScopeNotFoundError("no such organization")
+
+    monkeypatch.setattr(read_api, "get_organization_leaderboard", _boom)
+
+    response = lambda_handler(
+        _event("GET /organizations/{organization}/leaderboard", path={"organization": "no_such"}), None
+    )
+
+    assert response["statusCode"] == 404
+    assert _body(response)["error"] == "no such organization"
+
+
+def test_get_creator_summary_maps_ranking_not_ready_to_503_with_code(monkeypatch):
+    def _boom(query):
+        raise read_api.RankingNotReadyError("not yet computed")
+
+    monkeypatch.setattr(read_api, "get_creator_summary", _boom)
+
+    response = lambda_handler(
+        _event("GET /creators/{creatorId}/summary", path={"creatorId": "c1"}), None
+    )
+
+    assert response["statusCode"] == 503
+    body = _body(response)
+    assert body["error"] == "not yet computed"
+    assert body["code"] == "RANKING_NOT_READY"
+
+
+def test_get_organization_leaderboard_maps_ranking_not_ready_to_503_with_code(monkeypatch):
+    def _boom(query):
+        raise read_api.RankingNotReadyError("not yet computed")
+
+    monkeypatch.setattr(read_api, "get_organization_leaderboard", _boom)
+
+    response = lambda_handler(
+        _event("GET /organizations/{organization}/leaderboard", path={"organization": "vspo"}), None
+    )
+
+    assert response["statusCode"] == 503
+    body = _body(response)
+    assert body["error"] == "not yet computed"
+    assert body["code"] == "RANKING_NOT_READY"
+
+
+def test_get_creator_summary_maps_invalid_period_to_400(monkeypatch):
+    def _boom(query):
+        raise read_api.ClientError("period must be one of ...")
+
+    monkeypatch.setattr(read_api, "get_creator_summary", _boom)
+
+    response = lambda_handler(
+        _event("GET /creators/{creatorId}/summary", query={"period": "bogus"}, path={"creatorId": "c1"}), None
+    )
+
+    assert response["statusCode"] == 400
+
+
 # --- POST /heartbeat ------------------------------------------------------
 
 

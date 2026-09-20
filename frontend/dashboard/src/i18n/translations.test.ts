@@ -29,4 +29,10 @@ describe("t", () => {
     expect(t("en", "oshiSwitch.dontAskAgain")).toBe("Don't ask again")
     expect(t("ja", "oshiSwitch.dontAskAgain")).toBe("今後この確認を表示しない")
   })
+
+  it("returns the localized Save-topic-card button label for every locale", () => {
+    expect(t("zh-TW", "notificationSettings.saveTopicButton")).toBe("儲存")
+    expect(t("en", "notificationSettings.saveTopicButton")).toBe("Save")
+    expect(t("ja", "notificationSettings.saveTopicButton")).toBe("保存")
+  })
 })

@@ -18,12 +18,57 @@ resource "aws_lambda_function" "collector" {
     variables = {
       YOUTUBE_API_KEY_SECRET_NAME = "yobi-analytics/youtube-api-key"
       YOBI_DATA_DIR               = "/tmp"
+      YOBI_HISTORY_BUCKET         = aws_s3_bucket.history.id
       YOBI_STORAGE_BACKEND        = "dynamodb"
     }
   }
 
   lifecycle {
-    ignore_changes = [filename, source_code_hash, environment]
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+
+resource "aws_lambda_function" "history_worker" {
+  function_name = "yobi-analytics-history-worker"
+  role          = local.lambda_role_arn
+  handler       = "history_worker_handler.lambda_handler"
+  runtime       = "python3.12"
+  timeout       = 900
+  memory_size   = 2048
+  filename      = local.lambda_placeholder_zip
+
+  environment {
+    variables = {
+      YOUTUBE_API_KEY_SECRET_NAME = "yobi-analytics/youtube-api-key"
+      YOBI_HISTORY_BUCKET         = aws_s3_bucket.history.id
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+
+resource "aws_lambda_function" "ranking_reducer" {
+  function_name = "yobi-analytics-ranking-reducer"
+  role          = local.lambda_role_arn
+  handler       = "ranking_reducer.lambda_handler"
+  runtime       = "python3.12"
+  timeout       = 900
+  memory_size   = 2048
+  filename      = local.lambda_placeholder_zip
+
+  environment {
+    variables = {
+      YOBI_HISTORY_BUCKET       = aws_s3_bucket.history.id
+      YOBI_STORAGE_BACKEND      = "dynamodb"
+      YOBI_TRENDING_CACHE_TABLE = aws_dynamodb_table.trending_cache.name
+      YOBI_VIDEO_MASTER_TABLE   = aws_dynamodb_table.video_master.name
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
   }
 }
 
@@ -35,6 +80,11 @@ resource "aws_lambda_function" "api" {
   timeout       = 60
   memory_size   = 1024
   filename      = local.lambda_placeholder_zip
+  # Codifies the live value (confirmed intentional, 2026-09-13) -- was
+  # previously undeclared here, so terraform wanted to strip it back to
+  # the unreserved default (-1) on every plan/apply, unrelated to any
+  # actual config change anyone made.
+  reserved_concurrent_executions = 50
 
   environment {
     variables = {

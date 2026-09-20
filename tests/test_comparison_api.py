@@ -196,7 +196,7 @@ def test_partial_failure_keeps_the_other_creators_data(world):
     assert entries[1] == {"creatorId": "bravo", "status": "error"}
 
 
-def test_cold_videos_are_excluded(monkeypatch):
+def test_every_tracked_video_counts_including_cold_ones(monkeypatch):
     w = _World(
         [_creator("alpha")],
         [_video("hot", "alpha"), _video("cold", "alpha", activity_state="Cold")],
@@ -206,7 +206,7 @@ def test_cold_videos_are_excluded(monkeypatch):
 
     points = _data(_get(_query("alpha", "daily-view-growth")))["items"][0]["creators"][0]["points"]
 
-    assert {p["value"] for p in points} == {1}
+    assert {p["value"] for p in points} == {1 + 999}
 
 
 @pytest.mark.parametrize(

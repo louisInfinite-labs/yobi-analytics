@@ -21,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const API = "http://127.0.0.1:8787"
 const LAYOUT_KEY = "yobi-analytics-canonical-dashboard-layout"
 const ACTIVE_CREATOR_KEY = "yobi.home.selectedCreatorId"
-const VIEWPORT = { width: 1280, height: 1500 }
+const VIEWPORT = { width: 1280, height: 2600 }
 
 // Roster ids (`ch_<creatorId>`) of creators the backend fixture has snapshots for.
 // (`ch_iofi` is deliberately not used: its roster id is not `ch_` + its Creator Master id, so the backend cannot match it.)
@@ -29,7 +29,7 @@ const A = { id: "ch_gawr_gura", name: "Gawr Gura", backendId: "gawr_gura" }
 const B = { id: "ch_usada_pekora", name: "兎田ぺこら", backendId: "usada_pekora" }
 const C = { id: "ch_shirakami_fubuki", name: "白上フブキ", backendId: "shirakami_fubuki" }
 // A roster creator with no Creator Master counterpart: the backend reports it unavailable.
-const UNAVAILABLE = { id: "ch_vspo_en_member", name: "Kurara Nyx", backendId: "vspo_en_member" }
+const UNAVAILABLE = { id: "ch_amelia_myth_graduated", name: "Watson Amelia", backendId: "amelia_myth_graduated" }
 
 const GROWTH = "daily-view-growth"
 const TOTAL = "total-views"

@@ -20,6 +20,43 @@ resource "aws_dynamodb_table" "heartbeat" {
   deletion_protection_enabled = true
 }
 
+resource "aws_dynamodb_table" "history_execution_lock" {
+  name         = "YobiHistoryExecutionLock"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "reportDate"
+
+  # Only reportDate is declared here -- it's the only attribute this table's
+  # key schema (or an index) actually references. ownerToken/status/
+  # currentPhase/expiresAt/completedShards/lastError/acquiredAt/renewedAt/
+  # completedAt/ttlAt are ordinary schemaless item attributes written by
+  # src/execution_lock.py; declaring any of them as their own `attribute`
+  # block here (with no index using them) is rejected by the AWS provider
+  # as an unused attribute definition.
+  attribute {
+    name = "reportDate"
+    type = "S"
+  }
+
+  on_demand_throughput {
+    max_read_request_units  = 200
+    max_write_request_units = 100
+  }
+
+  # ttlAt (epoch seconds) is written by execution_lock.mark_execution_complete/
+  # mark_execution_failed, ~30 days out -- background cleanup only, never
+  # consulted by acquire_execution_lock's own mutual-exclusion logic.
+  ttl {
+    attribute_name = "ttlAt"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  deletion_protection_enabled = true
+}
+
 resource "aws_dynamodb_table" "notification_delivery_log" {
   name         = "YobiNotificationDeliveryLog"
   billing_mode = "PAY_PER_REQUEST"
