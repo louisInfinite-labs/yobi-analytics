@@ -1,14 +1,14 @@
 import { StrictMode, useEffect, useMemo, useState } from "react"
 import { createRoot } from "react-dom/client"
-import "../../src/index.css"
-import "../../src/styles/dashboard.css"
-import { useDashboardEditor } from "../../src/hooks/useDashboardEditor"
-import { DashboardGrid } from "../../src/components/DashboardGrid"
-import { updateWidgetGeometry } from "../../src/lib/dashboardWidgetActions"
-import { projectCanonicalLayoutForGridStack } from "../../src/lib/dashboardGridProjection"
-import { MemberThemeProvider } from "../../src/theme/MemberThemeProvider"
-import type { CanonicalLayout } from "../../src/types/dashboardLayout"
-import type { DashboardWidgetData } from "../../src/lib/widgetRegistry"
+import "../../src/app/styles/index.css"
+import "../../src/features/dashboard/styles/dashboard.css"
+import { useDashboardEditor } from "../../src/features/dashboard/editor/hooks/useDashboardEditor"
+import { DashboardGrid } from "../../src/features/dashboard/editor/components/DashboardGrid"
+import { updateWidgetGeometry } from "../../src/features/dashboard/editor/utils/dashboardWidgetActions"
+import { projectCanonicalLayoutForGridStack } from "../../src/features/dashboard/editor/utils/dashboardGridProjection"
+import { MemberThemeProvider } from "../../src/shared/theme/MemberThemeProvider"
+import type { CanonicalLayout } from "../../src/features/dashboard/editor/model/dashboardLayout"
+import type { DashboardWidgetData } from "../../src/features/dashboard/editor/utils/widgetRegistry"
 
 /** GAP-4C browser-verification-only mount point (same convention as
  * mount.tsx/mount-widget-sizing.tsx): not part of App.tsx's own routing,

@@ -1,9 +1,9 @@
 import { RadialBar, RadialBarChart, ResponsiveContainer } from "recharts"
 import { useCountUp } from "../hooks/useCountUp"
-import { usePrefersReducedMotion } from "../../../hooks/usePrefersReducedMotion"
+import { usePrefersReducedMotion } from "../../../shared/hooks/usePrefersReducedMotion"
 import type { ChannelContribution } from "../utils/deriveAnalytics"
-import type { Period } from "../../../types/domain"
-import { useMemberTheme } from "../../../theme/ThemeContext"
+import type { Period } from "../../../entities/creator/model/domain"
+import { useMemberTheme } from "../../../shared/theme/ThemeContext"
 
 const PERIOD_LABEL: Record<Period, string> = {
   "1d": "today's growth",

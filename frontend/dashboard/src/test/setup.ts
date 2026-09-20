@@ -1,8 +1,8 @@
 import { cleanup } from "@testing-library/react"
 import { afterEach } from "vitest"
 import "@testing-library/jest-dom/vitest"
-import { resetLiveDockExpandedForTests } from "../hooks/useLiveDockExpanded"
-import { resetAllSharedStateForTests } from "../lib/sharedState"
+import { resetLiveDockExpandedForTests } from "../features/live-status/hooks/useLiveDockExpanded"
+import { resetAllSharedStateForTests } from "../shared/state/sharedState"
 
 // @testing-library/react's own auto-cleanup only self-registers when
 // `afterEach` is a global (vitest's `test.globals: true`); this project

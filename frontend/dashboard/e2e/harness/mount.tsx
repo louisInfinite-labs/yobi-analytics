@@ -1,9 +1,9 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import "../../src/index.css"
-import "../../src/styles/dashboard.css"
-import { DashboardCanonicalEditor } from "../../src/components/DashboardCanonicalEditor"
-import type { CanonicalLayout } from "../../src/types/dashboardLayout"
+import "../../src/app/styles/index.css"
+import "../../src/features/dashboard/styles/dashboard.css"
+import { DashboardCanonicalEditor } from "../../src/features/dashboard/editor/components/DashboardCanonicalEditor"
+import type { CanonicalLayout } from "../../src/features/dashboard/editor/model/dashboardLayout"
 
 /** MT-16/MT-17 browser-verification-only mount point. Not part of the app's
  * own routing (`App.tsx`/`useCurrentPage.ts`): `DashboardCanonicalEditor`

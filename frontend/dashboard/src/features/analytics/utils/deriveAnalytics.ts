@@ -1,4 +1,4 @@
-import type { DailyVideoStat } from "../../../types/domain"
+import type { DailyVideoStat } from "../../../entities/creator/model/domain"
 
 export interface DashboardKpis {
   totalViews: number
