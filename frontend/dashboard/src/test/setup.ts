@@ -41,13 +41,14 @@ if (!window.matchMedia) {
     }) as unknown as MediaQueryList
 }
 
-// jsdom has no ResizeObserver either; antd's Select (and other rc-component
-// popups) observe their own popup size to position it -- a no-op stub is
-// enough since layout/positioning isn't what these tests assert on.
-if (!window.ResizeObserver) {
+// jsdom has no ResizeObserver either. The Dashboard reads its real content
+// width through one, and antd's Select (and other rc-component popups) observe
+// their popup size to position it. jsdom never computes real box sizes, so this
+// no-op stub only needs to exist so mounting doesn't throw.
+if (typeof window.ResizeObserver === "undefined") {
   window.ResizeObserver = class {
     observe() {}
     unobserve() {}
     disconnect() {}
-  }
+  } as unknown as typeof ResizeObserver
 }

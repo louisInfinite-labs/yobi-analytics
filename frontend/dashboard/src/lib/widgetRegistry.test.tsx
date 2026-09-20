@@ -2,8 +2,8 @@ import { render } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { mockVideoStats } from "../data/mockVideoStats"
 import { MemberThemeProvider } from "../theme/MemberThemeProvider"
-import { deriveChannelContribution, deriveKpis } from "./deriveAnalytics"
-import { deriveInsights } from "./deriveInsights"
+import { deriveChannelContribution, deriveKpis } from "../features/analytics/utils/deriveAnalytics"
+import { deriveInsights } from "../features/analytics/utils/deriveInsights"
 import { ALL_WIDGET_TYPES, getWidgetDefinition, renderWidget, type DashboardWidgetData } from "./widgetRegistry"
 
 const filteredStats = mockVideoStats
@@ -43,5 +43,26 @@ describe("widgetRegistry", () => {
       <MemberThemeProvider>{renderWidget("insights", { ...data, insights: [] })}</MemberThemeProvider>,
     )
     expect(getByText(/not enough data yet/i)).toBeTruthy()
+  })
+
+  describe("GAP-2D: allowedHeights (canonical 0.5X/1X capability, evidence-backed by GAP-2C/GAP-2C1)", () => {
+    it.each([
+      ["kpi-summary", [0.5, 1]],
+      ["growth-bar-chart", [1]],
+      ["contribution-ring", [1]],
+      ["ranking", [0.5, 1]],
+      ["insights", [0.5, 1]],
+      ["video-stats-table", [0.5, 1]],
+    ] as const)("AC2/AC6: %s advertises exactly %j", (type, expected) => {
+      expect(getWidgetDefinition(type).allowedHeights).toEqual(expected)
+    })
+
+    it("AC7: growth-bar-chart does not advertise 0.5X (confirmed FAIL in real-browser GAP-2C1 evidence)", () => {
+      expect(getWidgetDefinition("growth-bar-chart").allowedHeights).not.toContain(0.5)
+    })
+
+    it("AC7: contribution-ring does not advertise 0.5X (confirmed FAIL in real-browser GAP-2C evidence)", () => {
+      expect(getWidgetDefinition("contribution-ring").allowedHeights).not.toContain(0.5)
+    })
   })
 })

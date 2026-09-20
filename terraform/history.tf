@@ -79,8 +79,8 @@ resource "aws_sfn_state_machine" "daily_history" {
       # shards array should fail this execution once, not retry the same
       # rejection three times.
       ValidateShardsInput = {
-        Type       = "Task"
-        Resource   = "arn:aws:states:::lambda:invoke"
+        Type     = "Task"
+        Resource = "arn:aws:states:::lambda:invoke"
         Parameters = {
           FunctionName = aws_lambda_function.history_worker.arn
           Payload = {
@@ -119,8 +119,8 @@ resource "aws_sfn_state_machine" "daily_history" {
       # history_worker_handler._acquire_execution_lock does the .get("date")
       # / .get("forceRecovery", False) itself instead.
       AcquireExecutionLock = {
-        Type       = "Task"
-        Resource   = "arn:aws:states:::lambda:invoke"
+        Type     = "Task"
+        Resource = "arn:aws:states:::lambda:invoke"
         Parameters = {
           FunctionName = aws_lambda_function.history_worker.arn
           Payload = {
@@ -160,8 +160,8 @@ resource "aws_sfn_state_machine" "daily_history" {
           StartAt = "CollectShard"
           States = {
             CollectShard = {
-              Type       = "Task"
-              Resource   = "arn:aws:states:::lambda:invoke"
+              Type     = "Task"
+              Resource = "arn:aws:states:::lambda:invoke"
               Parameters = {
                 FunctionName = aws_lambda_function.history_worker.arn
                 Payload = {
@@ -199,8 +199,8 @@ resource "aws_sfn_state_machine" "daily_history" {
         Next = "ReduceRankings"
       }
       ReduceRankings = {
-        Type       = "Task"
-        Resource   = "arn:aws:states:::lambda:invoke"
+        Type     = "Task"
+        Resource = "arn:aws:states:::lambda:invoke"
         Parameters = {
           FunctionName = aws_lambda_function.ranking_reducer.arn
           Payload = {
@@ -225,8 +225,8 @@ resource "aws_sfn_state_machine" "daily_history" {
       # non-repair re-run of an already-finished reportDate is rejected by
       # AcquireExecutionLock, not silently allowed to re-run the reducer).
       MarkExecutionComplete = {
-        Type       = "Task"
-        Resource   = "arn:aws:states:::lambda:invoke"
+        Type     = "Task"
+        Resource = "arn:aws:states:::lambda:invoke"
         Parameters = {
           FunctionName = aws_lambda_function.ranking_reducer.arn
           Payload = {
@@ -244,8 +244,8 @@ resource "aws_sfn_state_machine" "daily_history" {
       # write error here can never mask the original pipeline failure that
       # is already carried in $.error from the Catch that led here.
       MarkExecutionFailed = {
-        Type       = "Task"
-        Resource   = "arn:aws:states:::lambda:invoke"
+        Type     = "Task"
+        Resource = "arn:aws:states:::lambda:invoke"
         Parameters = {
           FunctionName = aws_lambda_function.ranking_reducer.arn
           Payload = {

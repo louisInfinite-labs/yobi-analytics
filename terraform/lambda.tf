@@ -17,9 +17,9 @@ resource "aws_lambda_function" "collector" {
   environment {
     variables = {
       YOUTUBE_API_KEY_SECRET_NAME = "yobi-analytics/youtube-api-key"
-      YOBI_DATA_DIR                = "/tmp"
-      YOBI_HISTORY_BUCKET          = aws_s3_bucket.history.id
-      YOBI_STORAGE_BACKEND          = "dynamodb"
+      YOBI_DATA_DIR               = "/tmp"
+      YOBI_HISTORY_BUCKET         = aws_s3_bucket.history.id
+      YOBI_STORAGE_BACKEND        = "dynamodb"
     }
   }
 
@@ -73,13 +73,13 @@ resource "aws_lambda_function" "ranking_reducer" {
 }
 
 resource "aws_lambda_function" "api" {
-  function_name                  = "yobi-analytics-api"
-  role                           = local.lambda_role_arn
-  handler                        = "api_handler.lambda_handler"
-  runtime                        = "python3.12"
-  timeout                        = 60
-  memory_size                    = 1024
-  filename                       = local.lambda_placeholder_zip
+  function_name = "yobi-analytics-api"
+  role          = local.lambda_role_arn
+  handler       = "api_handler.lambda_handler"
+  runtime       = "python3.12"
+  timeout       = 60
+  memory_size   = 1024
+  filename      = local.lambda_placeholder_zip
   # Codifies the live value (confirmed intentional, 2026-09-13) -- was
   # previously undeclared here, so terraform wanted to strip it back to
   # the unreserved default (-1) on every plan/apply, unrelated to any
@@ -118,7 +118,7 @@ resource "aws_lambda_function" "notification_dispatcher" {
 
   environment {
     variables = {
-      VAPID_CLAIMS_SUB             = var.vapid_claims_sub
+      VAPID_CLAIMS_SUB              = var.vapid_claims_sub
       VAPID_PRIVATE_KEY_SECRET_NAME = "yobi-analytics/vapid-private-key"
     }
   }

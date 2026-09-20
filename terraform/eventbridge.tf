@@ -23,15 +23,15 @@ resource "aws_sqs_queue_policy" "scheduler_dlq_allow_scheduler_role" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect    = "Allow"
+        Effect = "Allow"
         Principal = {
           AWS = [
             local.scheduler_role_arn,
             local.history_scheduler_role_arn,
           ]
         }
-        Action    = "sqs:SendMessage"
-        Resource  = aws_sqs_queue.scheduler_dlq.arn
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.scheduler_dlq.arn
       }
     ]
   })
@@ -61,10 +61,10 @@ resource "aws_sqs_queue_policy" "scheduler_dlq_allow_scheduler_role" {
 # `target` back to {arn = aws_lambda_function.collector.arn, role_arn =
 # local.scheduler_role_arn, no input}.
 resource "aws_scheduler_schedule" "daily_collection" {
-  name                          = "yobi-analytics-daily-collection"
-  group_name                    = "default"
-  schedule_expression           = "cron(0 18 * * ? *)"
-  schedule_expression_timezone  = "Asia/Tokyo"
+  name                         = "yobi-analytics-daily-collection"
+  group_name                   = "default"
+  schedule_expression          = "cron(0 18 * * ? *)"
+  schedule_expression_timezone = "Asia/Tokyo"
 
   flexible_time_window {
     mode = "OFF"
@@ -82,10 +82,10 @@ resource "aws_scheduler_schedule" "daily_collection" {
 }
 
 resource "aws_scheduler_schedule" "discovery_only" {
-  name                          = "yobi-analytics-discovery-only"
-  group_name                    = "default"
-  schedule_expression           = "cron(0 0 * * ? *)"
-  schedule_expression_timezone  = "Asia/Tokyo"
+  name                         = "yobi-analytics-discovery-only"
+  group_name                   = "default"
+  schedule_expression          = "cron(0 0 * * ? *)"
+  schedule_expression_timezone = "Asia/Tokyo"
 
   flexible_time_window {
     mode = "OFF"
@@ -160,11 +160,11 @@ locals {
 resource "aws_scheduler_schedule" "trending_precompute_batches" {
   for_each = local.precompute_batches
 
-  name                          = "yobi-analytics-trending-precompute-${each.value.period}-batch${each.value.batch_index}"
-  group_name                    = "default"
-  state                         = "DISABLED"
-  schedule_expression           = "cron(${each.value.minute} ${each.value.hour} * * ? *)"
-  schedule_expression_timezone  = "Asia/Tokyo"
+  name                         = "yobi-analytics-trending-precompute-${each.value.period}-batch${each.value.batch_index}"
+  group_name                   = "default"
+  state                        = "DISABLED"
+  schedule_expression          = "cron(${each.value.minute} ${each.value.hour} * * ? *)"
+  schedule_expression_timezone = "Asia/Tokyo"
 
   flexible_time_window {
     mode = "OFF"
@@ -188,10 +188,10 @@ resource "aws_scheduler_schedule" "trending_precompute_batches" {
 }
 
 resource "aws_scheduler_schedule" "notification_dispatch" {
-  name                          = "yobi-analytics-notification-dispatch"
-  group_name                    = "default"
-  schedule_expression           = "rate(15 minutes)"
-  schedule_expression_timezone  = "UTC"
+  name                         = "yobi-analytics-notification-dispatch"
+  group_name                   = "default"
+  schedule_expression          = "rate(15 minutes)"
+  schedule_expression_timezone = "UTC"
 
   flexible_time_window {
     mode = "OFF"
