@@ -10,9 +10,9 @@ from typing import Protocol
 
 from botocore.exceptions import ClientError
 
-from history_ranking import UNKNOWN_DISCOVERED_DATE
-from history_store import HISTORY_SHARD_COUNT, shard_for_video
-from video_master import VALID_ACTIVITY_STATES
+from analytics.history_ranking import UNKNOWN_DISCOVERED_DATE
+from stores.history_store import HISTORY_SHARD_COUNT, shard_for_video
+from tracking.video_master import VALID_ACTIVITY_STATES
 
 MANIFEST_PREFIX = "catalog/current"
 

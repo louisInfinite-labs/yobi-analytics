@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from heartbeat_api import (
+from api.heartbeat_api import (
     ClientError,
     ONLINE_THRESHOLD_SECONDS,
     online_status,

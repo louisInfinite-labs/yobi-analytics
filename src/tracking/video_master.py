@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
-from json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list
+from stores.json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list
 
 # DATA_DIR defaults to this package's own directory locally, but is overridden
 # to /tmp on Lambda, where the deployment package itself is read-only (see

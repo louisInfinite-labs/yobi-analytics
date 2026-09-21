@@ -33,7 +33,7 @@ from zoneinfo import ZoneInfo
 if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
     os.environ.setdefault("YOBI_DATA_DIR", "/tmp")
 
-from main import main, run_discovery
+from collection.main import main, run_discovery
 
 # Matches main.py's own collection-timezone convention: a JST calendar date,
 # not the server's local/UTC clock.
@@ -93,7 +93,7 @@ def _run_trending_precompute(
     deployed; local/manual invocation of the default collection path never
     imports it.
     """
-    import trending_precompute
+    from analytics import trending_precompute
 
     report_date = datetime.now(_PRECOMPUTE_TIMEZONE).date()
     periods = (period,) if period else trending_precompute._PERIODS

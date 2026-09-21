@@ -51,18 +51,18 @@ import hmac
 import json
 from typing import Any, Callable
 
-import client_credential_api
-import client_credential_store
-import comparison_api
-import config
-import dashboard_catalog_api
-import heartbeat_api
-import heartbeat_store
-import notification_dispatch
-import push_sender
-import read_api
-import remote_config_api
-import remote_config_store
+from api import client_credential_api
+from stores import client_credential_store
+from api import comparison_api
+from ops import config
+from api import dashboard_catalog_api
+from api import heartbeat_api
+from stores import heartbeat_store
+from notifications import notification_dispatch
+from notifications import push_sender
+from api import read_api
+from api import remote_config_api
+from stores import remote_config_store
 
 # Roadmap 4.5: only a route that authors config for an arbitrary clientId
 # (or reveals aggregate data across every client) needs this — a route

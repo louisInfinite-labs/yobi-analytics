@@ -15,11 +15,11 @@ from __future__ import annotations
 
 from datetime import date
 
-import dynamodb_store
-import execution_lock
-import history_worker_handler
+from stores import dynamodb_store
+from collection import execution_lock
+from api import history_worker_handler
 import pytest
-import ranking_reducer
+from analytics import ranking_reducer
 
 
 # --- history_worker_handler: AcquireExecutionLock branch --------------------

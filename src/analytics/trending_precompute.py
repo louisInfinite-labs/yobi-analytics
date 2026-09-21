@@ -22,16 +22,16 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from typing import Any
 
-from creator_master import load_creators
-from dynamodb_store import get_videos_by_creator, put_cached_trending
-from read_api import (
+from tracking.creator_master import load_creators
+from stores.dynamodb_store import get_videos_by_creator, put_cached_trending
+from api.read_api import (
     CANONICAL_CACHE_TIME_ZONE,
     MAX_LIMIT,
     _compute_growth_results,
     _trending_response,
     trending_cache_key,
 )
-from trending import RANKING_TYPES, rank_videos
+from analytics.trending import RANKING_TYPES, rank_videos
 
 # Deliberately loads through the DynamoDB binding here rather than calling
 # read_api._load_videos_for_creators: that function calls whichever

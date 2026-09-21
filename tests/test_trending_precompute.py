@@ -4,9 +4,9 @@ import boto3
 import pytest
 from moto import mock_aws
 
-import dynamodb_store
-import read_api
-from dynamodb_store import (
+from stores import dynamodb_store
+from api import read_api
+from stores.dynamodb_store import (
     CREATOR_ID_INDEX,
     RUN_SUMMARIES_TABLE,
     SNAPSHOTS_TABLE,
@@ -16,9 +16,9 @@ from dynamodb_store import (
     save_daily_collection,
     upsert_videos,
 )
-from read_api import MAX_LIMIT
-from snapshot_store import Snapshot, SnapshotRunSummary
-from video_master import Video
+from api.read_api import MAX_LIMIT
+from stores.snapshot_store import Snapshot, SnapshotRunSummary
+from tracking.video_master import Video
 
 AWS_REGION = "ap-northeast-1"
 
@@ -123,12 +123,12 @@ def _seed_videos_and_snapshots(entries: list[tuple[str, str, int, int]]) -> None
 def test_run_caches_a_creators_trending_for_every_period(dynamodb_tables, monkeypatch):
     """After run(), a live get_creator_trending-shaped cache entry exists for the 1d scope."""
     monkeypatch.setattr(
-        "trending_precompute.load_creators",
+        "analytics.trending_precompute.load_creators",
         lambda: [_FakeCreator(creator_id="aizawa_ema", organization="vspo")],
     )
     _seed_videos_and_snapshots([("v1", "aizawa_ema", 100, 150)])
 
-    import trending_precompute
+    from analytics import trending_precompute
 
     stats = trending_precompute.run(date(2026, 9, 1))
 
@@ -142,12 +142,12 @@ def test_run_with_a_single_period_only_caches_that_period(dynamodb_tables, monke
     """Passing periods=("7d",) (one of the three EventBridge schedules) never touches 1d/30d
     cache keys — each schedule's own invocation must stay scoped to its own period."""
     monkeypatch.setattr(
-        "trending_precompute.load_creators",
+        "analytics.trending_precompute.load_creators",
         lambda: [_FakeCreator(creator_id="aizawa_ema", organization="vspo")],
     )
     _seed_videos_and_snapshots([("v1", "aizawa_ema", 100, 150)])
 
-    import trending_precompute
+    from analytics import trending_precompute
 
     stats = trending_precompute.run(date(2026, 9, 1), periods=("7d",))
 
@@ -160,7 +160,7 @@ def test_run_with_a_single_period_only_caches_that_period(dynamodb_tables, monke
 def test_run_caches_an_organizations_trending_scoped_to_its_own_creators(dynamodb_tables, monkeypatch):
     """A video from a different organization's creator never leaks into another org's cached entry."""
     monkeypatch.setattr(
-        "trending_precompute.load_creators",
+        "analytics.trending_precompute.load_creators",
         lambda: [
             _FakeCreator(creator_id="aizawa_ema", organization="vspo"),
             _FakeCreator(creator_id="other_org_creator", organization="hololive"),
@@ -168,7 +168,7 @@ def test_run_caches_an_organizations_trending_scoped_to_its_own_creators(dynamod
     )
     _seed_videos_and_snapshots([("v1", "aizawa_ema", 100, 150), ("v_other", "other_org_creator", 1, 9999)])
 
-    import trending_precompute
+    from analytics import trending_precompute
 
     trending_precompute.run(date(2026, 9, 1))
 
@@ -179,7 +179,7 @@ def test_run_caches_an_organizations_trending_scoped_to_its_own_creators(dynamod
 def test_creators_for_batch_partitions_every_creator_exactly_once():
     """Every creator lands in exactly one batch, and the partition is stable regardless
     of the input list's own order (creators.json's ordering isn't a stable partition key)."""
-    import trending_precompute
+    from analytics import trending_precompute
 
     creators = [_FakeCreator(creator_id=f"creator_{i}", organization="vspo") for i in range(10)]
     shuffled = [creators[i] for i in (7, 2, 9, 0, 5, 1, 8, 3, 6, 4)]
@@ -200,7 +200,7 @@ def test_creators_for_batch_partitions_every_creator_exactly_once():
 def test_creators_for_batch_rejects_batch_count_below_one():
     """A misconfigured EventBridge input (e.g. batchCount=0) must raise a clear error,
     not an opaque ZeroDivisionError from the modulo below."""
-    import trending_precompute
+    from analytics import trending_precompute
 
     creators = [_FakeCreator(creator_id="c1", organization="vspo")]
 
@@ -211,7 +211,7 @@ def test_creators_for_batch_rejects_batch_count_below_one():
 def test_creators_for_batch_rejects_batch_index_out_of_range():
     """batch_index >= batch_count (or negative) must raise rather than silently select
     zero creators -- that would still let org-scope caches get written and return 200."""
-    import trending_precompute
+    from analytics import trending_precompute
 
     creators = [_FakeCreator(creator_id="c1", organization="vspo")]
 
@@ -225,7 +225,7 @@ def test_run_with_batching_only_writes_its_own_slices_creator_scope(dynamodb_tab
     """batch_index/batch_count must scope the creator-scope loop to just that batch's
     creators -- another batch's creator must not get a cache entry from this run."""
     monkeypatch.setattr(
-        "trending_precompute.load_creators",
+        "analytics.trending_precompute.load_creators",
         lambda: [
             _FakeCreator(creator_id="aizawa_ema", organization="vspo"),
             _FakeCreator(creator_id="other_creator", organization="vspo"),
@@ -233,7 +233,7 @@ def test_run_with_batching_only_writes_its_own_slices_creator_scope(dynamodb_tab
     )
     _seed_videos_and_snapshots([("v1", "aizawa_ema", 100, 150), ("v_other", "other_creator", 1, 9999)])
 
-    import trending_precompute
+    from analytics import trending_precompute
 
     # aizawa_ema sorts before other_creator, so batch_index=0 of 2 owns it.
     stats = trending_precompute.run(date(2026, 9, 1), periods=("1d",), batch_index=0, batch_count=2)
@@ -247,12 +247,12 @@ def test_run_with_include_org_scope_false_skips_org_caching(dynamodb_tables, mon
     """A non-zero batch's schedule passes includeOrgScope=false so org-scope isn't
     redundantly recomputed/re-cached by every batch."""
     monkeypatch.setattr(
-        "trending_precompute.load_creators",
+        "analytics.trending_precompute.load_creators",
         lambda: [_FakeCreator(creator_id="aizawa_ema", organization="vspo")],
     )
     _seed_videos_and_snapshots([("v1", "aizawa_ema", 100, 150)])
 
-    import trending_precompute
+    from analytics import trending_precompute
 
     stats = trending_precompute.run(date(2026, 9, 1), periods=("1d",), include_org_scope=False)
 
@@ -265,12 +265,12 @@ def test_run_considers_every_creator_video_before_top_n(dynamodb_tables, monkeyp
     """Top-N bounds output, not the set of tracked videos eligible to rank."""
     entries = [(f"v{i}", "aizawa_ema", 100, 150) for i in range(MAX_LIMIT + 20)]
     monkeypatch.setattr(
-        "trending_precompute.load_creators",
+        "analytics.trending_precompute.load_creators",
         lambda: [_FakeCreator(creator_id="aizawa_ema", organization="vspo")],
     )
     _seed_videos_and_snapshots(entries)
 
-    import trending_precompute
+    from analytics import trending_precompute
 
     real_compute_growth_results = trending_precompute._compute_growth_results
     seen_candidate_counts: list[int] = []
@@ -279,7 +279,7 @@ def test_run_considers_every_creator_video_before_top_n(dynamodb_tables, monkeyp
         seen_candidate_counts.append(len(videos))
         return real_compute_growth_results(videos, **kwargs)
 
-    monkeypatch.setattr("trending_precompute._compute_growth_results", _spy_compute_growth_results)
+    monkeypatch.setattr("analytics.trending_precompute._compute_growth_results", _spy_compute_growth_results)
 
     stats = trending_precompute.run(date(2026, 9, 1), periods=("1d",))
 
@@ -296,15 +296,15 @@ def test_run_continues_past_one_creators_failure(dynamodb_tables, monkeypatch):
         return []
 
     monkeypatch.setattr(
-        "trending_precompute.load_creators",
+        "analytics.trending_precompute.load_creators",
         lambda: [
             _FakeCreator(creator_id="broken_creator", organization="vspo"),
             _FakeCreator(creator_id="aizawa_ema", organization="vspo"),
         ],
     )
-    monkeypatch.setattr("trending_precompute.get_videos_by_creator", _boom_get_videos_by_creator)
+    monkeypatch.setattr("analytics.trending_precompute.get_videos_by_creator", _boom_get_videos_by_creator)
 
-    import trending_precompute
+    from analytics import trending_precompute
 
     stats = trending_precompute.run(date(2026, 9, 1))
 

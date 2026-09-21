@@ -4,14 +4,14 @@ from datetime import date, timedelta
 
 import pytest
 
-import comparison_api
-import history_ranking
-import ranking_reducer
-import read_api
-from api_handler import lambda_handler
-from creator_master import Creator
-from history_store import HistoryRow
-from trending_cache_keys import creator_summary_cache_key
+from api import comparison_api
+from analytics import history_ranking
+from analytics import ranking_reducer
+from api import read_api
+from api.api_handler import lambda_handler
+from tracking.creator_master import Creator
+from stores.history_store import HistoryRow
+from analytics.trending_cache_keys import creator_summary_cache_key
 
 REPORT_DATE = "2026-09-07"
 REPORT = date.fromisoformat(REPORT_DATE)

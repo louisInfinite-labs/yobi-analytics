@@ -1,8 +1,8 @@
 import json
 
-import comparison_api
-import dashboard_catalog_api
-from api_handler import lambda_handler
+from api import comparison_api
+from api import dashboard_catalog_api
+from api.api_handler import lambda_handler
 
 
 def _event(route_key, *, query=None):

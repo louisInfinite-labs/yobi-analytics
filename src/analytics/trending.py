@@ -15,7 +15,7 @@ from __future__ import annotations
 import heapq
 from dataclasses import dataclass
 
-from view_growth_analytics import STATUS_OK, GrowthResult
+from analytics.view_growth_analytics import STATUS_OK, GrowthResult
 
 MOST_VIEWED = "most_viewed"
 FASTEST_GROWING = "fastest_growing"

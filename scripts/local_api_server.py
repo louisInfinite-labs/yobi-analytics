@@ -48,9 +48,9 @@ FIXTURE_CREATORS: dict[str, list[tuple[int, int]]] = {
 
 def seed_fixture() -> dict[str, dict]:
     """Return the creatorSummary cache items the real reducer writes for the fixture."""
-    import history_ranking
-    import ranking_reducer
-    from history_store import EXACT_ANCHOR_DAYS, HistoryRow
+    from analytics import history_ranking
+    from analytics import ranking_reducer
+    from stores.history_store import EXACT_ANCHOR_DAYS, HistoryRow
 
     def rows_on(day: date) -> list[HistoryRow]:
         offset = (day - FIRST_DATE).days
@@ -152,8 +152,8 @@ def main() -> None:
     os.environ.pop("YOBI_STORAGE_BACKEND", None)  # always the local backend
     sys.path.insert(0, str(ROOT / "src"))
 
-    import api_handler
-    import comparison_api
+    from api import api_handler
+    from api import comparison_api
 
     if args.seed_fixture:
         cache = seed_fixture()

@@ -5,8 +5,8 @@ from datetime import date
 import pytest
 from botocore.exceptions import ClientError
 
-from history_ranking import CreatorPeriodPartial, RankedGrowth
-from ranking_partial_store import (
+from analytics.history_ranking import CreatorPeriodPartial, RankedGrowth
+from stores.ranking_partial_store import (
     PARTIAL_RANKING_SCHEMA_VERSION,
     PartialRankingStoreError,
     S3PartialRankingStore,
@@ -183,7 +183,7 @@ def test_reducer_style_loop_over_sixteen_shards_costs_exactly_sixteen_gets():
     cost exactly 16 GetObject calls, never 32 (one read() + one
     read_creator_partials() per shard) and never more than 16 (no shard read
     twice)."""
-    from history_store import HISTORY_SHARD_COUNT
+    from stores.history_store import HISTORY_SHARD_COUNT
 
     client = _FakeS3Client()
     store = S3PartialRankingStore("test-bucket", s3_client=client)

@@ -1,6 +1,6 @@
 import pytest
 
-from trending import (
+from analytics.trending import (
     DAILY_TRENDING,
     FASTEST_GROWING,
     MOST_VIEWED,
@@ -9,7 +9,7 @@ from trending import (
     InvalidRankingTypeError,
     rank_videos,
 )
-from view_growth_analytics import STATUS_OK, STATUS_PENDING, DatedViewCount, GrowthResult
+from analytics.view_growth_analytics import STATUS_OK, STATUS_PENDING, DatedViewCount, GrowthResult
 
 
 def _point(status: str, view_count: int | None = None) -> DatedViewCount:

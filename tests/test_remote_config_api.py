@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from remote_config_api import (
+from api.remote_config_api import (
     ClientError,
     parse_client_id,
     parse_config_key,

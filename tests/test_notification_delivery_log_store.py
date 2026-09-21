@@ -4,7 +4,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from notification_delivery_log_store import (
+from stores.notification_delivery_log_store import (
     NOTIFICATION_DELIVERY_LOG_TABLE,
     NotificationDeliveryLogStoreError,
     already_delivered,

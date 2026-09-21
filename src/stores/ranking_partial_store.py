@@ -7,8 +7,8 @@ from datetime import date
 
 from botocore.exceptions import ClientError
 
-from history_ranking import CreatorPeriodPartial, RankedGrowth, ScopeKey
-from history_store import HISTORY_SHARD_COUNT
+from analytics.history_ranking import CreatorPeriodPartial, RankedGrowth, ScopeKey
+from stores.history_store import HISTORY_SHARD_COUNT
 
 PARTIAL_RANKING_PREFIX = "rankings/partial"
 

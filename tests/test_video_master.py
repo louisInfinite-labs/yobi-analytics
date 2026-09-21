@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from video_master import Video, VideoMasterError, get_videos_by_creator, load_video_ids_for_creator, load_videos, upsert_videos
+from tracking.video_master import Video, VideoMasterError, get_videos_by_creator, load_video_ids_for_creator, load_videos, upsert_videos
 
 
 def test_upsert_removes_temp_file_when_replace_fails(tmp_path, monkeypatch):
@@ -14,7 +14,7 @@ def test_upsert_removes_temp_file_when_replace_fails(tmp_path, monkeypatch):
     def _failing_replace(*_args, **_kwargs):
         raise OSError("simulated replace failure")
 
-    monkeypatch.setattr("json_store.os.replace", _failing_replace)
+    monkeypatch.setattr("stores.json_store.os.replace", _failing_replace)
 
     with pytest.raises(VideoMasterError):
         upsert_videos(
@@ -100,7 +100,7 @@ def test_load_video_ids_for_creator_uses_preloaded_videos_without_reading_disk(t
     def _fail_if_called(*_args, **_kwargs):
         raise AssertionError("load_videos should not be called when videos= is provided")
 
-    monkeypatch.setattr("video_master.load_videos", _fail_if_called)
+    monkeypatch.setattr("tracking.video_master.load_videos", _fail_if_called)
 
     assert load_video_ids_for_creator("aizawa_ema", path, videos=preloaded) == {"v1"}
 

@@ -19,8 +19,8 @@ import boto3
 import pytest
 from moto import mock_aws
 
-import execution_lock
-from execution_lock import (
+from collection import execution_lock
+from collection.execution_lock import (
     ExecutionLockHeldError,
     ExecutionLockLostError,
     acquire_execution_lock,

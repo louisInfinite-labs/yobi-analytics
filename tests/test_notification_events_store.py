@@ -3,13 +3,13 @@ import pytest
 from botocore.exceptions import EndpointConnectionError
 from moto import mock_aws
 
-from notification_events_store import (
+from stores.notification_events_store import (
     NOTIFICATION_EVENTS_TABLE,
     NotificationEventsStoreError,
     list_events_for_date,
     record_new_video_events,
 )
-from video_master import Video
+from tracking.video_master import Video
 
 AWS_REGION = "ap-northeast-1"
 
@@ -92,7 +92,7 @@ def test_a_botocore_error_is_also_converted_to_the_store_error(notification_even
     would let this escape record_new_video_events() as a raw exception,
     bypassing main.py's NotificationEventsStoreError-only best-effort catch
     and failing an otherwise-successful collection run."""
-    import notification_events_store
+    from stores import notification_events_store
 
     class _FakeTable:
         def batch_writer(self):

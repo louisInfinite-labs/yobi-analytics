@@ -3,14 +3,14 @@ import io
 import pyarrow as pa
 import pytest
 
-from tracking_manifest import (
+from tracking.tracking_manifest import (
     ManifestEntry,
     TrackingManifestError,
     deserialize_manifest,
     publish_tracking_manifest,
     serialize_manifest,
 )
-from video_master import Video
+from tracking.video_master import Video
 
 
 class _RecordingManifestStore:

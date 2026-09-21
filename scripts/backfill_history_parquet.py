@@ -72,14 +72,14 @@ from typing import Any, Iterator
 import boto3
 from botocore.exceptions import ClientError
 
-from history_store import (
+from stores.history_store import (
     HISTORY_SHARD_COUNT,
     HistoryRow,
     daily_history_key,
     serialize_history_rows,
     shard_for_video,
 )
-from snapshot_store import coerce_view_count
+from stores.snapshot_store import coerce_view_count
 
 SNAPSHOTS_TABLE = "YobiSnapshots"
 RUN_SUMMARIES_TABLE = "YobiRunSummaries"

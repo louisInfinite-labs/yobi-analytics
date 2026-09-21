@@ -1,4 +1,4 @@
-from history_cost_model import (
+from collection.history_cost_model import (
     CollectionWorkload,
     RankingScopeCounts,
     estimate_legacy_dynamodb_history,
@@ -6,8 +6,8 @@ from history_cost_model import (
     estimate_windows,
     reduction_percent,
 )
-from history_store import HISTORY_SHARD_COUNT
-from youtube_client import MAX_IDS_PER_REQUEST
+from stores.history_store import HISTORY_SHARD_COUNT
+from collection.youtube_client import MAX_IDS_PER_REQUEST
 
 
 def test_sharded_s3_history_storage_counts_do_not_grow_with_history_window_width():

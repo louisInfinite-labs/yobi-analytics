@@ -41,10 +41,10 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
-from config import MissingAPIKeyError, get_api_key
-from video_discovery import discover_all_videos, get_uploads_playlist_id
-from video_master import Video
-from youtube_client import YouTubeAPIError, build_youtube_client
+from ops.config import MissingAPIKeyError, get_api_key
+from tracking.video_discovery import discover_all_videos, get_uploads_playlist_id
+from tracking.video_master import Video
+from collection.youtube_client import YouTubeAPIError, build_youtube_client
 
 # The ONLY two creators this script is authorized to process -- see the module
 # docstring for why. Independently verified against each channel's own
@@ -62,10 +62,10 @@ class UnauthorizedCreatorError(ValueError):
 def _load_existing_video_ids(creator_id: str) -> set[str]:
     """Every videoId already known for creator_id, via whichever backend production uses."""
     if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
-        from dynamodb_store import get_videos_by_creator
+        from stores.dynamodb_store import get_videos_by_creator
 
         return {video.video_id for video in get_videos_by_creator(creator_id)}
-    from video_master import load_videos
+    from tracking.video_master import load_videos
 
     return {video.video_id for video in load_videos() if video.creator_id == creator_id}
 
@@ -74,9 +74,9 @@ def _upsert_videos(videos: list[Video]) -> None:
     """Write via whichever backend production uses -- same upsert-by-videoId
     semantics either way, so re-running this script is naturally idempotent."""
     if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
-        from dynamodb_store import upsert_videos
+        from stores.dynamodb_store import upsert_videos
     else:
-        from video_master import upsert_videos
+        from tracking.video_master import upsert_videos
     upsert_videos(videos)
 
 

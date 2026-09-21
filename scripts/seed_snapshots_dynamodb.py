@@ -28,8 +28,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dynamodb_store import save_daily_collection  # noqa: E402
-from snapshot_store import DEFAULT_SNAPSHOTS_DIR, SkippedVideo, Snapshot, SnapshotRunSummary  # noqa: E402
+from stores.dynamodb_store import save_daily_collection  # noqa: E402
+from stores.snapshot_store import DEFAULT_SNAPSHOTS_DIR, SkippedVideo, Snapshot, SnapshotRunSummary  # noqa: E402
 
 
 def _load_day(snapshot_date: str) -> tuple[list[Snapshot], SnapshotRunSummary]:

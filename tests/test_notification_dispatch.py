@@ -2,7 +2,7 @@ from datetime import datetime, time, timedelta, timezone
 
 import pytest
 
-from notification_dispatch import (
+from notifications.notification_dispatch import (
     ClientError,
     NotificationPreference,
     is_creator_enabled,

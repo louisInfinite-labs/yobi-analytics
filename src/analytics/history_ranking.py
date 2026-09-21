@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Mapping
 
-from history_store import EXACT_ANCHOR_DAYS, HistoryRow, HistoryStore
+from stores.history_store import EXACT_ANCHOR_DAYS, HistoryRow, HistoryStore
 
 ScopeKey = tuple[str, str]
 

@@ -6,7 +6,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from dynamodb_store import (
+from stores.dynamodb_store import (
     CREATOR_ID_INDEX,
     KNOWN_INCOMPLETE_LEGACY_DATES,
     RUN_SUMMARIES_TABLE,
@@ -22,8 +22,8 @@ from dynamodb_store import (
     save_run_summary,
     upsert_videos,
 )
-from snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
-from video_master import Video, VideoMasterError
+from stores.snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
+from tracking.video_master import Video, VideoMasterError
 
 AWS_REGION = "ap-northeast-1"
 
@@ -478,7 +478,7 @@ def _fail_on_nth_snapshot(monkeypatch, n: int):
     everything up to (not including) the nth snapshot is really written,
     the rest never are, and nothing here gets a chance to clean up (which is
     exactly the point being tested — nothing should try to)."""
-    import dynamodb_store
+    from stores import dynamodb_store
     from botocore.exceptions import ClientError
 
     real_snapshot_to_raw = dynamodb_store._snapshot_to_raw
@@ -556,7 +556,7 @@ def test_retry_after_full_write_but_before_completion_mark_is_still_idempotent(d
     actually written, but the process was killed before
     _mark_run_summary_complete ever ran. A retry must still succeed and must
     not create duplicate rows, even though nothing was actually missing."""
-    import dynamodb_store
+    from stores import dynamodb_store
 
     def _simulate_kill_before_completion(snapshot_date):
         raise SnapshotStoreError("simulated kill before completion")
@@ -656,7 +656,7 @@ def test_resource_is_cached_per_thread_not_shared_as_a_global_singleton(dynamodb
     """Boto3 Resource instances are documented as not thread-safe, so
     dynamodb_store._resource() must not hand every thread the same cached
     Resource object — only the calling thread's own cached one."""
-    import dynamodb_store
+    from stores import dynamodb_store
 
     first_call = dynamodb_store._resource()
     second_call = dynamodb_store._resource()

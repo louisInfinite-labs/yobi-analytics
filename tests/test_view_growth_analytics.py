@@ -2,8 +2,8 @@ from datetime import date
 
 import pytest
 
-from snapshot_store import Snapshot
-from view_growth_analytics import (
+from stores.snapshot_store import Snapshot
+from analytics.view_growth_analytics import (
     COLLECTION_START_DATE,
     STATUS_NOT_AVAILABLE,
     STATUS_OK,

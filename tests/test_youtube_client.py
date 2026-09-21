@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from youtube_client import (
+from collection.youtube_client import (
     MAX_RETRIES,
     QuotaExhaustedError,
     YouTubeAPIError,
@@ -33,7 +33,7 @@ def _make_youtube_client(response):
 
 def test_call_youtube_api_retries_transient_errors_then_succeeds(monkeypatch):
     """A connection error on the first attempt is retried and succeeds on the second."""
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
     executor = MagicMock(side_effect=[ConnectionError("blip"), "ok"])
 
     result = call_youtube_api(executor)
@@ -44,7 +44,7 @@ def test_call_youtube_api_retries_transient_errors_then_succeeds(monkeypatch):
 
 def test_call_youtube_api_gives_up_after_max_retries(monkeypatch):
     """After MAX_RETRIES consecutive transient failures, it raises instead of retrying forever."""
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
     executor = MagicMock(side_effect=ConnectionError("persistent blip"))
 
     with pytest.raises(YouTubeAPIError, match="after 3 attempts"):
@@ -60,7 +60,7 @@ def test_call_youtube_api_retries_dns_and_ssl_failures(monkeypatch):
     import socket
     import ssl
 
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
 
     for local_network_error in (socket.gaierror("DNS lookup failed"), ssl.SSLError("handshake failed")):
         executor = MagicMock(side_effect=[local_network_error, "ok"])
@@ -70,7 +70,7 @@ def test_call_youtube_api_retries_dns_and_ssl_failures(monkeypatch):
 
 def test_call_youtube_api_does_not_retry_non_retryable_http_errors(monkeypatch):
     """A non-retryable HTTP-level error (e.g. a plain 404) fails immediately without retrying."""
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
     executor = MagicMock(side_effect=_http_error(404))
 
     with pytest.raises(YouTubeAPIError):
@@ -81,7 +81,7 @@ def test_call_youtube_api_does_not_retry_non_retryable_http_errors(monkeypatch):
 
 def test_call_youtube_api_retries_http_429_then_succeeds(monkeypatch):
     """A bare 429 (no parseable reason) is retried like a transient failure."""
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
     executor = MagicMock(side_effect=[_http_error(429), "ok"])
 
     result = call_youtube_api(executor)
@@ -93,7 +93,7 @@ def test_call_youtube_api_retries_http_429_then_succeeds(monkeypatch):
 def test_call_youtube_api_retries_rate_limit_exceeded_reason(monkeypatch):
     """YouTube's rateLimitExceeded reason is retried even though the HTTP status (403)
     alone would not be — the reason code takes priority."""
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
     executor = MagicMock(side_effect=[_http_error(403, "rateLimitExceeded"), "ok"])
 
     result = call_youtube_api(executor)
@@ -104,7 +104,7 @@ def test_call_youtube_api_retries_rate_limit_exceeded_reason(monkeypatch):
 
 def test_call_youtube_api_gives_up_after_max_retries_on_retryable_http_error(monkeypatch):
     """A persistently retryable HTTP error still gives up after MAX_RETRIES, not forever."""
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
     executor = MagicMock(side_effect=_http_error(503))
 
     with pytest.raises(YouTubeAPIError, match="after 3 attempts"):
@@ -115,7 +115,7 @@ def test_call_youtube_api_gives_up_after_max_retries_on_retryable_http_error(mon
 
 def test_call_youtube_api_raises_quota_exhausted_immediately_without_retrying(monkeypatch):
     """quotaExceeded stops immediately — retrying would just waste more quota."""
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
     executor = MagicMock(side_effect=_http_error(403, "quotaExceeded"))
 
     with pytest.raises(QuotaExhaustedError):
@@ -126,7 +126,7 @@ def test_call_youtube_api_raises_quota_exhausted_immediately_without_retrying(mo
 
 def test_call_youtube_api_raises_quota_exhausted_for_daily_limit_exceeded(monkeypatch):
     """dailyLimitExceeded, like quotaExceeded, stops immediately without retrying."""
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
     executor = MagicMock(side_effect=_http_error(403, "dailyLimitExceeded"))
 
     with pytest.raises(QuotaExhaustedError):
@@ -218,7 +218,7 @@ def test_get_video_statistics_stops_immediately_on_quota_exhaustion(monkeypatch)
     """Unlike an ordinary batch failure, quota exhaustion on one batch must not
     be treated as "skip and continue" — with potentially thousands of
     remaining batches, that would just keep re-issuing doomed requests."""
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
     youtube = MagicMock()
     youtube.videos.return_value.list.return_value.execute.side_effect = _http_error(403, "quotaExceeded")
     video_ids = [f"id{i}" for i in range(150)]  # three batches of 50
@@ -310,7 +310,7 @@ def test_malformed_video_item_is_skipped_with_a_warning(capsys):
 
 def test_one_failing_batch_does_not_abort_the_others(monkeypatch, capsys):
     """If one batch exhausts its retries, other batches still get processed and returned."""
-    monkeypatch.setattr("youtube_client.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
     youtube = MagicMock()
     good_response = {
         "items": [

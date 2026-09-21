@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from snapshot_store import (
+from stores.snapshot_store import (
     SkippedVideo,
     Snapshot,
     SnapshotRunSummary,

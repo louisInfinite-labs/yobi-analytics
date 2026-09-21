@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from creator_master import Creator, CreatorMasterError, get_active_creators, load_creators
+from tracking.creator_master import Creator, CreatorMasterError, get_active_creators, load_creators
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "creators.json"
 

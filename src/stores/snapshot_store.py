@@ -7,7 +7,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list_exclusive, write_json_object_exclusive
+from stores.json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list_exclusive, write_json_object_exclusive
 
 # DATA_DIR defaults to this package's own directory locally, but is overridden
 # to /tmp on Lambda, where the deployment package itself is read-only (see

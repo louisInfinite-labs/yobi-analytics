@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from quota_ledger import (
+from collection.quota_ledger import (
     DAILY_HARD_CAP_RATIO,
     IMMEDIATE_PHASE_CAP_RATIO,
     MID_BAND_RATIO,

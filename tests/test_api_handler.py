@@ -3,17 +3,17 @@ import json
 
 import pytest
 
-import api_handler
-import client_credential_api
-import client_credential_store
-import heartbeat_api
-import heartbeat_store
-import notification_dispatch
-import push_sender
-import read_api
-import remote_config_api
-import remote_config_store
-from api_handler import lambda_handler
+from api import api_handler
+from api import client_credential_api
+from stores import client_credential_store
+from api import heartbeat_api
+from stores import heartbeat_store
+from notifications import notification_dispatch
+from notifications import push_sender
+from api import read_api
+from api import remote_config_api
+from stores import remote_config_store
+from api.api_handler import lambda_handler
 
 
 def _event(route_key, *, query=None, path=None, body=None, is_base64=False, headers=None):

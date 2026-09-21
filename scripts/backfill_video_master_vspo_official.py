@@ -40,10 +40,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from config import MissingAPIKeyError, get_api_key
-from video_discovery import discover_all_videos, get_uploads_playlist_id
-from video_master import Video
-from youtube_client import YouTubeAPIError, build_youtube_client
+from ops.config import MissingAPIKeyError, get_api_key
+from tracking.video_discovery import discover_all_videos, get_uploads_playlist_id
+from tracking.video_master import Video
+from collection.youtube_client import YouTubeAPIError, build_youtube_client
 
 # Reuses backfill_video_master.py's own existing-ids/upsert helpers
 # unchanged -- same storage-backend switch (YOBI_STORAGE_BACKEND=dynamodb

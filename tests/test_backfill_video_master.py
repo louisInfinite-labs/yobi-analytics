@@ -25,8 +25,8 @@ backfill_video_master = importlib.util.module_from_spec(_spec)
 sys.modules.setdefault("backfill_video_master", backfill_video_master)
 _spec.loader.exec_module(backfill_video_master)
 
-from dynamodb_store import CREATOR_ID_INDEX, VIDEO_MASTER_TABLE  # noqa: E402
-from notification_events_store import NOTIFICATION_EVENTS_TABLE  # noqa: E402
+from stores.dynamodb_store import CREATOR_ID_INDEX, VIDEO_MASTER_TABLE  # noqa: E402
+from stores.notification_events_store import NOTIFICATION_EVENTS_TABLE  # noqa: E402
 
 AWS_REGION = "ap-northeast-1"
 
@@ -149,7 +149,7 @@ def test_execute_writes_expected_video_master_rows_with_correct_creator_id(dynam
         youtube, "gigi_murin", CORRECT_GIGI_CHANNEL, execute=True
     )
 
-    from dynamodb_store import get_videos_by_creator
+    from stores.dynamodb_store import get_videos_by_creator
 
     videos = get_videos_by_creator("gigi_murin")
     assert len(videos) == 1

@@ -52,7 +52,7 @@ EXPECTED_VSPO_OFFICIAL = {
     "groupKey": ["NO"],
 }
 
-API_BASELINE = {"Handler": "api_handler.lambda_handler", "Runtime": "python3.12", "MemorySize": 1024, "Timeout": 60}
+API_BASELINE = {"Handler": "api.api_handler.lambda_handler", "Runtime": "python3.12", "MemorySize": 1024, "Timeout": 60}
 API_ENV_KEYS = {"YOBI_ADMIN_API_KEY_SECRET_NAME", "YOBI_STORAGE_BACKEND"}
 API_RESERVED_CONCURRENCY = 50
 
@@ -189,7 +189,7 @@ def _download_and_verify_deployed_package(lambda_client) -> dict:
 
     with zipfile.ZipFile(out_path) as zf:
         creators = json.loads(zf.read("creators.json"))
-        read_api_src = zf.read("read_api.py").decode("utf-8")
+        read_api_src = zf.read("api/read_api.py").decode("utf-8")
 
     vspo_entries = [c for c in creators if c.get("creatorId") == "vspo_official"]
     return {
