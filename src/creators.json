@@ -968,6 +968,58 @@
     ]
   },
   {
+    "creatorId": "hyakuto_kyoko",
+    "displayName": "百灯キョーコ",
+    "organization": "hololive",
+    "youtubeChannelId": "UCSjQDxud2HkAO2DVD3lwxmw",
+    "active": true,
+    "branch": "holo_jp",
+    "channelType": "member",
+    "lifecycleStage": "pre_debut",
+    "groupKey": [
+      "アソビ★まわり隊！"
+    ]
+  },
+  {
+    "creatorId": "achichi_mela",
+    "displayName": "熱千めら",
+    "organization": "hololive",
+    "youtubeChannelId": "UC8eitCE9Z6EwUCs-VUi1blg",
+    "active": true,
+    "branch": "holo_jp",
+    "channelType": "member",
+    "lifecycleStage": "pre_debut",
+    "groupKey": [
+      "アソビ★まわり隊！"
+    ]
+  },
+  {
+    "creatorId": "suzuna_tsuzuri",
+    "displayName": "鈴鳴つづり",
+    "organization": "hololive",
+    "youtubeChannelId": "UCy9mgxB8pn2C4aNK_MPthDQ",
+    "active": true,
+    "branch": "holo_jp",
+    "channelType": "member",
+    "lifecycleStage": "pre_debut",
+    "groupKey": [
+      "アソビ★まわり隊！"
+    ]
+  },
+  {
+    "creatorId": "sorashina_sopia",
+    "displayName": "宙科そぴあ",
+    "organization": "hololive",
+    "youtubeChannelId": "UCROQtXcp2loQEmvpe5rhJzQ",
+    "active": true,
+    "branch": "holo_jp",
+    "channelType": "member",
+    "lifecycleStage": "pre_debut",
+    "groupKey": [
+      "アソビ★まわり隊！"
+    ]
+  },
+  {
     "creatorId": "unit_b_pre_debut",
     "displayName": "UNIT B (Pre-Debut) - mekPark",
     "organization": "hololive",
@@ -1030,6 +1082,19 @@
     "lifecycleStage": "active",
     "groupKey": [
       "FLOWGLOW"
+    ]
+  },
+  {
+    "creatorId": "hololive_asobimawaritai",
+    "displayName": "アソビ★まわり隊！",
+    "organization": "hololive",
+    "youtubeChannelId": "UCAHwWUotyS3l2qBetFDsjgQ",
+    "active": true,
+    "branch": "holo_jp",
+    "channelType": "group",
+    "lifecycleStage": "pre_debut",
+    "groupKey": [
+      "アソビ★まわり隊！"
     ]
   },
   {

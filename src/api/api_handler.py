@@ -163,6 +163,10 @@ def _handle_get_comparison_items(event: dict[str, Any]) -> dict[str, Any]:
     return dashboard_catalog_api.get_comparison_items(_merged_params(event))
 
 
+def _handle_get_topics(event: dict[str, Any]) -> dict[str, Any]:
+    return dashboard_catalog_api.get_topics(_merged_params(event))
+
+
 def _handle_get_comparison_data(event: dict[str, Any]) -> dict[str, Any]:
     return comparison_api.get_comparison_data(_merged_params(event))
 
@@ -321,6 +325,7 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /dashboard/chart-catalog": _handle_get_chart_catalog,
     "GET /dashboard/comparison-items": _handle_get_comparison_items,
     "GET /dashboard/comparison-data": _handle_get_comparison_data,
+    "GET /topics": _handle_get_topics,
     "GET /creators/{creatorId}/summary": _handle_get_creator_summary,
     "GET /organizations/{organization}/leaderboard": _handle_get_organization_leaderboard,
     "GET /leaderboard": _handle_get_global_leaderboard,

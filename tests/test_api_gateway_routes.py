@@ -38,3 +38,7 @@ def test_leaderboard_routes_are_wired():
     routes = _terraform_routes()
 
     assert {"GET /organizations/{organization}/leaderboard", "GET /leaderboard"} <= routes
+
+
+def test_topics_route_is_wired():
+    assert "GET /topics" in _terraform_routes()

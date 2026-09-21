@@ -99,3 +99,30 @@ def test_no_unsupported_mock_item_is_returned():
     assert ids.isdisjoint({"revenue", "engagement", "growth"})
     # Every metric the backend can compute is exposed as exactly one item, and vice versa.
     assert {item.metric for item in dashboard_catalog_api.COMPARISON_ITEMS} == set(comparison_api.METRICS)
+
+
+# --- GET /topics -------------------------------------------------------------
+
+
+def test_topics_returns_the_canonical_list_in_display_order():
+    response = lambda_handler(_event("GET /topics"), None)
+
+    assert response["statusCode"] == 200
+    assert response["headers"]["Content-Type"] == "application/json"
+    assert _body(response) == {
+        "topics": [
+            {"id": "valorant", "label": "VALORANT"},
+            {"id": "sf6", "label": "SF6"},
+            {"id": "apex", "label": "APEX"},
+            {"id": "minecraft", "label": "Minecraft"},
+            {"id": "singing", "label": "Singing"},
+            {"id": "chatting", "label": "Chatting"},
+            {"id": "other", "label": "Other"},
+        ]
+    }
+
+
+def test_topics_needs_no_storage_and_is_stable_across_calls(monkeypatch):
+    monkeypatch.delenv("YOBI_STORAGE_BACKEND", raising=False)
+
+    assert dashboard_catalog_api.get_topics() == dashboard_catalog_api.get_topics({"ignored": "x"})

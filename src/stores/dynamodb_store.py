@@ -47,6 +47,7 @@ from stores.snapshot_store import _to_raw as _snapshot_to_raw
 from tracking.video_master import Video, VideoMasterError
 from tracking.video_master import _parse_video as _parse_video_raw
 from tracking.video_master import _to_raw as _video_to_raw
+from tracking.video_topics import TOPIC_IDS
 
 VIDEO_MASTER_TABLE = os.environ.get("YOBI_VIDEO_MASTER_TABLE") or "YobiVideoMaster"
 CREATOR_ID_INDEX = "creatorId-index"
@@ -229,6 +230,52 @@ def upsert_videos(videos: list[Video]) -> None:
                 batch.put_item(Item=_video_to_item(video))
     except ClientError as exc:
         raise VideoMasterError(f"Failed to write to {VIDEO_MASTER_TABLE}: {exc}") from exc
+
+
+def scan_video_topic_items() -> list[dict[str, Any]]:
+    """Scan Video Master for each item's videoId/title/topic only (an ops scan, not a request path)."""
+    table = _resource().Table(VIDEO_MASTER_TABLE)
+    scan_kwargs = {
+        "ProjectionExpression": "#videoId, #title, #topic",
+        "ExpressionAttributeNames": {"#videoId": "videoId", "#title": "title", "#topic": "topic"},
+    }
+    items: list[dict[str, Any]] = []
+    try:
+        response = table.scan(**scan_kwargs)
+        items.extend(response.get("Items", []))
+        while "LastEvaluatedKey" in response:
+            response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"], **scan_kwargs)
+            items.extend(response.get("Items", []))
+    except ClientError as exc:
+        raise VideoMasterError(f"Failed to scan {VIDEO_MASTER_TABLE}: {exc}") from exc
+    return items
+
+
+def set_video_topic(video_id: str, topic: str, *, overwrite: bool) -> bool:
+    """Set only the `topic` attribute of an existing video, leaving every other field untouched.
+
+    A targeted UpdateItem rather than upsert_videos' whole-item put, so a topic
+    write can never clobber scheduler state another writer just updated.
+    Returns False when the condition rejects the write: the video no longer
+    exists, or (overwrite=False) it already has a topic.
+    """
+    if topic not in TOPIC_IDS:
+        raise ValueError(f"Unknown topic id: {topic!r}")
+    condition = "attribute_exists(videoId)" if overwrite else "attribute_exists(videoId) AND attribute_not_exists(#topic)"
+    table = _resource().Table(VIDEO_MASTER_TABLE)
+    try:
+        table.update_item(
+            Key={"videoId": video_id},
+            UpdateExpression="SET #topic = :topic",
+            ConditionExpression=condition,
+            ExpressionAttributeNames={"#topic": "topic"},
+            ExpressionAttributeValues={":topic": topic},
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise VideoMasterError(f"Failed to set topic in {VIDEO_MASTER_TABLE}: {exc}") from exc
+    return True
 
 
 def get_snapshot(video_id: str, snapshot_date: date) -> Snapshot | None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -19,6 +19,7 @@ from tracking.tracking_manifest import S3TrackingManifestStore, publish_tracking
 from tracking.tracking_schedule import select_due_video_ids
 from tracking.video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
 from tracking.video_master import Video, VideoMasterError, load_video_ids_for_creator
+from tracking.video_topics import classify_video_topic
 from collection.youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_client, get_video_statistics
 
 # Local/manual collection retains the existing JSON or DynamoDB adapter.
@@ -46,6 +47,14 @@ else:
 # The production schedule (Roadmap.md 2.4) runs the collector at 18:00 Asia/Tokyo.
 # Snapshot dates must be derived from JST, not the server's local/UTC clock.
 COLLECTION_TIMEZONE = ZoneInfo("Asia/Tokyo")
+
+# A creator with no known videos is being ingested for the first time (or has
+# only ever been empty), so everything discovered is back catalog rather than a
+# new upload. Only videos younger than one discovery interval still notify, so
+# the first real upload of a previously empty channel is not swallowed. Known
+# limitation: such an upload discovered more than this long after publication,
+# while the creator still has no known videos, is seeded without a notification.
+FIRST_INGESTION_NOTIFY_WINDOW = timedelta(hours=24)
 
 
 def main() -> int:
@@ -75,6 +84,7 @@ def main() -> int:
 
         tracking_universe: list[str] = []
         newly_discovered: list[Video] = []
+        first_ingestion_creator_ids: set[str] = set()
         for creator in active_creators:
             known_ids = load_video_ids_for_creator(creator.creator_id, videos=known_videos)
 
@@ -86,6 +96,8 @@ def main() -> int:
                 tracking_universe.extend(known_ids)
                 continue
 
+            if not known_ids:
+                first_ingestion_creator_ids.add(creator.creator_id)
             try:
                 new_video_ids, new_videos = _discover_creator(
                     youtube, creator, known_ids, discovered_at=collection_time.isoformat()
@@ -116,7 +128,7 @@ def main() -> int:
                         print(f"Error: failed to persist discovered videos before stopping: {upsert_exc}")
                         return 1
                     _publish_manifest_if_configured([*known_videos, *newly_discovered])
-                    _record_new_video_events_best_effort(newly_discovered)
+                    _record_new_video_events_best_effort(newly_discovered, first_ingestion_creator_ids, collection_time)
                 print(f"Error: YouTube quota exhausted during discovery: {exc}")
                 return 1
             except YouTubeAPIError as exc:
@@ -125,7 +137,7 @@ def main() -> int:
 
         if newly_discovered:
             upsert_videos(newly_discovered)
-            _record_new_video_events_best_effort(newly_discovered)
+            _record_new_video_events_best_effort(newly_discovered, first_ingestion_creator_ids, collection_time)
         _publish_manifest_if_configured([*known_videos, *newly_discovered])
 
         # Restored tiered due-selection (Roadmap 1.5, tracking_schedule.py):
@@ -269,8 +281,10 @@ def run_discovery() -> int:
         print("No active creators.")
         return 0
 
-    discovered_at = datetime.now(COLLECTION_TIMEZONE).isoformat()
+    run_time = datetime.now(COLLECTION_TIMEZONE)
+    discovered_at = run_time.isoformat()
     newly_discovered: list[Video] = []
+    first_ingestion_creator_ids: set[str] = set()
     quota_exhausted = False
 
     try:
@@ -281,6 +295,8 @@ def run_discovery() -> int:
             if not creator.discovery_enabled:
                 continue
             known_ids = load_video_ids_for_creator(creator.creator_id, videos=known_videos)
+            if not known_ids:
+                first_ingestion_creator_ids.add(creator.creator_id)
             try:
                 new_video_ids, new_videos = _discover_creator(
                     youtube, creator, known_ids, discovered_at=discovered_at
@@ -306,7 +322,7 @@ def run_discovery() -> int:
         except VideoMasterError as exc:
             print(f"Error: failed to persist discovered videos: {exc}")
             return 1
-        _record_new_video_events_best_effort(newly_discovered)
+        _record_new_video_events_best_effort(newly_discovered, first_ingestion_creator_ids, run_time)
 
     _publish_manifest_if_configured([*known_videos, *newly_discovered])
 
@@ -317,8 +333,10 @@ def run_discovery() -> int:
     return 0
 
 
-def _record_new_video_events_best_effort(newly_discovered: list[Video]) -> None:
-    """Record a Roadmap 4.6 notification event for each newly discovered video.
+def _record_new_video_events_best_effort(
+    newly_discovered: list[Video], first_ingestion_creator_ids: set[str], run_time: datetime
+) -> None:
+    """Record a Roadmap 4.6 notification event for each newly discovered video, except first-ingestion backlog.
 
     Best-effort: a video is already durably tracked in Video Master by the
     time this runs (the caller always calls upsert_videos first), so a
@@ -326,10 +344,27 @@ def _record_new_video_events_best_effort(newly_discovered: list[Video]) -> None:
     run's worth of new-video events — worth a warning, not a reason to fail
     a collection run that otherwise succeeded.
     """
+    to_notify = [
+        video
+        for video in newly_discovered
+        if video.creator_id not in first_ingestion_creator_ids or _is_recent(video, run_time)
+    ]
+    if len(to_notify) < len(newly_discovered):
+        print(f"Seeded {len(newly_discovered) - len(to_notify)} first-ingestion backlog video(s) without notifications")
+    if not to_notify:
+        return
     try:
-        record_new_video_events(newly_discovered)
+        record_new_video_events(to_notify)
     except NotificationEventsStoreError as exc:
-        print(f"Warning: failed to record notification events for {len(newly_discovered)} video(s): {exc}")
+        print(f"Warning: failed to record notification events for {len(to_notify)} video(s): {exc}")
+
+
+def _is_recent(video: Video, run_time: datetime) -> bool:
+    try:
+        published_at = datetime.fromisoformat(video.published_at.replace("Z", "+00:00"))
+        return published_at >= run_time - FIRST_INGESTION_NOTIFY_WINDOW
+    except (ValueError, TypeError):
+        return False
 
 
 def _publish_manifest_if_configured(videos: list[Video]) -> None:
@@ -389,6 +424,7 @@ def _discover_creator(
             title=item["title"],
             published_at=item["publishedAt"],
             discovered_at=discovered_at,
+            topic=classify_video_topic(item["title"]),
         )
         for item in discovered
     ]

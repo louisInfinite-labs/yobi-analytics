@@ -359,3 +359,38 @@ def test_non_integer_snapshot_count_is_rejected(tmp_path):
 
     with pytest.raises(VideoMasterError):
         load_videos(path)
+
+
+def _video_json(tmp_path, records):
+    path = tmp_path / "video_master.json"
+    path.write_text(json.dumps(records), encoding="utf-8")
+    return path
+
+
+def test_topic_is_serialized_and_deserialized(tmp_path):
+    path = tmp_path / "video_master.json"
+    upsert_videos(
+        [Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic="sf6")], path
+    )
+
+    assert json.loads(path.read_text(encoding="utf-8"))[0]["topic"] == "sf6"
+    assert load_videos(path)[0].topic == "sf6"
+
+
+def test_old_record_without_topic_stays_valid_and_keeps_its_shape(tmp_path):
+    record = {"videoId": "v1", "creatorId": "c1", "title": "A", "publishedAt": "2026-08-20T00:00:00Z"}
+    path = _video_json(tmp_path, [record])
+
+    [video] = load_videos(path)
+    assert video.topic is None
+
+    upsert_videos([video], path)
+    assert "topic" not in json.loads(path.read_text(encoding="utf-8"))[0]
+
+
+@pytest.mark.parametrize("bad_topic", ["not_a_topic", 5, ["sf6"]])
+def test_load_videos_rejects_an_unknown_topic(tmp_path, bad_topic):
+    record = {"videoId": "v1", "creatorId": "c1", "title": "A", "publishedAt": "2026-08-20T00:00:00Z", "topic": bad_topic}
+
+    with pytest.raises(VideoMasterError):
+        load_videos(_video_json(tmp_path, [record]))

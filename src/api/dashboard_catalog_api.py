@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from tracking.video_topics import TOPICS
+
 
 @dataclass(frozen=True)
 class ChartDefinition:
@@ -83,3 +85,8 @@ def get_comparison_items(_query: dict[str, Any] | None = None) -> dict[str, Any]
             {"comparisonItemId": item.comparison_item_id, "label": item.label} for item in COMPARISON_ITEMS
         ]
     }
+
+
+def get_topics(_query: dict[str, Any] | None = None) -> dict[str, Any]:
+    """`GET /topics`: the canonical video topic filter list, fixed and in display order."""
+    return {"topics": [{"id": topic.id, "label": topic.label} for topic in TOPICS]}
