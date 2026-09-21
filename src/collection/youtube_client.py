@@ -9,7 +9,7 @@ from typing import Callable, TypeVar
 import httplib2
 from googleapiclient.discovery import Resource, build
 from googleapiclient.errors import HttpError
-from quota_ledger import IMMEDIATE_MAX_ATTEMPTS, RETRYABLE, STOP_ALL, classify_http_error
+from collection.quota_ledger import IMMEDIATE_MAX_ATTEMPTS, RETRYABLE, STOP_ALL, classify_http_error
 
 MAX_IDS_PER_REQUEST = 50
 # The original request is attempt 1; MAX_RETRIES total attempts means two

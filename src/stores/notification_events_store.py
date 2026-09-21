@@ -26,7 +26,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import BotoCoreError, ClientError
 
-from video_master import Video
+from tracking.video_master import Video
 
 NOTIFICATION_EVENTS_TABLE = os.environ.get("YOBI_NOTIFICATION_EVENTS_TABLE") or "YobiNotificationEvents"
 

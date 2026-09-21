@@ -29,23 +29,23 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from creator_master import Creator, load_creators
-from history_ranking import ALL_PERIOD, PERIODS as SUMMARY_PERIODS
-from trending import (
+from tracking.creator_master import Creator, load_creators
+from analytics.history_ranking import ALL_PERIOD, PERIODS as SUMMARY_PERIODS
+from analytics.trending import (
     DAILY_TRENDING,
     RANKING_TYPES,
     SEVEN_DAY_TRENDING,
     THIRTY_DAY_TRENDING,
     RankedEntry,
 )
-from trending_cache_keys import (
+from analytics.trending_cache_keys import (
     CANONICAL_CACHE_TIME_ZONE,
     creator_summary_cache_key,
     organization_leaderboard_cache_key,
     trending_cache_key,
 )
-from video_master import Video
-from view_growth_analytics import (
+from tracking.video_master import Video
+from analytics.view_growth_analytics import (
     COLLECTION_START_DATE,
     PERIOD_DAYS,
     GrowthResult,
@@ -56,10 +56,10 @@ from view_growth_analytics import (
 )
 
 if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
-    from dynamodb_store import get_cached_trending, get_snapshot, get_video, get_videos_by_creator
+    from stores.dynamodb_store import get_cached_trending, get_snapshot, get_video, get_videos_by_creator
 else:
-    from snapshot_store import get_snapshot
-    from video_master import get_video, get_videos_by_creator
+    from stores.snapshot_store import get_snapshot
+    from tracking.video_master import get_video, get_videos_by_creator
 
     get_cached_trending = None  # no cache table in local/JSON dev, and no live fallback (V5.9) —
     # get_creator_trending/get_organization_trending always raise RankingNotReadyError here

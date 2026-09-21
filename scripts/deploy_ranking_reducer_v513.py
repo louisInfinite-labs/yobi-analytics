@@ -26,7 +26,7 @@ LOCAL_ARTIFACT = Path("build/lambda_deployment.zip")
 EXPECTED_SHA256 = "f1ab581a90e16a236f8ba407ceac28a823cfe6050166293aaacc2a45318047f1"
 EXPECTED_COMPRESSED_BYTES = 76_100_548
 
-BASELINE = {"Handler": "ranking_reducer.lambda_handler", "Runtime": "python3.12", "MemorySize": 2048, "Timeout": 900}
+BASELINE = {"Handler": "analytics.ranking_reducer.lambda_handler", "Runtime": "python3.12", "MemorySize": 2048, "Timeout": 900}
 ENV_KEYS = {"YOBI_HISTORY_BUCKET", "YOBI_STORAGE_BACKEND", "YOBI_TRENDING_CACHE_TABLE", "YOBI_VIDEO_MASTER_TABLE"}
 
 WAIT_POLL_SECONDS = 5
@@ -164,8 +164,8 @@ def stage_verify_deployed_package(lambda_client, before: Snapshot, after: Snapsh
         anomalies.append("deployed package sha256/size mismatch")
 
     with zipfile.ZipFile(out_path) as zf:
-        history_ranking_src = zf.read("history_ranking.py").decode("utf-8")
-        ranking_reducer_src = zf.read("ranking_reducer.py").decode("utf-8")
+        history_ranking_src = zf.read("analytics/history_ranking.py").decode("utf-8")
+        ranking_reducer_src = zf.read("analytics/ranking_reducer.py").decode("utf-8")
 
     scopes_for_emits_org = '("org", dimensions.organization)' in history_ranking_src
     scope_field_accepts_org = '"org": {"organization": scope_value}' in ranking_reducer_src

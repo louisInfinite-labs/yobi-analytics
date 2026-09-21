@@ -3,9 +3,9 @@ from datetime import date
 
 import pytest
 
-import read_api
-from creator_master import Creator
-from read_api import (
+from api import read_api
+from tracking.creator_master import Creator
+from api.read_api import (
     ClientError,
     RankingNotReadyError,
     VideoNotFoundError,
@@ -24,9 +24,9 @@ from read_api import (
     parse_time_zone,
     parse_video_id,
 )
-from snapshot_store import Snapshot
-from trending import rank_videos
-from video_master import Video
+from stores.snapshot_store import Snapshot
+from analytics.trending import rank_videos
+from tracking.video_master import Video
 
 
 def _video(**overrides) -> Video:

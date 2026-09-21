@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-import api_handler
+from api import api_handler
 
 API_GATEWAY_TF = Path(__file__).parent.parent / "terraform" / "api_gateway.tf"
 

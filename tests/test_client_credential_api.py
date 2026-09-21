@@ -1,4 +1,4 @@
-from client_credential_api import generate_secret, hash_secret
+from api.client_credential_api import generate_secret, hash_secret
 
 
 def test_generate_secret_returns_a_high_entropy_string():

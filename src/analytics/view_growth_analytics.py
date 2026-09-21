@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
-from snapshot_store import Snapshot
+from stores.snapshot_store import Snapshot
 
 # The project's own collection start date (Roadmap 3.1's own worked example).
 # No reportDate/comparisonDate before this can ever resolve, no matter how

@@ -1,6 +1,6 @@
 import pytest
 
-import lambda_handler as lambda_handler_module
+from api import lambda_handler as lambda_handler_module
 
 
 def test_lambda_handler_returns_200_on_success(monkeypatch):
@@ -23,7 +23,7 @@ def test_lambda_handler_raises_on_failure(monkeypatch):
 
 def test_lambda_handler_dispatches_to_trending_precompute_in_precompute_mode(monkeypatch):
     """An event carrying mode=precompute_trending runs trending_precompute.run(), never main()."""
-    import trending_precompute
+    from analytics import trending_precompute
 
     def _main_should_not_run():
         raise AssertionError("main() must not run for a precompute-mode event")
@@ -41,7 +41,7 @@ def test_lambda_handler_dispatches_to_trending_precompute_in_precompute_mode(mon
 def test_lambda_handler_precompute_mode_still_returns_200_when_some_scopes_failed(monkeypatch):
     """A partial precompute failure (best-effort per scope) is logged, not raised — most scopes
     still getting a fresh cache entry is a successful invocation, not a failed one."""
-    import trending_precompute
+    from analytics import trending_precompute
 
     monkeypatch.setattr(lambda_handler_module, "main", lambda: (_ for _ in ()).throw(AssertionError))
     monkeypatch.setattr(
@@ -56,7 +56,7 @@ def test_lambda_handler_precompute_mode_still_returns_200_when_some_scopes_faile
 def test_lambda_handler_precompute_mode_passes_through_a_single_period(monkeypatch):
     """An event's own `period` field precomputes just that period, not all three — each of the
     three EventBridge schedules passes its own period so no single invocation does all 342 scopes."""
-    import trending_precompute
+    from analytics import trending_precompute
 
     captured = {}
 
@@ -73,7 +73,7 @@ def test_lambda_handler_precompute_mode_passes_through_a_single_period(monkeypat
 
 def test_lambda_handler_precompute_mode_defaults_to_every_period_when_absent(monkeypatch):
     """Omitting `period` (e.g. a manual test invoke) still covers all three periods in one call."""
-    import trending_precompute
+    from analytics import trending_precompute
 
     captured = {}
 
@@ -91,7 +91,7 @@ def test_lambda_handler_precompute_mode_defaults_to_every_period_when_absent(mon
 def test_lambda_handler_precompute_mode_passes_through_batch_fields(monkeypatch):
     """batchIndex/batchCount/includeOrgScope reach trending_precompute.run() -- each of the
     per-batch EventBridge schedules relies on these to only touch its own slice of creators."""
-    import trending_precompute
+    from analytics import trending_precompute
 
     captured = {}
 
@@ -112,7 +112,7 @@ def test_lambda_handler_precompute_mode_passes_through_batch_fields(monkeypatch)
 def test_lambda_handler_precompute_mode_batch_fields_default_to_single_unbatched_run(monkeypatch):
     """Omitting batchIndex/batchCount/includeOrgScope (local/manual invocation) behaves as
     one unbatched run covering every creator plus org-scope, matching the pre-batching default."""
-    import trending_precompute
+    from analytics import trending_precompute
 
     captured = {}
 

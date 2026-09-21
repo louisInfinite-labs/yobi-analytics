@@ -11,7 +11,7 @@ from typing import Iterator
 
 from googleapiclient.discovery import Resource
 
-from youtube_client import YouTubeAPIError, call_youtube_api
+from collection.youtube_client import YouTubeAPIError, call_youtube_api
 
 PLAYLIST_PAGE_SIZE = 50
 

@@ -10,9 +10,9 @@ from datetime import date, datetime
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
-import execution_lock
-from creator_master import load_creators
-from history_ranking import (
+from collection import execution_lock
+from tracking.creator_master import load_creators
+from analytics.history_ranking import (
     CreatorDimensions,
     CreatorLeaderboardEntry,
     CreatorPeriodPartial,
@@ -20,9 +20,9 @@ from history_ranking import (
     RankedGrowth,
     organization_creator_leaderboards,
 )
-from history_store import HISTORY_SHARD_COUNT
-from ranking_partial_store import S3PartialRankingStore
-from trending_cache_keys import (
+from stores.history_store import HISTORY_SHARD_COUNT
+from stores.ranking_partial_store import S3PartialRankingStore
+from analytics.trending_cache_keys import (
     creator_summary_cache_key,
     organization_leaderboard_cache_key,
     trending_cache_key,
@@ -337,7 +337,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     if "markFailedForDate" in event:
         return _mark_execution_failed(event)
 
-    from dynamodb_store import get_video, put_cached_trending
+    from stores.dynamodb_store import get_video, put_cached_trending
 
     now = datetime.now(ZoneInfo(_TIME_ZONE))
     report_date = date.fromisoformat(event["reportDate"])

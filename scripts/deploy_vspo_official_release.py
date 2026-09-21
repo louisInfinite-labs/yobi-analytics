@@ -59,7 +59,7 @@ EXPECTED_VSPO_OFFICIAL = {
 }
 
 COLLECTOR_BASELINE = {
-    "Handler": "lambda_handler.lambda_handler",
+    "Handler": "api.lambda_handler.lambda_handler",
     "Runtime": "python3.12",
     "MemorySize": 1024,
     "Timeout": 900,
@@ -67,7 +67,7 @@ COLLECTOR_BASELINE = {
 COLLECTOR_ENV_KEYS = {"YOUTUBE_API_KEY_SECRET_NAME", "YOBI_DATA_DIR", "YOBI_HISTORY_BUCKET", "YOBI_STORAGE_BACKEND"}
 
 API_BASELINE = {
-    "Handler": "api_handler.lambda_handler",
+    "Handler": "api.api_handler.lambda_handler",
     "Runtime": "python3.12",
     "MemorySize": 1024,
     "Timeout": 60,
@@ -276,7 +276,7 @@ def _download_and_verify_deployed_package(lambda_client, function_name: str, out
 
     with zipfile.ZipFile(out_path) as zf:
         creators = json.loads(zf.read("creators.json"))
-        dynamodb_store_src = zf.read("dynamodb_store.py").decode("utf-8")
+        dynamodb_store_src = zf.read("stores/dynamodb_store.py").decode("utf-8")
         discovery_docs = [n for n in zf.namelist() if n.startswith("googleapiclient/discovery_cache/documents/")]
 
     known_incomplete_line = next(

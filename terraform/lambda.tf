@@ -8,7 +8,7 @@ locals {
 resource "aws_lambda_function" "collector" {
   function_name = "yobi-analytics-collector"
   role          = local.lambda_role_arn
-  handler       = "lambda_handler.lambda_handler"
+  handler       = "api.lambda_handler.lambda_handler"
   runtime       = "python3.12"
   timeout       = 900
   memory_size   = 1024
@@ -31,7 +31,7 @@ resource "aws_lambda_function" "collector" {
 resource "aws_lambda_function" "history_worker" {
   function_name = "yobi-analytics-history-worker"
   role          = local.lambda_role_arn
-  handler       = "history_worker_handler.lambda_handler"
+  handler       = "api.history_worker_handler.lambda_handler"
   runtime       = "python3.12"
   timeout       = 900
   memory_size   = 2048
@@ -52,7 +52,7 @@ resource "aws_lambda_function" "history_worker" {
 resource "aws_lambda_function" "ranking_reducer" {
   function_name = "yobi-analytics-ranking-reducer"
   role          = local.lambda_role_arn
-  handler       = "ranking_reducer.lambda_handler"
+  handler       = "analytics.ranking_reducer.lambda_handler"
   runtime       = "python3.12"
   timeout       = 900
   memory_size   = 2048
@@ -75,7 +75,7 @@ resource "aws_lambda_function" "ranking_reducer" {
 resource "aws_lambda_function" "api" {
   function_name = "yobi-analytics-api"
   role          = local.lambda_role_arn
-  handler       = "api_handler.lambda_handler"
+  handler       = "api.api_handler.lambda_handler"
   runtime       = "python3.12"
   timeout       = 60
   memory_size   = 1024
@@ -110,7 +110,7 @@ resource "aws_lambda_function" "api" {
 resource "aws_lambda_function" "notification_dispatcher" {
   function_name = "yobi-analytics-notification-dispatcher"
   role          = local.lambda_role_arn
-  handler       = "notification_dispatcher.lambda_handler"
+  handler       = "notifications.notification_dispatcher.lambda_handler"
   runtime       = "python3.12"
   timeout       = 60
   memory_size   = 512

@@ -34,24 +34,24 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import boto3  # noqa: E402
-from dynamodb_store import (  # noqa: E402
+from stores.dynamodb_store import (  # noqa: E402
     RUN_SUMMARIES_TABLE,
     SNAPSHOTS_TABLE,
     VIDEO_MASTER_TABLE,
     save_daily_collection,
     upsert_videos,
 )
-from snapshot_store import (  # noqa: E402
+from stores.snapshot_store import (  # noqa: E402
     DEFAULT_SNAPSHOTS_DIR,
     SkippedVideo,
     Snapshot,
     SnapshotRunSummary,
 )
-from snapshot_store import _summary_to_raw  # noqa: E402
-from snapshot_store import _to_raw as _snapshot_to_raw  # noqa: E402
-from video_master import DEFAULT_VIDEO_MASTER_PATH  # noqa: E402
-from video_master import load_videos as load_local_videos  # noqa: E402
-from video_master import _to_raw as _video_to_raw  # noqa: E402
+from stores.snapshot_store import _summary_to_raw  # noqa: E402
+from stores.snapshot_store import _to_raw as _snapshot_to_raw  # noqa: E402
+from tracking.video_master import DEFAULT_VIDEO_MASTER_PATH  # noqa: E402
+from tracking.video_master import load_videos as load_local_videos  # noqa: E402
+from tracking.video_master import _to_raw as _video_to_raw  # noqa: E402
 
 SCHEMA_VERSION = "1.0"
 MANIFEST_PATH = Path(__file__).parent.parent / "build" / "dynamodb_cutover_manifest.json"

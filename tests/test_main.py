@@ -2,11 +2,11 @@ from datetime import datetime
 
 import pytest
 
-import main as main_module
-from creator_master import Creator
-from tracking_manifest import TrackingManifestError
-from video_master import Video, VideoMasterError
-from youtube_client import QuotaExhaustedError, YouTubeAPIError
+from collection import main as main_module
+from tracking.creator_master import Creator
+from tracking.tracking_manifest import TrackingManifestError
+from tracking.video_master import Video, VideoMasterError
+from collection.youtube_client import QuotaExhaustedError, YouTubeAPIError
 
 
 def _frozen_datetime(fixed_now: datetime) -> type[datetime]:

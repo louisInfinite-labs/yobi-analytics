@@ -2,14 +2,14 @@ from datetime import datetime, timezone
 
 import pytest
 
-import notification_delivery_log_store
-import notification_dispatcher
-import notification_events_store
-import push_sender
-import remote_config_store
-from creator_master import Creator
-from notification_dispatcher import lambda_handler
-from push_sender import PushResult
+from stores import notification_delivery_log_store
+from notifications import notification_dispatcher
+from stores import notification_events_store
+from notifications import push_sender
+from stores import remote_config_store
+from tracking.creator_master import Creator
+from notifications.notification_dispatcher import lambda_handler
+from notifications.push_sender import PushResult
 
 
 def _creator(**overrides) -> Creator:

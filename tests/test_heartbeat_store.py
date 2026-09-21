@@ -2,7 +2,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from heartbeat_store import HEARTBEAT_TABLE, HeartbeatStoreError, get_heartbeat, list_all, put_heartbeat
+from stores.heartbeat_store import HEARTBEAT_TABLE, HeartbeatStoreError, get_heartbeat, list_all, put_heartbeat
 
 AWS_REGION = "ap-northeast-1"
 

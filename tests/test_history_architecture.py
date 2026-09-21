@@ -6,16 +6,16 @@ from datetime import date
 import pytest
 from botocore.exceptions import ClientError
 
-import history_worker
-import history_worker_handler
-from history_ranking import (
+from collection import history_worker
+from api import history_worker_handler
+from analytics.history_ranking import (
     CreatorDimensions,
     exact_gains,
     load_exact_anchor_rows,
     merge_partial_rankings,
     top_n_by_scope,
 )
-from history_store import (
+from stores.history_store import (
     HISTORY_SHARD_COUNT,
     HistoryRow,
     HistoryStoreError,
@@ -26,8 +26,8 @@ from history_store import (
     serialize_history_rows,
     shard_for_video,
 )
-from history_worker import collect_history_shard
-from tracking_manifest import (
+from collection.history_worker import collect_history_shard
+from tracking.tracking_manifest import (
     ManifestEntry,
     TrackingManifestError,
     deserialize_manifest,
@@ -62,7 +62,7 @@ def test_video_id_shard_mapping_is_stable_and_in_range():
 
 
 def test_video_id_shard_mapping_is_stable_across_processes():
-    script = "from history_store import shard_for_video; print(shard_for_video('youtube-video-123'))"
+    script = "from stores.history_store import shard_for_video; print(shard_for_video('youtube-video-123'))"
     environment = {**os.environ, "PYTHONPATH": str(os.path.join(os.path.dirname(__file__), "..", "src"))}
     values = [
         subprocess.check_output([sys.executable, "-c", script], env=environment, text=True).strip()

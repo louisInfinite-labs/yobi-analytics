@@ -70,6 +70,25 @@ def test_prune_discovery_documents_tolerates_a_missing_documents_directory(tmp_p
     package_lambda.prune_discovery_documents(tmp_path)
 
 
+def test_copy_source_files_preserves_nested_packages(tmp_path, monkeypatch):
+    source_dir = tmp_path / "src"
+    (source_dir / "api").mkdir(parents=True)
+    (source_dir / "root_module.py").write_text("ROOT = True\n", encoding="utf-8")
+    (source_dir / "api" / "__init__.py").write_text("", encoding="utf-8")
+    (source_dir / "api" / "handler.py").write_text("HANDLER = True\n", encoding="utf-8")
+    (source_dir / "creators.json").write_text("[]\n", encoding="utf-8")
+    build_dir = tmp_path / "build"
+    build_dir.mkdir()
+    monkeypatch.setattr(package_lambda, "SRC_DIR", source_dir)
+
+    package_lambda.copy_source_files(build_dir)
+
+    assert (build_dir / "root_module.py").read_text(encoding="utf-8") == "ROOT = True\n"
+    assert (build_dir / "api" / "__init__.py").is_file()
+    assert (build_dir / "api" / "handler.py").read_text(encoding="utf-8") == "HANDLER = True\n"
+    assert (build_dir / "creators.json").read_text(encoding="utf-8") == "[]\n"
+
+
 @pytest.mark.parametrize("required_doc", sorted(package_lambda.REQUIRED_DISCOVERY_DOCUMENTS))
 def test_required_discovery_document_is_youtube_v3(required_doc):
     """Documents the actual runtime requirement: youtube_client.py only calls

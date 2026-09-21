@@ -7,7 +7,7 @@ from datetime import date
 
 import pytest
 
-from history_ranking import (
+from analytics.history_ranking import (
     ALL_PERIOD,
     IncrementalRankingMerger,
     creator_period_partials,
@@ -15,7 +15,7 @@ from history_ranking import (
     merge_partial_rankings,
     top_n_by_scope,
 )
-from history_store import HistoryRow
+from stores.history_store import HistoryRow
 
 REPORT_DATE = date(2026, 9, 9)
 

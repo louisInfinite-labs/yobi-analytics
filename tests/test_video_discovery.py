@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
-from youtube_client import YouTubeAPIError
+from tracking.video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
+from collection.youtube_client import YouTubeAPIError
 
 
 def _make_channels_response(uploads_playlist_id):

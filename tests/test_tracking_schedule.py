@@ -2,7 +2,7 @@ import itertools
 from datetime import date, timedelta
 
 import pytest
-from tracking_schedule import (
+from tracking.tracking_schedule import (
     COLD_CYCLE_DAYS,
     DEMOTION_QUIET_STREAK_HOT_TO_WARM,
     DEMOTION_QUIET_STREAK_WARM_TO_COLD,

@@ -3,8 +3,8 @@ import pytest
 from botocore.exceptions import EndpointConnectionError
 from moto import mock_aws
 
-import client_credential_store
-from client_credential_store import (
+from stores import client_credential_store
+from stores.client_credential_store import (
     CLIENT_CREDENTIALS_TABLE,
     ClientCredentialStoreError,
     create_secret,

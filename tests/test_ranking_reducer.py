@@ -8,15 +8,15 @@ import io
 import json
 from datetime import date
 
-import dynamodb_store
-import execution_lock
+from stores import dynamodb_store
+from collection import execution_lock
 import pytest
-import ranking_reducer
+from analytics import ranking_reducer
 from botocore.exceptions import ClientError
-from creator_master import Creator
-from history_ranking import CreatorPeriodPartial, RankedGrowth
-from history_store import HISTORY_SHARD_COUNT
-from ranking_partial_store import S3PartialRankingStore
+from tracking.creator_master import Creator
+from analytics.history_ranking import CreatorPeriodPartial, RankedGrowth
+from stores.history_store import HISTORY_SHARD_COUNT
+from stores.ranking_partial_store import S3PartialRankingStore
 
 
 def _instant_budget():
@@ -251,7 +251,7 @@ def test_new_cache_namespace_never_collides_with_existing_scope_ranking_keys():
     the same creatorId/organization/period/reportDate -- YobiTrendingCache
     has only a single partition key (cacheKey, no sort key), so this is the
     entire uniqueness guarantee."""
-    from read_api import trending_cache_key
+    from api.read_api import trending_cache_key
 
     report_date = date(2026, 9, 9)
     new_creator_key = ranking_reducer.creator_summary_cache_key(creator_id="c1", period="7d", report_date=report_date)
@@ -284,9 +284,9 @@ def test_organization_scope_write_key_matches_get_organization_trending_contract
     wrote "organization:", the API read "org:", and every existing test
     checked each side in isolation without ever comparing them).
     """
-    from history_ranking import CreatorDimensions, top_n_by_scope
-    from history_store import HistoryRow
-    from read_api import trending_cache_key
+    from analytics.history_ranking import CreatorDimensions, top_n_by_scope
+    from stores.history_store import HistoryRow
+    from api.read_api import trending_cache_key
 
     report_date = date(2026, 9, 9)
     today_row = HistoryRow(

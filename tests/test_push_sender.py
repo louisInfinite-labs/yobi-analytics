@@ -4,8 +4,8 @@ import pytest
 import requests
 from pywebpush import WebPushException
 
-import push_sender
-from push_sender import (
+from notifications import push_sender
+from notifications.push_sender import (
     InvalidSubscriptionError,
     build_payload,
     parse_subscription,

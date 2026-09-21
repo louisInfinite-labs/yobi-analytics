@@ -11,8 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import ceil
 
-from history_store import EXACT_ANCHOR_DAYS, HISTORY_SHARD_COUNT
-from youtube_client import MAX_IDS_PER_REQUEST
+from stores.history_store import EXACT_ANCHOR_DAYS, HISTORY_SHARD_COUNT
+from collection.youtube_client import MAX_IDS_PER_REQUEST
 
 PERIODS_PER_RANKING_RUN = len(EXACT_ANCHOR_DAYS)
 

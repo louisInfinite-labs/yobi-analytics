@@ -4,8 +4,8 @@ import boto3
 import pytest
 from moto import mock_aws
 
-import config
-from config import MissingAPIKeyError, get_api_key
+from ops import config
+from ops.config import MissingAPIKeyError, get_api_key
 
 AWS_REGION = "ap-northeast-1"
 SECRET_NAME = "yobi-analytics/youtube-api-key"

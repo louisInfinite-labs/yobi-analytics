@@ -12,11 +12,11 @@ from datetime import date
 
 import pytest
 
-import read_api
-import ranking_reducer
-import trending_cache_keys
-from creator_master import Creator
-from read_api import (
+from api import read_api
+from analytics import ranking_reducer
+from analytics import trending_cache_keys
+from tracking.creator_master import Creator
+from api.read_api import (
     RankingNotReadyError,
     ScopeNotFoundError,
     get_creator_summary,

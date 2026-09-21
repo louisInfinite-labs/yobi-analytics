@@ -43,12 +43,12 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Any
 
-import read_api
-from dashboard_catalog_api import COMPARISON_ITEMS, ComparisonItemDefinition
-from trending_cache_keys import creator_summary_cache_key
+from api import read_api
+from api.dashboard_catalog_api import COMPARISON_ITEMS, ComparisonItemDefinition
+from analytics.trending_cache_keys import creator_summary_cache_key
 
 if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
-    from dynamodb_store import get_cached_trending
+    from stores.dynamodb_store import get_cached_trending
 else:
     get_cached_trending = None  # no cache table in local/JSON dev
 

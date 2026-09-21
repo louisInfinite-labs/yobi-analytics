@@ -18,8 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dynamodb_store import VIDEO_MASTER_TABLE, upsert_videos  # noqa: E402
-from video_master import load_videos  # noqa: E402
+from stores.dynamodb_store import VIDEO_MASTER_TABLE, upsert_videos  # noqa: E402
+from tracking.video_master import load_videos  # noqa: E402
 
 BATCH_SIZE = 500
 

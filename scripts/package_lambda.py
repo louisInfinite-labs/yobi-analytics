@@ -92,6 +92,14 @@ def prune_discovery_documents(build_dir: Path) -> None:
             doc_file.unlink()
 
 
+def copy_source_files(build_dir: Path) -> None:
+    for py_file in SRC_DIR.rglob("*.py"):
+        destination = build_dir / py_file.relative_to(SRC_DIR)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(py_file, destination)
+    shutil.copy(SRC_DIR / "creators.json", build_dir / "creators.json")
+
+
 def main() -> int:
     """Build a clean Lambda deployment ZIP from src/ and its runtime dependencies."""
     if BUILD_DIR.exists():
@@ -143,9 +151,7 @@ def main() -> int:
 
     prune_discovery_documents(BUILD_DIR)
 
-    for py_file in SRC_DIR.glob("*.py"):
-        shutil.copy(py_file, BUILD_DIR / py_file.name)
-    shutil.copy(SRC_DIR / "creators.json", BUILD_DIR / "creators.json")
+    copy_source_files(BUILD_DIR)
 
     with zipfile.ZipFile(ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zf:
         for file_path in BUILD_DIR.rglob("*"):

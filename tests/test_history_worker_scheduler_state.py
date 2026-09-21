@@ -2,11 +2,11 @@ from datetime import date
 
 import pytest
 
-import history_worker
-from history_store import HistoryRow
-from history_worker import collect_history_shard
-from tracking_manifest import ManifestEntry
-from video_master import Video
+from collection import history_worker
+from stores.history_store import HistoryRow
+from collection.history_worker import collect_history_shard
+from tracking.tracking_manifest import ManifestEntry
+from tracking.video_master import Video
 
 
 class _FakeManifest:
@@ -28,7 +28,7 @@ class _FakeHistory:
 
     def write_daily_shard(self, collection_date, shard, rows):
         self.objects[(collection_date, shard)] = list(rows)
-        from history_store import daily_history_key
+        from stores.history_store import daily_history_key
 
         return daily_history_key(collection_date, shard)
 

@@ -32,7 +32,7 @@ backfill_history_parquet = importlib.util.module_from_spec(_spec)
 sys.modules.setdefault("backfill_history_parquet", backfill_history_parquet)
 _spec.loader.exec_module(backfill_history_parquet)
 
-from history_store import HISTORY_SHARD_COUNT, daily_history_key, deserialize_history_rows, shard_for_video  # noqa: E402
+from stores.history_store import HISTORY_SHARD_COUNT, daily_history_key, deserialize_history_rows, shard_for_video  # noqa: E402
 
 AWS_REGION = "ap-northeast-1"
 STAGE_DATES = sorted(backfill_history_parquet.stage_dates())

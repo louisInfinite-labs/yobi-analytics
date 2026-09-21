@@ -34,7 +34,7 @@ import os
 from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from snapshot_store import (
+from stores.snapshot_store import (
     SkippedVideo,
     Snapshot,
     SnapshotRunSummary,
@@ -42,11 +42,11 @@ from snapshot_store import (
     coerce_view_count,
     validate_daily_collection,
 )
-from snapshot_store import _summary_to_raw
-from snapshot_store import _to_raw as _snapshot_to_raw
-from video_master import Video, VideoMasterError
-from video_master import _parse_video as _parse_video_raw
-from video_master import _to_raw as _video_to_raw
+from stores.snapshot_store import _summary_to_raw
+from stores.snapshot_store import _to_raw as _snapshot_to_raw
+from tracking.video_master import Video, VideoMasterError
+from tracking.video_master import _parse_video as _parse_video_raw
+from tracking.video_master import _to_raw as _video_to_raw
 
 VIDEO_MASTER_TABLE = os.environ.get("YOBI_VIDEO_MASTER_TABLE") or "YobiVideoMaster"
 CREATOR_ID_INDEX = "creatorId-index"

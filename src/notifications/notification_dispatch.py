@@ -22,7 +22,7 @@ from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from view_growth_analytics import InvalidTimeZoneError, validate_time_zone
+from analytics.view_growth_analytics import InvalidTimeZoneError, validate_time_zone
 
 # Roadmap 4.6 lists "notificationLevel" as a possible setting without fixing
 # its values; "all"/"important" is the initial supported set and may grow.

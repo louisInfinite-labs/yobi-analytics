@@ -11,7 +11,7 @@ from (history_ranking._period_value).
 
 from datetime import date, timedelta
 
-from history_ranking import (
+from analytics.history_ranking import (
     ALL_PERIOD,
     UNKNOWN_DISCOVERED_DATE,
     CreatorDimensions,
@@ -24,8 +24,8 @@ from history_ranking import (
     period_values,
     top_n_by_scope,
 )
-from history_store import HistoryRow
-from tracking_manifest import ManifestEntry, discovered_dates_by_video
+from stores.history_store import HistoryRow
+from tracking.tracking_manifest import ManifestEntry, discovered_dates_by_video
 
 REPORT_DATE = date(2026, 9, 9)
 

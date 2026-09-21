@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Mapping
 
-from history_ranking import (
+from analytics.history_ranking import (
     CreatorDimensions,
     CreatorPeriodPartial,
     RankedGrowth,
@@ -15,11 +15,11 @@ from history_ranking import (
     load_exact_anchor_rows,
     top_n_by_scope,
 )
-from history_store import HISTORY_SHARD_COUNT, HistoryRow, HistoryStore, daily_history_key, shard_for_video
-from tracking_manifest import TrackingManifestStore, discovered_dates_by_video
-from tracking_schedule import classify_after_observation
-from video_master import Video, VideoMasterStore
-from youtube_client import get_video_statistics
+from stores.history_store import HISTORY_SHARD_COUNT, HistoryRow, HistoryStore, daily_history_key, shard_for_video
+from tracking.tracking_manifest import TrackingManifestStore, discovered_dates_by_video
+from tracking.tracking_schedule import classify_after_observation
+from tracking.video_master import Video, VideoMasterStore
+from collection.youtube_client import get_video_statistics
 
 
 @dataclass(frozen=True)

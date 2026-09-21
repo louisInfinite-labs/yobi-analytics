@@ -15,7 +15,7 @@ from pathlib import Path
 # `or` (not `.get(key, default)`) so an accidentally-blank YOBI_DATA_DIR falls
 # back to the default too, instead of silently resolving to "." (the current
 # working directory — /var/task, Lambda's own read-only deployment dir).
-DATA_DIR = Path(os.environ.get("YOBI_DATA_DIR") or str(Path(__file__).parent))
+DATA_DIR = Path(os.environ.get("YOBI_DATA_DIR") or str(Path(__file__).parent.parent))
 
 
 class JsonStoreError(RuntimeError):

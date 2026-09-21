@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from json_store import JsonStoreError, load_json_list
+from stores.json_store import JsonStoreError, load_json_list
 
 # Unlike video_master.json/snapshots (which the collector writes to, and so
 # must live in a writable DATA_DIR — /tmp on Lambda), creators.json is a
@@ -15,7 +15,7 @@ from json_store import JsonStoreError, load_json_list
 # still readable, and nothing copies it into /tmp on cold start — pointing
 # this at DATA_DIR would make load_json_list() see a missing file, silently
 # return [], and make main() exit 0 having collected nothing.
-DEFAULT_CREATORS_PATH = Path(__file__).parent / "creators.json"
+DEFAULT_CREATORS_PATH = Path(__file__).parent.parent / "creators.json"
 
 
 class CreatorMasterError(JsonStoreError):

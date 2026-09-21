@@ -11,15 +11,15 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-from config import MissingAPIKeyError, get_api_key
-from creator_master import Creator, get_active_creators
+from ops.config import MissingAPIKeyError, get_api_key
+from tracking.creator_master import Creator, get_active_creators
 from googleapiclient.discovery import Resource
-from snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
-from tracking_manifest import S3TrackingManifestStore, publish_tracking_manifest
-from tracking_schedule import select_due_video_ids
-from video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
-from video_master import Video, VideoMasterError, load_video_ids_for_creator
-from youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_client, get_video_statistics
+from stores.snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
+from tracking.tracking_manifest import S3TrackingManifestStore, publish_tracking_manifest
+from tracking.tracking_schedule import select_due_video_ids
+from tracking.video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
+from tracking.video_master import Video, VideoMasterError, load_video_ids_for_creator
+from collection.youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_client, get_video_statistics
 
 # Local/manual collection retains the existing JSON or DynamoDB adapter.
 # The scheduled production history path is now history_worker_handler:
@@ -31,11 +31,11 @@ from youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_c
 # etc. stay exactly as Video Master already had them after a run) --
 # see test_successful_collection_does_not_rewrite_video_master_scheduler_state.
 if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
-    from dynamodb_store import load_videos, save_daily_collection, save_run_summary, upsert_videos
-    from notification_events_store import NotificationEventsStoreError, record_new_video_events
+    from stores.dynamodb_store import load_videos, save_daily_collection, save_run_summary, upsert_videos
+    from stores.notification_events_store import NotificationEventsStoreError, record_new_video_events
 else:
-    from snapshot_store import save_daily_collection, save_run_summary
-    from video_master import load_videos, upsert_videos
+    from stores.snapshot_store import save_daily_collection, save_run_summary
+    from tracking.video_master import load_videos, upsert_videos
 
     class NotificationEventsStoreError(Exception):
         """Placeholder so main.py's except clause is valid locally; never raised (see below)."""

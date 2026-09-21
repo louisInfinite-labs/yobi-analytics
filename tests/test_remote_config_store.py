@@ -2,7 +2,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from remote_config_store import (
+from stores.remote_config_store import (
     REMOTE_CONFIG_TABLE,
     RemoteConfigStoreError,
     delete_remote_config,

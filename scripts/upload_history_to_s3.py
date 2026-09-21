@@ -26,7 +26,7 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 
-from history_store import HISTORY_SHARD_COUNT, daily_history_key, deserialize_history_rows
+from stores.history_store import HISTORY_SHARD_COUNT, daily_history_key, deserialize_history_rows
 
 HISTORY_BUCKET = "yobi-analytics-history"
 HISTORY_DAILY_PREFIX = "history/daily/"
