@@ -362,7 +362,7 @@ def _record_new_video_events_best_effort(
 def _is_recent(video: Video, run_time: datetime) -> bool:
     try:
         published_at = datetime.fromisoformat(video.published_at.replace("Z", "+00:00"))
-        return published_at >= run_time - FIRST_INGESTION_NOTIFY_WINDOW
+        return run_time - FIRST_INGESTION_NOTIFY_WINDOW <= published_at <= run_time
     except (ValueError, TypeError):
         return False
 

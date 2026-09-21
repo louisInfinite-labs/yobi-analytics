@@ -186,11 +186,18 @@ def _optional_str(raw: dict, field: str, video_id: str) -> str | None:
 
 
 def _optional_topic(raw: dict, video_id: str) -> str | None:
-    """Return raw["topic"] if present and a known topic id, else None when absent."""
-    value = raw.get("topic")
+    """Return raw["topic"] as a known topic id, or None when absent."""
+    return _validated_topic(raw.get("topic"), video_id)
+
+
+def _validated_topic(value: object, video_id: str) -> str | None:
+    """Return value if it is None or a known topic id; a bad id is rejected on write as well as read.
+
+    A record with an unknown topic makes every later Video Master load raise, so it must never be persisted.
+    """
     if value is None:
         return None
-    if value not in TOPIC_IDS:
+    if not isinstance(value, str) or value not in TOPIC_IDS:
         raise VideoMasterError(f"Video {video_id!r} has invalid 'topic': {value!r}")
     return value
 
@@ -274,6 +281,7 @@ def _to_raw(video: Video) -> dict:
         "lastAvgViewsPerDay": video.last_avg_views_per_day,
         "discoveredAt": video.discovered_at,
     }
-    if video.topic is not None:
-        raw["topic"] = video.topic
+    topic = _validated_topic(video.topic, video.video_id)
+    if topic is not None:
+        raw["topic"] = topic
     return raw

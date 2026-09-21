@@ -223,11 +223,14 @@ def upsert_videos(videos: list[Video]) -> None:
     """Insert or update videos into the DynamoDB Video Master table."""
     if not videos:
         return
+    # Serialized up front so one invalid video rejects the whole batch instead of
+    # leaving the videos before it already written.
+    items = [_video_to_item(video) for video in videos]
     table = _resource().Table(VIDEO_MASTER_TABLE)
     try:
         with table.batch_writer() as batch:
-            for video in videos:
-                batch.put_item(Item=_video_to_item(video))
+            for item in items:
+                batch.put_item(Item=item)
     except ClientError as exc:
         raise VideoMasterError(f"Failed to write to {VIDEO_MASTER_TABLE}: {exc}") from exc
 

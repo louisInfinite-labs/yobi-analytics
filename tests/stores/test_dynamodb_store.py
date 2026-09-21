@@ -693,6 +693,16 @@ def test_topic_round_trips_and_an_unset_topic_stores_no_attribute(dynamodb_table
     assert "topic" not in _raw_video_item("v2")
 
 
+def test_upsert_rejects_an_unknown_topic_so_video_master_stays_loadable(dynamodb_tables):
+    good = Video(video_id="good", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic="apex")
+    bad = Video(video_id="bad", creator_id="c1", title="B", published_at="2026-08-20T00:00:00Z", topic="not_a_topic")
+
+    with pytest.raises(VideoMasterError):
+        upsert_videos([good, bad])
+
+    assert load_videos() == []
+
+
 def test_set_video_topic_changes_only_the_topic_field(dynamodb_tables):
     video = Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", snapshot_count=3)
     upsert_videos([video])

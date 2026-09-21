@@ -484,7 +484,7 @@ def test_first_ingestion_seeds_backlog_without_events_then_notifies_future_uploa
     assert len(store.videos) == 2
     assert notified == []
 
-    playlist["new_creator"].insert(0, _item("fresh", "2026-09-21T20:00:00Z"))
+    playlist["new_creator"].insert(0, _item("fresh", "2026-09-21T10:00:00Z"))
     assert main_module.run_discovery() == 0
     assert sorted(video.video_id for video in store.videos) == ["fresh", "old1", "old2"]
     assert notified == ["fresh"]
@@ -492,7 +492,7 @@ def test_first_ingestion_seeds_backlog_without_events_then_notifies_future_uploa
 
 def test_first_ingestion_still_notifies_a_video_younger_than_one_discovery_interval(monkeypatch):
     creator = _creator(creator_id="empty_until_now")
-    playlist = {"empty_until_now": [_item("just_uploaded", "2026-09-21T20:00:00Z"), _item("old", "2026-08-01T00:00:00Z")]}
+    playlist = {"empty_until_now": [_item("just_uploaded", "2026-09-21T10:00:00Z"), _item("old", "2026-08-01T00:00:00Z")]}
     store, notified = _wire_ingestion(monkeypatch, playlist, creators=[creator])
 
     main_module.run_discovery()
@@ -528,6 +528,9 @@ def test_backlog_suppression_only_applies_to_first_ingestion_creators(monkeypatc
     [
         ("2026-09-20T15:00:01Z", True),  # 1s inside the 24h window (run_time is 2026-09-21T15:00:00Z)
         ("2026-09-20T15:00:00Z", True),  # exactly 24h old is still inside
+        ("2026-09-21T15:00:00Z", True),  # published exactly at run time
+        ("2026-09-21T15:00:01Z", False),  # 1s in the future is not "published within the last 24h"
+        ("2026-09-22T00:00:01+09:00", False),  # future, explicit offset
         ("2026-09-20T14:59:59Z", False),  # 1s outside
         ("2026-09-21T00:00:01+09:00", True),  # explicit offset, inside
         ("2026-09-20T23:59:59+09:00", False),  # explicit offset, outside
@@ -564,7 +567,7 @@ def test_main_seeds_first_ingestion_backlog_without_events_but_notifies_recent_u
     monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator(creator_id="c1")])
 
     def discover(youtube, creator, known_ids, *, discovered_at):
-        return (["old", "fresh"], [_discovered("old", "c1", "2026-01-01T00:00:00Z"), _discovered("fresh", "c1", "2026-09-21T20:00:00Z")])
+        return (["old", "fresh"], [_discovered("old", "c1", "2026-01-01T00:00:00Z"), _discovered("fresh", "c1", "2026-09-21T10:00:00Z")])
 
     upserted, notified = _first_ingestion_main_setup(monkeypatch, discover)
 

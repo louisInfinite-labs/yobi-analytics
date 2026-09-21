@@ -394,3 +394,14 @@ def test_load_videos_rejects_an_unknown_topic(tmp_path, bad_topic):
 
     with pytest.raises(VideoMasterError):
         load_videos(_video_json(tmp_path, [record]))
+
+
+@pytest.mark.parametrize("bad_topic", ["not_a_topic", 5, ["sf6"]])
+def test_upsert_rejects_an_unknown_topic_and_writes_nothing(tmp_path, bad_topic):
+    path = tmp_path / "video_master.json"
+    video = Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic=bad_topic)
+
+    with pytest.raises(VideoMasterError):
+        upsert_videos([video], path)
+
+    assert not path.exists()
