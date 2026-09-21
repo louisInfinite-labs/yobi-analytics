@@ -17,7 +17,6 @@ def _terraform_routes() -> set[str]:
 # The exact-set assertion below fails when this list goes stale in either direction.
 _HANDLERS_WITHOUT_GATEWAY_ROUTE = {
     "GET /creators/{creatorId}/summary",
-    "GET /organizations/{organization}/leaderboard",
 }
 
 
@@ -25,7 +24,7 @@ def test_every_api_gateway_route_has_a_handler():
     assert _terraform_routes() <= set(api_handler._ROUTES)
 
 
-def test_every_handler_route_has_a_gateway_route_except_the_two_without_one():
+def test_every_handler_route_has_a_gateway_route_except_the_one_without_one():
     assert set(api_handler._ROUTES) - _terraform_routes() == _HANDLERS_WITHOUT_GATEWAY_ROUTE
 
 
@@ -33,3 +32,9 @@ def test_dashboard_routes_are_wired():
     routes = _terraform_routes()
 
     assert {"GET /dashboard/chart-catalog", "GET /dashboard/comparison-items", "GET /dashboard/comparison-data"} <= routes
+
+
+def test_leaderboard_routes_are_wired():
+    routes = _terraform_routes()
+
+    assert {"GET /organizations/{organization}/leaderboard", "GET /leaderboard"} <= routes
