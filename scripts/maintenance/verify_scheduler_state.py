@@ -18,7 +18,7 @@ history includes observations from before DynamoDB had any snapshot data
 meaningful comparison and could produce false mismatches.
 
 Usage:
-    .venv/Scripts/python.exe scripts/verify_scheduler_state.py
+    .venv/Scripts/python.exe scripts/maintenance/verify_scheduler_state.py
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 import boto3  # noqa: E402
 from boto3.dynamodb.conditions import Key  # noqa: E402

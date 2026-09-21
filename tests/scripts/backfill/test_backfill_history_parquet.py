@@ -26,7 +26,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-_MODULE_PATH = Path(__file__).resolve().parent.parent / "scripts" / "backfill_history_parquet.py"
+_MODULE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "backfill" / "backfill_history_parquet.py"
 _spec = importlib.util.spec_from_file_location("backfill_history_parquet", _MODULE_PATH)
 backfill_history_parquet = importlib.util.module_from_spec(_spec)
 sys.modules.setdefault("backfill_history_parquet", backfill_history_parquet)

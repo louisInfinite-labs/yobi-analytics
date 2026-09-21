@@ -19,7 +19,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-_MODULE_PATH = Path(__file__).resolve().parent.parent / "scripts" / "backfill_video_master.py"
+_MODULE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "backfill" / "backfill_video_master.py"
 _spec = importlib.util.spec_from_file_location("backfill_video_master", _MODULE_PATH)
 backfill_video_master = importlib.util.module_from_spec(_spec)
 sys.modules.setdefault("backfill_video_master", backfill_video_master)

@@ -16,7 +16,7 @@ A local day is only migrated when both its snapshot file and its matching
   suffix means the glob for `*.json` never matches them in the first place).
 
 Usage:
-    .venv/Scripts/python.exe scripts/seed_snapshots_dynamodb.py
+    .venv/Scripts/python.exe scripts/migration/seed_snapshots_dynamodb.py
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from stores.dynamodb_store import save_daily_collection  # noqa: E402
 from stores.snapshot_store import DEFAULT_SNAPSHOTS_DIR, SkippedVideo, Snapshot, SnapshotRunSummary  # noqa: E402

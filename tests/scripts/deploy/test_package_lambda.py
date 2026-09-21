@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-_MODULE_PATH = Path(__file__).resolve().parent.parent / "scripts" / "package_lambda.py"
+_MODULE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "deploy" / "package_lambda.py"
 _spec = importlib.util.spec_from_file_location("package_lambda", _MODULE_PATH)
 package_lambda = importlib.util.module_from_spec(_spec)
 sys.modules.setdefault("package_lambda", package_lambda)
@@ -95,3 +95,10 @@ def test_required_discovery_document_is_youtube_v3(required_doc):
     build() for YouTube v3, so that's the only discovery document that must
     survive packaging."""
     assert required_doc == "youtube.v3.json"
+
+
+def test_repo_root_resolves_to_real_source_tree():
+    repo_root = Path(__file__).resolve().parents[3]
+    assert package_lambda.ROOT == repo_root
+    assert package_lambda.SRC_DIR == repo_root / "src"
+    assert (package_lambda.SRC_DIR / "creators.json").is_file()
