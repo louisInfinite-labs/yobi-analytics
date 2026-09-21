@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Protocol
 
 from stores.json_store import DATA_DIR, JsonStoreError, load_json_list, write_json_list
+from tracking.video_topics import TOPIC_IDS
 
 # DATA_DIR defaults to this package's own directory locally, but is overridden
 # to /tmp on Lambda, where the deployment package itself is read-only (see
@@ -57,6 +58,9 @@ class Video:
     # COLLECTION_START_DATE in that case (Roadmap 3.4's documented
     # simplification for pre-existing records).
     discovered_at: str | None = None
+    # One primary topic id (video_topics.TOPICS). None for a record written
+    # before this field existed; only discovery and the topic backfill set it.
+    topic: str | None = None
 
 
 class VideoMasterStore(Protocol):
@@ -157,6 +161,7 @@ def _parse_video(raw: dict) -> Video:
             last_percent_growth_per_day=_optional_float(raw, "lastPercentGrowthPerDay", video_id),
             last_avg_views_per_day=_optional_float(raw, "lastAvgViewsPerDay", video_id),
             discovered_at=_optional_iso_datetime_str(raw, "discoveredAt", video_id),
+            topic=_optional_topic(raw, video_id),
         )
     except (KeyError, TypeError) as exc:
         raise VideoMasterError(f"Malformed Video Master record, missing/invalid field: {exc}") from exc
@@ -177,6 +182,23 @@ def _optional_str(raw: dict, field: str, video_id: str) -> str | None:
         return None
     if not isinstance(value, str):
         raise VideoMasterError(f"Video {video_id!r} has non-string {field!r}: {value!r}")
+    return value
+
+
+def _optional_topic(raw: dict, video_id: str) -> str | None:
+    """Return raw["topic"] as a known topic id, or None when absent."""
+    return _validated_topic(raw.get("topic"), video_id)
+
+
+def _validated_topic(value: object, video_id: str) -> str | None:
+    """Return value if it is None or a known topic id; a bad id is rejected on write as well as read.
+
+    A record with an unknown topic makes every later Video Master load raise, so it must never be persisted.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in TOPIC_IDS:
+        raise VideoMasterError(f"Video {video_id!r} has invalid 'topic': {value!r}")
     return value
 
 
@@ -239,8 +261,12 @@ def _optional_float(raw: dict, field: str, video_id: str) -> float | None:
 
 
 def _to_raw(video: Video) -> dict:
-    """Convert a Video instance into its JSON-serializable form."""
-    return {
+    """Convert a Video instance into its JSON-serializable form.
+
+    `topic` is omitted while unset so a record without one keeps its
+    pre-topic shape (and DynamoDB never stores a NULL topic attribute).
+    """
+    raw = {
         "videoId": video.video_id,
         "creatorId": video.creator_id,
         "title": video.title,
@@ -255,3 +281,7 @@ def _to_raw(video: Video) -> dict:
         "lastAvgViewsPerDay": video.last_avg_views_per_day,
         "discoveredAt": video.discovered_at,
     }
+    topic = _validated_topic(video.topic, video.video_id)
+    if topic is not None:
+        raw["topic"] = topic
+    return raw

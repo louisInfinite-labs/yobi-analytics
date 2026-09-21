@@ -57,8 +57,9 @@ def test_run_discovery_returns_0_and_skips_api_calls_when_no_active_creators(mon
 
 
 def test_run_discovery_persists_and_notifies_newly_discovered_videos(monkeypatch):
-    """The happy path: discovery finds new videos, they get upserted and their notification events recorded."""
+    """The happy path for a creator that already has known videos: newly discovered videos get upserted and notified."""
     new_videos = [_video("v1"), _video("v2")]
+    monkeypatch.setattr(main_module, "load_videos", lambda: [_video("already_known")])
     monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator()])
     monkeypatch.setattr(main_module, "_discover_creator", lambda *a, **k: (["v1", "v2"], new_videos))
 
@@ -399,3 +400,195 @@ def test_successful_collection_does_not_rewrite_video_master_scheduler_state(mon
 
     assert main_module.main() == 0
     assert writes == []
+
+
+def test_discovery_classifies_the_topic_of_each_new_video(monkeypatch):
+    creator = Creator(
+        creator_id="c1",
+        display_name="C1",
+        organization="vspo",
+        youtube_channel_id="UC1",
+        active=True,
+        branch="vspo_jp",
+        group_key=["NO"],
+        channel_type="member",
+        lifecycle_stage="active",
+    )
+    monkeypatch.setattr(main_module, "get_uploads_playlist_id", lambda youtube, channel_id: "UU1")
+    monkeypatch.setattr(
+        main_module,
+        "discover_all_videos",
+        lambda youtube, playlist_id: [
+            {"videoId": "v1", "title": "【VALORANT】ランク", "publishedAt": "2026-08-20T00:00:00Z"},
+            {"videoId": "v2", "title": "お知らせ", "publishedAt": "2026-08-21T00:00:00Z"},
+        ],
+    )
+
+    _, videos = main_module._discover_creator(None, creator, set(), discovered_at="2026-09-01T00:00:00+09:00")
+
+    assert [(video.video_id, video.topic) for video in videos] == [("v1", "valorant"), ("v2", "other")]
+
+
+# --- first ingestion of a creator: back catalog is seeded, not notified ------
+
+_RUN_TIME = datetime.fromisoformat("2026-09-22T00:00:00+09:00")
+
+
+class _FakeVideoMaster:
+    def __init__(self):
+        self.videos = []
+
+    def load(self):
+        return list(self.videos)
+
+    def upsert(self, videos):
+        self.videos.extend(videos)
+
+
+def _wire_ingestion(monkeypatch, playlist, *, creators):
+    """Run run_discovery against an in-memory Video Master and a fake uploads playlist (newest first)."""
+    store = _FakeVideoMaster()
+    notified = []
+
+    def discover_all(youtube, playlist_id):
+        return list(playlist[creators[0].creator_id])
+
+    def discover_new(youtube, playlist_id, known_ids):
+        return [item for item in playlist[creators[0].creator_id] if item["videoId"] not in known_ids]
+
+    monkeypatch.setattr(main_module, "datetime", _frozen_datetime(_RUN_TIME))
+    monkeypatch.setattr(main_module, "get_active_creators", lambda: creators)
+    monkeypatch.setattr(main_module, "get_uploads_playlist_id", lambda youtube, channel_id: "UU")
+    monkeypatch.setattr(main_module, "discover_all_videos", discover_all)
+    monkeypatch.setattr(main_module, "discover_new_videos", discover_new)
+    monkeypatch.setattr(main_module, "load_videos", store.load)
+    monkeypatch.setattr(main_module, "upsert_videos", store.upsert)
+    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos: notified.extend(v.video_id for v in videos))
+    return store, notified
+
+
+def _item(video_id, published_at):
+    return {"videoId": video_id, "title": f"Video {video_id}", "publishedAt": published_at}
+
+
+def test_first_ingestion_seeds_backlog_without_events_then_notifies_future_uploads(monkeypatch):
+    creator = _creator(creator_id="new_creator")
+    playlist = {"new_creator": [_item("old2", "2026-09-10T00:00:00Z"), _item("old1", "2026-09-01T00:00:00Z")]}
+    store, notified = _wire_ingestion(monkeypatch, playlist, creators=[creator])
+
+    assert main_module.run_discovery() == 0
+    assert sorted(video.video_id for video in store.videos) == ["old1", "old2"]
+    assert notified == []
+
+    assert main_module.run_discovery() == 0
+    assert len(store.videos) == 2
+    assert notified == []
+
+    playlist["new_creator"].insert(0, _item("fresh", "2026-09-21T10:00:00Z"))
+    assert main_module.run_discovery() == 0
+    assert sorted(video.video_id for video in store.videos) == ["fresh", "old1", "old2"]
+    assert notified == ["fresh"]
+
+
+def test_first_ingestion_still_notifies_a_video_younger_than_one_discovery_interval(monkeypatch):
+    creator = _creator(creator_id="empty_until_now")
+    playlist = {"empty_until_now": [_item("just_uploaded", "2026-09-21T10:00:00Z"), _item("old", "2026-08-01T00:00:00Z")]}
+    store, notified = _wire_ingestion(monkeypatch, playlist, creators=[creator])
+
+    main_module.run_discovery()
+
+    assert sorted(video.video_id for video in store.videos) == ["just_uploaded", "old"]
+    assert notified == ["just_uploaded"]
+
+
+def test_existing_creator_keeps_notifying_every_new_video_regardless_of_age(monkeypatch):
+    creator = _creator(creator_id="established")
+    playlist = {"established": [_item("late_found", "2026-06-01T00:00:00Z"), _item("known", "2026-05-01T00:00:00Z")]}
+    store, notified = _wire_ingestion(monkeypatch, playlist, creators=[creator])
+    store.videos.append(_video("known", creator_id="established"))
+
+    main_module.run_discovery()
+
+    assert notified == ["late_found"]
+
+
+def test_backlog_suppression_only_applies_to_first_ingestion_creators(monkeypatch):
+    old = Video(video_id="old", creator_id="c1", title="t", published_at="2026-01-01T00:00:00Z")
+    other = Video(video_id="other", creator_id="c2", title="t", published_at="2026-01-01T00:00:00Z")
+    notified = []
+    monkeypatch.setattr(main_module, "record_new_video_events", notified.extend)
+
+    main_module._record_new_video_events_best_effort([old, other], {"c1"}, _RUN_TIME)
+
+    assert [video.video_id for video in notified] == ["other"]
+
+
+@pytest.mark.parametrize(
+    ("published_at", "notified_expected"),
+    [
+        ("2026-09-20T15:00:01Z", True),  # 1s inside the 24h window (run_time is 2026-09-21T15:00:00Z)
+        ("2026-09-20T15:00:00Z", True),  # exactly 24h old is still inside
+        ("2026-09-21T15:00:00Z", True),  # published exactly at run time
+        ("2026-09-21T15:00:01Z", False),  # 1s in the future is not "published within the last 24h"
+        ("2026-09-22T00:00:01+09:00", False),  # future, explicit offset
+        ("2026-09-20T14:59:59Z", False),  # 1s outside
+        ("2026-09-21T00:00:01+09:00", True),  # explicit offset, inside
+        ("2026-09-20T23:59:59+09:00", False),  # explicit offset, outside
+        ("not-a-date", False),
+    ],
+)
+def test_first_ingestion_notify_window_boundary(monkeypatch, published_at, notified_expected):
+    video = Video(video_id="v1", creator_id="c1", title="t", published_at=published_at)
+    notified = []
+    monkeypatch.setattr(main_module, "record_new_video_events", notified.extend)
+
+    main_module._record_new_video_events_best_effort([video], {"c1"}, _RUN_TIME)
+
+    assert bool(notified) is notified_expected
+
+
+def _first_ingestion_main_setup(monkeypatch, discover):
+    monkeypatch.setattr(main_module, "datetime", _frozen_datetime(_RUN_TIME))
+    monkeypatch.setattr(main_module, "select_due_video_ids", lambda candidates, *, as_of: [])
+    monkeypatch.setattr(main_module, "get_video_statistics", lambda youtube, video_ids: ([], {}))
+    monkeypatch.setattr(main_module, "save_run_summary", lambda *args: ("summary",))
+    monkeypatch.setattr(main_module, "_discover_creator", discover)
+    upserted, notified = [], []
+    monkeypatch.setattr(main_module, "upsert_videos", upserted.extend)
+    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos: notified.extend(v.video_id for v in videos))
+    return upserted, notified
+
+
+def _discovered(video_id, creator_id, published_at):
+    return Video(video_id=video_id, creator_id=creator_id, title="t", published_at=published_at)
+
+
+def test_main_seeds_first_ingestion_backlog_without_events_but_notifies_recent_uploads(monkeypatch):
+    monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator(creator_id="c1")])
+
+    def discover(youtube, creator, known_ids, *, discovered_at):
+        return (["old", "fresh"], [_discovered("old", "c1", "2026-01-01T00:00:00Z"), _discovered("fresh", "c1", "2026-09-21T10:00:00Z")])
+
+    upserted, notified = _first_ingestion_main_setup(monkeypatch, discover)
+
+    main_module.main()
+
+    assert sorted(video.video_id for video in upserted) == ["fresh", "old"]
+    assert notified == ["fresh"]
+
+
+def test_main_quota_exhaustion_path_also_suppresses_first_ingestion_backlog(monkeypatch):
+    monkeypatch.setattr(
+        main_module, "get_active_creators", lambda: [_creator(creator_id="c1"), _creator(creator_id="c2")]
+    )
+
+    def discover(youtube, creator, known_ids, *, discovered_at):
+        if creator.creator_id == "c2":
+            raise QuotaExhaustedError("simulated quota exhaustion")
+        return (["old"], [_discovered("old", "c1", "2026-01-01T00:00:00Z")])
+
+    upserted, notified = _first_ingestion_main_setup(monkeypatch, discover)
+
+    assert main_module.main() == 1
+    assert [video.video_id for video in upserted] == ["old"]
+    assert notified == []

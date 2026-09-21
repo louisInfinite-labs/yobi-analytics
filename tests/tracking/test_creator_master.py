@@ -321,3 +321,21 @@ def test_non_graduated_with_graduated_at_is_rejected(tmp_path):
 
     with pytest.raises(CreatorMasterError):
         load_creators(path)
+
+
+def test_production_roster_loads_with_unique_ids_and_the_verified_asobimawaritai_unit():
+    creators = load_creators()
+
+    assert len(creators) == 118
+    assert len({creator.creator_id for creator in creators}) == len(creators)
+    assert len({creator.youtube_channel_id for creator in creators}) == len(creators)
+
+    unit = {creator.creator_id: creator for creator in creators if creator.group_key == ["アソビ★まわり隊！"]}
+    assert {creator_id: (c.youtube_channel_id, c.channel_type) for creator_id, c in unit.items()} == {
+        "hololive_asobimawaritai": ("UCAHwWUotyS3l2qBetFDsjgQ", "group"),
+        "hyakuto_kyoko": ("UCSjQDxud2HkAO2DVD3lwxmw", "member"),
+        "achichi_mela": ("UC8eitCE9Z6EwUCs-VUi1blg", "member"),
+        "suzuna_tsuzuri": ("UCy9mgxB8pn2C4aNK_MPthDQ", "member"),
+        "sorashina_sopia": ("UCROQtXcp2loQEmvpe5rhJzQ", "member"),
+    }
+    assert all(c.organization == "hololive" and c.branch == "holo_jp" and c.lifecycle_stage == "pre_debut" for c in unit.values())

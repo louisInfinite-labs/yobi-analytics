@@ -202,6 +202,33 @@ def test_unrelated_video_master_metadata_is_preserved(monkeypatch):
     assert updated.discovered_at == "2026-01-01T00:00:00Z"
 
 
+def test_existing_topic_survives_a_scheduler_state_update(monkeypatch):
+    existing = Video(
+        video_id="v1", creator_id="c1", title="A", published_at="2020-05-01T00:00:00Z", topic="valorant"
+    )
+    video_master = _FakeVideoMaster([existing])
+    monkeypatch.setattr(
+        history_worker,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [{"videoId": "v1", "title": "A", "publishedAt": "2020-05-01T00:00:00Z", "viewCount": 500}],
+            {},
+        ),
+    )
+
+    collect_history_shard(
+        shard=history_worker.shard_for_video("v1"),
+        **_kwargs(
+            manifest=_FakeManifest([ManifestEntry("v1", "c1", True)]),
+            history=_FakeHistory(),
+            video_master=video_master,
+        ),
+    )
+
+    [updated] = video_master.upsert_calls[0]
+    assert updated.topic == "valorant"
+
+
 def test_failed_statistics_observation_does_not_update_scheduler_state(monkeypatch):
     """A video that was due but got no usable statistics this run (a skipped/failed
     fetch) is not classified and its Video Master row is left completely untouched."""

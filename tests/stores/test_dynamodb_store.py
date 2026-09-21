@@ -20,6 +20,8 @@ from stores.dynamodb_store import (
     put_cached_trending,
     save_daily_collection,
     save_run_summary,
+    scan_video_topic_items,
+    set_video_topic,
     upsert_videos,
 )
 from stores.snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
@@ -668,3 +670,77 @@ def test_resource_is_cached_per_thread_not_shared_as_a_global_singleton(dynamodb
     thread.join()
 
     assert other_thread_resource[0] is not first_call
+
+
+# --- topic persistence -------------------------------------------------------
+
+
+def _raw_video_item(video_id):
+    table = boto3.resource("dynamodb", region_name=AWS_REGION).Table(VIDEO_MASTER_TABLE)
+    return table.get_item(Key={"videoId": video_id})["Item"]
+
+
+def test_topic_round_trips_and_an_unset_topic_stores_no_attribute(dynamodb_tables):
+    upsert_videos(
+        [
+            Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic="apex"),
+            Video(video_id="v2", creator_id="c1", title="B", published_at="2026-08-20T00:00:00Z"),
+        ]
+    )
+
+    topics = {video.video_id: video.topic for video in load_videos()}
+    assert topics == {"v1": "apex", "v2": None}
+    assert "topic" not in _raw_video_item("v2")
+
+
+def test_upsert_rejects_an_unknown_topic_so_video_master_stays_loadable(dynamodb_tables):
+    good = Video(video_id="good", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic="apex")
+    bad = Video(video_id="bad", creator_id="c1", title="B", published_at="2026-08-20T00:00:00Z", topic="not_a_topic")
+
+    with pytest.raises(VideoMasterError):
+        upsert_videos([good, bad])
+
+    assert load_videos() == []
+
+
+def test_set_video_topic_changes_only_the_topic_field(dynamodb_tables):
+    video = Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", snapshot_count=3)
+    upsert_videos([video])
+
+    assert set_video_topic("v1", "minecraft", overwrite=False) is True
+
+    [stored] = load_videos()
+    assert stored.topic == "minecraft"
+    assert stored == Video(**{**video.__dict__, "topic": "minecraft"})
+
+
+def test_set_video_topic_without_overwrite_keeps_an_existing_topic(dynamodb_tables):
+    upsert_videos([Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic="sf6")])
+
+    assert set_video_topic("v1", "apex", overwrite=False) is False
+    assert load_videos()[0].topic == "sf6"
+    assert set_video_topic("v1", "apex", overwrite=True) is True
+    assert load_videos()[0].topic == "apex"
+
+
+def test_set_video_topic_never_creates_a_missing_video(dynamodb_tables):
+    assert set_video_topic("ghost", "sf6", overwrite=True) is False
+    assert load_videos() == []
+
+
+def test_set_video_topic_rejects_an_unknown_topic_id(dynamodb_tables):
+    with pytest.raises(ValueError):
+        set_video_topic("v1", "not_a_topic", overwrite=True)
+
+
+def test_scan_video_topic_items_returns_only_the_projected_fields(dynamodb_tables):
+    upsert_videos(
+        [
+            Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic="apex"),
+            Video(video_id="v2", creator_id="c1", title="B", published_at="2026-08-20T00:00:00Z"),
+        ]
+    )
+
+    items = sorted(scan_video_topic_items(), key=lambda item: item["videoId"])
+
+    assert items == [{"videoId": "v1", "title": "A", "topic": "apex"}, {"videoId": "v2", "title": "B"}]
