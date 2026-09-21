@@ -16,7 +16,7 @@ not used: every local day is checked in full, per Roadmap 2.3.1's
 "sampling alone is insufficient for final approval."
 
 Usage:
-    .venv/Scripts/python.exe scripts/reconcile_dynamodb.py
+    .venv/Scripts/python.exe scripts/migration/reconcile_dynamodb.py
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 import boto3  # noqa: E402
 from stores.dynamodb_store import RUN_SUMMARIES_TABLE, SNAPSHOTS_TABLE, VIDEO_MASTER_TABLE  # noqa: E402

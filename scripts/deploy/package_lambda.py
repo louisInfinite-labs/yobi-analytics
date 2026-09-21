@@ -13,7 +13,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-ROOT = Path(__file__).parent.parent
+ROOT = Path(__file__).parent.parent.parent
 BUILD_DIR = ROOT / "build" / "lambda_package"
 WHEELHOUSE_DIR = ROOT / "build" / "wheelhouse"
 ZIP_PATH = ROOT / "build" / "lambda_deployment.zip"

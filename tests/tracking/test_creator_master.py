@@ -5,7 +5,7 @@ import pytest
 
 from tracking.creator_master import Creator, CreatorMasterError, get_active_creators, load_creators
 
-FIXTURE_PATH = Path(__file__).parent / "fixtures" / "creators.json"
+FIXTURE_PATH = Path(__file__).parent.parent / "fixtures" / "creators.json"
 
 
 def _base_record(**overrides):

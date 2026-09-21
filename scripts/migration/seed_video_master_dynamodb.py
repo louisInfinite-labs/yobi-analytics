@@ -8,7 +8,7 @@ Lambda's timeout). This does not touch snapshots or run summaries — only
 Video Master, since that's what drives the discovery/due-set decision.
 
 Usage:
-    .venv/Scripts/python.exe scripts/seed_video_master_dynamodb.py
+    .venv/Scripts/python.exe scripts/migration/seed_video_master_dynamodb.py
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from stores.dynamodb_store import VIDEO_MASTER_TABLE, upsert_videos  # noqa: E402
 from tracking.video_master import load_videos  # noqa: E402

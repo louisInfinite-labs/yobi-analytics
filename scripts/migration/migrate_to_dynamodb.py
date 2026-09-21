@@ -16,8 +16,8 @@ expected to keep changing as real collection runs happen, so Video Master
 gets validation + upsert, not checksum conflict detection.
 
 Usage:
-    .venv/Scripts/python.exe scripts/migrate_to_dynamodb.py --dry-run
-    .venv/Scripts/python.exe scripts/migrate_to_dynamodb.py
+    .venv/Scripts/python.exe scripts/migration/migrate_to_dynamodb.py --dry-run
+    .venv/Scripts/python.exe scripts/migration/migrate_to_dynamodb.py
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 import boto3  # noqa: E402
 from stores.dynamodb_store import (  # noqa: E402
@@ -54,7 +54,7 @@ from tracking.video_master import load_videos as load_local_videos  # noqa: E402
 from tracking.video_master import _to_raw as _video_to_raw  # noqa: E402
 
 SCHEMA_VERSION = "1.0"
-MANIFEST_PATH = Path(__file__).parent.parent / "build" / "dynamodb_cutover_manifest.json"
+MANIFEST_PATH = Path(__file__).parent.parent.parent / "build" / "dynamodb_cutover_manifest.json"
 
 
 def _checksum(records: list[dict]) -> str:
