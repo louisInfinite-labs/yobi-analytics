@@ -152,6 +152,15 @@ def test_get_creator_trending_maps_trending_not_ready_to_503(monkeypatch):
 # --- GET /creators/{creatorId}/summary & /organizations/{organization}/leaderboard --
 
 
+def test_get_global_leaderboard_returns_200(monkeypatch):
+    monkeypatch.setattr(read_api, "get_global_leaderboard", lambda query: {"period": query["period"]})
+
+    response = lambda_handler(_event("GET /leaderboard", query={"period": "all"}), None)
+
+    assert response["statusCode"] == 200
+    assert _body(response) == {"period": "all"}
+
+
 def test_get_creator_summary_returns_200(monkeypatch):
     monkeypatch.setattr(read_api, "get_creator_summary", lambda query: {"creatorId": query["creatorId"]})
 

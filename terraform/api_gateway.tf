@@ -34,6 +34,8 @@ locals {
     "POST /clients/{clientId}/credential",
     "POST /heartbeat",
     "GET /organizations/{organization}/trending",
+    "GET /organizations/{organization}/leaderboard",
+    "GET /leaderboard",
     "GET /dashboard/chart-catalog",
     "GET /dashboard/comparison-items",
     "GET /dashboard/comparison-data",

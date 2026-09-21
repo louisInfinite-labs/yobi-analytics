@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -493,29 +493,120 @@ def get_organization_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
     docstring. `organization` existence is checked the same way
     get_organization_trending already does (any Creator Master record with
     a matching organization), before ever touching YobiTrendingCache.
+
+    For period "all", each byTotalViews row also carries totalViews,
+    videoCount and averageViewsPerVideo. An omitted reportDate serves the
+    newest cached report within LATEST_REPORT_LOOKBACK_DAYS; an explicit one
+    requests exactly that date.
     """
     organization = parse_organization(query.get("organization"))
     period = parse_summary_period(query.get("period"))
-    raw_report_date = query.get("reportDate")
-    report_date = parse_report_date(raw_report_date) if raw_report_date else _today_in_canonical_time_zone()
+    report_dates = _leaderboard_report_dates(query.get("reportDate"))
 
     has_any_creator = any(creator.organization == organization for creator in load_creators())
     if not has_any_creator:
         raise ScopeNotFoundError(f"No creators found for organization {organization!r}")
 
-    if get_cached_trending is None:
-        raise RankingNotReadyError(
-            f"Organization leaderboard for organization={organization!r} period={period!r} "
-            f"reportDate={report_date.isoformat()!r} is not yet computed"
-        )
-    key = organization_leaderboard_cache_key(organization=organization, period=period, report_date=report_date)
-    cached = get_cached_trending(key)
-    if cached is None:
-        raise RankingNotReadyError(
-            f"Organization leaderboard for organization={organization!r} period={period!r} "
-            f"reportDate={report_date.isoformat()!r} is not yet computed"
-        )
-    return cached
+    _, [payload] = _read_organization_leaderboards([organization], period, report_dates)
+    if period == ALL_PERIOD:
+        return {**payload, "byTotalViews": [_with_all_period_metrics(row) for row in payload["byTotalViews"]]}
+    return payload
+
+
+def get_global_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
+    """Cache-only creator ranking across every organization in Creator Master.
+
+    `GET /leaderboard` is the unscoped counterpart of
+    `GET /organizations/{organization}/leaderboard`: it merges each
+    organization's cached leaderboard rows and re-ranks them. For period
+    "all" it also returns `byAverageViewsPerVideo`; growth periods carry no
+    average.
+
+    Population is whatever the organization leaderboards contain: every
+    Creator Master creator with collected videos, including graduated
+    creators and group/staff channels, and every video the daily collection
+    returned (no Shorts/live/members-only filtering). It is not limited to
+    active individual members.
+    """
+    period = parse_summary_period(query.get("period"))
+    report_dates = _leaderboard_report_dates(query.get("reportDate"))
+
+    creators = {creator.creator_id: creator for creator in load_creators()}
+    organizations = sorted({creator.organization for creator in creators.values()})
+    report_date, payloads = _read_organization_leaderboards(organizations, period, report_dates)
+
+    rows = []
+    for payload in payloads:
+        for row in payload["byTotalViews"]:
+            creator = creators.get(row["creatorId"])
+            rows.append({**row, "organization": payload["organization"], "branch": creator.branch if creator else None})
+    if period == ALL_PERIOD:
+        rows = [_with_all_period_metrics(row) for row in rows]
+
+    result = {
+        "period": period,
+        "reportDate": report_date.isoformat(),
+        "organizations": organizations,
+        "memberCount": sum(payload["memberCount"] for payload in payloads),
+        "completeMemberCount": sum(payload["completeMemberCount"] for payload in payloads),
+        "catalogVideoCount": sum(payload["catalogVideoCount"] for payload in payloads),
+        "eligibleVideoCount": sum(payload["eligibleVideoCount"] for payload in payloads),
+        "isComplete": all(payload["isComplete"] for payload in payloads),
+        "byTotalViews": _rank_rows(rows, "value"),
+    }
+    if period == ALL_PERIOD:
+        result["byAverageViewsPerVideo"] = _rank_rows(rows, "averageViewsPerVideo")
+    return result
+
+
+# The daily pipeline finishes around 18:00 JST, so an omitted reportDate would
+# otherwise miss until then; it serves the newest report found in this window.
+LATEST_REPORT_LOOKBACK_DAYS = 3
+
+
+def _leaderboard_report_dates(raw_report_date: Any) -> list[date]:
+    if raw_report_date:
+        return [parse_report_date(raw_report_date)]
+    today = _today_in_canonical_time_zone()
+    return [today - timedelta(days=offset) for offset in range(LATEST_REPORT_LOOKBACK_DAYS)]
+
+
+def _read_organization_leaderboards(
+    organizations: list[str], period: str, report_dates: list[date]
+) -> tuple[date, list[dict[str, Any]]]:
+    """Return the first report date, newest first, with every organization's leaderboard cached.
+
+    All organizations must come from the same date so a merge never mixes days.
+    """
+    if get_cached_trending is not None:
+        for report_date in report_dates:
+            payloads = [
+                get_cached_trending(
+                    organization_leaderboard_cache_key(organization=organization, period=period, report_date=report_date)
+                )
+                for organization in organizations
+            ]
+            if None not in payloads:
+                return report_date, payloads
+    raise RankingNotReadyError(
+        f"Organization leaderboard for organizations={organizations!r} period={period!r} "
+        f"reportDate={report_dates[0].isoformat()!r} is not yet computed"
+    )
+
+
+def _with_all_period_metrics(row: dict[str, Any]) -> dict[str, Any]:
+    total_views, video_count = row["value"], row["catalogVideoCount"]
+    return {
+        **row,
+        "totalViews": total_views,
+        "videoCount": video_count,
+        "averageViewsPerVideo": total_views / video_count if video_count else None,
+    }
+
+
+def _rank_rows(rows: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
+    ordered = sorted(rows, key=lambda row: (-(row[field] or 0), row["creatorId"]))
+    return [{**row, "rank": rank} for rank, row in enumerate(ordered, start=1)]
 
 
 def _load_videos_for_creators(creator_ids: set[str]) -> list[Video]:
