@@ -60,7 +60,9 @@ describe("DashboardPage", () => {
     renderDashboard()
     await waitFor(() => expect(screen.getByText("Daily Gain")).toBeInTheDocument())
 
-    await user.click(screen.getByRole("button", { name: "VSPO" }))
+    // AntD Segmented's radio input itself is pointer-events:none (the
+    // wrapping label is the real click target, as for a real user).
+    await user.click(screen.getByRole("radio", { name: "VSPO" }).closest("label")!)
     await user.click(screen.getByRole("button", { name: "3D Live" }))
 
     expect(await screen.findByText("No videos match the current filters.")).toBeInTheDocument()
@@ -524,6 +526,9 @@ describe("DashboardPage — GAP-9 live comparison integration (MT-10 through MT-
     ).map((li) => li.getAttribute("data-creator-id"))
 
   it("Flow 2 is reachable from the live page: ordered selection, visual-order preview, one atomic save, widgets render at once, catalog loaded once, active creator untouched", async () => {
+    // AntD's heavier component tree (Segmented/Select/Input/ConfigProvider)
+    // pushes this already-long, many-interaction test past the 5s default
+    // under jsdom; it still completes well within this bound, not hanging.
     const catalogSpy = catalogFetcher()
     const user = userEvent.setup()
     seedLayout(TWO_WIDGETS_SHUFFLED)
@@ -573,7 +578,7 @@ describe("DashboardPage — GAP-9 live comparison integration (MT-10 through MT-
     await waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(2))
     for (const request of requests) expect(request.creatorIds).toEqual([A.id, B.id, C.id])
     expect(screen.getAllByTestId("comparison-widget-sample-data").length).toBe(2) // an injected sample source is labelled as sample data
-  })
+  }, 15000)
 
   it("Flow 2 appends exactly one new widget with a unique id when there are more items than widgets, without moving the existing one", async () => {
     const user = userEvent.setup()
@@ -634,6 +639,7 @@ describe("DashboardPage — GAP-9 live comparison integration (MT-10 through MT-
     expect(screen.queryByRole("button", { name: "Compare Creators" })).not.toBeInTheDocument()
   })
 
+  // See the Flow 2 test above for why this needs a longer-than-default timeout.
   it("Flow 1 is reachable on a comparison widget in edit mode: Cancel leaves the draft alone, Apply updates only the draft, Save persists through the normal flow", async () => {
     const catalogSpy = catalogFetcher()
     const user = userEvent.setup()
@@ -674,7 +680,7 @@ describe("DashboardPage — GAP-9 live comparison integration (MT-10 through MT-
     expect(saved.map((x) => x.widgetId)).toEqual(["cmp0", "cmp1"])
     expect(window.localStorage.getItem(ACTIVE_CREATOR_KEY)).toBe(activeBefore)
     expect(catalogSpy).toHaveBeenCalledTimes(1)
-  })
+  }, 15000)
 
   it("a legacy 4/5-column payload awaiting conversion offers no comparison entry point", async () => {
     seedLayout({ grid: { columns: 4, rows: 1 }, widgets: [0, 1, 2, 3].map((i) => unit(`w${i}`, "kpi-summary", i, 0)) })

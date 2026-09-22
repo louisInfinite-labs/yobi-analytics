@@ -2,7 +2,7 @@ import { useLocale } from "../../shared/i18n/hooks/useLocale"
 import { t, type TranslationKey } from "../../shared/i18n/translations"
 import { LanguagePicker } from "../../shared/i18n/components/LanguagePicker"
 
-export type SettingsSection = "myOshi" | "oshi" | "notification"
+export type SettingsSection = "myOshi" | "oshi" | "notification" | "display"
 
 /** Fixed order -- confirmed with the user: 我推設定 (myOshi, a new blank
  * placeholder section -- see MyOshiSettings.tsx) now leads, followed by the
@@ -16,6 +16,7 @@ const NAV_ITEMS: { section: SettingsSection; labelKey: TranslationKey }[] = [
   { section: "myOshi", labelKey: "settingsSecondaryNavbar.myOshiSettings" },
   { section: "oshi", labelKey: "settingsSecondaryNavbar.oshiSettings" },
   { section: "notification", labelKey: "settingsSecondaryNavbar.notificationSettings" },
+  { section: "display", labelKey: "settingsSecondaryNavbar.displaySettings" },
 ]
 
 /** Settings' own secondary nav, to MainNavbar's right -- Mantine's

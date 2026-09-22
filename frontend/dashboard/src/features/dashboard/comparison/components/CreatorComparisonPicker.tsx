@@ -1,4 +1,5 @@
 import { useRef, useState } from "react"
+import { Button, Input } from "antd"
 import { useModalFocus } from "../../../../shared/hooks/useModalFocus"
 import { useOrderedCreatorSelection } from "../hooks/useOrderedCreatorSelection"
 import { ComparisonOrderBadge } from "./ComparisonOrderBadge"
@@ -69,9 +70,8 @@ export function CreatorComparisonPicker({ creators, initialSelectedIds, onCancel
       aria-label="Select Creators"
     >
       <div ref={panelRef} className="creator-comparison-picker__panel" onClick={(event) => event.stopPropagation()}>
-        <input
+        <Input
           type="search"
-          className="creator-comparison-picker__search"
           aria-label="Search creators"
           placeholder="Search creators"
           value={query}
@@ -100,17 +100,10 @@ export function CreatorComparisonPicker({ creators, initialSelectedIds, onCancel
           })}
         </ul>
         <div className="creator-comparison-picker__actions">
-          <button type="button" className="soft-button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="soft-button soft-button--primary"
-            disabled={!selection.canCompare}
-            onClick={() => onApply(selection.orderedIds)}
-          >
+          <Button onClick={onCancel}>Cancel</Button>
+          <Button type="primary" disabled={!selection.canCompare} onClick={() => onApply(selection.orderedIds)}>
             Apply
-          </button>
+          </Button>
         </div>
       </div>
     </div>

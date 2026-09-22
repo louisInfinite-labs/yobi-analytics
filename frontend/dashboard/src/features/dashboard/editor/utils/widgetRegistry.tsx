@@ -1,7 +1,8 @@
 import type { ReactNode } from "react"
 import type { DailyVideoStat, Period } from "../../../../entities/creator/model/domain"
 import type { WidgetDefinition, WidgetTypeId } from "../model/widget"
-import { AnimatedRingChart } from "../../../analytics/charts/AnimatedRingChart"
+import { ContributionBarChart } from "../../../analytics/charts/ContributionBarChart"
+import { CreatorAvatar } from "../../../analytics/charts/CreatorAvatar"
 import { GrowthBarChart, type GrowthBarChartPoint } from "../../../analytics/charts/GrowthBarChart"
 import { InsightCard } from "../../../analytics/charts/InsightCard"
 import { KpiCard } from "../../../analytics/charts/KpiCard"
@@ -33,28 +34,29 @@ const KPI_SUMMARY: WidgetRegistryEntry = {
     type: "kpi-summary",
     schemaVersion: 1,
     title: "KPI Summary",
-    description: "Total views, daily gain, average growth, and top performer.",
+    description: "Total views, daily gain, and top performer.",
     sizeLimits: { minW: 4, minH: 1, defaultW: 12, defaultH: 1 },
     allowedHeights: WIDGET_ALLOWED_HEIGHTS["kpi-summary"],
     permissions: [],
+    supportsCreatorScope: false,
     defaultSettings: {},
   },
   render: ({ kpis }) => (
-    <>
-      <KpiCard label="Total Views" value={kpis.totalViews} />
-      <KpiCard label="Daily Gain" value={kpis.totalDailyIncrease} />
-      <KpiCard
-        label="Average Growth Rate"
-        value={kpis.averageGrowthPercent !== null ? `${kpis.averageGrowthPercent.toFixed(1)}%` : "N/A"}
-        formatAsCompactNumber={false}
-      />
+    <div className="card kpi-summary-grid">
       <KpiCard
         label="Top Performer"
-        value={kpis.topPerformer ? kpis.topPerformer.channelName : "—"}
+        value={kpis.topPerformer ? (
+          <span className="kpi-card__creator">
+            <CreatorAvatar channelId={kpis.topPerformer.channelId} channelName={kpis.topPerformer.channelName} size="medium" />
+            <span>{kpis.topPerformer.channelName}</span>
+          </span>
+        ) : "—"}
         formatAsCompactNumber={false}
         sub={kpis.topPerformer ? <span className="kpi-card__performer">{kpis.topPerformer.videoTitle}</span> : undefined}
       />
-    </>
+      <KpiCard label="Total Views" value={kpis.totalViews} />
+      <KpiCard label="Daily Gain" value={kpis.totalDailyIncrease} />
+    </div>
   ),
 }
 
@@ -67,6 +69,7 @@ const GROWTH_BAR_CHART: WidgetRegistryEntry = {
     sizeLimits: { minW: 4, minH: 3, defaultW: 8, defaultH: 4 },
     allowedHeights: WIDGET_ALLOWED_HEIGHTS["growth-bar-chart"],
     permissions: [],
+    supportsCreatorScope: true,
     defaultSettings: {},
   },
   render: ({ byDay, byChannel }) => (
@@ -81,13 +84,14 @@ const CONTRIBUTION_RING: WidgetRegistryEntry = {
     type: "contribution-ring",
     schemaVersion: 1,
     title: "Channel Contribution",
-    description: "Each channel's share of total growth, as an animated ring.",
+    description: "Each channel's share of total growth, as labeled bars.",
     sizeLimits: { minW: 3, minH: 3, defaultW: 4, defaultH: 4 },
     allowedHeights: WIDGET_ALLOWED_HEIGHTS["contribution-ring"],
     permissions: [],
+    supportsCreatorScope: true,
     defaultSettings: {},
   },
-  render: ({ contributions, period }) => <AnimatedRingChart contributions={contributions} period={period} />,
+  render: ({ contributions, period }) => <ContributionBarChart contributions={contributions} period={period} />,
 }
 
 const RANKING: WidgetRegistryEntry = {
@@ -99,6 +103,7 @@ const RANKING: WidgetRegistryEntry = {
     sizeLimits: { minW: 3, minH: 3, defaultW: 4, defaultH: 4 },
     allowedHeights: WIDGET_ALLOWED_HEIGHTS["ranking"],
     permissions: [],
+    supportsCreatorScope: true,
     defaultSettings: {},
   },
   render: ({ filteredStats }) => <RankingCard stats={filteredStats} />,
@@ -113,6 +118,7 @@ const INSIGHTS: WidgetRegistryEntry = {
     sizeLimits: { minW: 4, minH: 1, defaultW: 12, defaultH: 1 },
     allowedHeights: WIDGET_ALLOWED_HEIGHTS["insights"],
     permissions: [],
+    supportsCreatorScope: false,
     defaultSettings: {},
   },
   render: ({ insights }) =>
@@ -136,6 +142,7 @@ const VIDEO_STATS_TABLE: WidgetRegistryEntry = {
     sizeLimits: { minW: 6, minH: 4, defaultW: 12, defaultH: 6 },
     allowedHeights: WIDGET_ALLOWED_HEIGHTS["video-stats-table"],
     permissions: [],
+    supportsCreatorScope: true,
     defaultSettings: {},
   },
   render: ({ filteredStats, timeZone }) => <VideoStatsTable stats={filteredStats} timeZone={timeZone} />,
@@ -156,6 +163,10 @@ export function getWidgetDefinition(type: WidgetTypeId): WidgetDefinition {
 
 export function renderWidget(type: WidgetTypeId, data: DashboardWidgetData): ReactNode {
   return WIDGET_REGISTRY[type].render(data)
+}
+
+export function supportsCreatorScope(type: string): boolean {
+  return isKnownWidgetType(type) && WIDGET_REGISTRY[type].definition.supportsCreatorScope
 }
 
 export const ALL_WIDGET_TYPES = Object.keys(WIDGET_REGISTRY) as WidgetTypeId[]

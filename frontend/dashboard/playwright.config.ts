@@ -1,4 +1,17 @@
 import { defineConfig } from "@playwright/test"
+import { fileURLToPath } from "node:url"
+import path from "node:path"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// The repo-root virtual env's interpreter has a different relative layout
+// per platform (Scripts/python.exe on Windows, bin/python everywhere else)
+// -- resolved with Node's own path utilities, from this config file's own
+// location, rather than a shell-specific `../../` string that only happens
+// to work under a POSIX shell.
+const repoRoot = path.resolve(__dirname, "../..")
+const venvPython = path.join(repoRoot, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python")
+const localApiServerScript = path.join(repoRoot, "scripts", "local_api_server.py")
 
 /** Browser-verification tooling prerequisite for MT-16 (AC3/AC7) and MT-17
  * (browser measurement output). This repository's existing `vitest`
@@ -18,7 +31,7 @@ export default defineConfig({
     // see scripts/local_api_server.py. The Dashboard's chart catalog and
     // comparison source talk to it exactly as they talk to the deployed API.
     {
-      command: "../../.venv/bin/python ../../scripts/local_api_server.py --port 8787 --seed-fixture",
+      command: `"${venvPython}" "${localApiServerScript}" --port 8787 --seed-fixture`,
       url: "http://127.0.0.1:8787/dashboard/chart-catalog",
       reuseExistingServer: !process.env.CI,
     },

@@ -84,7 +84,7 @@ import { useCallback, useMemo, useRef, useState } from "react"
 import { buildDefaultLayout } from "../utils/dashboardDefaultLayout"
 import { createWidgetId, removeWidget, updateWidgetGeometry, type WidgetPlacement } from "../utils/dashboardWidgetActions"
 import { applyCreatorComparisonSelection } from "../../comparison/utils/dashboardComparisonWidgets"
-import { dropCreatorOntoWidget } from "../../comparison/utils/dashboardCreatorDrop"
+import { dropCreatorOntoWidget, dropCreatorsOntoWidget } from "../../comparison/utils/dashboardCreatorDrop"
 import { computeRowInsertionPreview, computeValidatedRowInsertion, type InsertionCandidate } from "../utils/dashboardInsertionPreview"
 import { computeAffectedWidgetIds, submitLayoutSave } from "../utils/dashboardLayoutSave"
 import { validateLayout } from "../utils/dashboardLayoutValidation"
@@ -163,6 +163,7 @@ export interface UseDashboardEditorResult {
    * compatible widget's draft `comparison.creatorIds`. Never touches `layout`
    * (canonical state) until the normal Dashboard Save flow runs. */
   updateDraftWidgetByCreatorDrop: (widgetId: string, creatorId: string) => void
+  updateDraftWidgetCreatorScope: (widgetId: string, creatorIds: string[]) => void
   /** Adopts a layout Flow 2's own atomic transaction
    * already persisted as the new committed layout (and its draft baseline).
    * Only meaningful outside edit mode -- Flow 2 is offered in view mode, so
@@ -275,6 +276,10 @@ export function useDashboardEditor(
     setDraftLayout((current) => dropCreatorOntoWidget(current, widgetId, creatorId))
   }, [])
 
+  const updateDraftWidgetCreatorScope = useCallback((widgetId: string, creatorIds: string[]) => {
+    setDraftLayout((current) => dropCreatorsOntoWidget(current, widgetId, creatorIds))
+  }, [])
+
   const commitExternalLayout = useCallback((committed: CanonicalLayout) => {
     setLayout(committed)
     setDraftLayout(committed)
@@ -345,6 +350,7 @@ export function useDashboardEditor(
     removeDraftWidget,
     updateDraftWidgetComparison,
     updateDraftWidgetByCreatorDrop,
+    updateDraftWidgetCreatorScope,
     commitExternalLayout,
     insertionCandidate,
     beginInsertion,

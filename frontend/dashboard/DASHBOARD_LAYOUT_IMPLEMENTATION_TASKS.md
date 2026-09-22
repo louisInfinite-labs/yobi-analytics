@@ -1,853 +1,1606 @@
-# Dashboard Layout Implementation Microtasks
+# Dashboard Implementation Task Order
 
-This execution plan decomposes [`DASHBOARD_LAYOUT_GUIDELINES.md`](./DASHBOARD_LAYOUT_GUIDELINES.md) into independently verifiable microtasks.
+This document defines the only approved implementation sequence after the
+Dashboard specification rewrite. Do not implement any task until the rewritten
+specification is approved by the user.
 
-It is written for coding agents such as Claude Code and Codex. An agent must not decide that a result is acceptable from personal judgment.
-
-## Completion Protocol
-
-A microtask is complete only when every acceptance criterion under that task has objective evidence.
-
-Criterion-relevant evidence may include:
-
-1. The exact targeted test command and process exit code.
-2. The relevant test name or source assertion when needed to identify the evidence.
-3. For rendered behavior, measured DOM values or browser assertions.
-4. For network behavior, captured request counts and request parameters.
-5. For persistence behavior, state before the action, state after the action, and state after reload.
-
-The following are not completion evidence:
-
-- “Looks correct.”
-- “Implemented as requested.”
-- “The build passes.”
-- “No TypeScript errors.”
-- A screenshot without numeric or state assertions.
-- Agent confidence.
-- Manual inspection without recorded expected and actual values.
-
-If an acceptance criterion cannot be executed, mark it `UNVERIFIED`. The microtask remains incomplete.
-
-An item that is not an acceptance criterion and is outside the owning microtask is `OUT OF SCOPE / NOT REQUIRED`, not `UNVERIFIED`. Optional visual inspection, future integration work, and existing documented ownership gaps do not become completion criteria merely because they are mentioned. An existing dependency or gap remains a dependency, not a failure, unless the current microtask owns it.
-
-Do not combine microtasks unless the user explicitly changes the scope. Complete them in dependency order.
-
-## Microtask Coding Scope
-
-- Change only code required by the current microtask's explicit acceptance criteria.
-- Do not perform adjacent refactors, cleanup, architecture redesign, speculative abstraction, or work assigned to a future microtask.
-- Once the relevant implementation path is known, do not repeatedly scan unrelated repository areas.
-- Prefer the smallest correct diff.
-- Do not add unnecessary comments, docstrings, helpers, wrappers, abstractions, or future-proofing structures.
-- Reuse an existing helper or abstraction when it already owns the required behavior; do not create a new one merely to make the current microtask look cleaner.
-- If an acceptance criterion requires substantial work outside the owning microtask, stop and report the dependency or ownership gap. Do not silently expand scope.
-
-## Risk-Based Validation Policy
-
-Every microtask does not require the full frontend suite. Explicit acceptance criteria and Required Evidence in the owning microtask remain mandatory; the rules below determine the breadth of additional validation.
-
-### Local, module, or component microtask
-
-Required:
-
-- Relevant targeted tests.
-
-Add typecheck only when TypeScript types, shared interfaces, hooks, or changed production TS/TSX code make it materially useful.
-
-### Shared state, canonical core, or integration-sensitive microtask
-
-Required:
-
-- Relevant targeted tests.
-- Directly affected integration tests.
-- Frontend typecheck.
-
-### Full frontend test suite
-
-Run the full frontend test suite only when:
-
-- Broad or shared infrastructure is affected and targeted coverage is insufficient.
-- An accumulated accepted batch is about to be committed or pushed.
-- A task explicitly requires full regression.
-- MT-17 is running.
-- The user explicitly requests it.
-
-### Production build
-
-Run the production build only when:
-
-- Bundling or build behavior is relevant.
-- A commit or push checkpoint requires accumulated-batch validation.
-- MT-17 requires it.
-- The user explicitly requests it.
-
-### Lint
-
-Run lint only when:
-
-- Changed files need lint verification under repository rules.
-- A commit or push checkpoint requires accumulated-batch validation.
-- The task or user explicitly requires it.
-
-Do not run broad checks merely to make a microtask report appear stronger.
-
-When targeted validation passes, record only the command, exit code, and relevant test count or concise evidence. Do not include full successful command output.
-
-Do not repeat MT-17-level validation after every microtask.
-
-## Commit Checkpoints and Git State
-
-For normal microtasks:
-
-- Do not commit.
-- Do not push.
-- Do not stage files unless explicitly requested.
-- Do not run or report Git-status and cached-diff commands as mandatory handoff evidence.
-
-Report Git state only when commit, push, or staging is in scope; unexpected unrelated changes are discovered; branch state affects correctness; or the user explicitly asks.
-
-When the user explicitly says an accumulated accepted batch is ready to commit or push, run once for that batch:
-
-- The relevant full frontend test suite.
-- Frontend typecheck.
-- Production build.
-- Lint where applicable.
-- Git diff, check, and status review.
-
-Stage, commit, or push only with explicit authorization. Never stage local-only or unrelated files.
-
-## Shared Deterministic Fixtures
-
-All relevant tests must use stable fixtures with these identifiers:
-
-```ts
-const creators = [
-  { creatorId: 'creator-a', displayName: 'A' },
-  { creatorId: 'creator-b', displayName: 'B' },
-  { creatorId: 'creator-c', displayName: 'C' },
-];
-
-const comparisonItems = [
-  { comparisonItemId: 'revenue', label: 'Revenue' },
-  { comparisonItemId: 'engagement', label: 'Engagement' },
-  { comparisonItemId: 'growth', label: 'Growth' },
-];
-```
-
-The initial layout fixture is:
+Every task must follow this template:
 
 ```text
-┌─────┬─────┐
-│  A  │  B  │
-├─────┼─────┤
-│  C  │  D  │
-└─────┴─────┘
+Purpose
+Exact scope
+Authoritative source
+Files expected
+Forbidden changes
+Required source data
+Required mock data
+Required targeted tests
+Required browser interactions
+Required measured evidence
+Stop/block conditions
+Git restrictions
+Final status
 ```
 
-Visual widget order is derived from grid coordinates: top to bottom, then left to right. The top-left widget is `widget[0]`.
+General restrictions for every task:
 
----
+- Do not combine tasks unless the user explicitly changes scope.
+- Do not implement future task work early.
+- Do not stage, commit, push, stash, reset, or switch branches unless the user
+  explicitly authorizes that action.
+- Do not treat passing tests as visual approval.
+- Browser-visible behavior requires browser evidence, not source inspection.
+- End any unresolved visual acceptance with `WAITING_FOR_USER_VISUAL_REVIEW`.
 
-## MT-01 — Canonical Layout Types and Validation Contract
+## Task 1 -- Creator Taxonomy / Filter Data-Source Correction
 
-### Goal
+### Purpose
 
-Create one typed layout model and one validation result contract shared by load, edit, preview, and save paths.
+Correct Dashboard creator taxonomy filters so their options come from the
+authoritative creator roster instead of unsupported hardcoded or mock-only
+assumptions.
 
-### Dependencies
+### Exact Scope
 
-None.
-
-### Scope
-
-- Grid size.
-- Widget identity.
-- Coordinates and dimensions.
-- Canonical and draft layout types.
-- Validation error codes.
-
-### Acceptance Criteria
-
-1. The grid type accepts column and row values from 1 through 3 and rejects values outside 1 through 3.
-2. The widget height type accepts only `0.5` and `1`.
-3. Every widget instance requires `widgetId` and `widgetType`.
-4. Comparison configuration requires ordered `creatorIds` and `comparisonItemIds`.
-5. Validation returns machine-readable codes for duplicate ID, overlap, out-of-bounds, invalid grid, invalid width, invalid height, and incomplete fill.
-6. Widget coordinates are finite and aligned to supported grid units: `x` is an integer and `y` is a multiple of `0.5`.
-7. A `1X` widget starts on an integer row boundary; a `0.5X` widget starts on an integer or half-row boundary.
-8. The module exports exactly one canonical `validateLayout` entry point for later production consumers.
-
-### Required Evidence
-
-- Typecheck exit code 0.
-- Unit tests proving every accepted and rejected boundary value.
-- Tests rejecting `NaN`, infinity, fractional `x`, quarter-row `y`, and a `1X` widget starting at `y = 0.5`.
-- Search result showing exactly one canonical validator implementation. Production consumer wiring is verified by the later owning microtasks.
-
----
-
-## MT-02 — Widget Identity and Duplicate Prevention
-
-### Goal
-
-Guarantee stable, unique widget instances across every Dashboard operation.
-
-### Dependencies
-
-MT-01.
-
-### Acceptance Criteria
-
-1. Creating two widget instances produces two different non-empty `widgetId` values.
-2. Rapidly activating Add multiple times cannot insert the same instance twice.
-3. The production Add path imports the canonical `validateLayout` function and rejects duplicate IDs before frontend state commit.
-4. `widgetId` uniqueness is enforced in the frontend state layer before every MT-02 mutation commits (add, and a generic geometry update standing in for move/resize). Enforcing this again at the persistence/submission boundary is owned by MT-09's production save path — MT-02 has no submission boundary to verify against yet.
-5. `widgetId` is immutable and is preserved by every mutation MT-02 actually provides: add, a generic geometry update (standing in for move/resize), and a serialize/deserialize round trip (standing in for save/reload). End-to-end preservation through each real production path is verified again where that path is first built, not gated on MT-02 completion:
-   - Move and resize -> MT-05 (`the production drag and resize paths import the canonical validateLayout function`).
-   - Save -> MT-09 (production save path).
-   - Reload -> MT-15 (production load path), in addition to MT-02's own round-trip proof.
-   - Comparison configuration -> MT-12 (`Reused widgets preserve widgetId, x, y, width, and height`).
-   - Responsive reflow -> MT-16 (`Widget IDs are identical before and after responsive reflow`).
-
-Not an MT-02 completion criterion: MT-02 owns no production widget-list renderer, so "React lists use `widgetId` as the key, not array index" (Section 4, rule 7) cannot be checked against production code here. It is a full completion criterion of MT-07 (`the production widget-list renderer keys each widget by widgetId`, MT-07 AC13) — the first microtask that builds a production renderer for the canonical model.
-
-### Required Evidence
-
-- Unit test for duplicate rejection.
-- E2E test for rapid repeated Add.
-- Unit test proving a geometry-only update (standing in for move/resize) never changes `widgetId`.
-- Serialize/deserialize round-trip assertion comparing the complete ordered ID list before and after "reload."
-
----
-
-## MT-03 — Default 2x2 Layout and Saved-Layout Priority
-
-### Goal
-
-Initialize a new Dashboard predictably without overwriting saved user layouts.
-
-### Dependencies
-
-MT-01 and MT-02.
-
-### Acceptance Criteria
-
-1. No saved layout produces exactly two columns and two rows.
-2. Default widget count, types, and order match the explicit default configuration.
-3. Every default widget has a unique `widgetId`.
-4. A valid saved `3x2` fixture loads as `3x2`; no default widget replaces it.
-5. Reloading the same saved layout produces identical widget IDs, coordinates, sizes, and order.
-
-### Required Evidence
-
-- Unit tests for missing-layout and saved-layout branches.
-- Reload test with deep equality of serialized layout state.
-
----
-
-## MT-04 — Chart Catalog Single-Load Behavior
-
-### Goal
-
-Load available chart definitions from the backend once per Dashboard page lifecycle and reuse them in edit mode.
-
-### Dependencies
-
-MT-03.
-
-### Acceptance Criteria
-
-These are MT-04's own module-level contract: a chart-catalog-loader hook,
-tested in isolation (a Testing-Library harness, the same "E2E test"
-convention MT-02 already used for its Add-button harness), not the live
-Dashboard page. No production editor for the canonical model exists yet
-(`DashboardPage.tsx` still runs the legacy GridStack `useEditableLayout`
-system) for MT-04 to mount into without prematurely building editor-shell
-work. See "Production integration ownership gaps" below for the distinct,
-still-required production-level behavior this does not yet cover.
-
-1. Mounting the chart-catalog-loader hook makes exactly one catalog request for that mounted instance.
-2. Toggling an unrelated local UI state next to an already-mounted loader instance, without unmounting that instance, makes zero additional catalog requests.
-3. Toggling that local UI state five times keeps the total catalog request count at one for the same mounted loader instance.
-4. React Strict Mode's mount/cleanup/mount replay does not increase the request count above one.
-5. Calling the loader's `retry()` after a failed request makes exactly one additional request.
-6. The loader's success state exposes exactly and only the items its fetch function returned — no fabricated or omitted entries. (Whether a production UI renders exactly that set is not verifiable here; see GAP-2 below — no such UI exists yet.)
-7. The loader's pending, error, empty-success, and success states are distinguishable by test assertions.
-8. A catalog error surfaced by the loader does not delete existing widgets held in separate Dashboard widget state.
-
-### Required Evidence
-
-- Network mock assertion with exact request counts.
-- E2E test names and exit code.
-- State assertion proving existing widget IDs survive an error.
-
-### Production integration ownership gaps
-
-The following production-level behavior is a real requirement of
-`DASHBOARD_LAYOUT_GUIDELINES.md` (Sections 3.2/3.3), separate from MT-04's
-module-level contract above. It is **not deleted or weakened** by the
-rewording above — it remains required — but no microtask in this document
-currently owns implementing or verifying it. Do not treat any criterion
-above, or any existing microtask, as already covering these until an
-explicit owner and acceptance criterion exist.
-
-- **GAP-1 (production single-load wiring).** Section 3.3 requires the
-  production Dashboard page to load the catalog once and reuse it in edit
-  mode. No microtask requires mounting a catalog-loader at a point in the
-  production tree that survives Edit/view toggling. MT-07 ("Editor Shell and
-  Draft Isolation") is the nearest candidate — the first microtask building a
-  production editor for the canonical model, and Guidelines Section 6.1
-  ("Reuse the already-loaded chart catalog. Avoid any additional chart
-  catalog request.") describes exactly this behavior for "Entering the
-  editor" — but MT-07's current Acceptance Criteria (1-13) do not enumerate a
-  catalog-reuse check. This document does not assign MT-07 this ownership;
-  it is recorded here as unresolved.
-- **GAP-2 (canonical add-widget UI).** Section 3.2 requires that "a chart not
-  returned by the backend must not appear in the add-widget UI." The only
-  existing production add-widget UI is the legacy `WidgetTray.tsx`, backed by
-  the hard-coded `ALL_WIDGET_TYPES` list in `widgetRegistry.tsx` — exactly
-  what Section 3.2 prohibits — and it is not owned or touched by any
-  canonical-model microtask. No microtask in this document owns building a
-  canonical catalog-driven add-widget UI component (distinct from MT-02's
-  abstract Add-mutation path, which places a widget of a given type but does
-  not browse the catalog). **UNRESOLVED — no owner.**
-- **GAP-3 (backend chart-catalog API).** Section 3.2 requires catalog data to
-  come "from the backend." No chart-catalog (or equivalently named) endpoint
-  exists in this repository: `src/api_handler.py`'s complete route table
-  (videos/growth, creators/trending, organizations/trending, heartbeat,
-  remote-config, push-subscription, notification-preference, admin stats)
-  has no such route, and neither `Roadmap.md` nor any other repository
-  document assigns ownership of building one. **Backend chart-catalog API
-  ownership is unresolved and is an external/specification dependency.**
-  MT-04's injected `fetchCatalog` parameter is valid frontend architecture
-  for isolating this dependency — the same pattern `useCachedDashboardData`
-  (`src/features/analytics/hooks/useCachedDashboardData.ts`) already uses for
-  its `fetchFn`, with `dashboardAnalyticsSource.ts` supplying real/mock
-  implementations for that hook in production — but the injected function
-  does not itself satisfy "from the backend"; that requirement stays open
-  until GAP-3 is resolved by an explicit owner.
-
-MT-17 AC5 ("The catalog request count remains one through the complete edit
-workflow") already exists, is preserved unchanged, and remains the correct
-owner of the final end-to-end verification once the complete edit workflow
-exists. It is only meaningfully checkable once GAP-1 (and, for a real network
-count rather than an injected one, GAP-3) has an owner and is implemented by
-some microtask before MT-17 runs — which is not currently guaranteed by this
-document's dependency graph. This is recorded here so MT-17 is not later
-assumed to satisfy GAP-1/GAP-3 by inheritance alone.
-
----
-
-## MT-05 — Grid Dimensions, Widget Sizes, Fill, and Collision
-
-### Goal
-
-Prevent invalid grid dimensions, widget sizes, gaps, overlaps, and overflow.
-
-### Dependencies
-
-MT-01.
-
-### Acceptance Criteria
-
-1. Every integer grid from `1x1` through `3x3` is accepted.
-2. `0x3`, `2.5x2`, `4x3`, `3x4`, `4x4`, `5x5`, and `6x5` are rejected.
-3. Widget heights `0.5X` and `1X` are accepted.
-4. Heights `0.25X`, `0.75X`, and `1.25X` are rejected.
-5. A column containing one `1X` widget passes fill validation.
-6. A column containing two stacked `0.5X` widgets passes fill validation.
-7. A lone `0.5X` widget fails with `INCOMPLETE_COLUMN`.
-8. Every overlap fixture fails with `WIDGET_OVERLAP`.
-9. Every overflow fixture fails with `OUT_OF_BOUNDS`.
-10. The production drag and resize paths import the canonical `validateLayout` function.
-11. Rejected drag or resize restores the last valid draft coordinates.
-12. A successful drag or resize preserves the moved/resized widget's original `widgetId`, carrying forward the identity invariant MT-02 established at the state-layer.
-
-### Required Evidence
-
-- Parameterized unit tests for all listed values.
-- E2E test proving rejected resize rollback.
-- Before/after assertion that a successful drag or resize changes only geometry, never `widgetId`.
-
-### Production interaction ownership gap
-
-AC10-12's "the production drag and resize paths" are the canonical mutation
-layer (`moveWidget`/`resizeWidget` in `dashboardWidgetActions.ts`, delegating
-to the same `updateWidgetGeometry` → `validateLayout` MT-02 already wired up)
-— the same sense this document already established for "the production Add
-path" in MT-02 AC3, which was likewise a non-DOM-wired canonical function,
-not a literal mouse gesture. This reading is also the only one structurally
-possible at MT-05: MT-05 depends only on MT-01 and is itself a dependency of
-MT-07 ("Editor Shell and Draft Isolation"), so no editor/DOM surface to drag
-inside of exists yet at MT-05 — requiring a real interactive gesture here
-would invert that dependency order.
-
-- **GAP-4 (real production drag/resize gesture).** Guidelines Section 9
-  ("Drag, Resize, and Collision Rules") describes an actual pointer-driven
-  interaction: showing a target placeholder during drag, snapping resize
-  handles to supported sizes, and validating before accepting a drop. No
-  microtask in this document builds that interaction for the canonical
-  model. MT-06 AC8 ("Drag placeholders and saved widgets produce the same
-  16px measurements") and MT-17 AC9 (search proving "add, drag, resize,
-  editor preview, load, and save all import the same canonical
-  `validateLayout` implementation") both treat a working drag/resize
-  interaction as an already-existing fact by the time they run, but none of
-  MT-06 through MT-17 assigns the task that actually builds the pointer
-  drag/resize handling and wires it to `moveWidget`/`resizeWidget`. (Product
-  decision: keyboard-equivalent widget move/resize is not required; pointer
-  drag/resize is the accepted interaction.) The existing live
-  drag/resize path (`DashboardGrid.tsx`'s GridStack `"change"` event →
-  `useEditableLayout.ts`'s `updateWidgetPositions`) is a different, legacy
-  12-column/`instanceId` model and does not call `moveWidget`/`resizeWidget`
-  or `validateLayout` at all. **UNRESOLVED — no owner.** Do not assume MT-06,
-  MT-07, or MT-16 covers this until an explicit criterion and owner exist.
-
----
-
-## MT-06 — Exact 16px Spacing
-
-### Goal
-
-Produce one measured 16px gap between neighboring Dashboard elements without double margins.
-
-### Dependencies
-
-MT-05.
-
-### Acceptance Criteria
-
-1. The facing edge contribution of each adjacent widget is exactly `8px`.
-2. For every horizontal widget pair, `rightRect.left - leftRect.right === 16`.
-3. For every vertical widget pair, `lowerRect.top - upperRect.bottom === 16`.
-4. No adjacent pair measures `32px`.
-5. When a neighboring non-widget component contributes `0px`, the widget side contributes `16px`.
-6. When a neighboring component contributes `8px`, the widget side contributes `8px`.
-7. The final widget-to-component bounding-rectangle gap is exactly `16px` in both fixtures.
-8. Drag placeholders and saved widgets produce the same 16px measurements.
-9. The 8px/16px spacing arithmetic is invariant to grid-unit pixel size: the contribution is a fixed absolute pixel value, not a percentage or a value that depends on column/row width, so the 16px result holds regardless of how large a grid unit renders at any given screen size. This is proven by parametrizing the geometry calculation over multiple representative pixel-per-grid-unit configurations (standing in for different screen sizes), not by rendering the real Dashboard at real breakpoints.
-10. Enabling dashed edit guides changes no widget `getBoundingClientRect()` x, y, width, or height value.
-11. The dashed guide contributes `0px` additional margin and does not change grid track measurements.
-12. The measured gap between the combined guide/preview outer bound and every neighbor remains exactly `16px`.
-13. An unchanged edit preview and the saved view-mode widget have identical bounding rectangles.
-14. An insertion placeholder and the widget produced by dropping into it have identical border-box rectangles.
-
-### Required Evidence
-
-- Browser tests using `getBoundingClientRect()`.
-- Captured expected and actual values for every representative pixel-per-grid-unit configuration used to prove AC9's invariance (not real per-breakpoint browser renders — see "Breakpoint verification ownership" below).
-- Computed-style assertions for the 8px widget edge contributions.
-- Before/after rectangle snapshots for view mode, edit mode, insertion placeholder, and saved view mode.
-
-### Breakpoint verification ownership
-
-AC9 as written above is the breakpoint-*independent* geometry invariant MT-06
-can actually prove now: the 8px/16px contribution is a fixed absolute pixel
-value untouched by grid-unit pixel size. It is not, and does not claim to be,
-a real rendering of the Dashboard at this project's actual breakpoints
-(`useBreakpoint.ts`'s `mobile`/`tablet`/`desktop` thresholds). That real,
-production, per-breakpoint verification is a distinct requirement, already
-fully preserved, unchanged, and unweakened, as **MT-16 AC3** ("Every
-adjacent-element gap measures 16px at every breakpoint") — MT-16 also owns
-defining the authoritative per-breakpoint column counts and widths (Section
-11) that a real render would need. Do not treat MT-06's AC9 evidence as
-satisfying MT-16 AC3, and do not treat MT-16 AC3 as already covered by MT-06.
-
----
-
-## MT-07 — Editor Shell and Draft Isolation
-
-### Goal
-
-Provide a reversible editor that never mutates saved state before an explicit save.
-
-### Dependencies
-
-MT-03, MT-04, MT-05, and MT-06.
-
-### Acceptance Criteria
-
-1. Clicking **Edit** creates `draftLayout` deeply equal to `canonicalLayout`.
-2. Edit mode renders dashed grid guides.
-3. Edit mode renders buttons named **Save**, **Cancel**, and **Restore Default**.
-4. View mode renders none of the edit guides or insertion markers.
-5. Dashed guides are overlays or border-box decorations and add no independent margin, padding, grid gap, width, or height.
-6. Entering edit mode keeps every widget bounding rectangle and neighbor gap unchanged.
-7. Editor preview validation imports the canonical `validateLayout` function.
-8. Editing draft coordinates does not change canonical coordinates.
-9. **Cancel** restores all IDs, coordinates, sizes, chart types, and order to the pre-edit snapshot.
-10. **Cancel** sends zero save requests.
-11. **Restore Default** changes only the draft to `2x2`.
-12. **Restore Default** sends zero save requests until **Save** is activated.
-13. The production widget-list renderer keys each widget by `widgetId`, not array index — this is the first production renderer for the canonical model, so it owns the end-to-end verification of the React-key requirement MT-02 established as an invariant only.
-
-### Required Evidence
-
-- State snapshots before edit, during edit, and after cancel.
-- Network assertion for zero save requests.
-- Computed-style assertion that the guide border style is dashed.
-- Bounding-rectangle equality assertion before and after enabling edit mode.
-- Source/DOM assertion confirming the rendered widget list's React key is `widgetId`.
-
----
-
-## MT-08 — Widget Insertion-Slot Preview
-
-### Goal
-
-Preview insertion by explicit slots while preserving canonical state.
-
-### Dependencies
-
-MT-07.
-
-### Acceptance Criteria
-
-1. Given `A | B`, targeting the middle insertion slot previews `A | E | B`.
-2. Given `A | B`, targeting the right insertion slot previews `A | B | E`.
-3. The exact active insertion slot is visibly represented by a placeholder or marker.
-4. Existing A and B widths change only in `draftLayout`.
-5. Canonical A and B widths remain byte-for-byte unchanged during preview.
-6. Leaving the insertion slot restores the previous draft.
-7. Cancelling the drag restores the previous draft.
-8. An invalid slot accepts no drop and changes no state.
-9. Preview and post-drop draft coordinates are identical.
-10. Widget spacing remains exactly 16px throughout preview.
-11. The insertion placeholder and final widget have identical border-box rectangles.
-12. Removing the dashed guide when returning to view mode does not shift the widget.
-
-### Required Evidence
-
-- E2E state assertions for middle and right insertion.
-- Bounding-rectangle measurements during preview.
-- Canonical-layout equality assertion before and after cancelled drag.
-- Placeholder-versus-result rectangle equality output.
-
----
-
-## MT-09 — Grid-Change Confirmation and Atomic Save
-
-### Goal
-
-Require explicit confirmation before saved widgets are forcibly resized or repositioned.
-
-### Dependencies
-
-MT-07 and MT-08.
-
-### Acceptance Criteria
-
-1. Saving a draft that changes existing widget geometry opens a dialog before the save request.
-2. The dialog displays current grid size, target grid size, and affected widget count.
-3. Closing the dialog sends zero save requests.
-4. Cancelling the dialog leaves canonical state unchanged.
-5. The production save path imports the canonical `validateLayout` function.
-6. Confirming sends exactly one save request containing the validated draft.
-7. A successful response atomically replaces canonical state.
-8. A failed response restores the full previous canonical state.
-9. A target grid without sufficient capacity disables confirmation.
-10. No confirm path deletes, hides, or overlaps a widget.
-11. A successful save preserves every existing widget's `widgetId`, and the production save path rejects a draft containing duplicate `widgetId` values before the save request is sent — this is the first persistence/submission boundary for the canonical model, so it owns the end-to-end verification MT-02 could only establish as a state-layer invariant.
-
-### Required Evidence
-
-- Network request-count assertions.
-- Payload snapshot.
-- Canonical before/after/rollback snapshots.
-- Before/after `widgetId` list equality across a successful save; a duplicate-`widgetId` draft assertion proving zero save requests are sent.
-
----
-
-## MT-10 — Ordered Creator Selection and Badges
-
-### Goal
-
-Create deterministic creator comparison order from user click order.
-
-### Dependencies
-
-MT-04.
-
-### Acceptance Criteria
-
-1. Clicking A, then B, then C stores `['creator-a', 'creator-b', 'creator-c']`.
-2. A, B, and C avatars display `①`, `②`, and `③` at the top-right.
-3. Every badge has an accessible label with its numeric comparison order.
-4. Deselecting B produces A① and C②.
-5. Reselecting B produces A①, C②, and B③.
-6. Search and filtering do not remove selected IDs.
-7. Duplicate creator selection is rejected.
-8. Comparison remains disabled with fewer than two distinct creators.
-9. Request parameters, chart series, legends, tooltips, and saved configuration use the same creator order.
-10. Creator selection does not change the application's active creator.
-
-### Required Evidence
-
-- Unit tests for ordering and renumbering.
-- Accessibility query assertions for badge labels.
-- Request and saved-state snapshots.
-
----
-
-## MT-11 — Flow 1: In-Widget Creator Picker
-
-### Goal
-
-Configure creator comparison from inside a compatible chart widget.
-
-### Dependencies
-
-MT-07 and MT-10.
-
-### Acceptance Criteria
-
-1. A compatible chart exposes **Select Creators** or the approved equivalent name.
-2. Activating it opens the existing Creator List.
-3. Existing widget creator IDs appear selected in the list.
-4. Selecting A and B updates only the target widget draft to `A vs B`.
-5. Adding C updates only the target widget draft to `A vs B vs C`.
-6. Cancelling the picker leaves the previous configuration unchanged.
-7. Applying the picker does not immediately save canonical state.
-8. The chart catalog request count does not increase.
-
-### Required Evidence
-
-- Target-widget draft snapshot.
-- Canonical-state equality assertion.
-- Catalog request count before and after the flow.
-
----
-
-## MT-12 — Flow 2: Creator List Selection and widget[0]-First Save
-
-### Goal
-
-Assign selected comparison items from the top-left widget onward without moving existing widgets, then display the requested charts immediately after dialog save.
-
-### Dependencies
-
-MT-05, MT-06, MT-09, and MT-10.
-
-### Acceptance Criteria
-
-1. Select A, B, and C plus Revenue, Engagement, and Growth.
-2. The dialog shows A①, B②, C③ and all three selected item IDs.
-3. Widgets are sorted by grid coordinates, not storage-array order.
-4. The top-left widget is selected as `widget[0]`.
-5. Revenue maps to `widget[0]`, Engagement to `widget[1]`, and Growth to `widget[2]`.
-6. Reused widgets preserve `widgetId`, x, y, width, and height.
-7. If only two widget containers exist, exactly one new widget is appended.
-8. The appended widget has a new unique `widgetId`.
-9. Existing widget coordinates and sizes do not change.
-10. If five widgets exist and only three items are selected, widgets 3 and 4 remain unchanged.
-11. If no valid slot exists for a missing chart, **Save** is disabled and no state changes.
-12. The dialog displays a mapping preview before save.
-13. Clicking dialog **Save** sends exactly one atomic comparison transaction.
-14. The transaction does not include unrelated unsaved Dashboard draft changes.
-15. On success, the dialog closes.
-16. Assigned chart containers render immediately after close.
-17. No page reload, second Dashboard save, or manual widget movement is required.
-18. A loading chart container is visible immediately when data has not returned.
-19. On save failure, the dialog stays open and Dashboard state remains unchanged.
-
-### Required Evidence
-
-- Deliberately shuffled storage-array fixture proving coordinate-based order.
-- Before/after table of every widget ID and geometry field.
-- Exact request payload and request count.
-- DOM assertion that all assigned chart containers exist after close.
-- Failure-path state equality assertion.
-
----
-
-## MT-13 — Flow 3: Drag Creator Cell into Chart
-
-### Goal
-
-Add a creator to a compatible comparison chart through Creator List drag and drop.
-
-### Dependencies
-
-MT-07 and MT-10.
-
-### Acceptance Criteria
-
-1. Dragging B onto a chart containing A previews `A vs B`.
-2. Dragging C onto a chart containing A and B previews `A vs B vs C`.
-3. A newly dropped creator receives the next order number.
-4. Compatible charts show an active drop target.
-5. Incompatible charts show a disabled target and reject the drop.
-6. Dropping an existing creator adds no duplicate ID or series.
-7. Cancelling drag changes no widget state.
-8. A successful drop updates only the target widget in `draftLayout`.
-9. The source Creator List order and contents do not change.
-10. Canonical state remains unchanged until Dashboard save.
-
-### Required Evidence
-
-- Drag-and-drop E2E tests for compatible, incompatible, duplicate, and cancelled cases.
-- Draft and canonical state snapshots.
-
----
-
-## MT-14 — Comparison Data and Render States
-
-### Goal
-
-Render comparison results without fabricating data or losing configuration.
-
-### Dependencies
-
-MT-10, MT-11, MT-12, and MT-13.
-
-### Acceptance Criteria
-
-1. Comparison requests contain ordered stable creator IDs.
-2. Requests contain only backend-supported comparison item IDs.
-3. The chart renders one distinguishable series per selected creator.
-4. Legend and tooltip order matches creator click order.
-5. Loading state preserves creator and item configuration.
-6. Partial-error state identifies the failed creator/item without deleting valid data.
-7. Full-error state preserves the complete widget configuration.
-8. Empty response renders an empty state rather than fabricated zero values.
-9. An unavailable creator remains represented by an actionable unavailable state.
-
-### Required Evidence
-
-- Request snapshots.
-- DOM assertions for series/legend/tooltip order.
-- State snapshots for loading, partial error, full error, empty, and unavailable fixtures.
-
----
-
-## MT-15 — Persistence, Legacy Layout, and Reload
-
-### Goal
-
-Persist valid layouts and recover safely from invalid legacy data.
-
-### Dependencies
-
-MT-02, MT-05, MT-09, and MT-14.
-
-### Acceptance Criteria
-
-1. A valid save survives full page reload with deep-equal layout configuration.
-2. The production load path imports the canonical `validateLayout` function.
-3. Duplicate-ID legacy data does not render duplicate widgets.
-4. Overlapping legacy data does not render an overlap silently.
-5. Every migration has a versioned input fixture and expected output fixture.
-6. A non-migratable layout enters a recoverable error state.
-7. Recovery does not delete server data without explicit user action.
-8. Save failure restores the last persisted canonical layout.
-
-### Implementation dependency: persisted 4/5-column layouts
-
-The canonical grid range is `1x1` through `3x3`. A layout persisted earlier with 4 or 5 columns or rows is outside that range. Existing persisted 4/5-column layouts require a defined migration/recovery behavior before the 3x3 implementation is considered complete. This document does not yet define whether such a layout is reflowed, truncated, migrated, rejected, or reset, and it must not be silently discarded; a product/spec decision is required first.
-
-### Required Evidence
-
-- Migration fixture tests.
-- Reload deep-equality test.
-- Failure rollback snapshot.
-
----
-
-## MT-16 — Responsive and Accessibility Verification
-
-### Goal
-
-Preserve identity, ordering, spacing, readability, and operability at every supported breakpoint.
-
-### Dependencies
-
-MT-06 through MT-15.
-
-### Acceptance Criteria
-
-1. Every supported breakpoint has a deterministic widget order.
-2. No breakpoint produces overlap or overflow.
-3. Every adjacent-element gap measures 16px at every breakpoint.
-4. Widget IDs are identical before and after responsive reflow.
-5. Charts do not render below the documented minimum readable width.
-6. Focus is visible on every editor action.
-7. Valid and invalid targets are distinguishable without color.
-8. Dialog focus is trapped and `Escape` closes it.
-9. Closing a dialog returns focus to its triggering control.
-10. Insertion position and creator comparison order are exposed to assistive technology.
-11. Product maximum canonical/editable grid is `3x3` on desktop and `3x3` on tablet; mobile is view-only. The minimum-readable-width cap may reduce the usable column count below 3 at a given width and must never raise it above 3.
-
-Widget drag/resize is pointer-driven; a keyboard-equivalent move/resize interface is not required.
-
-### Required Evidence
-
-- Automated accessibility results.
-- Keyboard-only E2E test of the ordinary editor controls, focus order, insertion controls, and dialogs (not widget move/resize).
-- Per-breakpoint bounding-rectangle and ID snapshots.
-
----
-
-## MT-17 — Final Regression Matrix
-
-### Goal
-
-Prove that the complete Dashboard layout behavior satisfies every prior microtask without relying on agent judgment.
-
-MT-17 is intentionally stricter than a normal microtask. The risk-based validation policy does not reduce its complete regression requirements: all required tests, typecheck, production build, acceptance matrix, browser and network evidence, and save/reload evidence remain mandatory.
-
-MT-17 evaluates the `1x1` through `3x3` grid contract. It must not require evidence that `4x4` or `5x5` grids are supported; the matrix rows for MT-01 and MT-05 expect those sizes to be rejected. MT-17 cannot be marked complete while the MT-15 implementation dependency on persisted 4/5-column layouts remains undefined.
-
-### Dependencies
-
-MT-01 through MT-16.
-
-### Acceptance Criteria
-
-1. Every required unit test passes.
-2. Every required integration/E2E test passes.
-3. Frontend typecheck passes.
-4. Frontend production build passes.
-5. The catalog request count remains one through the complete edit workflow.
-6. No rendered fixture contains overlap or overflow.
-7. Every measured adjacent gap equals 16px.
-8. Creator order, widget IDs, and layout geometry survive save and reload.
-9. Search output proves that add, drag, resize, editor preview, load, and save all import the same canonical `validateLayout` implementation.
-10. The acceptance matrix contains one row for every criterion in MT-01 through MT-16.
-11. Every matrix row contains expected value, actual value, evidence location, and `PASS` or `FAIL`.
-12. No row may be marked `PASS` without attached evidence.
-13. Any `UNVERIFIED` or `FAIL` row makes MT-17 incomplete.
-
-### Required Evidence
-
-- Test command log with exit codes.
-- Build and typecheck logs.
-- Machine-readable acceptance matrix.
-- Browser measurement output.
-- Network request log.
-- Save/reload state snapshot.
-
-## Required Handoff Format
-
-After each microtask, report exactly:
+Only:
 
 ```text
-Microtask:
-Files changed:
-Acceptance criteria:
-- AC1 PASS | FAIL | UNVERIFIED — concise evidence
-- AC2 PASS | FAIL | UNVERIFIED — concise evidence
-Validation:
-- command → exit code
-Remaining dependency:
-Verdict: PASS | FAIL | INCOMPLETE
+creators.json reconciliation
+creator-level taxonomy
+Organization
+Branch
+Generation / Unit
+filter dependency
+remove unsupported hardcoded options
+grouped Creator scope and Content scope presentation
+active-filter count
+Reset filters
+responsive/progressive disclosure
 ```
 
-The only valid `PASS` condition is that every acceptance criterion for that microtask has objective evidence and none are failed or unverified.
+### Authoritative Source
 
-Handoff rules:
+- `frontend/dashboard/DASHBOARD_LAYOUT_GUIDELINES.md`
+- `frontend/dashboard/src/features/notifications/data/creators.json`
+- `frontend/dashboard/src/features/notifications/model/notificationCreatorGrouping.ts`
+- `frontend/dashboard/src/entities/creator/model/domain.ts`
 
-- Do not restate the entire microtask.
-- Do not list every assertion unless needed to explain a failure.
-- Do not list a full-suite count unless the full suite was required and run.
-- Do not report Git status, cached diff names, or staging details unless Git-state reporting is required.
-- Evidence paths may be included inline with the relevant acceptance criterion rather than repeated in a separate long section.
-- Label non-criterion work outside the microtask as `OUT OF SCOPE / NOT REQUIRED`; do not add it to the unverified list.
+### Files Expected
+
+Expected candidates only; implementation must verify exact ownership before
+editing:
+
+```text
+frontend/dashboard/src/features/analytics/filters/**
+frontend/dashboard/src/features/analytics/hooks/useFilterState.ts
+frontend/dashboard/src/entities/creator/**
+frontend/dashboard/src/features/notifications/model/**
+frontend/dashboard/src/features/dashboard/styles/dashboard.css
+frontend/dashboard/src/pages/dashboard/DashboardPage.tsx
+relevant targeted tests
+```
+
+### Forbidden Changes
+
+- Do not modify widget layout.
+- Do not modify charts.
+- Do not change mock numeric analytics values except where required to consume
+  the authoritative creator roster.
+- Do not resolve `groupKey` taxonomy gaps by assumption.
+- Do not mix comparison-member selection into the analytics classification
+  filter.
+- Do not replace the current filter meaning while redesigning presentation.
+- Do not render every dimension as one undifferentiated chip wall.
+
+### Required Source Data
+
+- Full `creators.json` roster.
+- Distinct `organization`, `branch`, `groupKey`, `channelType`,
+  `lifecycleStage` values.
+- Matching creator IDs/counts for every displayed option.
+
+### Required Mock Data
+
+- Mock creators must remain traceable to real roster records.
+- No fabricated organization, branch, or groupKey values.
+- Hololive categories follow the official `所属タレント` order documented in
+  `DASHBOARD_LAYOUT_GUIDELINES.md` Section 8.1.
+- Only categories and creators backed by a successful current analytics record
+  are selectable. Missing-data entries remain future continuation points and
+  are not rendered, including `アソビ★まわり隊！` until data exists.
+
+### Required Targeted Tests
+
+- Organization options match roster values.
+- Branch options recalculate from selected Organization.
+- Generation / Unit options recalculate from selected Organization and Branch.
+- Hide Generation / Unit entirely for VSPO, VSPO JP, and VSPO EN, and clear
+  any prior Hololive group selection when entering those scopes.
+- Use the approved roster-backed Hololive taxonomy for this analytics filter;
+  data-backed-only eligibility applies to comparison member rows, not to the
+  Generation / Unit filter options.
+- Invalid child selections clear when parent changes.
+- No unsupported option such as `aNounce` appears.
+- `All` remains a UI sentinel, not source metadata.
+- Creator scope and Content scope are visibly distinct.
+- Active-filter count matches selected dimensions/values.
+- Reset clears every filter and restores the complete analytics population.
+- Compact/responsive presentation preserves access to every option.
+
+### Required Browser Interactions
+
+Test at least:
+
+```text
+Organization = VSPO
+Organization = Hololive
+one Branch within each
+one source-backed Generation / Unit option
+select filters across Creator scope and Content scope
+Reset filters
+inspect compact and wide viewport layouts
+```
+
+### Required Measured Evidence
+
+For each tested filter state:
+
+```text
+displayed options
+expected source options
+unexpected options
+missing options
+matching creator count
+active-filter count
+analytics result count before/after Reset
+all controls reachable at tested viewport
+```
+
+Expected:
+
+```text
+unexpected = 0
+missing = 0
+```
+
+### Stop/Block Conditions
+
+Stop if a required taxonomy distinction needs product direction, including:
+
+- `NO` visibility
+- combined vs split Generation/Unit/Project/Team/Wave/Group taxonomy
+- `retired` zero-record visibility
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+End with one of:
+
+```text
+TASK_1_READY_FOR_REVIEW
+TASK_1_BLOCKED_SPEC_GAP
+```
+
+## Required Prerequisite -- Dashboard Control Ownership, Time Zone & Local Refresh
+
+### Purpose
+
+Remove general preferences from the Dashboard, resolve reporting time zone
+automatically, refresh at the resolved user's local 18:00 boundary, and keep
+the Mock / Live switch development-only.
+
+### Exact Scope
+
+Only:
+
+```text
+remove Time Zone selector from Dashboard
+move Theme entry point to Settings
+move Upcoming display and Countdown language entry points to Settings
+profile -> browser -> UTC IANA time-zone resolution
+read-only resolved-zone metadata
+local 18:00 refresh boundary
+cached-data preservation during refresh
+development-only Mock / Live control
+production live-source policy
+```
+
+### Authoritative Source
+
+- Settings/control ownership contract in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Existing persisted Theme and Upcoming preference stores
+- Existing analytics cache and fetch pipeline
+- Authenticated user profile contract, if one exists at implementation time
+- Browser `Intl` IANA time zone only as the defined fallback
+- Backend report publication schedule and `reportDate` contract
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/features/dashboard/editor/components/DashboardHeader.tsx
+frontend/dashboard/src/pages/dashboard/DashboardPage.tsx
+frontend/dashboard/src/pages/settings/**
+frontend/dashboard/src/shared/i18n/**
+frontend/dashboard/src/shared/theme/**
+frontend/dashboard/src/features/live-status/**
+frontend/dashboard/src/features/analytics/charts/DataSourceToggle.tsx
+frontend/dashboard/src/features/analytics/hooks/**
+frontend/dashboard/src/features/analytics/utils/**
+relevant targeted tests
+```
+
+### Forbidden Changes
+
+- Do not invent an authenticated profile time zone when no profile field/API
+  exists.
+- Do not store a raw `GMT+8`/`GMT+9` offset as canonical time-zone identity.
+- Do not implement one global UTC `18:00` refresh.
+- Do not erase valid cached data while refreshing or after refresh failure.
+- Do not expose Theme, Upcoming, Countdown language, or editable Time Zone on
+  the Dashboard.
+- Do not expose Mock / Live in production merely because an API URL exists.
+- Do not silently serve mock analytics in production when live configuration
+  is unavailable.
+- Do not change the backend schedule without explicit backend scope.
+
+### Required Source Data
+
+- Profile IANA time zone and provenance when available.
+- Browser/device IANA time zone fallback.
+- UTC fallback.
+- Verified backend publication time and `reportDate` meaning.
+- Existing cached entry, fresh entry, and stale/error metadata.
+
+### Required Mock Data
+
+- `Asia/Tokyo` clock states at 17:59 and 18:00 local.
+- `Asia/Hong_Kong` clock states at 17:59 and 18:00 local.
+- Profile-zone present, browser-only, and invalid/missing-zone scenarios.
+- Successful refresh and failed refresh with an existing cached entry.
+- Development and production environment cases.
+
+### Required Targeted Tests
+
+- Profile IANA zone wins over browser zone.
+- Browser IANA zone is used when profile zone is unavailable.
+- Invalid/missing profile and browser values fall back to UTC.
+- Dashboard renders no editable Time Zone, Theme, Upcoming, or Countdown
+  language control.
+- Settings renders Theme and Upcoming controls and preserves their existing
+  persisted state semantics.
+- Japan crosses 17:59 -> 18:00 and triggers exactly one refresh for the new
+  local report/cache key.
+- Hong Kong crosses 17:59 -> 18:00 and triggers exactly one independent local
+  refresh.
+- Repeated clock ticks after the same boundary do not duplicate requests.
+- Existing cached data remains visible during refresh and after failure.
+- Mock / Live renders in explicit development mode only.
+- Production automatically follows live-source policy and never silently
+  falls back to mock.
+
+### Required Browser Interactions
+
+- Open Dashboard in development and production-equivalent builds and inspect
+  header controls.
+- Open Settings and change Theme and Upcoming display preferences; return to
+  the affected app surfaces and verify persistence.
+- Run Dashboard with controlled `Asia/Tokyo` and `Asia/Hong_Kong` clocks across
+  the local 18:00 boundary without reloading the page.
+- Simulate refresh failure while cached data is visible.
+
+### Required Measured Evidence
+
+Report:
+
+```text
+environment: development/production
+resolved zone source: profile/browser/UTC fallback
+resolved IANA zone
+local time before/after boundary
+report/cache key before/after
+refresh request count before/after
+cached content visible during refresh: yes/no
+cached content visible after failure: yes/no
+Dashboard Time Zone selector present: yes/no
+Dashboard Theme selector present: yes/no
+Dashboard Upcoming selector present: yes/no
+Dashboard Mock / Live control present: yes/no
+Settings Theme control present: yes/no
+Settings Upcoming control present: yes/no
+```
+
+### Stop/Block Conditions
+
+Stop and report the exact dependency if:
+
+- backend publication timing cannot satisfy or define each local 18:00
+  boundary
+- `reportDate` semantics are unknown
+- authenticated profile location exists but has no authoritative IANA mapping
+- production live-source policy is undefined
+- moving a preference entry point would break its persisted cross-page state
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+DASHBOARD_CONTROL_OWNERSHIP_READY_FOR_REVIEW
+DASHBOARD_CONTROL_OWNERSHIP_BLOCKED_SPEC_GAP
+```
+
+## Task 2 -- Full-Width Dashboard Workspace
+
+### Purpose
+
+Make the Dashboard use the available application workspace width after
+navigation/sidebar.
+
+### Exact Scope
+
+Only:
+
+```text
+page/container width
+left/right gutters
+workspace expansion
+```
+
+### Authoritative Source
+
+- Workspace contract in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Current Dashboard page/container implementation
+- Current Settings page only as a visual-language reference, not width source
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/pages/dashboard/DashboardPage.tsx
+frontend/dashboard/src/features/dashboard/styles/dashboard.css
+```
+
+### Forbidden Changes
+
+- Do not alter filters, taxonomy, charts, widgets, comparison, mock data, or
+  settings layout.
+- Do not inherit Settings max-width.
+
+### Required Source Data
+
+None beyond layout source inspection.
+
+### Required Mock Data
+
+Existing Dashboard mock data is sufficient.
+
+### Required Targeted Tests
+
+- Rendered Dashboard root does not use Settings/readable-content max-width.
+- Existing non-width Dashboard behavior remains mounted.
+
+### Required Browser Interactions
+
+Open the Dashboard at representative desktop width with sidebar/nav visible.
+
+### Required Measured Evidence
+
+Report:
+
+```text
+viewportWidth
+sidebarRight
+dashboardLeft
+dashboardRight
+leftGutter
+rightGutter
+workspaceWidth
+```
+
+### Stop/Block Conditions
+
+Stop if application shell/sidebar geometry cannot be measured or ownership of
+the shell is outside Dashboard scope.
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_2_READY_FOR_REVIEW
+TASK_2_BLOCKED
+```
+
+## Task 3 -- Widget Internal-Scroll Correction
+
+### Purpose
+
+Ensure normal/default KPI, Growth, Contribution, and Ranking widgets display
+intended content without internal vertical scrolling or hidden clipping.
+
+### Exact Scope
+
+Only:
+
+```text
+KPI
+Growth
+Contribution
+Ranking
+widget sizing
+```
+
+### Authoritative Source
+
+- Widget overflow contract in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Current widget components and CSS
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/features/analytics/charts/**
+frontend/dashboard/src/features/dashboard/editor/utils/widgetRegistry.tsx
+frontend/dashboard/src/features/dashboard/styles/dashboard.css
+```
+
+### Forbidden Changes
+
+- Do not change chart semantics.
+- Do not change filter taxonomy.
+- Do not change movement logic.
+- Do not use `overflow: hidden` to conceal missing content.
+
+### Required Source Data
+
+Representative filtered stats for each normal widget state.
+
+### Required Mock Data
+
+Mock data must exercise enough rows/points to reveal overflow:
+
+- KPI values and subtext
+- Growth chart points
+- Contribution rows
+- at least 5 Ranking rows
+
+### Required Targeted Tests
+
+- Widget sizing constraints remain valid.
+- Components render expected content for representative data.
+
+### Required Browser Interactions
+
+Render normal Dashboard with representative content.
+
+### Required Measured Evidence
+
+For KPI, Growth, Contribution, and Ranking:
+
+```text
+clientHeight
+scrollHeight
+computed overflowY
+scrollbar yes/no
+content clipped yes/no
+```
+
+Acceptance:
+
+```text
+scrollHeight <= clientHeight
+```
+
+### Stop/Block Conditions
+
+Stop if current widget semantic ambiguity prevents deciding what content must be
+visible, especially Contribution.
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_3_READY_FOR_REVIEW
+TASK_3_BLOCKED_SPEC_GAP
+```
+
+## Task 4 -- Edit Layout Grid Reflow, Swap & Viewport Lock
+
+### Purpose
+
+Implement a deterministic canonical grid editor whose live drag preview reflows
+occupied widgets, remains aligned to the dashed grid, never overlaps, and does
+not move or expand the viewport without explicit user scroll input.
+
+### Exact Scope
+
+Only:
+
+```text
+horizontal swap/reflow
+vertical swap/reflow
+live preview occupancy
+dashed-grid alignment
+no overlap
+canonical snap or invalid-target rollback
+viewport scroll lock
+no drag-edge auto-scroll
+no document expansion during drag
+save/cancel/persistence
+```
+
+### Authoritative Source
+
+- Canonical layout contract in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Edit Layout -- Grid Reflow & Viewport Lock Contract in
+  `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Canonical validator and layout model
+- GridStack adapter only as an implementation detail
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/features/dashboard/editor/**
+frontend/dashboard/src/pages/dashboard/DashboardPage.tsx
+frontend/dashboard/e2e/**
+```
+
+### Forbidden Changes
+
+- Do not alter widget content, filters, comparison selection, or mock values.
+- Do not add 4x4/5x5 canonical support.
+- Do not persist GridStack pixel or 12-column coordinates as the product model.
+- Do not implement free-floating absolute placement.
+- Do not solve collisions by allowing overlap or off-grid placement.
+- Do not enable automatic drag-edge scrolling.
+- Do not call `scrollIntoView()`, `window.scrollTo()`, `window.scrollBy()`, or
+  equivalent focus-induced scrolling during normal widget drag.
+
+### Required Source Data
+
+Canonical layout fixtures with:
+
+- compatible same-size widgets in adjacent horizontal cells
+- compatible same-size widgets in adjacent vertical cells
+- an occupied layout requiring deterministic multi-widget reflow
+- a known invalid target used to verify rollback
+
+### Required Mock Data
+
+Use identifiable mock widgets so the browser test can prove occupancy changes.
+At minimum, use `Contribution` at the left position and `KPI` at the right
+position for the required midpoint-crossing scenario.
+
+### Required Targeted Tests
+
+- Crossing the horizontal midpoint activates a valid target preview and moves
+  the displaced compatible widget into the vacated canonical cell.
+- Crossing the vertical midpoint produces the equivalent valid reflow.
+- Live preview occupancy has no duplicate canonical position and no overlap.
+- Every resolved preview aligns with visible dashed cells.
+- Compatible swaps update canonical `x/y`; widget sizes remain unchanged.
+- Multi-widget collision resolution is deterministic and validator-safe.
+- An invalid target restores the previous valid layout.
+- Without explicit scroll input, `scrollX` and `scrollY` remain unchanged during
+  pointer movement, reflow, collision handling, drop, and cancellation.
+- Pointer proximity to top, bottom, left, or right viewport edges does not cause
+  automatic scrolling.
+- Dragging does not increase document `scrollHeight` or `scrollWidth`.
+- Save/reload preserves the validated canonical result.
+- Cancel restores the pre-edit canonical layout.
+
+### Required Browser Interactions
+
+Perform all of the following in a real browser:
+
+- Drag `Contribution` from the left across the midpoint toward the right-side
+  `KPI`; before drop verify that `KPI` previews in the left vacated cell and
+  `Contribution` targets the right valid cell.
+- Perform an equivalent vertical midpoint crossing and inspect the preview
+  before drop.
+- Drag through the middle of the layout and near each viewport edge without
+  wheel scrolling.
+- Drop a valid move, save, reload, and verify persistence.
+- Cancel a separate edit and verify restoration.
+- Attempt an invalid target and verify rollback.
+
+### Required Measured Evidence
+
+For each horizontal and vertical move, report:
+
+```text
+Widget A before: x, y, w, h
+Widget B before: x, y, w, h
+Drag target: x, y
+Widget A preview: x, y
+Widget B preview: x, y
+Widget A after drop: x, y
+Widget B after drop: x, y
+validator result
+overlap true/false
+dashed-grid alignment true/false
+persistence result
+```
+
+For the no-wheel viewport-lock run, report:
+
+```text
+scrollX before
+scrollY before
+scrollX during horizontal drag
+scrollY during horizontal drag
+scrollX during vertical drag
+scrollY during vertical drag
+scrollX after drop
+scrollY after drop
+scrollHeight before/during/after
+scrollWidth before/during/after
+explicit wheel scroll performed: no
+```
+
+All corresponding scroll coordinates must be identical. Document dimensions
+must not expand because of the drag. `dragging works` or `GridStack reflow
+works` without these measurements is not acceptable evidence.
+
+### Stop/Block Conditions
+
+Stop and report a blocker if any of the following remains true:
+
+- the grid adapter cannot expose or control live collision/reflow state
+- a dragged widget can resolve between dashed cells
+- an occupied target remains underneath the dragged widget
+- horizontal or vertical movement requires overlap
+- viewport coordinates change without explicit scroll input
+- drag geometry expands the document
+- adapter coordinates cannot be translated back to validated canonical
+  `x/y/w/h`
+- save, cancel, or invalid-target rollback cannot preserve a valid layout
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_4_READY_FOR_REVIEW
+TASK_4_BLOCKED
+```
+
+## Task 5 -- Comparison Member Selector Surface
+
+### Purpose
+
+Replace any flat comparison creator-chip wall with a Dashboard member selector
+that reuses Notification Settings Manage Members' density, hierarchy, search,
+and Favorites-first structure while adding comparison-specific selection and
+drag affordances.
+
+### Exact Scope
+
+Only:
+
+```text
+Notification-style roster
+search
+Favorites
+Agency -> Region/Branch -> Generation/Unit grouping
+optional roster-backed compact filters
+avatar/name
+per-row selection control
+ordered selection indicator
+separate single-member drag affordance
+selected-members summary/tray
+clear selection
+empty states
+remove flat chip wall
+```
+
+### Authoritative Source
+
+- `Settings -> Notification Settings -> Manage Members`
+- `notificationCreatorGrouping.ts`
+- `TopicCreatorManagementDrawer.tsx`
+- Settings CSS visual-language reference
+- `creators.json`
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/features/dashboard/comparison/**
+frontend/dashboard/src/features/notifications/**
+frontend/dashboard/src/features/favorites/**
+frontend/dashboard/src/features/dashboard/styles/dashboard.css
+frontend/dashboard/src/pages/dashboard/DashboardPage.tsx
+relevant targeted tests
+```
+
+### Forbidden Changes
+
+- Do not alter comparison data fetching.
+- Do not alter chart rendering semantics.
+- Do not change creator eligibility.
+- Do not render notification Live/New Video/reminder controls in Dashboard.
+- Do not couple drag initiation to selection toggling.
+- Do not duplicate Favorites in normal groups.
+- Do not place the full roster as a giant flat panel below the grid.
+
+### Required Source Data
+
+- Real creator roster.
+- Existing favorite IDs through the established favorites bridge.
+- Existing Notification grouping order.
+- Organization/Agency, Region/Branch, and Generation/Unit filter values derived
+  from the same roster.
+
+### Required Mock Data
+
+- At least 3 favorite creators across at least two valid source groups.
+- At least two creators in each confirmed core branch group.
+
+### Required Targeted Tests
+
+- Favorites appear first and are not duplicated below.
+- Search filters by actual creator names.
+- Empty groups are removed.
+- Stable group order is preserved.
+- Avatar/name/selection state render.
+- Dashboard rows contain selection/order/drag controls, not notification
+  switches.
+- Clicking selection does not begin a drag.
+- Beginning a drag does not toggle selection.
+- Roster-backed compact filters remove non-matches and empty groups.
+- Clear selection resets pending ordered selection without changing a chart.
+- Empty search/filter state is explicit.
+
+### Required Browser Interactions
+
+Open the comparison member selector, search, filter by Agency/Region/Generation,
+select/deselect creators, clear selection, begin a single-member drag, and
+verify Favorites and grouped hierarchy at desktop and compact viewport widths.
+
+### Required Measured Evidence
+
+Report:
+
+```text
+visible favorite IDs
+visible grouped creator IDs
+duplicate IDs yes/no
+search query
+matching creator IDs
+empty groups present yes/no
+selected IDs in order
+selection target and drag target are distinct yes/no
+single drag payload creator ID
+notification-only controls present yes/no
+panel/drawer bounds and viewport size
+```
+
+### Stop/Block Conditions
+
+Stop if favorite identity mapping, roster grouping, or creator ID mapping to
+comparison state is not verifiable. Stop if a maximum selected-creator count is
+required to complete this surface but remains undefined.
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_5_READY_FOR_REVIEW
+TASK_5_BLOCKED_SPEC_GAP
+```
+
+## Task 6 -- Comparison Target Eligibility
+
+### Purpose
+
+Make comparison-capable and non-comparison widgets behave distinctly during
+creator drag.
+
+### Exact Scope
+
+Only:
+
+```text
+comparison capability
+valid target state
+invalid target behavior
+single-member payload
+ordered multi-member bundle payload
+incoming member-count target feedback
+```
+
+### Authoritative Source
+
+- Comparison contract in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Widget registry and comparison widget capability utilities
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/features/dashboard/comparison/**
+frontend/dashboard/src/features/dashboard/editor/**
+frontend/dashboard/src/pages/dashboard/DashboardPage.tsx
+```
+
+### Forbidden Changes
+
+- Do not redesign the member selector owned by Task 5.
+- Do not alter chart data semantics.
+- Do not add keyboard-specific product mode.
+
+### Required Source Data
+
+Widget type list with explicit comparison capability.
+
+### Required Mock Data
+
+At least one visible comparison-capable widget and at least one visible
+non-comparison widget.
+
+### Required Targeted Tests
+
+- Comparison-capable widget accepts valid creator.
+- Non-comparison widget does not show valid target state.
+- Non-comparison widget rejects drop without mutating state.
+- Duplicate creator drop is rejected.
+- An ordered multi-member bundle uses the same capability gate.
+- Valid target feedback states the incoming member count.
+- A non-comparison target accepts neither a single creator nor a bundle.
+- Existing target creator IDs are not duplicated by a bundle.
+- Partial-bundle behavior is explicit and atomic unless a separately approved
+  product rule permits partial application.
+
+### Required Browser Interactions
+
+- Drag creator over comparison widget.
+- Drag creator over non-comparison widget.
+- Drag an ordered multi-member bundle over both target types.
+- Drop single and bundle payloads on both target types.
+
+### Required Measured Evidence
+
+Report:
+
+```text
+widget type
+capability
+target state shown
+drop accepted yes/no
+state before
+state after
+announcement/error text if any
+incoming ordered creator IDs
+accepted creator IDs
+rejected creator IDs and reason
+```
+
+### Stop/Block Conditions
+
+Stop if widget capability cannot be declared for every widget type, or if the
+maximum creator count/partial-bundle policy is required but undefined.
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_6_READY_FOR_REVIEW
+TASK_6_BLOCKED
+```
+
+## Task 7 -- Multi-Creator Comparison Selection
+
+### Purpose
+
+Implement the explicit Select Creators workflow and ordered multi-member bundle
+drop for comparison-capable charts, ensuring single drag, bundle drag, and
+Apply all converge on one comparison state.
+
+### Exact Scope
+
+Only:
+
+```text
+Select Creators
+multi-select
+click-order selection
+selected-members summary/tray
+bulk drag payload
+Apply
+Cancel
+preselection
+shared single-drag/bundle-drag/Apply state
+```
+
+### Authoritative Source
+
+- Comparison contract in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Creator roster contract from Task 5
+- Target eligibility from Task 6
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/features/dashboard/comparison/**
+frontend/dashboard/src/features/dashboard/editor/**
+frontend/dashboard/src/pages/dashboard/DashboardPage.tsx
+```
+
+### Forbidden Changes
+
+- Do not modify underlying comparison data source.
+- Do not change non-comparison widgets.
+- Do not introduce keyboard-specific product copy.
+- Do not create a second selected-creator store disconnected from the target
+  chart's pending/canonical comparison state.
+- Do not silently reorder selected creator IDs.
+
+### Required Source Data
+
+Ordered creator IDs from the roster.
+
+### Required Mock Data
+
+At least 4 comparison-capable creators and at least 2 initially selected.
+
+### Required Targeted Tests
+
+- Open shows existing selected creators preselected.
+- Multiple selection and deselection work.
+- Selected count updates.
+- Apply commits.
+- Cancel preserves previous committed state.
+- Reopen reflects committed state.
+- Drag A then modal shows A selected.
+- Modal select B/C then chart contains A/B/C.
+- Remove B then reopen shows B absent.
+- Select A/B/C in order and verify the selected-members summary preserves that
+  order.
+- Drag the selected A/B/C bundle and verify the target receives A/B/C in order.
+- Open Select Creators after bundle drop and verify A/B/C are preselected in
+  the same order.
+- Bundle drop never duplicates a creator already present in the target.
+- Clear selection changes only pending selector state until Apply/drop.
+
+### Required Browser Interactions
+
+Exercise the full flow:
+
+```text
+drag A
+open Select Creators
+select B/C
+Apply
+remove B
+reopen
+Cancel
+select A/B/C in roster
+drag selected bundle to comparison chart
+reopen Select Creators
+```
+
+### Required Measured Evidence
+
+Report ordered selected IDs before/after every step, the exact single/bundle
+drag payload, accepted/rejected IDs, target widget ID, and rendered
+series/legend identity after Apply/drop.
+
+### Stop/Block Conditions
+
+Stop if maximum comparison creator count or atomic/partial bundle behavior is
+required but undefined.
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_7_READY_FOR_REVIEW
+TASK_7_BLOCKED_SPEC_GAP
+```
+
+## Task 8 -- Mock Completeness
+
+### Purpose
+
+Ensure mock mode can exercise every Dashboard feature without production
+services.
+
+### Exact Scope
+
+Only:
+
+```text
+sufficient creator data
+filter data
+Favorites
+KPI
+Growth
+Contribution
+Ranking
+Comparison
+self-contained browser flow
+```
+
+### Authoritative Source
+
+- Mock completeness contract in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Authoritative creator roster
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/entities/creator/data/mockCreators.ts
+frontend/dashboard/src/features/analytics/data/mockVideoStats.ts
+frontend/dashboard/src/features/dashboard/comparison/test or mock source files
+frontend/dashboard/src/features/favorites/**
+```
+
+### Forbidden Changes
+
+- Do not fabricate unsupported groups.
+- Do not change production API behavior.
+- Do not use all-zero, identical, one-point, or disabled mock states.
+
+### Required Source Data
+
+Real roster records for all mock creators.
+
+### Required Mock Data
+
+Minimum:
+
+- two creators for each confirmed core branch group: VSPO JP, VSPO EN,
+  Hololive JP, Hololive EN, Hololive ID
+- 3 favorites across at least two valid groups
+- KPI Total Views and Daily Gain
+- Growth with at least 7 points
+- Contribution with enough entities to verify composition
+- Ranking with at least 5 rows
+- Comparison with at least 4 creators, 2 initially selected, visible series
+
+### Required Targeted Tests
+
+- Mock flow requires no production AWS/API/CORS.
+- Every feature above is exercisable in mock mode.
+- Mock creator IDs trace to source records.
+
+### Required Browser Interactions
+
+Run a complete mock Dashboard flow covering filters, roster, comparison,
+widgets, and charts.
+
+### Required Measured Evidence
+
+Report mock coverage counts by group, favorite IDs, KPI values, Growth point
+count, Contribution entity count, Ranking row count, Comparison series count,
+and network dependency count.
+
+### Stop/Block Conditions
+
+Stop if required groups are not actually present in the authoritative roster.
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_8_READY_FOR_REVIEW
+TASK_8_BLOCKED
+```
+
+## Task 9 -- Data Collection / Processing Verification
+
+### Purpose
+
+Answer:
+
+```text
+Is the underlying data and processing correct?
+```
+
+### Exact Scope
+
+Verify:
+
+```text
+source
+fields
+filters
+formula
+aggregation
+sorting
+rounding
+output
+```
+
+### Authoritative Source
+
+- Data lineage and processing sections in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Analytics source modules
+- Backend/API contracts when present
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/features/analytics/**
+frontend/dashboard/src/features/dashboard/comparison/data/**
+frontend/dashboard/src/features/dashboard/comparison/model/**
+frontend/dashboard/src/pages/dashboard/DashboardPage.tsx
+```
+
+### Forbidden Changes
+
+- Do not change chart types or visual rendering except where necessary to expose
+  verified data.
+- Do not alter taxonomy filters.
+
+### Required Source Data
+
+Raw analytics rows, comparison responses, and creator master records used by
+each widget.
+
+### Required Mock Data
+
+Mock data from Task 8.
+
+### Required Targeted Tests
+
+For each core widget:
+
+- input rows
+- applied filters
+- aggregation
+- formula
+- sorting
+- rounding
+- output model
+
+### Required Browser Interactions
+
+Use representative filters and verify displayed numeric outputs match processed
+outputs.
+
+### Required Measured Evidence
+
+Provide a data processing matrix for:
+
+```text
+Total Views
+Daily Gain
+Growth
+Contribution
+Ranking
+Comparison
+```
+
+### Stop/Block Conditions
+
+Stop if any metric formula or backend field meaning is undefined.
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_9_READY_FOR_REVIEW
+TASK_9_BLOCKED_SPEC_GAP
+```
+
+## Task 10 -- Chart Selection / Semantic Verification
+
+### Purpose
+
+Answer:
+
+```text
+Is this the correct chart for this data and purpose?
+```
+
+### Exact Scope
+
+Verify:
+
+```text
+chart purpose
+chart type
+why chosen
+visual encoding
+legend semantics
+center/summary semantics
+```
+
+### Authoritative Source
+
+- Chart contracts in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Product decisions supplied by human review for open spec gaps
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/features/analytics/charts/**
+frontend/dashboard/src/features/dashboard/comparison/components/**
+frontend/dashboard/src/features/dashboard/editor/utils/widgetRegistry.tsx
+```
+
+### Forbidden Changes
+
+- Do not alter data collection formulas.
+- Do not resolve Contribution chart type without human decision.
+
+### Required Source Data
+
+Processed widget outputs from Task 9.
+
+### Required Mock Data
+
+Mock data that demonstrates each chart purpose.
+
+### Required Targeted Tests
+
+- Every chart has a concrete user question.
+- Every chart type has input shape and justification.
+- Legends/tooltips/summary values have defined meanings.
+
+### Required Browser Interactions
+
+Inspect each core chart in normal state and with representative filters.
+
+### Required Measured Evidence
+
+Report:
+
+```text
+Widget
+Purpose
+Chart type
+Input data shape
+Why this chart
+Visual encoding
+Legend meaning
+Tooltip meaning
+Summary/center meaning
+```
+
+### Stop/Block Conditions
+
+Stop if Contribution, Trending, or any chart purpose remains a spec gap.
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_10_READY_FOR_REVIEW
+TASK_10_BLOCKED_SPEC_GAP
+```
+
+## Task 11 -- Chart Rendering / Data Calibration
+
+### Purpose
+
+Answer:
+
+```text
+Does the chart actually display the processed data correctly?
+```
+
+### Exact Scope
+
+Verify:
+
+```text
+member identity
+displayed value
+percentage
+legend
+segment/series/bar/point
+count consistency
+```
+
+Contribution receives explicit multi-member verification.
+
+### Authoritative Source
+
+- Visual encoding matrix in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Completed Task 9 processing evidence
+- Completed Task 10 semantic decisions
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/features/analytics/charts/**
+frontend/dashboard/src/features/dashboard/comparison/components/**
+```
+
+### Forbidden Changes
+
+- Do not change formulas unless Task 9 identified and approved a processing fix.
+- Do not hide mismatches with CSS.
+
+### Required Source Data
+
+Processed chart input for each rendered chart.
+
+### Required Mock Data
+
+Mock data with multiple visible entities for Growth, Contribution, Ranking, and
+Comparison.
+
+### Required Targeted Tests
+
+- Displayed labels and values match processed data.
+- Legend count matches visual entity count where applicable.
+- Comparison series count matches selected creator count for ok creators.
+- Contribution member/percentage/visual counts follow the documented
+  relationship.
+
+### Required Browser Interactions
+
+Render every core chart and inspect DOM/SVG/canvas output as applicable.
+
+### Required Measured Evidence
+
+For Contribution:
+
+| Member | Expected value/% | Displayed value/% | Visual segment exists | Legend mapping correct |
+| --- | --- | --- | --- | --- |
+
+For every chart:
+
+```text
+source entity
+processed item
+displayed label
+displayed numeric value
+legend entry
+visual segment/series/bar/point
+```
+
+### Stop/Block Conditions
+
+Stop if selected chart type cannot represent the documented data honestly.
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_11_READY_FOR_REVIEW
+TASK_11_BLOCKED
+```
+
+## Task 12 -- Accessibility / Focus Regression
+
+### Purpose
+
+Verify standard accessibility and focus behavior without adding a
+keyboard-specific Dashboard product mode.
+
+### Exact Scope
+
+Only:
+
+```text
+focus-visible issue
+no keyboard-specific product mode
+```
+
+### Authoritative Source
+
+- Accessibility/focus rules in `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Existing project accessibility patterns
+
+### Files Expected
+
+Expected candidates:
+
+```text
+frontend/dashboard/src/features/dashboard/**
+frontend/dashboard/src/features/analytics/**
+frontend/dashboard/src/pages/dashboard/DashboardPage.tsx
+frontend/dashboard/src/features/dashboard/styles/dashboard.css
+```
+
+### Forbidden Changes
+
+- Do not add keyboard drag/drop, keyboard widget move, keyboard resize, or
+  keyboard-specific comparison workflows.
+- Do not advertise keyboard-specific product mode.
+
+### Required Source Data
+
+Interactive controls inventory.
+
+### Required Mock Data
+
+Existing mock data sufficient to expose all controls.
+
+### Required Targeted Tests
+
+- Focus is visible on standard controls.
+- Dialogs trap and restore focus where applicable.
+- Approved comparison copy is used.
+- Forbidden phrase `keyboard-friendly alternative` is absent.
+
+### Required Browser Interactions
+
+Keyboard-tab through ordinary controls, open/close dialogs, verify focus return.
+
+### Required Measured Evidence
+
+Report focused element sequence, visible focus evidence, dialog focus trap
+behavior, focus return target, and forbidden-copy search result.
+
+### Stop/Block Conditions
+
+Stop if an accessibility requirement conflicts with the no-keyboard-product-mode
+decision and needs human product direction.
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches.
+
+### Final Status
+
+```text
+TASK_12_READY_FOR_REVIEW
+TASK_12_BLOCKED
+```
+
+## Task 13 -- Full Regression + Human Review Gate
+
+### Purpose
+
+Run final automated and browser validation, then hand visual acceptance to the
+user.
+
+### Exact Scope
+
+Run all automated validation, launch a real browser, report measured evidence,
+and stop for human visual review.
+
+### Authoritative Source
+
+- Full `DASHBOARD_LAYOUT_GUIDELINES.md`
+- Completed the required Dashboard control/time-zone prerequisite and Tasks
+  1-12
+
+### Files Expected
+
+No new implementation files expected unless regression reveals a defect assigned
+to this final task by the user.
+
+### Forbidden Changes
+
+- Do not self-approve visual completion.
+- Do not introduce new feature work.
+- Do not broaden scope beyond regression fixes explicitly required by failed
+  evidence.
+
+### Required Source Data
+
+All source data used by the required prerequisite and Tasks 1-12.
+
+### Required Mock Data
+
+Task 8 mock data.
+
+### Required Targeted Tests
+
+Run all targeted tests required by the prerequisite and Tasks 1-12 plus
+project-appropriate full
+frontend validation explicitly required for final regression.
+
+### Required Browser Interactions
+
+Verify:
+
+- workspace width
+- widget overflow
+- horizontal move
+- vertical move
+- live midpoint reflow before drop
+- dashed-grid preview alignment and no overlap
+- viewport-lock drag with no wheel input
+- no drag-edge auto-scroll
+- no drag-induced document expansion
+- creator taxonomy rendering
+- grouped analytics filter panel, active count, and Reset
+- Notification-style member selector search/Favorites/grouping
+- valid comparison drop
+- invalid comparison target
+- ordered multi-select and bulk bundle drop
+- Dashboard excludes editable Time Zone, Theme, and Upcoming controls
+- Settings owns Theme and Upcoming preferences
+- Mock / Live is development-only and absent in production
+- `Asia/Tokyo` local 18:00 refresh boundary
+- `Asia/Hong_Kong` local 18:00 refresh boundary
+- cached data remains visible during refresh/failure
+- chart entity rendering
+- member/percentage mapping
+- accessibility/focus behavior
+
+### Required Measured Evidence
+
+Provide a final evidence matrix with:
+
+```text
+criterion
+expected
+actual
+evidence source
+PASS/FAIL
+```
+
+No row may pass without attached evidence.
+
+### Stop/Block Conditions
+
+Stop on any `FAIL` or `UNVERIFIED` criterion and report it. Stop after passing
+measured validation with:
+
+```text
+WAITING_FOR_USER_VISUAL_REVIEW
+```
+
+### Git Restrictions
+
+Do not stage, commit, push, stash, reset, or switch branches unless explicitly
+authorized after review.
+
+### Final Status
+
+End with exactly one of:
+
+```text
+WAITING_FOR_USER_VISUAL_REVIEW
+TASK_13_BLOCKED
+```

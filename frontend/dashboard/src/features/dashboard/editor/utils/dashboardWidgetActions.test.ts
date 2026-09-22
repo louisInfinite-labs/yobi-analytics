@@ -116,21 +116,93 @@ describe("moveWidget", () => {
     expect(moved.height).toBe(1)
   })
 
-  it("rejects a move that would overlap another widget and restores the last valid coordinates", () => {
+  it("Manual Layout Correction Pass, Defect B: a move landing exactly on one same-footprint widget swaps positions instead of rejecting", () => {
     const base = layout({
+      grid: { columns: 2, rows: 1 },
+      widgets: [
+        widget({ widgetId: "a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 }),
+        widget({ widgetId: "b", widgetType: "ranking", x: 1, y: 0, width: 1, height: 1 }),
+      ],
+    })
+    const outcome = moveWidget(base, "a", { x: 1, y: 0 })
+
+    expect(outcome.committed).toBe(true)
+    expect(outcome.result.valid).toBe(true)
+    const a = outcome.layout.widgets.find((w) => w.widgetId === "a")!
+    const b = outcome.layout.widgets.find((w) => w.widgetId === "b")!
+    expect(a).toMatchObject({ widgetId: "a", widgetType: "kpi-summary", x: 1, y: 0 })
+    expect(b).toMatchObject({ widgetId: "b", widgetType: "ranking", x: 0, y: 0 })
+  })
+
+  it("Manual Layout Correction Pass, Defect B: a vertical move landing exactly on one same-footprint widget swaps positions", () => {
+    const base = layout({
+      grid: { columns: 1, rows: 2 },
+      widgets: [
+        widget({ widgetId: "top", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 }),
+        widget({ widgetId: "bottom", widgetType: "ranking", x: 0, y: 1, width: 1, height: 1 }),
+      ],
+    })
+    const outcome = moveWidget(base, "top", { x: 0, y: 1 })
+
+    expect(outcome.committed).toBe(true)
+    const top = outcome.layout.widgets.find((w) => w.widgetId === "top")!
+    const bottom = outcome.layout.widgets.find((w) => w.widgetId === "bottom")!
+    expect(top).toMatchObject({ x: 0, y: 1 })
+    expect(bottom).toMatchObject({ x: 0, y: 0 })
+  })
+
+  it("still rejects a move that would overlap more than one widget at once (not a clean pairwise swap)", () => {
+    const base = layout({
+      grid: { columns: 3, rows: 1 },
       widgets: [
         widget({ widgetId: "a", x: 0, y: 0, width: 1, height: 1 }),
         widget({ widgetId: "b", x: 1, y: 0, width: 1, height: 1 }),
+        widget({ widgetId: "c", x: 1, y: 0, width: 2, height: 1 }),
       ],
     })
     const outcome = moveWidget(base, "a", { x: 1, y: 0 })
 
     expect(outcome.committed).toBe(false)
     expect(outcome.result.errors.map((e) => e.code)).toContain("WIDGET_OVERLAP")
-    // Byte-for-byte the same reference the caller passed in -- nothing was
-    // ever mutated to roll back from (MT-05 AC11).
     expect(outcome.layout).toBe(base)
-    expect(outcome.layout.widgets.find((w) => w.widgetId === "a")).toEqual(base.widgets[0])
+  })
+
+  it("still rejects a move onto a differently-sized widget when swapping would itself be invalid", () => {
+    const base = layout({
+      grid: { columns: 3, rows: 1 },
+      widgets: [
+        widget({ widgetId: "a", x: 0, y: 0, width: 1, height: 1 }),
+        widget({ widgetId: "b", x: 1, y: 0, width: 2, height: 1 }),
+      ],
+    })
+    // A swap only exchanges x/y, never width/height: "b" (width 2) moving to
+    // "a"'s old x:0 would cover [0,2), directly overlapping "a" landing at
+    // x:1 (covering [1,2)) -- the swap candidate itself still overlaps, so
+    // this is correctly rejected rather than silently forced through.
+    const outcome = moveWidget(base, "a", { x: 1, y: 0 })
+
+    expect(outcome.committed).toBe(false)
+    expect(outcome.layout).toBe(base)
+  })
+
+  it("rejects a differently-sized swap even when the mismatched-footprint candidate would itself validate", () => {
+    const base = layout({
+      grid: { columns: 1, rows: 2 },
+      widgets: [
+        widget({ widgetId: "a", x: 0, y: 0, width: 1, height: 1 }),
+        widget({ widgetId: "b", x: 0, y: 1, width: 1, height: 0.5 }),
+      ],
+    })
+    // Moving "a" (a full row) onto "b" (a half row) collides with exactly
+    // one widget, and simply relocating "b" (keeping its own height 0.5) to
+    // "a"'s old y:0 doesn't overlap anything -- the candidate would
+    // validate. Without an explicit same-footprint check this is wrongly
+    // accepted as a "swap", leaving y:[0.5, 1) uncovered by any widget
+    // instead of the clean position exchange the swap is meant to be.
+    const outcome = moveWidget(base, "a", { x: 0, y: 1 })
+
+    expect(outcome.committed).toBe(false)
+    expect(outcome.layout).toBe(base)
   })
 
   it("rejects a move that would push the widget out of bounds and preserves its widgetId in the unchanged layout", () => {

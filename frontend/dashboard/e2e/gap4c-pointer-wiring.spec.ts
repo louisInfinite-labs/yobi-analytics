@@ -247,7 +247,7 @@ test.describe("GAP-4C GridStack pointer wiring", () => {
     await expect(widgetBox(page, "bottom")).toHaveAttribute("gs-y", "1")
   })
 
-  test("neighbor drift (GAP-4C Correction Pass AC13): dragging 'a' onto 'b's cell visually displaces 'b', but 'b' is never submitted and the resync restores it", async ({
+  test("position swap (Manual Layout Correction Pass, Defect B): dragging 'a' fully onto 'b's same-footprint cell swaps them both, submitted atomically", async ({
     page,
   }) => {
     await page.goto("/gap4c-grid-harness.html?fixture=collision-neighbor-push")
@@ -290,13 +290,15 @@ test.describe("GAP-4C GridStack pointer wiring", () => {
     await page.waitForTimeout(300)
 
     const after = await readCanonicalState(page)
-    // "b" was never submitted through updateDraftWidget: its canonical entry
-    // is untouched no matter what "a"'s own gesture resolved to.
-    expect(after.widgets.find((w) => w.widgetId === "b")).toEqual(bBefore)
-    // The full resync (whether "a"'s own move committed or was rejected)
-    // restores "b"'s GridStack visual node to its canonical projection --
-    // GridStack's own mid-gesture choice for "b" is discarded either way.
-    await expect(widgetBox(page, "b")).toHaveAttribute("gs-x", "1")
+    // "a" landed in "b"'s old cell, and the canonical `updateWidgetGeometry`
+    // swap path (dashboardWidgetActions.ts's tryPositionSwap) atomically
+    // moved "b" into "a"'s old cell in the same commit -- both submitted
+    // together, not "a" alone with "b" untouched.
+    expect(after.widgets.find((w) => w.widgetId === "a")).toMatchObject({ x: 1, y: 0 })
+    expect(after.widgets.find((w) => w.widgetId === "b")).toMatchObject({ x: 0, y: 0 })
+    // GridStack's visual nodes resync to that same swapped canonical state.
+    await expect(widgetBox(page, "a")).toHaveAttribute("gs-x", "1")
+    await expect(widgetBox(page, "b")).toHaveAttribute("gs-x", "0")
     await expect(widgetBox(page, "b")).toHaveAttribute("gs-y", "0")
   })
 

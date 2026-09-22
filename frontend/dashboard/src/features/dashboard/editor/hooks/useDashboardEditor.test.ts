@@ -60,9 +60,22 @@ describe("useDashboardEditor", () => {
   it("a rejected draft mutation leaves the draft's last valid coordinates untouched", () => {
     const { result } = renderHook(() => useDashboardEditor(LAYOUT))
     act(() => result.current.enterEditMode())
-    act(() => result.current.updateDraftWidget("a", { x: 1, y: 0 })) // collides with "b"
+    act(() => result.current.updateDraftWidget("a", { x: 5, y: 5 })) // out of bounds, not swap-eligible
 
     expect(result.current.draftLayout).toEqual(LAYOUT)
+  })
+
+  it("Manual Layout Correction Pass, Defect B: moving 'a' onto 'b's cell swaps them in the draft instead of rejecting", () => {
+    const { result } = renderHook(() => useDashboardEditor(LAYOUT))
+    act(() => result.current.enterEditMode())
+    act(() => result.current.updateDraftWidget("a", { x: 1, y: 0 }))
+
+    const a = result.current.draftLayout.widgets.find((w) => w.widgetId === "a")
+    const b = result.current.draftLayout.widgets.find((w) => w.widgetId === "b")
+    expect(a).toMatchObject({ x: 1, y: 0 })
+    expect(b).toMatchObject({ x: 0, y: 0 })
+    // Canonical (pre-save) state is still untouched (AC8's own invariant).
+    expect(result.current.layout).toEqual(LAYOUT)
   })
 
   it("Cancel restores all IDs, coordinates, sizes, and order to the pre-edit snapshot (AC9)", () => {

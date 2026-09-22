@@ -1,4 +1,5 @@
 import type { ChannelType } from "../../../entities/creator/model/domain"
+import { NullableSegmented } from "../../../shared/ui/NullableSegmented"
 
 const OPTIONS: { value: ChannelType; label: string }[] = [
   { value: "member", label: "Member" },
@@ -13,19 +14,5 @@ interface ChannelTypeFilterProps {
 
 /** Member / Group / Staff single-select filter. */
 export function ChannelTypeFilter({ value, onChange }: ChannelTypeFilterProps) {
-  return (
-    <div className="filter-row">
-      <span className="filter-row__label">Channel Type</span>
-      <div className="filter-chip-group">
-        <button type="button" className="filter-chip" aria-pressed={value === null} onClick={() => onChange(null)}>
-          All
-        </button>
-        {OPTIONS.map((opt) => (
-          <button key={opt.value} type="button" className="filter-chip" aria-pressed={value === opt.value} onClick={() => onChange(opt.value)}>
-            {opt.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
+  return <NullableSegmented label="Channel Type" value={value} onChange={onChange} options={OPTIONS} />
 }

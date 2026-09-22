@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core"
+import { Button, ConfigProvider, theme as antdTheme } from "antd"
 import { mockCreators } from "../../entities/creator/data/mockCreators"
+import { useMemberTheme } from "../../shared/theme/ThemeContext"
 import { mockDailySeries } from "../../features/dashboard/editor/data/mockDailySeries"
 import { describeApiFailure } from "../../shared/api/apiClient"
 import { useCachedDashboardData } from "../../features/analytics/hooks/useCachedDashboardData"
@@ -29,11 +31,11 @@ import { projectCanonicalLayoutForGridStack, projectResponsiveLayoutForGridStack
 import { findInsertableRows } from "../../features/dashboard/editor/utils/dashboardInsertionRows"
 import { BREAKPOINT_MAX_EDITABLE_GRID, computeReadableColumnCap, reflowLayoutForBreakpoint } from "../../features/dashboard/editor/utils/dashboardResponsive"
 import { useBreakpoint } from "../../shared/hooks/useBreakpoint"
-import { detectDeviceTimeZone } from "../../shared/i18n/timezone"
+import { dateInTimeZone, detectDeviceTimeZone, millisecondsUntilNextLocalHour } from "../../shared/i18n/timezone"
 import type { Period } from "../../entities/creator/model/domain"
 import type { DashboardWidget, WidgetHeight } from "../../features/dashboard/editor/model/dashboardLayout"
-import type { WidgetTypeId } from "../../features/dashboard/editor/model/widget"
-import { getWidgetDefinition, type DashboardWidgetData } from "../../features/dashboard/editor/utils/widgetRegistry"
+import type { DashboardWidgetData } from "../../features/dashboard/editor/utils/widgetRegistry"
+import { getGridWidgetMeta, type GridWidgetType } from "../../features/dashboard/editor/utils/gridWidgetMeta"
 import { ClassificationFilterBar } from "../../features/analytics/filters/ClassificationFilterBar"
 import { useDataSource } from "../../features/analytics/charts/DataSourceToggle"
 import { DashboardFooter } from "../../features/dashboard/editor/components/DashboardFooter"
@@ -82,9 +84,42 @@ function DashboardPageContent({
   onLegacyConverted: () => void
 }) {
   useHeartbeat()
+  const { theme: memberTheme } = useMemberTheme()
+  // Memoized: ConfigProvider recomputes and regenerates its CSS-in-JS theme
+  // whenever this object's reference changes, so a fresh literal on every
+  // render (this component re-renders on nearly every interaction) redoes
+  // that work needlessly -- keep the same reference unless the creator
+  // accent actually changes.
+  const dashboardAntdTheme = useMemo<Parameters<typeof ConfigProvider>[0]["theme"]>(
+    () => ({
+      algorithm: antdTheme.darkAlgorithm,
+      token: {
+        colorPrimary: memberTheme.primary,
+        colorBgContainer: "#211d29",
+        colorBgElevated: "#292432",
+        colorBorder: "#393342",
+        colorText: "#f3eff7",
+        colorTextSecondary: "#b9b1c5",
+        colorTextTertiary: "#948b9f",
+        borderRadius: 6,
+      },
+      components: {
+        Segmented: {
+          itemColor: "#b9b1c5",
+          itemHoverColor: "#f3eff7",
+          itemHoverBg: `color-mix(in srgb, ${memberTheme.primary} 12%, transparent)`,
+          itemSelectedBg: `color-mix(in srgb, ${memberTheme.primary} 22%, transparent)`,
+          itemSelectedColor: "#f3eff7",
+          trackBg: "#211d29",
+        },
+      },
+    }),
+    [memberTheme.primary],
+  )
   const [locale] = useLocale()
   const [period, setPeriod] = useState<Period>("1d")
-  const [timeZone, setTimeZone] = useState(detectDeviceTimeZone)
+  const [timeZone] = useState(detectDeviceTimeZone)
+  const [refreshToken, setRefreshToken] = useState(0)
   const filters = useFilterState()
   const [dataSource, setDataSource] = useDataSource()
 
@@ -122,7 +157,7 @@ function DashboardPageContent({
     removeDraftWidget,
     addWidgetAtSlot,
     updateDraftWidgetComparison,
-    updateDraftWidgetByCreatorDrop,
+    updateDraftWidgetCreatorScope,
     commitExternalLayout,
   } = useDashboardEditor(initialCanonicalLayout, canonicalSubmit)
 
@@ -259,7 +294,7 @@ function DashboardPageContent({
   // preview layout below is *derived* from it on every render and is never
   // written into `draftLayout`, so rolling a preview back is just clearing
   // this value.
-  const [pendingWidgetType, setPendingWidgetType] = useState<WidgetTypeId | null>(null)
+  const [pendingWidgetType, setPendingWidgetType] = useState<GridWidgetType | null>(null)
   const [insertionRejected, setInsertionRejected] = useState(false)
   const [previewSlot, setPreviewSlot] = useState<{ rowY: number; slotIndex: number; candidateId: string } | null>(null)
 
@@ -355,7 +390,7 @@ function DashboardPageContent({
 
   // Any change of the pending selection ends the preview session
   // (its candidate id is not reused for a different widget type).
-  const handleSelectWidgetType = useCallback((type: WidgetTypeId) => {
+  const handleSelectWidgetType = useCallback((type: GridWidgetType) => {
     setInsertionRejected(false)
     setPreviewSlot(null)
     setPendingWidgetType((current) => (current === type ? null : type))
@@ -417,7 +452,7 @@ function DashboardPageContent({
       // rejected commit falls through to the `else` branch below and never
       // reaches this call, so no false success announcement is possible.
       setAnnouncement(
-        `${getWidgetDefinition(pendingWidgetType).title} added at position ${previewSlot.slotIndex + 1} in row ${previewRowNumber}.`,
+        `${getGridWidgetMeta(pendingWidgetType).title} added at position ${previewSlot.slotIndex + 1} in row ${previewRowNumber}.`,
       )
       setPendingWidgetType(null)
       setInsertionRejected(false)
@@ -429,7 +464,7 @@ function DashboardPageContent({
 
   const previewStatus =
     activePreviewLayout && previewSlot && pendingWidgetType
-      ? `Previewing ${getWidgetDefinition(pendingWidgetType).title} at position ${previewSlot.slotIndex + 1} in row ${previewRowNumber}${
+      ? `Previewing ${getGridWidgetMeta(pendingWidgetType).title} at position ${previewSlot.slotIndex + 1} in row ${previewRowNumber}${
           activePreviewLayout.grid.columns !== draftLayout.grid.columns ? `; grid becomes ${activePreviewLayout.grid.columns} columns` : ""
         }.`
       : null
@@ -468,27 +503,51 @@ function DashboardPageContent({
   // Flow 3: a creator dragged out of the Creator List onto a
   // comparison chart appends to that widget's draft config only.
   const dragSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  const [activeCreatorIds, setActiveCreatorIds] = useState<string[]>([])
+  const [selectedCreatorIds, setSelectedCreatorIds] = useState<string[]>([])
+  const handleCreatorDragStart = useCallback((event: DragStartEvent) => {
+    const creatorId = event.active.data.current?.creatorId
+    const draggedCreatorIds = event.active.data.current?.creatorIds
+    if (typeof creatorId !== "string") return
+    const ids = Array.isArray(draggedCreatorIds) ? draggedCreatorIds.filter((id): id is string => typeof id === "string") : [creatorId]
+    setSelectedCreatorIds(ids)
+    setActiveCreatorIds(ids)
+  }, [])
+  // Drag-and-drop is the only action that ever writes a widget's creator
+  // scope; checkbox toggles here only ever adjust the in-progress selection
+  // for the *next* drag, so switching targets between drops can never
+  // silently overwrite a widget the user isn't currently dragging onto.
+  const handleCreatorSelectionChange = useCallback((creatorIds: string[]) => {
+    setSelectedCreatorIds(creatorIds)
+  }, [])
   const handleCreatorDragEnd = useCallback(
     (event: DragEndEvent) => {
+      setActiveCreatorIds([])
       if (!gridEditable || previewActive) return
       const creatorId = event.active.data.current?.creatorId
+      const draggedCreatorIds = event.active.data.current?.creatorIds
       const widgetId = event.over?.id
       if (typeof creatorId !== "string" || typeof widgetId !== "string") return
+      const creatorIds = Array.isArray(draggedCreatorIds)
+        ? draggedCreatorIds.filter((id): id is string => typeof id === "string")
+        : [creatorId]
       const name = creatorName(creatorId)
-      const outcome = describeCreatorDrop(draftLayout, widgetId, creatorId)
+      const outcome = describeCreatorDrop(draftLayout, widgetId)
       if (outcome.status === "missing") return
       if (outcome.status === "incompatible") {
-        setAnnouncement(`${name} can't be added: this widget is not a comparison chart.`)
+        setAnnouncement(`${name} can't be applied: this widget does not support member filters.`)
         return
       }
-      if (outcome.status === "duplicate") {
-        setAnnouncement(`${name} is already in this comparison.`)
-        return
+      const target = draftLayout.widgets.find((widget) => widget.widgetId === widgetId)
+      if (target && isComparisonCapableWidget(target)) {
+        updateDraftWidgetComparison(widgetId, creatorIds)
+      } else {
+        updateDraftWidgetCreatorScope(widgetId, creatorIds)
       }
-      updateDraftWidgetByCreatorDrop(widgetId, creatorId)
-      setAnnouncement(`${name} added to the comparison at order ${outcome.order}.`)
+      setSelectedCreatorIds(creatorIds)
+      setAnnouncement(`${creatorIds.length} member${creatorIds.length === 1 ? "" : "s"} applied to this chart.`)
     },
-    [gridEditable, previewActive, draftLayout, updateDraftWidgetByCreatorDrop],
+    [gridEditable, previewActive, draftLayout, updateDraftWidgetCreatorScope, updateDraftWidgetComparison],
   )
 
   const renderComparisonWidget = useCallback(
@@ -509,19 +568,41 @@ function DashboardPageContent({
     [displayedCanonicalLayout, comparisonItems, comparisonSource, gridEditable, previewActive],
   )
 
+  const reportDate = dataSource === "live" ? dateInTimeZone(new Date(), "Asia/Tokyo") : MOCK_REPORT_DATE
   const fetchFn = useCallback(() => {
     const fetchPromise =
       dataSource === "live"
-        ? fetchRealAnalytics(MOCK_REPORT_DATE, period, timeZone)
-        : fetchMockAnalytics(MOCK_REPORT_DATE, period)
+        ? fetchRealAnalytics(reportDate, period, timeZone)
+        : fetchMockAnalytics(reportDate, period)
     return fetchPromise.then((entry) => ({ ...entry, timeZone }))
-  }, [period, timeZone, dataSource])
+  }, [period, timeZone, dataSource, reportDate])
   const { entry, loading, error } = useCachedDashboardData(
-    { timeZone, reportDate: MOCK_REPORT_DATE, period, dataSource },
+    { timeZone, reportDate, period, dataSource },
     fetchFn,
+    refreshToken,
   )
 
+  useEffect(() => {
+    let timeoutId: number
+    const schedule = () => {
+      timeoutId = window.setTimeout(() => {
+        setRefreshToken((current) => current + 1)
+        schedule()
+      }, millisecondsUntilNextLocalHour(18))
+    }
+    schedule()
+    return () => window.clearTimeout(timeoutId)
+  }, [timeZone])
+
   const allStats = useMemo(() => entry?.results ?? [], [entry])
+  const dataBackedCreatorIds = useMemo(
+    () => new Set(allStats.filter((stat) => stat.status === "ok").map((stat) => stat.channelId)),
+    [allStats],
+  )
+  const selectableCreators = useMemo(
+    () => mockCreators.filter((creator) => dataBackedCreatorIds.has(creator.channelId)),
+    [dataBackedCreatorIds],
+  )
   const filteredStats = useMemo(
     () => allStats.filter((s) => matchesClassification(s, filters.state) && matchesContent(s, filters.state)),
     [allStats, filters.state],
@@ -532,14 +613,17 @@ function DashboardPageContent({
   const insights = useMemo(() => deriveInsights(filteredStats, period), [filteredStats, period])
 
   const byChannel = useMemo(
-    () => contributions.slice(0, 8).map((c) => ({ label: c.channelName, value: c.dailyIncrease })),
+    () => contributions.slice(0, 8).map((c) => ({ label: c.channelName, value: c.dailyIncrease, channelId: c.channelId })),
     [contributions],
   )
+  const allTimeTotal = useMemo(
+    () => allStats.filter((s) => s.status === "ok").reduce((sum, s) => sum + s.dailyIncrease, 0),
+    [allStats],
+  )
   const byDay = useMemo(() => {
-    const allTimeTotal = allStats.filter((s) => s.status === "ok").reduce((sum, s) => sum + s.dailyIncrease, 0)
     const ratio = allTimeTotal > 0 ? kpis.totalDailyIncrease / allTimeTotal : 0
     return mockDailySeries.map((p) => ({ label: p.date.slice(5), value: Math.round(p.dailyIncrease * ratio) }))
-  }, [allStats, kpis.totalDailyIncrease])
+  }, [allTimeTotal, kpis.totalDailyIncrease])
 
   const lastUpdatedAt =
     filteredStats.reduce((latest, s) => (s.collectedAt > latest ? s.collectedAt : latest), filteredStats[0]?.collectedAt ?? "") ||
@@ -557,13 +641,55 @@ function DashboardPageContent({
     timeZone,
   }
 
+  // Computed once per relevant dependency change rather than once per widget
+  // per render, so re-renders that touch neither the data nor the layout
+  // (drag start/end, announcements, ...) don't redo every scoped widget's
+  // KPI/contribution/insight derivation.
+  const scopedWidgetDataById = useMemo(() => {
+    const result: Record<string, DashboardWidgetData> = {}
+    for (const widget of displayedCanonicalLayout.widgets) {
+      const creatorIds = widget.creatorScope?.creatorIds
+      if (!creatorIds?.length) continue
+      const allowed = new Set(creatorIds)
+      const scopedStats = filteredStats.filter((stat) => allowed.has(stat.channelId))
+      const scopedKpis = deriveKpis(scopedStats)
+      const scopedContributions = deriveChannelContribution(scopedStats)
+      const ratio = allTimeTotal > 0 ? scopedKpis.totalDailyIncrease / allTimeTotal : 0
+      result[widget.widgetId] = {
+        ...widgetData,
+        kpis: scopedKpis,
+        contributions: scopedContributions,
+        filteredStats: scopedStats,
+        insights: deriveInsights(scopedStats, period),
+        byChannel: scopedContributions.slice(0, 8).map((item) => ({ label: item.channelName, value: item.dailyIncrease, channelId: item.channelId })),
+        byDay: mockDailySeries.map((point) => ({ label: point.date.slice(5), value: Math.round(point.dailyIncrease * ratio) })),
+      }
+    }
+    return result
+  }, [allTimeTotal, displayedCanonicalLayout.widgets, filteredStats, period, widgetData])
+
+  const getWidgetData = useCallback(
+    (widgetId: string): DashboardWidgetData => scopedWidgetDataById[widgetId] ?? widgetData,
+    [scopedWidgetDataById, widgetData],
+  )
+
+  const getWidgetScopeLabels = useCallback((widgetId: string): string[] => {
+    const ids = displayedCanonicalLayout.widgets.find((widget) => widget.widgetId === widgetId)?.creatorScope?.creatorIds ?? []
+    return ids.map(creatorName)
+  }, [displayedCanonicalLayout.widgets])
+
   return (
-    <DndContext sensors={dragSensors} onDragEnd={handleCreatorDragEnd}>
+    <ConfigProvider theme={dashboardAntdTheme}>
+    <DndContext
+      sensors={dragSensors}
+      onDragStart={handleCreatorDragStart}
+      onDragCancel={() => setActiveCreatorIds([])}
+      onDragEnd={handleCreatorDragEnd}
+    >
     <div className="dashboard-page">
       <DashboardHeader
         lastUpdatedAt={lastUpdatedAt}
         timeZone={timeZone}
-        onTimeZoneChange={setTimeZone}
         period={period}
         onPeriodChange={setPeriod}
         dataSource={dataSource}
@@ -579,6 +705,7 @@ function DashboardPageContent({
         onLifecycleStageChange={filters.setLifecycleStage}
         onContentTagToggle={filters.toggleContentTag}
         onContentFormatChange={filters.setContentFormat}
+        onReset={filters.reset}
       />
 
       {legacyRecovery && (
@@ -620,12 +747,22 @@ function DashboardPageContent({
                 resetToDefaultLabel="Restore Default"
                 saveDisabled={previewActive}
               />
+              {gridEditable && (
+                <DraggableCreatorList
+                  creators={mockCreators}
+                  availableCreatorIds={dataBackedCreatorIds}
+                  initiallyOpen={false}
+                  dragging={activeCreatorIds.length > 0}
+                  selectedIds={selectedCreatorIds}
+                  onSelectedIdsChange={handleCreatorSelectionChange}
+                />
+              )}
               {/* Flow 2 entry point: view mode only, so the dialog's
                * canonical-only transaction can never race an unsaved draft. */}
               {!editMode && (
-                <button type="button" className="soft-button" onClick={comparisonDialog.open} disabled={comparisonItems.length === 0}>
+                <Button onClick={comparisonDialog.open} disabled={comparisonItems.length === 0}>
                   Compare Creators
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -667,8 +804,11 @@ function DashboardPageContent({
             <DashboardGrid
               widgets={projection.widgets}
               columns={projection.columns}
+              rows={layoutForDisplay.grid.rows}
               editable={gridEditable}
               data={widgetData}
+              getWidgetData={getWidgetData}
+              getWidgetScopeLabels={getWidgetScopeLabels}
               renderComparisonWidget={renderComparisonWidget}
               onCommitGeometry={handleCommitGeometry}
               onRemoveWidget={removeDraftWidget}
@@ -690,7 +830,7 @@ function DashboardPageContent({
            * border-box. */}
           {gridEditable && pendingWidgetType && (
             <WidgetInsertionSlots
-              pendingTitle={getWidgetDefinition(pendingWidgetType).title}
+              pendingTitle={getGridWidgetMeta(pendingWidgetType).title}
               rows={insertionRows}
               onSelectSlot={handleSelectInsertionSlot}
               onCancel={handleCancelInsertion}
@@ -702,22 +842,10 @@ function DashboardPageContent({
             />
           )}
 
-          {/* Flow 3: below the grid, like the Add slot panel -- it never
-           * shifts the grid, and adds no tab stops ahead of the toolbar/tray/grid. */}
-          {gridEditable && (
-            <section className="card creator-drag-panel" aria-labelledby="creator-drag-panel-title" data-testid="creator-drag-panel">
-              <h2 id="creator-drag-panel-title" className="section-header" style={{ marginBottom: 0 }}>
-                Drag creators to compare
-              </h2>
-              <p className="creator-drag-panel__hint">Drag a creator onto a comparison chart to add it to that chart. Use Select Creators on a chart for a keyboard-friendly alternative.</p>
-              <DraggableCreatorList creators={mockCreators} />
-            </section>
-          )}
-
           {gridEditable && pickerWidget && isComparisonCapableWidget(pickerWidget) && (
             <CreatorComparisonPicker
               key={pickerWidget.widgetId}
-              creators={mockCreators}
+              creators={selectableCreators}
               initialSelectedIds={pickerWidget.comparison?.creatorIds ?? []}
               onCancel={() => setPickerWidgetId(null)}
               onApply={handleApplyPickerSelection}
@@ -726,7 +854,7 @@ function DashboardPageContent({
 
           {comparisonDialog.isOpen && (
             <ComparisonMappingDialog
-              creators={mockCreators}
+              creators={selectableCreators}
               availableComparisonItems={comparisonItems}
               orderedCreatorIds={comparisonDialog.orderedCreatorIds}
               onToggleCreator={comparisonDialog.toggleCreator}
@@ -757,6 +885,15 @@ function DashboardPageContent({
       <SaveToast visible={saveConfirmation} />
       <DashboardFooter />
     </div>
+      <DragOverlay dropAnimation={null}>
+        {activeCreatorIds.length > 0 && (
+          <div className="member-drag-overlay">
+            <strong>{activeCreatorIds.length} member{activeCreatorIds.length === 1 ? "" : "s"}</strong>
+            <span>{activeCreatorIds.map(creatorName).join(", ")}</span>
+          </div>
+        )}
+      </DragOverlay>
     </DndContext>
+    </ConfigProvider>
   )
 }

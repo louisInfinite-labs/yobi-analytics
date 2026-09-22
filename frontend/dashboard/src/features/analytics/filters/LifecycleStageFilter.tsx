@@ -1,4 +1,5 @@
 import { LIFECYCLE_STAGE_LABELS, type LifecycleStage } from "../../../entities/creator/model/domain"
+import { NullableSegmented } from "../../../shared/ui/NullableSegmented"
 
 const OPTIONS: LifecycleStage[] = ["active", "pre_debut", "graduated", "retired"]
 
@@ -12,18 +13,11 @@ interface LifecycleStageFilterProps {
  * independent status dimension (dashboard_ui_direction_en.md section 9). */
 export function LifecycleStageFilter({ value, onChange }: LifecycleStageFilterProps) {
   return (
-    <div className="filter-row">
-      <span className="filter-row__label">Lifecycle</span>
-      <div className="filter-chip-group">
-        <button type="button" className="filter-chip" aria-pressed={value === null} onClick={() => onChange(null)}>
-          All
-        </button>
-        {OPTIONS.map((stage) => (
-          <button key={stage} type="button" className="filter-chip" aria-pressed={value === stage} onClick={() => onChange(stage)}>
-            {LIFECYCLE_STAGE_LABELS[stage]}
-          </button>
-        ))}
-      </div>
-    </div>
+    <NullableSegmented
+      label="Lifecycle"
+      value={value}
+      onChange={onChange}
+      options={OPTIONS.map((stage) => ({ label: LIFECYCLE_STAGE_LABELS[stage], value: stage }))}
+    />
   )
 }

@@ -26,14 +26,15 @@ const LAYOUT: CanonicalLayout = {
   ],
 }
 
-function renderGrid(props: { placeholderWidgetId?: string | null; locked?: boolean }) {
+function renderGrid(props: { placeholderWidgetId?: string | null; locked?: boolean; editable?: boolean }) {
   const projection = projectCanonicalLayoutForGridStack(LAYOUT)
-  render(
+  return render(
     <MemberThemeProvider>
     <DashboardGrid
       widgets={projection.widgets}
       columns={projection.columns}
-      editable
+      rows={LAYOUT.grid.rows}
+      editable={props.editable ?? true}
       data={DATA}
       onCommitGeometry={vi.fn(() => true)}
       onRemoveWidget={vi.fn()}
@@ -46,6 +47,15 @@ function renderGrid(props: { placeholderWidgetId?: string | null; locked?: boole
 }
 
 describe("DashboardGrid preview placeholder + lock (GAP-7)", () => {
+  it("shows one placement guide per canonical cell only while editing", () => {
+    const { unmount } = renderGrid({})
+    expect(screen.getByTestId("grid-slot-guides").children).toHaveLength(3)
+
+    unmount()
+    renderGrid({ editable: false })
+    expect(screen.queryByTestId("grid-slot-guides")).not.toBeInTheDocument()
+  })
+
   it("renders the placeholder candidate as a preview-only shell: no Remove, aria-hidden, not the real chart", async () => {
     renderGrid({ placeholderWidgetId: "candidate" })
     const placeholder = await screen.findByTestId("insertion-placeholder")

@@ -1,5 +1,7 @@
+import { Button } from "antd"
 import { getWidgetDefinition } from "../utils/widgetRegistry"
-import type { WidgetTypeId } from "../model/widget"
+import { COMPARISON_WIDGET_TYPE } from "../../comparison/utils/dashboardComparisonWidgets"
+import { getGridWidgetMeta, type GridWidgetType } from "../utils/gridWidgetMeta"
 
 export type ChartCatalogTrayStatus = "loading" | "error" | "success"
 
@@ -10,7 +12,7 @@ interface WidgetTrayProps {
    * `ALL_WIDGET_TYPES`. Only meaningful when `catalogStatus === "success"`;
    * the caller passes an empty array for `"loading"`/`"error"` so this
    * component never has to know about `ChartCatalogState` itself. */
-  availableTypes: WidgetTypeId[]
+  availableTypes: GridWidgetType[]
   /** Lets the tray show a distinguishable message for the
    * catalog's pending/error state instead of silently rendering zero
    * options (which would be indistinguishable from a real empty-success
@@ -19,10 +21,10 @@ interface WidgetTrayProps {
   /** Selecting a chart only marks it as the pending
    * insertion candidate -- it does not place it. `null` while nothing is
    * selected. */
-  selectedType: WidgetTypeId | null
+  selectedType: GridWidgetType | null
   /** Clicking the already-selected type again is how a caller may choose to
    * implement deselection; this component only reports the click. */
-  onSelectWidget: (type: WidgetTypeId) => void
+  onSelectWidget: (type: GridWidgetType) => void
   /** Explicit retry after a catalog error (Section 3.3). */
   onRetryCatalog?: () => void
 }
@@ -47,11 +49,7 @@ export function WidgetTray({ availableTypes, catalogStatus, selectedType, onSele
           <p className="widget-tray__status" data-testid="widget-tray-status">
             Couldn't load the chart catalog. Existing widgets are unaffected.
           </p>
-          {onRetryCatalog && (
-            <button type="button" className="soft-button" onClick={onRetryCatalog}>
-              Retry
-            </button>
-          )}
+          {onRetryCatalog && <Button onClick={onRetryCatalog}>Retry</Button>}
         </>
       )}
       {catalogStatus === "success" && availableTypes.length === 0 && (
@@ -60,9 +58,11 @@ export function WidgetTray({ availableTypes, catalogStatus, selectedType, onSele
         </p>
       )}
       <div className="widget-tray__list">
-        {catalogStatus === "success" &&
-          availableTypes.map((type) => {
-            const definition = getWidgetDefinition(type)
+        {availableTypes.map((type) => {
+            const title = getGridWidgetMeta(type).title
+            const description = type === COMPARISON_WIDGET_TYPE
+              ? "Compare selected members on one chart."
+              : getWidgetDefinition(type).description
             return (
               <button
                 type="button"
@@ -71,8 +71,8 @@ export function WidgetTray({ availableTypes, catalogStatus, selectedType, onSele
                 aria-pressed={selectedType === type}
                 onClick={() => onSelectWidget(type)}
               >
-                <span className="widget-tray__item-title">{definition.title}</span>
-                <span className="widget-tray__item-description">{definition.description}</span>
+                <span className="widget-tray__item-title">{title}</span>
+                <span className="widget-tray__item-description">{description}</span>
               </button>
             )
           })}

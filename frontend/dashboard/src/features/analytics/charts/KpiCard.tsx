@@ -4,7 +4,7 @@ import { GrowthBadge } from "./GrowthBadge"
 
 interface KpiCardProps {
   label: string
-  value: number | string
+  value: number | string | ReactNode
   growthPercent?: number | null
   sub?: ReactNode
   formatAsCompactNumber?: boolean

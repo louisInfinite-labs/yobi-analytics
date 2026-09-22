@@ -3,6 +3,7 @@ import type { DailyVideoStat } from "../../../entities/creator/model/domain"
 import { formatCompactNumber, formatSignedCompactNumber } from "../../../shared/i18n/format"
 import { rankVideos, type RankingType } from "../utils/rankVideos"
 import { GrowthBadge } from "./GrowthBadge"
+import { CreatorAvatar } from "./CreatorAvatar"
 
 const TABS: { value: RankingType; label: string }[] = [
   { value: "trending", label: "Trending" },
@@ -20,7 +21,7 @@ export function RankingCard({ stats }: RankingCardProps) {
   const ranked = rankVideos(stats, rankingType, 5)
 
   return (
-    <div className="card">
+    <div className="card ranking-card">
       <div className="chart-card__toolbar">
         <h2 className="section-header" style={{ marginBottom: 0 }}>
           Ranking
@@ -47,8 +48,14 @@ export function RankingCard({ stats }: RankingCardProps) {
           {ranked.map((entry) => (
             <li key={entry.video.videoId} className="ranking-row">
               <span className="ranking-row__rank">{entry.rank}</span>
-              <span className="ranking-row__title" title={entry.video.videoTitle}>
-                {entry.video.videoTitle}
+              <span className="ranking-row__content">
+                <span className="ranking-row__creator">
+                  <CreatorAvatar channelId={entry.video.channelId} channelName={entry.video.channelName} />
+                  <span>{entry.video.channelName}</span>
+                </span>
+                <span className="ranking-row__title" title={entry.video.videoTitle}>
+                  {entry.video.videoTitle}
+                </span>
               </span>
               <span className="ranking-row__meta">
                 {rankingType === "fastest_growing" ? (

@@ -106,7 +106,7 @@ describe("groupCreatorsForDock", () => {
     expect(groups.find((g) => g.branch === "vspo_en")!.creators.map((c) => c.channelId)).toEqual(["a", "b", "c"])
   })
 
-  it("Hololive JP: numbered generations ascending, then Gamers, holoX, DEV_IS/ReGLOSS/FLOW GLOW, then unrecognized tags last", () => {
+  it("Hololive JP: follows the official talent category order", () => {
     const creators = [
       creator({ channelId: "staff", channelName: "Staff", branch: "holo_jp", groupKey: ["NO"], channelType: "staff" }),
       creator({ channelId: "gen3", channelName: "Gen3", branch: "holo_jp", groupKey: ["3期生"] }),
@@ -121,11 +121,11 @@ describe("groupCreatorsForDock", () => {
     expect(groups.find((g) => g.branch === "holo_jp")!.creators.map((c) => c.channelId)).toEqual([
       "gen1b", // Gen 1, stable tie: gen1b appears before gen1a in input
       "gen1a",
-      "gen3",
       "gamers",
+      "gen3",
       "holox",
-      "devis",
       "reGloss",
+      "devis",
       "staff", // unrecognized groupKey ("NO") sorts last
     ])
   })

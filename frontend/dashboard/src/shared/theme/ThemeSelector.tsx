@@ -1,3 +1,4 @@
+import { Select } from "antd"
 import { useMemberTheme } from "./ThemeContext"
 
 /** Switches the dashboard's page-level visual theme (Hololive soft-idol vs.
@@ -6,15 +7,16 @@ export function ThemeSelector() {
   const { themeId, setThemeId, availableThemes } = useMemberTheme()
 
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)" }}>
+    <label className="preference-control">
       Theme
-      <select className="soft-select" value={themeId} onChange={(e) => setThemeId(e.target.value)} aria-label="Dashboard theme">
-        {availableThemes.map((theme) => (
-          <option key={theme.id} value={theme.id}>
-            {theme.label}
-          </option>
-        ))}
-      </select>
+      <Select
+        value={themeId}
+        onChange={(next) => setThemeId(next)}
+        aria-label="Dashboard theme"
+        options={availableThemes.map((theme) => ({ value: theme.id, label: theme.label }))}
+        popupMatchSelectWidth={false}
+        size="small"
+      />
     </label>
   )
 }

@@ -1,4 +1,5 @@
 import { Fragment } from "react"
+import { Button } from "antd"
 import { getWidgetDefinition, isKnownWidgetType } from "../utils/widgetRegistry"
 import type { InsertableRow } from "../utils/dashboardInsertionRows"
 import type { DashboardWidget } from "../model/dashboardLayout"
@@ -59,12 +60,10 @@ export function WidgetInsertionSlots({
           Choose where to insert <strong>{pendingTitle}</strong>:
         </p>
         <div className="widget-insertion-slots__actions">
-          <button type="button" className="soft-button widget-insertion-slots__insert" onClick={onInsert} disabled={!canInsert}>
+          <Button type="primary" onClick={onInsert} disabled={!canInsert}>
             Insert here
-          </button>
-          <button type="button" className="soft-button" onClick={onCancel}>
-            Cancel
-          </button>
+          </Button>
+          <Button onClick={onCancel}>Cancel</Button>
         </div>
       </div>
       <p className="widget-insertion-slots__status" data-testid="widget-insertion-preview-status" role="status">

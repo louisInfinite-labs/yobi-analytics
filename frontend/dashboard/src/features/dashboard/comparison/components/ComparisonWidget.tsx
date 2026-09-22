@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { Button } from "antd"
 import { ComparisonChart } from "./ComparisonChart"
 import { ComparisonOrderBadge } from "./ComparisonOrderBadge"
 import { resolveComparisonCreators } from "../utils/comparisonCreators"
@@ -77,9 +78,9 @@ export function ComparisonWidget({ widget, roster, availableComparisonItems, fet
           </span>
         )}
         {onSelectCreators && (
-          <button type="button" className="soft-button comparison-widget__select" onClick={() => onSelectCreators(widget.widgetId)}>
+          <Button className="comparison-widget__select" onClick={() => onSelectCreators(widget.widgetId)}>
             Select Creators
-          </button>
+          </Button>
         )}
       </div>
       <div ref={ref} className="comparison-widget__chart">

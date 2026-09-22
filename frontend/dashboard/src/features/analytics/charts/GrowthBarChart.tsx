@@ -1,12 +1,14 @@
 import { useState } from "react"
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from "recharts"
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, type XAxisTickContentProps } from "recharts"
 import { usePrefersReducedMotion } from "../../../shared/hooks/usePrefersReducedMotion"
 import { formatCompactNumber } from "../../../shared/i18n/format"
 import { useMemberTheme } from "../../../shared/theme/ThemeContext"
+import { getCreatorAvatarVisual } from "./CreatorAvatar"
 
 export interface GrowthBarChartPoint {
   label: string
   value: number
+  channelId?: string
 }
 
 interface GrowthBarChartProps {
@@ -24,6 +26,18 @@ export function GrowthBarChart({ byDay, byChannel }: GrowthBarChartProps) {
   const { theme } = useMemberTheme()
 
   const data = dimension === "day" ? byDay : byChannel
+  const renderChannelTick = ({ x, y, payload }: XAxisTickContentProps) => {
+    const point = byChannel[payload.index]
+    if (!point) return <g />
+    const visual = getCreatorAvatarVisual(point.channelId ?? point.label, point.label)
+    return (
+      <g transform={`translate(${Number(x)},${Number(y)})`}>
+        <text y={12} textAnchor="middle" fill="var(--text-tertiary)" fontSize={11}>{point.label}</text>
+        <circle cy={29} r={10} fill={visual.background} />
+        <text y={33} textAnchor="middle" fill={visual.color} fontSize={9} fontWeight={700}>{visual.initial}</text>
+      </g>
+    )
+  }
 
   return (
     <div className="chart-card">
@@ -73,9 +87,15 @@ export function GrowthBarChart({ byDay, byChannel }: GrowthBarChartProps) {
            * nothing is not). Does not affect 1X, which already has ample
            * flex-computed height above this floor. */}
           <ResponsiveContainer width="100%" height="100%" minHeight={1} className="chart-card__plot">
-            <BarChart data={data} onMouseLeave={() => setActiveIndex(null)}>
+            <BarChart data={data} onMouseLeave={() => setActiveIndex(null)} margin={dimension === "channel" ? { bottom: 24 } : undefined}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--surface-border)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--text-tertiary)" }} axisLine={{ stroke: "var(--surface-border)" }} tickLine={false} />
+              <XAxis
+                dataKey="label"
+                tick={dimension === "channel" ? renderChannelTick : { fontSize: 11, fill: "var(--text-tertiary)" }}
+                axisLine={{ stroke: "var(--surface-border)" }}
+                tickLine={false}
+                height={dimension === "channel" ? 52 : 30}
+              />
               <YAxis
                 tickFormatter={(v) => formatCompactNumber(Number(v))}
                 tick={{ fontSize: 11, fill: "var(--text-tertiary)" }}

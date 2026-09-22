@@ -19,7 +19,7 @@ interface UseCachedDashboardDataResult {
  * future Read API call (Roadmap 3.4); it's a plain async function so this
  * hook doesn't know or care whether the data came from mocks or a real
  * network request. */
-export function useCachedDashboardData(key: CacheKey, fetchFn: () => Promise<CacheEntry>): UseCachedDashboardDataResult {
+export function useCachedDashboardData(key: CacheKey, fetchFn: () => Promise<CacheEntry>, refreshToken = 0): UseCachedDashboardDataResult {
   const keySignature = `${key.timeZone}:${key.reportDate}:${key.period}:${key.dataSource}`
 
   const [entry, setEntry] = useState<CacheEntry | null>(() => readCache(key))
@@ -65,7 +65,7 @@ export function useCachedDashboardData(key: CacheKey, fetchFn: () => Promise<Cac
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keySignature])
+  }, [keySignature, refreshToken])
 
   return { entry, loading, error }
 }

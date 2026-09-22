@@ -41,6 +41,51 @@ export const GAMERS_GROUP_LABEL_KEY = "__gamers__"
 
 const NUMBERED_GENERATION_PATTERN = /^(\d+)期生$/
 
+/** Official 所属タレント order. Entries without roster data simply do not
+ * render; アソビ★まわり隊！ is intentionally excluded until data exists. */
+export const HOLOLIVE_OFFICIAL_GROUP_ORDER = [
+  "0期生",
+  "1期生",
+  "2期生",
+  "ゲーマーズ",
+  "3期生",
+  "4期生",
+  "5期生",
+  "6期生",
+  "holoX",
+  "AREA15",
+  "holoro",
+  "holoh3ro",
+  "Myth",
+  "Project: HOPE",
+  "Council",
+  "Promise",
+  "Advent",
+  "Justice",
+  "ReGLOSS",
+  "FLOWGLOW",
+  "卒業生",
+  "holoAN",
+  "事務所スタッフ",
+] as const
+
+export function hololiveOfficialGroupRank(key: string): number {
+  const normalized = key === "FLOW GLOW" ? "FLOWGLOW" : key
+  const index = HOLOLIVE_OFFICIAL_GROUP_ORDER.indexOf(normalized as (typeof HOLOLIVE_OFFICIAL_GROUP_ORDER)[number])
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index
+}
+
+export function hololiveGroupDisplayLabel(key: string, branch?: BranchKey | null): string {
+  if (branch === "holo_id") {
+    if (key === "1期生") return "AREA15"
+    if (key === "2期生") return "holoro"
+    if (key === "3期生") return "holoh3ro"
+  }
+  if (key === "6期生" || key === "holoX") return "秘密結社holoX"
+  if (key === "FLOWGLOW") return "FLOW GLOW"
+  return key
+}
+
 function primaryGroupKey<T extends GroupableCreator>(creator: T): string {
   return creator.groupKey[0] ?? ""
 }
@@ -71,6 +116,7 @@ export function groupHololiveJp<T extends GroupableCreator>(creators: T[], getSo
   const gamers: T[] = []
   const flowGlow: T[] = []
   const reGloss: T[] = []
+  const holoX: T[] = []
   const other: T[] = []
 
   for (const creator of creators) {
@@ -81,6 +127,8 @@ export function groupHololiveJp<T extends GroupableCreator>(creators: T[], getSo
       const bucket = numbered.get(gen)
       if (bucket) bucket.push(creator)
       else numbered.set(gen, [creator])
+    } else if (key === "holoX") {
+      holoX.push(creator)
     } else if (key === "FLOWGLOW") {
       flowGlow.push(creator)
     } else if (key === "ReGLOSS") {
@@ -92,13 +140,27 @@ export function groupHololiveJp<T extends GroupableCreator>(creators: T[], getSo
     if (creator.groupKey.includes("ゲーマーズ")) gamers.push(creator)
   }
 
-  const subgroups: Subgroup<T>[] = [...numbered.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([gen, members]) => ({ label: `${gen}期生`, creators: members }))
-
+  const subgroups: Subgroup<T>[] = []
+  for (const gen of [0, 1, 2]) {
+    const members = numbered.get(gen)
+    if (members) subgroups.push({ label: `${gen}期生`, creators: members })
+  }
   if (gamers.length > 0) subgroups.push({ label: GAMERS_GROUP_LABEL_KEY, creators: gamers })
-  if (flowGlow.length > 0) subgroups.push({ label: "FLOW GLOW", creators: groupChannelFirst(flowGlow) })
+  for (const gen of [3, 4, 5]) {
+    const members = numbered.get(gen)
+    if (members) subgroups.push({ label: hololiveGroupDisplayLabel(`${gen}期生`, "holo_jp"), creators: members })
+  }
+  // "6期生" and literal "holoX" both display as "秘密結社holoX" (see
+  // hololiveGroupDisplayLabel) -- merged here so they never emit as two
+  // separately-labeled subgroups.
+  const holoXAll = [...(numbered.get(6) ?? []), ...holoX]
+  if (holoXAll.length > 0) subgroups.push({ label: "秘密結社holoX", creators: groupChannelFirst(holoXAll) })
+  const remainingGenerations = [...numbered.entries()]
+    .filter(([gen]) => gen > 6)
+    .sort(([a], [b]) => a - b)
+  for (const [gen, members] of remainingGenerations) subgroups.push({ label: `${gen}期生`, creators: members })
   if (reGloss.length > 0) subgroups.push({ label: "ReGLOSS", creators: groupChannelFirst(reGloss) })
+  if (flowGlow.length > 0) subgroups.push({ label: "FLOW GLOW", creators: groupChannelFirst(flowGlow) })
   if (other.length > 0) {
     const sortedOther = [...other].sort((a, b) => getSortName(a).toLowerCase().localeCompare(getSortName(b).toLowerCase()))
     subgroups.push({ label: OTHER_GROUP_LABEL_KEY, creators: sortedOther })
@@ -164,7 +226,7 @@ export function subgroupsForBranch<T extends GroupableCreator>(
     case "holo_en":
       return groupByFixedOrThenNumbered(creators, HOLOLIVE_EN_FIXED_ORDER)
     case "holo_id":
-      return groupByFixedOrThenNumbered(creators, [])
+      return groupByFixedOrThenNumbered(creators, [], (key) => hololiveGroupDisplayLabel(key, branch))
     case "vspo_jp":
     case "vspo_en":
       return groupFlat(creators)

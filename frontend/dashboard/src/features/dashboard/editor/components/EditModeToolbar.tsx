@@ -1,3 +1,5 @@
+import { Button } from "antd"
+
 interface EditModeToolbarProps {
   editMode: boolean
   isDirty: boolean
@@ -31,24 +33,20 @@ export function EditModeToolbar({
 }: EditModeToolbarProps) {
   if (!editMode) {
     return (
-      <button type="button" className="soft-button edit-mode-toolbar__enter" onClick={onEnterEditMode}>
+      <Button className="edit-mode-toolbar__enter" onClick={onEnterEditMode}>
         Edit Layout
-      </button>
+      </Button>
     )
   }
 
   return (
     <div className="edit-mode-toolbar" role="toolbar" aria-label="Layout editing">
       <span className="edit-mode-toolbar__label">Editing layout{isDirty ? " (unsaved changes)" : ""}</span>
-      <button type="button" className="soft-button" onClick={onResetToDefault}>
-        {resetToDefaultLabel}
-      </button>
-      <button type="button" className="soft-button" onClick={onCancel}>
-        Cancel
-      </button>
-      <button type="button" className="soft-button edit-mode-toolbar__save" onClick={onSave} disabled={!isDirty || saveDisabled}>
+      <Button onClick={onResetToDefault}>{resetToDefaultLabel}</Button>
+      <Button onClick={onCancel}>Cancel</Button>
+      <Button type="primary" className="edit-mode-toolbar__save" onClick={onSave} disabled={!isDirty || saveDisabled}>
         Save
-      </button>
+      </Button>
     </div>
   )
 }

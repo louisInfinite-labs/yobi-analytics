@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react"
+import { Button } from "antd"
+import { Bell, BellOff } from "lucide-react"
 import { apiRequest } from "../../../shared/api/apiClient"
 import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
 import { getOrCreateClientId } from "../../../shared/api/clientId"
@@ -170,15 +172,14 @@ export function NotificationToggle() {
 
   return (
     <span className="notification-toggle">
-      <button
-        type="button"
-        className="soft-button"
+      <Button
         onClick={handleClick}
         disabled={status === "checking" || isSyncing}
         aria-pressed={status === "subscribed"}
+        icon={status === "subscribed" ? <Bell size={14} aria-hidden="true" /> : <BellOff size={14} aria-hidden="true" />}
       >
-        {status === "subscribed" ? "🔔 Notifications on" : "🔕 Enable notifications"}
-      </button>
+        {status === "subscribed" ? "Notifications on" : "Enable notifications"}
+      </Button>
       {syncError && (
         <span role="alert" className="notification-toggle__error">
           Couldn't sync with the server — try again.

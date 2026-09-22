@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { Input } from "antd"
 
 // Curated fallback for engines without Intl.supportedValuesOf (Roadmap 3.4/3.5:
 // support any valid IANA zone, not a hardcoded Tokyo/Hong Kong-only allowlist —
@@ -73,10 +74,9 @@ export function TimeZoneSelector({ value, onChange }: TimeZoneSelectorProps) {
   }
 
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)" }}>
+    <label className="dashboard-header__control-label">
       Time zone
-      <input
-        className="soft-select"
+      <Input
         list="timezone-options"
         value={draft}
         onChange={(e) => {
@@ -92,6 +92,7 @@ export function TimeZoneSelector({ value, onChange }: TimeZoneSelectorProps) {
         }}
         aria-label="Reporting time zone"
         style={{ width: 160 }}
+        size="small"
       />
       <datalist id="timezone-options">
         {zones.map((zone) => (

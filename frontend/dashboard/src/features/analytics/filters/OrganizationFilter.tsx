@@ -1,4 +1,7 @@
 import { ORGANIZATION_LABELS, type OrganizationKey } from "../../../entities/creator/model/domain"
+import { NullableSegmented } from "../../../shared/ui/NullableSegmented"
+
+const OPTIONS: OrganizationKey[] = ["hololive", "vspo"]
 
 interface OrganizationFilterProps {
   value: OrganizationKey | null
@@ -7,24 +10,12 @@ interface OrganizationFilterProps {
 
 /** Top-level Hololive / VSPO / All single-select filter. */
 export function OrganizationFilter({ value, onChange }: OrganizationFilterProps) {
-  const options: (OrganizationKey | null)[] = [null, "hololive", "vspo"]
-
   return (
-    <div className="filter-row">
-      <span className="filter-row__label">Organization</span>
-      <div className="filter-chip-group">
-        {options.map((org) => (
-          <button
-            key={org ?? "all"}
-            type="button"
-            className="filter-chip"
-            aria-pressed={value === org}
-            onClick={() => onChange(org)}
-          >
-            {org ? ORGANIZATION_LABELS[org] : "All"}
-          </button>
-        ))}
-      </div>
-    </div>
+    <NullableSegmented
+      label="Organization"
+      value={value}
+      onChange={onChange}
+      options={OPTIONS.map((org) => ({ label: ORGANIZATION_LABELS[org], value: org }))}
+    />
   )
 }

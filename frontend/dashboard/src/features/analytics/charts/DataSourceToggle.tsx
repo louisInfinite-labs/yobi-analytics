@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react"
+import { Segmented } from "antd"
 
 export type DataSource = "mock" | "live"
 
 const STORAGE_KEY = "yobi:dataSource"
 
 function readStoredDataSource(): DataSource {
+  if (!import.meta.env.DEV) return "live"
   try {
     const hasLiveEndpoint = Boolean(import.meta.env.VITE_API_BASE_URL)
     return hasLiveEndpoint && localStorage.getItem(STORAGE_KEY) === "live" ? "live" : "mock"
@@ -19,6 +21,7 @@ export function useDataSource(): [DataSource, (next: DataSource) => void] {
   const [dataSource, setDataSourceState] = useState<DataSource>(readStoredDataSource)
 
   const setDataSource = (next: DataSource) => {
+    if (!import.meta.env.DEV) return
     setDataSourceState(next)
     try {
       localStorage.setItem(STORAGE_KEY, next)
@@ -46,26 +49,18 @@ export function DataSourceToggle({ value, onChange }: DataSourceToggleProps) {
     setApiConfigured(Boolean(import.meta.env.VITE_API_BASE_URL))
   }, [])
 
-  if (!apiConfigured) return null
+  if (!import.meta.env.DEV) return null
 
   return (
-    <div className="data-source-toggle" role="group" aria-label="Data source">
-      <button
-        type="button"
-        className="soft-button data-source-toggle__option"
-        aria-pressed={value === "mock"}
-        onClick={() => onChange("mock")}
-      >
-        Mock
-      </button>
-      <button
-        type="button"
-        className="soft-button data-source-toggle__option"
-        aria-pressed={value === "live"}
-        onClick={() => onChange("live")}
-      >
-        Live
-      </button>
+    <div role="group" aria-label="Data source">
+      <Segmented
+        value={value}
+        onChange={(next) => onChange(next as DataSource)}
+        options={[
+          { label: "Mock", value: "mock" },
+          { label: "Live", value: "live", disabled: !apiConfigured },
+        ]}
+      />
     </div>
   )
 }
