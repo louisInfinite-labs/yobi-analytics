@@ -10,6 +10,8 @@ import { OrganizationFilter } from "./OrganizationFilter"
 import { TagFilter } from "./TagFilter"
 import { Button } from "antd"
 import { RotateCcw } from "lucide-react"
+import { useLocale } from "../../../shared/i18n/hooks/useLocale"
+import { t } from "../../../shared/i18n/translations"
 
 interface ClassificationFilterBarProps {
   state: FilterState
@@ -37,6 +39,7 @@ export function ClassificationFilterBar({
   onContentFormatChange,
   onReset,
 }: ClassificationFilterBarProps) {
+  const [locale] = useLocale()
   const branches = availableBranches(state.organization, mockCreators)
   const groupKeys = availableGroupKeys(state.organization, state.branch, mockCreators)
   const activeCount = [
@@ -53,16 +56,20 @@ export function ClassificationFilterBar({
     <section className="filter-bar" aria-labelledby="analytics-filter-title">
       <div className="filter-bar__header">
         <div>
-          <h2 id="analytics-filter-title">Filter analytics</h2>
-          <span>{activeCount === 0 ? "All dashboard data" : `${activeCount} active filter${activeCount === 1 ? "" : "s"}`}</span>
+          <h2 id="analytics-filter-title">{t(locale, "classificationFilterBar.title")}</h2>
+          <span>
+            {activeCount === 0
+              ? t(locale, "classificationFilterBar.noActiveFilters")
+              : t(locale, "classificationFilterBar.activeFilterCount", { count: String(activeCount) })}
+          </span>
         </div>
         <Button type="text" icon={<RotateCcw size={15} />} disabled={activeCount === 0} onClick={onReset}>
-          Clear filters
+          {t(locale, "classificationFilterBar.clearFilters")}
         </Button>
       </div>
       <div className="filter-bar__groups">
         <fieldset className="filter-bar__group">
-          <legend>Creator scope</legend>
+          <legend>{t(locale, "classificationFilterBar.creatorScopeGroup")}</legend>
           <OrganizationFilter value={state.organization} onChange={onOrganizationChange} />
           <BranchFilter value={state.branch} options={branches} onChange={onBranchChange} />
           <TagFilter selected={state.groupKey} options={groupKeys} onToggle={onGroupKeyToggle} branch={state.branch} />
@@ -70,7 +77,7 @@ export function ClassificationFilterBar({
           <LifecycleStageFilter value={state.lifecycleStage} onChange={onLifecycleStageChange} />
         </fieldset>
         <fieldset className="filter-bar__group">
-          <legend>Content scope</legend>
+          <legend>{t(locale, "classificationFilterBar.contentScopeGroup")}</legend>
           <ContentTagFilter selected={state.contentTags} onToggle={onContentTagToggle} />
           <ContentFormatFilter value={state.contentFormat} onChange={onContentFormatChange} />
         </fieldset>

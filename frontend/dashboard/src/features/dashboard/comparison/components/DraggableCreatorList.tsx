@@ -113,7 +113,8 @@ export function DraggableCreatorList({
     }))
     .filter((group) => group.subgroups.length > 0)
   const toggle = (creatorId: string) => {
-    if (availableCreatorIds && !availableCreatorIds.has(creatorId)) return
+    const isSelected = selectedIds.includes(creatorId)
+    if (!isSelected && availableCreatorIds && !availableCreatorIds.has(creatorId)) return
     setSelectedIds((current) => current.includes(creatorId) ? current.filter((id) => id !== creatorId) : [...current, creatorId])
   }
   const renderRow = (creator: MockCreator) => (

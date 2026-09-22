@@ -146,11 +146,15 @@ export function groupHololiveJp<T extends GroupableCreator>(creators: T[], getSo
     if (members) subgroups.push({ label: `${gen}期生`, creators: members })
   }
   if (gamers.length > 0) subgroups.push({ label: GAMERS_GROUP_LABEL_KEY, creators: gamers })
-  for (const gen of [3, 4, 5, 6]) {
+  for (const gen of [3, 4, 5]) {
     const members = numbered.get(gen)
     if (members) subgroups.push({ label: hololiveGroupDisplayLabel(`${gen}期生`, "holo_jp"), creators: members })
   }
-  if (holoX.length > 0) subgroups.push({ label: "秘密結社holoX", creators: groupChannelFirst(holoX) })
+  // "6期生" and literal "holoX" both display as "秘密結社holoX" (see
+  // hololiveGroupDisplayLabel) -- merged here so they never emit as two
+  // separately-labeled subgroups.
+  const holoXAll = [...(numbered.get(6) ?? []), ...holoX]
+  if (holoXAll.length > 0) subgroups.push({ label: "秘密結社holoX", creators: groupChannelFirst(holoXAll) })
   const remainingGenerations = [...numbered.entries()]
     .filter(([gen]) => gen > 6)
     .sort(([a], [b]) => a - b)

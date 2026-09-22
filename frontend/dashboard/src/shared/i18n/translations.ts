@@ -111,6 +111,22 @@ export type TranslationKey =
   | "languageSettings.picker.zhTW"
   | "languageSettings.picker.en"
   | "languageSettings.picker.ja"
+  | "classificationFilterBar.title"
+  | "classificationFilterBar.noActiveFilters"
+  | "classificationFilterBar.activeFilterCount"
+  | "classificationFilterBar.clearFilters"
+  | "classificationFilterBar.creatorScopeGroup"
+  | "classificationFilterBar.contentScopeGroup"
+  | "contributionBarChart.title"
+  | "contributionBarChart.shareOf"
+  | "contributionBarChart.periodLabel.day"
+  | "contributionBarChart.periodLabel.multiDay"
+  | "contributionBarChart.empty"
+  | "contributionBarChart.ariaLabel"
+  | "displaySettings.title"
+  | "displaySettings.description"
+  | "displaySettings.appearanceGroup"
+  | "displaySettings.upcomingStreamsGroup"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -219,6 +235,22 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "languageSettings.picker.zhTW": "繁體中文",
     "languageSettings.picker.en": "英文",
     "languageSettings.picker.ja": "日文",
+    "classificationFilterBar.title": "篩選分析",
+    "classificationFilterBar.noActiveFilters": "所有儀表板資料",
+    "classificationFilterBar.activeFilterCount": "已套用篩選: {{count}}",
+    "classificationFilterBar.clearFilters": "清除篩選",
+    "classificationFilterBar.creatorScopeGroup": "創作者範圍",
+    "classificationFilterBar.contentScopeGroup": "內容範圍",
+    "contributionBarChart.title": "貢獻度",
+    "contributionBarChart.shareOf": "{{period}}的佔比",
+    "contributionBarChart.periodLabel.day": "今日成長",
+    "contributionBarChart.periodLabel.multiDay": "此期間的成長",
+    "contributionBarChart.empty": "沒有正向成長可顯示。",
+    "contributionBarChart.ariaLabel": "成員對{{period}}的貢獻",
+    "displaySettings.title": "顯示",
+    "displaySettings.description": "選擇應用程式的外觀，以及即將到來的直播時間顯示方式。",
+    "displaySettings.appearanceGroup": "外觀",
+    "displaySettings.upcomingStreamsGroup": "即將到來的直播",
   },
   en: {
     "common.cancel": "Cancel",
@@ -326,6 +358,22 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "languageSettings.picker.zhTW": "Traditional Chinese",
     "languageSettings.picker.en": "English",
     "languageSettings.picker.ja": "Japanese",
+    "classificationFilterBar.title": "Filter analytics",
+    "classificationFilterBar.noActiveFilters": "All dashboard data",
+    "classificationFilterBar.activeFilterCount": "Active filters: {{count}}",
+    "classificationFilterBar.clearFilters": "Clear filters",
+    "classificationFilterBar.creatorScopeGroup": "Creator scope",
+    "classificationFilterBar.contentScopeGroup": "Content scope",
+    "contributionBarChart.title": "Contribution",
+    "contributionBarChart.shareOf": "Share of {{period}}",
+    "contributionBarChart.periodLabel.day": "today's growth",
+    "contributionBarChart.periodLabel.multiDay": "this period's growth",
+    "contributionBarChart.empty": "No positive growth to show.",
+    "contributionBarChart.ariaLabel": "Member contribution to {{period}}",
+    "displaySettings.title": "Display",
+    "displaySettings.description": "Choose how the app looks and how upcoming stream times are shown.",
+    "displaySettings.appearanceGroup": "Appearance",
+    "displaySettings.upcomingStreamsGroup": "Upcoming streams",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -433,6 +481,22 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "languageSettings.picker.zhTW": "繁体中国語",
     "languageSettings.picker.en": "英語",
     "languageSettings.picker.ja": "日本語",
+    "classificationFilterBar.title": "分析をフィルター",
+    "classificationFilterBar.noActiveFilters": "すべてのダッシュボードデータ",
+    "classificationFilterBar.activeFilterCount": "適用中のフィルター: {{count}}",
+    "classificationFilterBar.clearFilters": "フィルターをクリア",
+    "classificationFilterBar.creatorScopeGroup": "クリエイター範囲",
+    "classificationFilterBar.contentScopeGroup": "コンテンツ範囲",
+    "contributionBarChart.title": "貢献度",
+    "contributionBarChart.shareOf": "{{period}}の割合",
+    "contributionBarChart.periodLabel.day": "本日の成長",
+    "contributionBarChart.periodLabel.multiDay": "この期間の成長",
+    "contributionBarChart.empty": "表示できるプラス成長がありません。",
+    "contributionBarChart.ariaLabel": "{{period}}へのメンバー貢献",
+    "displaySettings.title": "表示",
+    "displaySettings.description": "アプリの見た目と、今後の配信時間の表示方法を選択します。",
+    "displaySettings.appearanceGroup": "外観",
+    "displaySettings.upcomingStreamsGroup": "今後の配信",
   },
 }
 

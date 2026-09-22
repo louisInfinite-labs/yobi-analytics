@@ -84,7 +84,7 @@ const CONTRIBUTION_RING: WidgetRegistryEntry = {
     type: "contribution-ring",
     schemaVersion: 1,
     title: "Channel Contribution",
-    description: "Each channel's share of total growth, as an animated ring.",
+    description: "Each channel's share of total growth, as labeled bars.",
     sizeLimits: { minW: 3, minH: 3, defaultW: 4, defaultH: 4 },
     allowedHeights: WIDGET_ALLOWED_HEIGHTS["contribution-ring"],
     permissions: [],
