@@ -187,19 +187,19 @@ describe("moveWidget", () => {
 
   it("rejects a differently-sized swap even when the mismatched-footprint candidate would itself validate", () => {
     const base = layout({
-      grid: { columns: 4, rows: 1 },
+      grid: { columns: 1, rows: 2 },
       widgets: [
         widget({ widgetId: "a", x: 0, y: 0, width: 1, height: 1 }),
-        widget({ widgetId: "b", x: 2, y: 0, width: 2, height: 1 }),
+        widget({ widgetId: "b", x: 0, y: 1, width: 1, height: 0.5 }),
       ],
     })
-    // Moving "a" onto "b" collides with exactly one widget, and simply
-    // relocating "b" (keeping its own width 2) to "a"'s old x:0 doesn't
-    // overlap anything -- the candidate would validate. Without an explicit
-    // same-footprint check this is wrongly accepted as a "swap", leaving x:3
-    // uncovered by any widget instead of the clean position exchange the
-    // swap is meant to be.
-    const outcome = moveWidget(base, "a", { x: 2, y: 0 })
+    // Moving "a" (a full row) onto "b" (a half row) collides with exactly
+    // one widget, and simply relocating "b" (keeping its own height 0.5) to
+    // "a"'s old y:0 doesn't overlap anything -- the candidate would
+    // validate. Without an explicit same-footprint check this is wrongly
+    // accepted as a "swap", leaving y:[0.5, 1) uncovered by any widget
+    // instead of the clean position exchange the swap is meant to be.
+    const outcome = moveWidget(base, "a", { x: 0, y: 1 })
 
     expect(outcome.committed).toBe(false)
     expect(outcome.layout).toBe(base)
