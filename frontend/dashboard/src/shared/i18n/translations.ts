@@ -34,10 +34,6 @@ export type TranslationKey =
   | "recentVideos.empty.latestVideos"
   | "recentVideos.empty.latestLive"
   | "recentVideos.empty.other"
-  | "liveScheduleDock.viewToggle.allThenFavorites"
-  | "liveScheduleDock.viewToggle.favoritesThenAll"
-  | "liveScheduleDock.viewToggle.showFavoritesAria"
-  | "liveScheduleDock.viewToggle.showAllAria"
   | "liveScheduleDock.panelAriaLabel"
   | "liveScheduleDock.resize.shrink"
   | "liveScheduleDock.resize.expand"
@@ -158,10 +154,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "尚無最新影片",
     "recentVideos.empty.latestLive": "尚無最新直播",
     "recentVideos.empty.other": "沒有影片",
-    "liveScheduleDock.viewToggle.allThenFavorites": "全部 / 我的收藏",
-    "liveScheduleDock.viewToggle.favoritesThenAll": "我的收藏 / 全部",
-    "liveScheduleDock.viewToggle.showFavoritesAria": "只顯示我的收藏",
-    "liveScheduleDock.viewToggle.showAllAria": "顯示所有創作者",
     "liveScheduleDock.panelAriaLabel": "直播排程搜尋",
     "liveScheduleDock.resize.shrink": "縮小",
     "liveScheduleDock.resize.expand": "放大",
@@ -281,10 +273,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "No recent videos",
     "recentVideos.empty.latestLive": "No recent streams",
     "recentVideos.empty.other": "No videos",
-    "liveScheduleDock.viewToggle.allThenFavorites": "All / Favorites",
-    "liveScheduleDock.viewToggle.favoritesThenAll": "Favorites / All",
-    "liveScheduleDock.viewToggle.showFavoritesAria": "Show only my favorites",
-    "liveScheduleDock.viewToggle.showAllAria": "Show all creators",
     "liveScheduleDock.panelAriaLabel": "Live schedule search",
     "liveScheduleDock.resize.shrink": "Shrink",
     "liveScheduleDock.resize.expand": "Expand",
@@ -404,10 +392,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "最新動画はありません",
     "recentVideos.empty.latestLive": "最新配信はありません",
     "recentVideos.empty.other": "動画がありません",
-    "liveScheduleDock.viewToggle.allThenFavorites": "全部 / お気に入り",
-    "liveScheduleDock.viewToggle.favoritesThenAll": "お気に入り / 全部",
-    "liveScheduleDock.viewToggle.showFavoritesAria": "お気に入りのみ表示",
-    "liveScheduleDock.viewToggle.showAllAria": "すべての配信者を表示",
     "liveScheduleDock.panelAriaLabel": "配信スケジュール検索",
     "liveScheduleDock.resize.shrink": "縮小",
     "liveScheduleDock.resize.expand": "拡大",

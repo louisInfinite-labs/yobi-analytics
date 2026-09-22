@@ -4,7 +4,7 @@ import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { holodexChannelIdByCreatorId } from "../../../integrations/holodex/holodexChannelIds"
 import { fetchArchivedStreamsFromHolodex, fetchUploadedVideosFromHolodex, type HolodexPage } from "../../../integrations/holodex/holodexClient"
 
-interface VideoPage {
+export interface VideoPage {
   videos: RecentVideo[]
   loading: boolean
   error: Error | null

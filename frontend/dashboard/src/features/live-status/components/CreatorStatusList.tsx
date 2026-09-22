@@ -43,47 +43,26 @@ function formatBranchHeading(branch: BranchKey): string {
  * (mockCreators.ts's own avatarUrl field is left unset on every entry, per
  * its own doc comment); this stays avatar-ready for the moment a real URL
  * source exists, without inventing one. */
-function CreatorAvatar({
-  creator,
-  isFavorite,
-  isActive,
-}: {
-  creator: MockCreator
-  isFavorite: boolean
-  isActive: boolean
-}) {
+function CreatorAvatar({ creator, isFavorite }: { creator: MockCreator; isFavorite: boolean }) {
   const accent = getMemberAccent(creator.channelId)
   const spokenName = creator.channelName.replace(/\n/g, " ")
 
   return (
-    <span className="creator-status-list__avatar-wrap">
+    <span className="live-status-member__avatar-wrap">
       <Avatar
-        size={48}
+        size={36}
         src={creator.avatarUrl}
         alt={spokenName}
-        className={`creator-status-list__avatar${isActive ? " creator-status-list__avatar--active" : ""}`}
+        className="live-status-member__avatar"
         style={creator.avatarUrl ? undefined : { background: accent.primary, color: accent.textAccent }}
       >
         {creator.channelName.charAt(0)}
       </Avatar>
       {isFavorite && (
-        <Heart className="creator-status-list__favorite-indicator" aria-hidden="true" fill="currentColor" />
+        <Heart className="live-status-member__favorite-indicator" aria-hidden="true" fill="currentColor" />
       )}
     </span>
   )
-}
-
-/** The status marker -- kind-driven (not display.dotColor, which is "red"
- * for BOTH live and upcoming per formatCreatorStatus's own existing
- * classification, unchanged here): a solid pulsing dot for LIVE, a static
- * outlined diamond for Upcoming, nothing for Offline (spec: "no
- * attention-grabbing status dot"). Purely a presentation choice layered on
- * top of the existing status.kind -- the underlying classification/label/
- * clickability logic in creatorStatusFormat.ts is untouched. */
-function StatusMarker({ kind }: { kind: CreatorStatus["kind"] }) {
-  if (kind === "live") return <span className="creator-status-list__status-marker creator-status-list__status-marker--live" aria-hidden="true" />
-  if (kind === "upcoming") return <span className="creator-status-list__status-marker creator-status-list__status-marker--upcoming" aria-hidden="true" />
-  return null
 }
 
 interface CreatorRowProps {
@@ -103,16 +82,13 @@ interface CreatorRowProps {
 /** One creator row, plus its own swipe-to-favorite gesture (useSwipeToFavorite
  * is called once per row here — hooks can't be called inside the list's own
  * .map(), and each row's drag state must be independent of every other
- * row's). Swiping slides `.creator-status-list__row` itself above a static
- * reveal layer behind it; committing calls the SAME shared `onToggleFavorite`
- * the row's favorite heart already reads from (Task 1's shared favorites
- * store) — no separate/local favorite state is introduced here.
+ * row's). Swiping slides the row itself above a static reveal layer behind
+ * it; committing calls the SAME shared `onToggleFavorite` the row's favorite
+ * heart already reads from.
  *
- * "Main Oshi" here reuses the exact same existing signal this component
- * already had (isActive, from useSelectedCreator -- see this file's own
- * prior "CURRENT ACTIVE OSHI only" comment) -- no new data source, just a
- * stronger visual treatment (left rail + ring + "MAIN" label) than before,
- * per the redesign's own "Main Oshi > Favorite" priority. */
+ * The row's second line is the creator's current or upcoming stream topic —
+ * CreatorStatus.title, the same field the status label already comes from —
+ * never their agency/branch, which the group heading above already states. */
 function CreatorRow({
   creator,
   status,
@@ -128,12 +104,13 @@ function CreatorRow({
 }: CreatorRowProps) {
   const display = formatCreatorStatus(status, displayMode, now, language)
   const swipe = useSwipeToFavorite(isFavorite, () => onToggleFavorite(creator.channelId))
+  const topic = status.kind === "offline" ? null : status.title
 
   return (
-    <div className="creator-status-list__swipe-row">
+    <div className="live-status-member-swipe">
       {swipe.revealSide && (
         <div
-          className={`creator-status-list__reveal creator-status-list__reveal--${swipe.revealSide}`}
+          className={`live-status-member__reveal live-status-member__reveal--${swipe.revealSide}`}
           style={{ opacity: swipe.revealOpacity }}
           aria-hidden="true"
         >
@@ -141,24 +118,30 @@ function CreatorRow({
         </div>
       )}
       <div
-        className={`creator-status-list__row${isActive ? " creator-status-list__row--main" : ""}${swipe.isSnapping ? " creator-status-list__row--snapping" : ""}`}
+        className={`live-status-member${swipe.isSnapping ? " live-status-member--snapping" : ""}`}
+        data-main-oshi={isActive}
         style={{ transform: `translateX(${swipe.translateX}px)` }}
         {...swipe.rowHandlers}
       >
-        {isActive && <span className="creator-status-list__main-rail" aria-hidden="true" />}
         <button
           type="button"
-          className="creator-status-list__creator-button"
+          className="live-status-member__creator-button"
           onClick={swipe.guardClick(() => onCreatorButtonClick(creator))}
           aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.channelName })}
         >
-          <CreatorAvatar creator={creator} isFavorite={isFavorite} isActive={isActive} />
-          <span className="creator-status-list__row-name">{creator.channelName}</span>
-          {isActive && <span className="creator-status-list__main-label">MAIN</span>}
+          <CreatorAvatar creator={creator} isFavorite={isFavorite} />
+          <span className="live-status-member__main">
+            <span className="live-status-member__name-row">
+              <span className="live-status-member__name">{creator.channelName}</span>
+              {isActive && <span className="live-status-member__main-badge">MAIN</span>}
+            </span>
+            {topic && <span className="live-status-member__topic">{topic}</span>}
+          </span>
         </button>
         <button
           type="button"
-          className="creator-status-list__status-button"
+          className="live-status-member__status"
+          data-status={status.kind}
           disabled={!display.clickable}
           onClick={swipe.guardClick(() => {
             if (status.kind === "live" || status.kind === "upcoming") {
@@ -166,8 +149,7 @@ function CreatorRow({
             }
           })}
         >
-          <StatusMarker kind={status.kind} />
-          <span className="creator-status-list__status-label">{display.label}</span>
+          {display.label}
         </button>
       </div>
     </div>
@@ -211,12 +193,10 @@ function matchesFavoriteFilter(channelId: string, favoriteOnlyIds: Set<string> |
   return !favoriteOnlyIds || favoriteOnlyIds.has(channelId)
 }
 
-/** The grouped, searchable creator status list — the Dock's own content,
- * factored out so both the global bottom-right Dock and Home's inline
- * "ListStatus" panel render the exact same list/search-filter/status/
- * favorite logic instead of two copies (this session's own "don't create
- * separate Home and Dock status logic" principle, extended from the
- * formatter to the list rendering itself). */
+/** The grouped, searchable creator status list — the Live Status drawer's
+ * own content, kept as its own component so the list/search-filter/status/
+ * favorite logic lives in one place rather than being duplicated by any
+ * future second host. */
 export function CreatorStatusList({
   statuses,
   now,
@@ -236,10 +216,10 @@ export function CreatorStatusList({
     mockCreators.filter((creator) => matchesFavoriteFilter(creator.channelId, favoriteOnlyIds) && creatorMatchesSearch(creator, query)),
   )
   const [pendingSwitch, setPendingSwitch] = useState<{ channelId: string; channelName: string } | null>(null)
-  // The shared active-Oshi selection (Home + Dock both already read/write
+  // The shared active-Oshi selection (Home + drawer both already read/write
   // this same store) -- read-only here, purely to compare against each row's
-  // own channelId for the selected-avatar glow (spec: "reuse the existing
-  // shared selected-Oshi state, do NOT create a second local selected state").
+  // own channelId for the MAIN treatment (spec: "reuse the existing shared
+  // selected-Oshi state, do NOT create a second local selected state").
   const [activeOshiId] = useSelectedCreator()
 
   function handleCreatorClick(creator: MockCreator) {
@@ -251,7 +231,7 @@ export function CreatorStatusList({
   }
 
   return (
-    <div className="creator-status-list">
+    <div className="live-status-roster">
       {groups.map((group) => {
         // Trivially derived from the same `statuses` already passed into
         // this component -- no new data source/backend query (spec: "Live
@@ -262,12 +242,12 @@ export function CreatorStatusList({
         )
         const liveCount = [...liveChannelIds].filter((channelId) => statuses[channelId]?.kind === "live").length
         return (
-          <div key={group.branch} className="creator-status-list__group">
-            <div className="creator-status-list__group-header">
-              <span className="creator-status-list__group-label">{formatBranchHeading(group.branch)}</span>
+          <div key={group.branch} className="live-status-group">
+            <div className="live-status-group__heading">
+              <span>{formatBranchHeading(group.branch)}</span>
               {liveCount > 0 && (
-                <span className="creator-status-list__group-live-count">
-                  <span className="creator-status-list__group-live-dot" aria-hidden="true" />
+                <span className="live-status-group__live-count">
+                  <span className="live-status-group__live-dot" aria-hidden="true" />
                   {String(liveCount).padStart(2, "0")} LIVE
                 </span>
               )}
@@ -275,7 +255,7 @@ export function CreatorStatusList({
             {group.subgroups.map((subgroup) => (
               <Fragment key={subgroup.label ?? "__flat__"}>
                 {subgroup.label && (
-                  <div className="creator-status-list__subgroup-label">{subgroupTitle(locale, subgroup.label)}</div>
+                  <div className="live-status-group__subheading">{subgroupTitle(locale, subgroup.label)}</div>
                 )}
                 {subgroup.creators.map((creator) => {
                   const status = statuses[creator.channelId] ?? { kind: "offline" as const }
@@ -303,7 +283,7 @@ export function CreatorStatusList({
         )
       })}
       {groups.length === 0 && (
-        <div className="creator-status-list__empty">
+        <div className="oshi-empty-state">
           {favoriteOnlyIds ? t(locale, "creatorStatusList.emptyFavorites") : t(locale, "creatorStatusList.emptySearch")}
         </div>
       )}
@@ -324,8 +304,7 @@ export function CreatorStatusList({
 }
 
 /** Live/offline counts across the given creator subset (all, or favorites
- * only) — the "ListStatus" collapsed summary's own numbers, shown by
- * default before the list itself is expanded. */
+ * only). */
 export function countLiveAndOffline(
   statuses: Record<string, CreatorStatus>,
   favoriteOnlyIds?: Set<string>,

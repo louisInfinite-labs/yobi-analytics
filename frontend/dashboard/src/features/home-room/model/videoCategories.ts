@@ -9,9 +9,9 @@ export type VideoSectionTag = "latestVideos" | "latestLive" | "all" | VideoCateg
 /** Fixed display order (spec: exact order, not alphabetical/count/recency/
  * LIVE-status based). */
 export const VIDEO_SECTION_TAGS: readonly VideoSectionTag[] = [
+  "all",
   "latestVideos",
   "latestLive",
-  "all",
   "sf6",
   "valo",
   "minecraft",
