@@ -17,11 +17,13 @@ from analytics import ranking_reducer
 from analytics import trending_cache_keys
 from tracking.creator_master import Creator
 from api.read_api import (
+    ClientError,
     RankingNotReadyError,
     ScopeNotFoundError,
     get_creator_summary,
     get_global_leaderboard,
     get_organization_leaderboard,
+    get_topic_leaderboard,
 )
 
 
@@ -404,3 +406,131 @@ def test_leaderboard_explicit_report_date_never_falls_back(monkeypatch):
         get_global_leaderboard({"period": "all", "reportDate": "2026-09-11"})
 
     assert all(key.endswith(":2026-09-11") for key in keys)
+
+
+# --- get_topic_leaderboard (Topic Phase 3, #6/#7) ---------------------------
+
+
+def _topic_payload():
+    return {
+        "topic": "valorant",
+        "period": "all",
+        "reportDate": "2026-09-10",
+        "creatorCount": 2,
+        "videoCount": 3,
+        "byTotalViews": [
+            {"rank": 1, "creatorId": "A", "organization": "hololive", "branch": "holo_jp",
+             "topicTotalViews": 1000, "topicVideoCount": 2, "topicAverageViewsPerVideo": 500.0},
+            {"rank": 2, "creatorId": "B", "organization": "vspo", "branch": "vspo_jp",
+             "topicTotalViews": 900, "topicVideoCount": 1, "topicAverageViewsPerVideo": 900.0},
+        ],
+        "byAverageViewsPerVideo": [
+            {"rank": 1, "creatorId": "B", "organization": "vspo", "branch": "vspo_jp",
+             "topicTotalViews": 900, "topicVideoCount": 1, "topicAverageViewsPerVideo": 900.0},
+            {"rank": 2, "creatorId": "A", "organization": "hololive", "branch": "holo_jp",
+             "topicTotalViews": 1000, "topicVideoCount": 2, "topicAverageViewsPerVideo": 500.0},
+        ],
+    }
+
+
+def test_get_topic_leaderboard_returns_200_payload_on_cache_hit(monkeypatch):
+    _wire_no_live_fallback(monkeypatch)
+    cached_payload = _topic_payload()
+    calls = []
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda key: (calls.append(key), cached_payload)[1])
+
+    result = get_topic_leaderboard({"topic": "valorant", "reportDate": "2026-09-10"})
+
+    assert result == cached_payload
+    assert calls == ["topicLeaderboard:valorant:all:2026-09-10"]
+
+
+def test_get_topic_leaderboard_unknown_topic_is_a_client_error_not_scope_not_found(monkeypatch):
+    _wire_no_live_fallback(monkeypatch)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda key: _boom())
+
+    with pytest.raises(ClientError) as exc_info:
+        get_topic_leaderboard({"topic": "not-a-topic", "reportDate": "2026-09-10"})
+    assert not isinstance(exc_info.value, ScopeNotFoundError)
+
+
+def test_get_topic_leaderboard_explicit_non_all_period_is_a_client_error(monkeypatch):
+    _wire_no_live_fallback(monkeypatch)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda key: _boom())
+
+    with pytest.raises(ClientError):
+        get_topic_leaderboard({"topic": "valorant", "period": "7d", "reportDate": "2026-09-10"})
+
+
+def test_get_topic_leaderboard_cache_miss_raises_ranking_not_ready(monkeypatch):
+    _wire_no_live_fallback(monkeypatch)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda key: None)
+
+    with pytest.raises(RankingNotReadyError):
+        get_topic_leaderboard({"topic": "valorant", "reportDate": "2026-09-10"})
+
+
+def test_get_topic_leaderboard_omitted_report_date_falls_back_to_latest_cached_day(monkeypatch):
+    _wire_no_live_fallback(monkeypatch)
+    monkeypatch.setattr(read_api, "_today_in_canonical_time_zone", lambda: date(2026, 9, 11))
+    cached_payload = _topic_payload()
+    monkeypatch.setattr(
+        read_api,
+        "get_cached_trending",
+        lambda key: cached_payload if key.endswith(":2026-09-10") else None,
+    )
+
+    result = get_topic_leaderboard({"topic": "valorant"})
+
+    assert result["reportDate"] == "2026-09-10"
+
+
+def test_get_topic_leaderboard_explicit_report_date_never_falls_back(monkeypatch):
+    _wire_no_live_fallback(monkeypatch)
+    calls = []
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda key: (calls.append(key), None)[1])
+
+    with pytest.raises(RankingNotReadyError):
+        get_topic_leaderboard({"topic": "valorant", "reportDate": "2026-09-11"})
+
+    assert calls == ["topicLeaderboard:valorant:all:2026-09-11"]
+
+
+def test_get_topic_leaderboard_organization_filter_global(monkeypatch):
+    """No ?organization= at all: every row from every organization, in its
+    original global rank, and the original global creatorCount/videoCount."""
+    _wire_no_live_fallback(monkeypatch)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda key: _topic_payload())
+
+    result = get_topic_leaderboard({"topic": "valorant", "reportDate": "2026-09-10"})
+
+    assert [row["creatorId"] for row in result["byTotalViews"]] == ["A", "B"]
+    assert (result["creatorCount"], result["videoCount"]) == (2, 3)
+
+
+def test_get_topic_leaderboard_organization_filter_hololive_only(monkeypatch):
+    """A: topicVideoCount=2. Filtering to hololive-only must recompute
+    creatorCount/videoCount down to just A's own numbers, not the original
+    global (2 creators, 3 videos)."""
+    _wire_no_live_fallback(monkeypatch)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda key: _topic_payload())
+
+    result = get_topic_leaderboard({"topic": "valorant", "reportDate": "2026-09-10", "organization": "hololive"})
+
+    assert [row["creatorId"] for row in result["byTotalViews"]] == ["A"]
+    assert result["byTotalViews"][0]["rank"] == 1  # re-ranked within the filtered subset, not its original rank
+    assert [row["creatorId"] for row in result["byAverageViewsPerVideo"]] == ["A"]
+    assert (result["creatorCount"], result["videoCount"]) == (1, 2)
+
+
+def test_get_topic_leaderboard_organization_filter_vspo_only(monkeypatch):
+    """B: topicVideoCount=1. Filtering to vspo-only must recompute
+    creatorCount/videoCount down to just B's own numbers."""
+    _wire_no_live_fallback(monkeypatch)
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda key: _topic_payload())
+
+    result = get_topic_leaderboard({"topic": "valorant", "reportDate": "2026-09-10", "organization": "vspo"})
+
+    assert [row["creatorId"] for row in result["byTotalViews"]] == ["B"]
+    assert [row["creatorId"] for row in result["byAverageViewsPerVideo"]] == ["B"]
+    assert (result["creatorCount"], result["videoCount"]) == (1, 1)

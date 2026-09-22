@@ -26,6 +26,7 @@ CANONICAL_CACHE_TIME_ZONE = "Asia/Tokyo"
 
 _CREATOR_SUMMARY_PREFIX = "creatorSummary"
 _ORG_LEADERBOARD_PREFIX = "orgLeaderboard"
+_TOPIC_LEADERBOARD_PREFIX = "topicLeaderboard"
 
 
 def trending_cache_key(*, scope_type: str, scope_value: str, period: str, ranking_type: str, report_date: date) -> str:
@@ -52,3 +53,8 @@ def creator_summary_cache_key(*, creator_id: str, period: str, report_date: date
 def organization_leaderboard_cache_key(*, organization: str, period: str, report_date: date) -> str:
     """Build YobiTrendingCache's cacheKey for one organization/period/reportDate leaderboard."""
     return f"{_ORG_LEADERBOARD_PREFIX}:{organization}:{period}:{report_date.isoformat()}"
+
+
+def topic_leaderboard_cache_key(*, topic: str, period: str, report_date: date) -> str:
+    """Build YobiTrendingCache's cacheKey for one topic/period/reportDate creator leaderboard (Topic Phase 3, #6/#7)."""
+    return f"{_TOPIC_LEADERBOARD_PREFIX}:{topic}:{period}:{report_date.isoformat()}"

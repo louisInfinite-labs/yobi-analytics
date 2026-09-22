@@ -15,6 +15,7 @@ from stores.dynamodb_store import (
     VIDEO_MASTER_TABLE,
     get_cached_trending,
     get_snapshot,
+    get_video_topics,
     get_videos_by_creator,
     load_videos,
     put_cached_trending,
@@ -744,3 +745,111 @@ def test_scan_video_topic_items_returns_only_the_projected_fields(dynamodb_table
     items = sorted(scan_video_topic_items(), key=lambda item: item["videoId"])
 
     assert items == [{"videoId": "v1", "title": "A", "topic": "apex"}, {"videoId": "v2", "title": "B"}]
+
+
+# --- get_video_topics (Topic Phase 3: bounded, per-shard analog of scan_video_topic_items) --
+
+
+def test_get_video_topics_returns_only_the_requested_ids(dynamodb_tables):
+    """Unlike scan_video_topic_items (a full-table scan), this must return
+    exactly the requested ids -- an unrequested video's own row must never
+    come back, proving this is a bounded read, not a scan in disguise."""
+    upsert_videos(
+        [
+            Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic="apex"),
+            Video(video_id="v2", creator_id="c1", title="B", published_at="2026-08-20T00:00:00Z"),
+            Video(video_id="v3", creator_id="c1", title="C", published_at="2026-08-20T00:00:00Z", topic="sf6"),
+        ]
+    )
+
+    items = sorted(get_video_topics(["v1", "v3"]), key=lambda item: item["videoId"])
+
+    assert items == [{"videoId": "v1", "title": "A", "topic": "apex"}, {"videoId": "v3", "title": "C", "topic": "sf6"}]
+
+
+def test_get_video_topics_with_an_empty_list_makes_no_request(dynamodb_tables):
+    assert get_video_topics([]) == []
+
+
+def test_get_video_topics_ignores_a_requested_id_that_does_not_exist(dynamodb_tables):
+    upsert_videos([Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z")])
+
+    items = get_video_topics(["v1", "ghost_video"])
+
+    assert items == [{"videoId": "v1", "title": "A"}]
+
+
+def test_get_video_topics_deduplicates_repeated_ids(dynamodb_tables):
+    """Requesting the same video_id twice in one call must produce exactly
+    one result item, not two -- proves dedup happens before the request is
+    ever built, not merely that the response happens not to repeat."""
+    upsert_videos([Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic="apex")])
+
+    items = get_video_topics(["v1", "v1", "v1"])
+
+    assert items == [{"videoId": "v1", "title": "A", "topic": "apex"}]
+
+
+def test_get_video_topics_raises_after_exhausting_retries_on_persistent_unprocessed_keys(monkeypatch):
+    """A chunk DynamoDB keeps returning as UnprocessedKeys forever (simulated
+    here, since moto's own BatchGetItem never naturally produces one) must
+    raise after _BATCH_GET_ITEM_MAX_ATTEMPTS, never loop forever."""
+    import stores.dynamodb_store as dynamodb_store_module
+
+    call_count = {"n": 0}
+
+    class _AlwaysUnprocessedResource:
+        def batch_get_item(self, *, RequestItems):
+            call_count["n"] += 1
+            keys = RequestItems[dynamodb_store_module.VIDEO_MASTER_TABLE]["Keys"]
+            return {"Responses": {}, "UnprocessedKeys": {dynamodb_store_module.VIDEO_MASTER_TABLE: {"Keys": keys}}}
+
+    monkeypatch.setattr(dynamodb_store_module, "_resource", lambda: _AlwaysUnprocessedResource())
+
+    with pytest.raises(VideoMasterError):
+        dynamodb_store_module.get_video_topics(["v1"])
+
+    assert call_count["n"] == dynamodb_store_module._BATCH_GET_ITEM_MAX_ATTEMPTS
+
+
+def test_get_video_topics_recovers_once_unprocessed_keys_eventually_clear(monkeypatch):
+    """A transient UnprocessedKeys (clears within the retry budget) must
+    still return the item, not raise -- the bound only triggers on
+    persistent failure, never on ordinary transient throttling."""
+    import stores.dynamodb_store as dynamodb_store_module
+
+    call_count = {"n": 0}
+
+    class _RecoversOnSecondAttemptResource:
+        def batch_get_item(self, *, RequestItems):
+            call_count["n"] += 1
+            table = dynamodb_store_module.VIDEO_MASTER_TABLE
+            keys = RequestItems[table]["Keys"]
+            if call_count["n"] == 1:
+                return {"Responses": {}, "UnprocessedKeys": {table: {"Keys": keys}}}
+            return {"Responses": {table: [{"videoId": "v1", "title": "A", "topic": "apex"}]}, "UnprocessedKeys": {}}
+
+    monkeypatch.setattr(dynamodb_store_module, "_resource", lambda: _RecoversOnSecondAttemptResource())
+
+    items = dynamodb_store_module.get_video_topics(["v1"])
+
+    assert items == [{"videoId": "v1", "title": "A", "topic": "apex"}]
+    assert call_count["n"] == 2
+
+
+def test_get_video_topics_chunks_beyond_the_100_key_batch_get_item_limit(dynamodb_tables):
+    """DynamoDB's BatchGetItem accepts at most 100 keys per call -- a request
+    for more ids than that must still return every one of them, proving the
+    chunking loop (not just a single call) actually works."""
+    video_count = 150
+    upsert_videos(
+        [
+            Video(video_id=f"v{i}", creator_id="c1", title=f"title {i}", published_at="2026-08-20T00:00:00Z", topic="apex")
+            for i in range(video_count)
+        ]
+    )
+
+    items = get_video_topics([f"v{i}" for i in range(video_count)])
+
+    assert len(items) == video_count
+    assert {item["videoId"] for item in items} == {f"v{i}" for i in range(video_count)}

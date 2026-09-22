@@ -11,11 +11,12 @@ from stores import dynamodb_store
 from collection import execution_lock
 from ops.config import get_api_key
 from tracking.creator_master import load_creators
-from analytics.history_ranking import CreatorDimensions
+from analytics.history_ranking import CreatorDimensions, creator_topic_partials
 from stores.history_store import HISTORY_SHARD_COUNT, S3HistoryStore
 from collection.history_worker import collect_history_shard
 from stores.ranking_partial_store import S3PartialRankingStore
 from tracking.tracking_manifest import S3TrackingManifestStore
+from tracking.video_topics import resolve_video_topics
 from collection.youtube_client import build_youtube_client
 
 COLLECTION_TIMEZONE = ZoneInfo("Asia/Tokyo")
@@ -79,8 +80,18 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         dimensions_by_creator=dimensions,
         observed_at=now.isoformat(),
     )
+    # Topic Phase 3 (#6/#7): topic_by_video is resolved fresh from exactly
+    # this shard's own collected video_ids (result.rows), via a bounded
+    # BatchGetItem (dynamodb_store.get_video_topics), never a full Video
+    # Master scan and never one GetItem per row — see the feature's own
+    # report for why. A video with no persisted topic yet (backfill hasn't
+    # necessarily run) is classified from its title in memory here
+    # (resolve_video_topics), never written back to Video Master.
+    video_ids = sorted({row.video_id for row in result.rows})
+    topic_by_video = resolve_video_topics(dynamodb_store.get_video_topics(video_ids))
+    topic_partials = creator_topic_partials(result.rows, topic_by_video=topic_by_video)
     partial_key = S3PartialRankingStore(bucket_name).write(
-        report_date, shard, result.rankings, result.creator_partials
+        report_date, shard, result.rankings, result.creator_partials, topic_partials
     )
     # Renewed last, and unconditionally on every success path — including the
     # shard_exists idempotent-skip branch inside collect_history_shard, which

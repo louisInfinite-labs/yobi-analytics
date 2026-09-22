@@ -1,6 +1,6 @@
 import pytest
 
-from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS, TOPICS, classify_video_topic
+from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS, TOPICS, classify_video_topic, resolve_video_topics
 
 
 def test_taxonomy_ids_labels_and_order_are_stable():
@@ -107,3 +107,61 @@ def test_false_positive_sensitive_titles(title):
 )
 def test_multi_match_precedence_follows_canonical_order(title, expected):
     assert classify_video_topic(title) == expected
+
+
+# --- resolve_video_topics (Topic Phase 3 missing-topic fallback) -----------
+
+
+def test_resolve_video_topics_uses_the_persisted_topic_when_present():
+    items = [{"videoId": "v1", "title": "anything", "topic": "singing"}]
+    assert resolve_video_topics(items) == {"v1": "singing"}
+
+
+def test_resolve_video_topics_classifies_from_title_when_topic_is_missing():
+    """The live topic backfill has not necessarily run -- an old Video Master
+    record with no `topic` attribute at all must still resolve, classified
+    in memory from its stored title."""
+    items = [{"videoId": "v1", "title": "【VALORANT】ランク", "topic": None}]
+    assert resolve_video_topics(items) == {"v1": "valorant"}
+
+
+def test_resolve_video_topics_handles_a_dynamodb_item_with_no_topic_key_at_all():
+    """A raw BatchGetItem/scan result for a pre-topic-field record has no
+    `topic` key whatsoever (dynamodb_store._to_raw omits it entirely when
+    None) -- .get("topic") must still work, not raise KeyError."""
+    items = [{"videoId": "v1", "title": "雑談配信"}]
+    assert resolve_video_topics(items) == {"v1": "chatting"}
+
+
+def test_resolve_video_topics_covers_every_item_independently():
+    items = [
+        {"videoId": "v1", "title": "t1", "topic": "apex"},
+        {"videoId": "v2", "title": "unmatched nonsense title", "topic": None},
+        {"videoId": "v3", "title": "マイクラ実況", "topic": None},
+    ]
+    assert resolve_video_topics(items) == {"v1": "apex", "v2": OTHER_TOPIC, "v3": "minecraft"}
+
+
+def test_resolve_video_topics_rejects_a_persisted_invalid_topic_and_reclassifies():
+    """A corrupted/stale/manually-edited persisted `topic` that isn't one of
+    the canonical TOPIC_IDS must never leak through unchanged -- it falls
+    back to in-memory classification exactly like a missing topic would."""
+    items = [{"videoId": "v1", "title": "【VALORANT】ランク", "topic": "not_a_real_topic"}]
+    assert resolve_video_topics(items) == {"v1": "valorant"}
+
+
+def test_resolve_video_topics_handles_a_missing_title_key_safely():
+    """No `title` key at all (not even None) -- must classify to OTHER_TOPIC,
+    never raise KeyError."""
+    items = [{"videoId": "v1", "topic": None}]
+    assert resolve_video_topics(items) == {"v1": OTHER_TOPIC}
+
+
+def test_resolve_video_topics_handles_an_empty_title_safely():
+    items = [{"videoId": "v1", "title": "", "topic": None}]
+    assert resolve_video_topics(items) == {"v1": OTHER_TOPIC}
+
+
+def test_resolve_video_topics_handles_a_none_title_safely():
+    items = [{"videoId": "v1", "title": None, "topic": None}]
+    assert resolve_video_topics(items) == {"v1": OTHER_TOPIC}

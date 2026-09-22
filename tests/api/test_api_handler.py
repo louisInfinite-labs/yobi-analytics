@@ -161,6 +161,57 @@ def test_get_global_leaderboard_returns_200(monkeypatch):
     assert _body(response) == {"period": "all"}
 
 
+def test_get_topic_leaderboard_returns_200(monkeypatch):
+    monkeypatch.setattr(read_api, "get_topic_leaderboard", lambda query: {"topic": query["topic"]})
+
+    response = lambda_handler(_event("GET /topics/{topic}/leaderboard", path={"topic": "valorant"}), None)
+
+    assert response["statusCode"] == 200
+    assert _body(response) == {"topic": "valorant"}
+
+
+def test_get_topic_leaderboard_maps_client_error_to_400(monkeypatch):
+    def _boom(query):
+        raise read_api.ClientError("topic must be one of [...]")
+
+    monkeypatch.setattr(read_api, "get_topic_leaderboard", _boom)
+
+    response = lambda_handler(_event("GET /topics/{topic}/leaderboard", path={"topic": "not-a-topic"}), None)
+
+    assert response["statusCode"] == 400
+    assert "topic must be one of" in _body(response)["error"]
+
+
+def test_get_topic_leaderboard_maps_ranking_not_ready_to_503_with_code(monkeypatch):
+    def _boom(query):
+        raise read_api.RankingNotReadyError("not yet computed")
+
+    monkeypatch.setattr(read_api, "get_topic_leaderboard", _boom)
+
+    response = lambda_handler(_event("GET /topics/{topic}/leaderboard", path={"topic": "valorant"}), None)
+
+    assert response["statusCode"] == 503
+    body = _body(response)
+    assert body["error"] == "not yet computed"
+    assert body["code"] == "RANKING_NOT_READY"
+
+
+def test_get_topic_leaderboard_path_and_query_params_are_merged(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(read_api, "get_topic_leaderboard", lambda query: captured.update(query) or {})
+
+    lambda_handler(
+        _event(
+            "GET /topics/{topic}/leaderboard",
+            path={"topic": "valorant"},
+            query={"organization": "hololive", "reportDate": "2026-09-10"},
+        ),
+        None,
+    )
+
+    assert captured == {"topic": "valorant", "organization": "hololive", "reportDate": "2026-09-10"}
+
+
 def test_get_creator_summary_returns_200(monkeypatch):
     monkeypatch.setattr(read_api, "get_creator_summary", lambda query: {"creatorId": query["creatorId"]})
 

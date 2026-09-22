@@ -13,18 +13,23 @@ from zoneinfo import ZoneInfo
 from collection import execution_lock
 from tracking.creator_master import load_creators
 from analytics.history_ranking import (
+    ALL_PERIOD,
     CreatorDimensions,
     CreatorLeaderboardEntry,
     CreatorPeriodPartial,
     IncrementalRankingMerger,
     RankedGrowth,
+    TopicCreatorLeaderboardEntry,
+    TopicLeaderboard,
     organization_creator_leaderboards,
+    topic_creator_leaderboards,
 )
 from stores.history_store import HISTORY_SHARD_COUNT
 from stores.ranking_partial_store import S3PartialRankingStore
 from analytics.trending_cache_keys import (
     creator_summary_cache_key,
     organization_leaderboard_cache_key,
+    topic_leaderboard_cache_key,
     trending_cache_key,
 )
 
@@ -273,6 +278,60 @@ def persist_creator_and_organization_rankings(
     return writes
 
 
+def persist_topic_rankings(
+    leaderboards: dict[str, TopicLeaderboard],
+    *,
+    report_date: date,
+    put_cached_trending: Callable[..., None],
+    computed_at: str,
+    wru_budget: WruBudget,
+) -> int:
+    """Persist one cache item per topic (Topic Phase 3, #6/#7) into the same
+    YobiTrendingCache table, under topic_leaderboard_cache_key's own
+    namespace, distinct from both persist_rankings' and persist_creator_and_
+    organization_rankings' own keys.
+
+    period="all" only — deliberately not one item per (topic, period): see
+    the feature's own report for why topic growth periods (1d/7d/30d) were
+    not implemented, to avoid quadrupling this round's already-small write
+    count for a metric #6/#7 never asked for (topicAverageViewsPerVideo is
+    inherently a cumulative/"all" concept, not a growth one).
+
+    `wru_budget` must be the *same* WruBudget instance passed to
+    persist_rankings/persist_creator_and_organization_rankings in the same
+    invocation — see WruBudget's own docstring.
+    """
+    writes = 0
+    for topic, board in leaderboards.items():
+        payload = {
+            "topic": topic,
+            "period": ALL_PERIOD,
+            "reportDate": report_date.isoformat(),
+            "creatorCount": board.creator_count,
+            "videoCount": board.video_count,
+            "byTotalViews": [_topic_leaderboard_entry_cache_row(entry) for entry in board.by_total_views],
+            "byAverageViewsPerVideo": [
+                _topic_leaderboard_entry_cache_row(entry) for entry in board.by_average_views_per_video
+            ],
+        }
+        key = topic_leaderboard_cache_key(topic=topic, period=ALL_PERIOD, report_date=report_date)
+        _paced_put(put_cached_trending, wru_budget, key, payload, computed_at=computed_at)
+        writes += 1
+    return writes
+
+
+def _topic_leaderboard_entry_cache_row(entry: TopicCreatorLeaderboardEntry) -> dict[str, Any]:
+    return {
+        "rank": entry.rank,
+        "creatorId": entry.creator_id,
+        "organization": entry.organization,
+        "branch": entry.branch,
+        "topicTotalViews": entry.topic_total_views,
+        "topicVideoCount": entry.topic_video_count,
+        "topicAverageViewsPerVideo": entry.topic_average_views_per_video,
+    }
+
+
 def _ranked_growth_cache_row(entry: RankedGrowth) -> dict[str, Any]:
     """A minimal (no title/channelName enrichment — see
     persist_creator_and_organization_rankings' own docstring for why) cache
@@ -352,8 +411,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     store = S3PartialRankingStore(os.environ["YOBI_HISTORY_BUCKET"])
     merger = IncrementalRankingMerger()
     for shard in range(HISTORY_SHARD_COUNT):
-        scope_rankings, creator_partials = store.read_bundle(report_date, shard)
-        merger.add_shard(scope_rankings, creator_partials)
+        scope_rankings, creator_partials, topic_partials = store.read_bundle(report_date, shard)
+        merger.add_shard(scope_rankings, creator_partials, topic_partials)
     rankings = merger.scope_rankings()
 
     all_creators = load_creators()
@@ -377,6 +436,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         merger.creator_partials(),
         report_date=report_date,
         dimensions_by_creator=dimensions_by_creator,
+        put_cached_trending=put_cached_trending,
+        wru_budget=wru_budget,
+        computed_at=now.isoformat(),
+    )
+    topic_leaderboards = topic_creator_leaderboards(merger.topic_partials(), dimensions_by_creator=dimensions_by_creator)
+    writes += persist_topic_rankings(
+        topic_leaderboards,
+        report_date=report_date,
         put_cached_trending=put_cached_trending,
         wru_budget=wru_budget,
         computed_at=now.isoformat(),
