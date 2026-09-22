@@ -42,9 +42,11 @@ from analytics.trending_cache_keys import (
     CANONICAL_CACHE_TIME_ZONE,
     creator_summary_cache_key,
     organization_leaderboard_cache_key,
+    topic_leaderboard_cache_key,
     trending_cache_key,
 )
 from tracking.video_master import Video
+from tracking.video_topics import TOPIC_IDS
 from analytics.view_growth_analytics import (
     COLLECTION_START_DATE,
     PERIOD_DAYS,
@@ -557,6 +559,79 @@ def get_global_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
     if period == ALL_PERIOD:
         result["byAverageViewsPerVideo"] = _rank_rows(rows, "averageViewsPerVideo")
     return result
+
+
+def get_topic_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
+    """Cache-only global (every organization combined) creator leaderboard for
+    one canonical video topic (Topic Phase 3, #6/#7): topicTotalViews/
+    topicVideoCount/topicAverageViewsPerVideo per creator, ranked two ways.
+
+    `query` needs `topic`; `reportDate` and `organization` are optional.
+    period="all" only — Topic Phase 3 deliberately does not compute topic
+    growth periods (see the feature's own report); an explicitly-passed
+    period other than "all" is a ClientError, not silently coerced.
+
+    `topic` is validated against tracking.video_topics.TOPIC_IDS, the same
+    canonical taxonomy GET /topics itself serves — a closed enum, like
+    period/rankingType, not Creator-Master-style existence data, so an
+    unknown topic is a plain ClientError (400) the same way parse_period/
+    parse_ranking_type reject an unrecognized fixed value, not
+    ScopeNotFoundError (404, reserved for a syntactically valid but
+    nonexistent creatorId/organization).
+
+    An omitted reportDate serves the newest cached report within
+    LATEST_REPORT_LOOKBACK_DAYS, exactly like get_organization_leaderboard/
+    get_global_leaderboard; an explicit reportDate never falls back.
+
+    `?organization=hololive`/`?organization=vspo` optionally filters and
+    re-ranks the already-cached global rows in memory (#8) — no separate
+    cache entry, no extra read, since every cached row already carries its
+    own `organization`.
+    """
+    topic = query.get("topic")
+    if topic not in TOPIC_IDS:
+        raise ClientError(f"topic must be one of {sorted(TOPIC_IDS)}, got {topic!r}")
+    raw_period = query.get("period")
+    if raw_period not in (None, "", ALL_PERIOD):
+        raise ClientError(f"period must be {ALL_PERIOD!r} for a topic leaderboard, got {raw_period!r}")
+    report_dates = _leaderboard_report_dates(query.get("reportDate"))
+
+    payload = None
+    if get_cached_trending is not None:
+        for candidate_date in report_dates:
+            cached = get_cached_trending(
+                topic_leaderboard_cache_key(topic=topic, period=ALL_PERIOD, report_date=candidate_date)
+            )
+            if cached is not None:
+                payload = cached
+                break
+    if payload is None:
+        raise RankingNotReadyError(
+            f"Topic leaderboard for topic={topic!r} period={ALL_PERIOD!r} "
+            f"reportDate={report_dates[0].isoformat()!r} is not yet computed"
+        )
+
+    raw_organization = query.get("organization")
+    if raw_organization:
+        organization = parse_organization(raw_organization)
+        by_total_views = _rank_topic_rows(payload["byTotalViews"], organization, "topicTotalViews")
+        payload = {
+            **payload,
+            "creatorCount": len(by_total_views),
+            "videoCount": sum(row["topicVideoCount"] for row in by_total_views),
+            "byTotalViews": by_total_views,
+            "byAverageViewsPerVideo": _rank_topic_rows(
+                payload["byAverageViewsPerVideo"], organization, "topicAverageViewsPerVideo"
+            ),
+        }
+    return payload
+
+
+def _rank_topic_rows(rows: list[dict[str, Any]], organization: str, field: str) -> list[dict[str, Any]]:
+    """Filter a cached topic leaderboard's rows to one organization and re-rank
+    them within that subset (#8) — rank 1 is that organization's own top
+    creator for this topic, not its original global rank."""
+    return _rank_rows([row for row in rows if row["organization"] == organization], field)
 
 
 # The daily pipeline finishes around 18:00 JST, so an omitted reportDate would

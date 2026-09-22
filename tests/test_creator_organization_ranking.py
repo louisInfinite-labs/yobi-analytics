@@ -16,13 +16,17 @@ from analytics.history_ranking import (
     UNKNOWN_DISCOVERED_DATE,
     CreatorDimensions,
     CreatorPeriodPartial,
+    IncrementalRankingMerger,
     RankedGrowth,
+    TopicPeriodPartial,
     creator_period_partials,
+    creator_topic_partials,
     exact_gains,
     merge_creator_period_partials,
     organization_creator_leaderboards,
     period_values,
     top_n_by_scope,
+    topic_creator_leaderboards,
 )
 from stores.history_store import HistoryRow
 from tracking.tracking_manifest import ManifestEntry, discovered_dates_by_video
@@ -592,3 +596,177 @@ def _ranked(creator_id, video_id, *, value, rank):
         gain=value,
         observed_at="2026-09-09T18:00:00+09:00",
     )
+
+
+# --- Topic Phase 3 (#6/#7): creator_topic_partials / topic_creator_leaderboards --
+
+
+def test_creator_topic_partials_aggregation_fixture_from_the_feature_spec():
+    """The exact fixture Topic Phase 3's own task spec gives: creator A's two
+    valorant videos (600+400=1000, avg 500) must out-total creator B's one
+    valorant video (900, avg 900) on byTotalViews but lose to it on
+    byAverageViewsPerVideo."""
+    rows = [
+        _history_row("a_v1", 600, creator_id="A"),
+        _history_row("a_v2", 400, creator_id="A"),
+        _history_row("b_v1", 900, creator_id="B"),
+    ]
+    topic_by_video = {"a_v1": "valorant", "a_v2": "valorant", "b_v1": "valorant"}
+
+    partials = creator_topic_partials(rows, topic_by_video=topic_by_video)
+    assert partials["A"]["valorant"] == TopicPeriodPartial(creator_id="A", topic="valorant", view_sum=1000, video_count=2)
+    assert partials["B"]["valorant"] == TopicPeriodPartial(creator_id="B", topic="valorant", view_sum=900, video_count=1)
+
+    leaderboards = topic_creator_leaderboards(partials, dimensions_by_creator={})
+    board = leaderboards["valorant"]
+    assert board.creator_count == 2
+    assert board.video_count == 3
+    assert [e.creator_id for e in board.by_total_views] == ["A", "B"]
+    assert [e.topic_total_views for e in board.by_total_views] == [1000, 900]
+    assert [e.creator_id for e in board.by_average_views_per_video] == ["B", "A"]
+    assert [e.topic_average_views_per_video for e in board.by_average_views_per_video] == [900.0, 500.0]
+
+
+def test_creator_topic_partials_never_leaks_across_topics():
+    """A valorant leaderboard must never include another topic's views/counts,
+    even when the same creator has videos in several topics within one shard."""
+    rows = [
+        _history_row("v_valo", 1_000, creator_id="c1"),
+        _history_row("v_sf6", 5_000, creator_id="c1"),
+        _history_row("v_mc", 2_000, creator_id="c1"),
+        _history_row("v_sing", 3_000, creator_id="c1"),
+        _history_row("v_other", 4_000, creator_id="c1"),
+    ]
+    topic_by_video = {
+        "v_valo": "valorant", "v_sf6": "sf6", "v_mc": "minecraft", "v_sing": "singing", "v_other": "other",
+    }
+
+    partials = creator_topic_partials(rows, topic_by_video=topic_by_video)
+    leaderboards = topic_creator_leaderboards(partials, dimensions_by_creator={})
+
+    valorant_board = leaderboards["valorant"]
+    assert valorant_board.video_count == 1
+    assert valorant_board.by_total_views[0].topic_total_views == 1_000
+    assert valorant_board.by_total_views[0].topic_video_count == 1
+
+    # Every other topic's own board is likewise scoped to just its own video.
+    assert leaderboards["sf6"].video_count == 1
+    assert leaderboards["minecraft"].video_count == 1
+    assert leaderboards["singing"].video_count == 1
+    assert leaderboards["other"].video_count == 1
+    assert set(leaderboards) == {"valorant", "sf6", "minecraft", "singing", "other"}
+
+
+def test_creator_topic_partials_missing_persisted_topic_falls_back_to_in_memory_classification():
+    """Topic Phase 3 #6: ranking must work for a Video Master record with no
+    persisted `topic` (the live backfill hasn't necessarily run). This test
+    passes creator_topic_partials a topic_by_video map already resolved via
+    resolve_video_topics's own in-memory-classification fallback (mirroring
+    exactly what history_worker_handler.lambda_handler does) -- and, since
+    creator_topic_partials and resolve_video_topics are both pure functions
+    with no storage dependency at all, no DynamoDB write can occur here by
+    construction, not merely by absence of a mock."""
+    from tracking.video_topics import resolve_video_topics
+
+    raw_items = [{"videoId": "v1", "title": "【VALORANT】ランク配信", "topic": None}]
+    topic_by_video = resolve_video_topics(raw_items)
+    assert topic_by_video == {"v1": "valorant"}
+
+    rows = [_history_row("v1", 777, creator_id="c1")]
+    partials = creator_topic_partials(rows, topic_by_video=topic_by_video)
+    assert partials["c1"]["valorant"].view_sum == 777
+    assert partials["c1"]["valorant"].video_count == 1
+
+
+def test_creator_topic_partials_unknown_video_falls_back_to_other_topic():
+    """A video collected today but absent from topic_by_video entirely (no
+    Video Master row found for it) must not be dropped or raise -- it falls
+    back to OTHER_TOPIC, the same safety net classify_video_topic itself
+    guarantees for an unclassifiable title."""
+    rows = [_history_row("unknown_video", 42, creator_id="c1")]
+    partials = creator_topic_partials(rows, topic_by_video={})
+    assert partials["c1"]["other"].view_sum == 42
+    assert partials["c1"]["other"].video_count == 1
+
+
+def test_topic_creator_leaderboards_carries_organization_and_branch():
+    """Topic Phase 3 #7/#9: each row must carry organization/branch so the
+    global (Hololive+VSPO combined) leaderboard needs no frontend merging."""
+    rows = [
+        _history_row("h_v1", 100, creator_id="holo_c"),
+        _history_row("v_v1", 200, creator_id="vspo_c"),
+        _history_row("u_v1", 50, creator_id="unknown_dimensions_c"),
+    ]
+    topic_by_video = {"h_v1": "apex", "v_v1": "apex", "u_v1": "apex"}
+    dimensions_by_creator = {
+        "holo_c": CreatorDimensions(organization="hololive", branch="holo_jp"),
+        "vspo_c": CreatorDimensions(organization="vspo", branch="vspo_jp"),
+        # "unknown_dimensions_c" deliberately absent.
+    }
+
+    partials = creator_topic_partials(rows, topic_by_video=topic_by_video)
+    board = topic_creator_leaderboards(partials, dimensions_by_creator=dimensions_by_creator)["apex"]
+
+    by_creator = {e.creator_id: e for e in board.by_total_views}
+    assert (by_creator["holo_c"].organization, by_creator["holo_c"].branch) == ("hololive", "holo_jp")
+    assert (by_creator["vspo_c"].organization, by_creator["vspo_c"].branch) == ("vspo", "vspo_jp")
+    # A creator absent from dimensions_by_creator still gets a row -- global
+    # leaderboards have no per-organization membership check to fail.
+    assert (by_creator["unknown_dimensions_c"].organization, by_creator["unknown_dimensions_c"].branch) == (None, None)
+    assert board.creator_count == 3
+
+
+def test_topic_creator_leaderboards_deterministic_tie_break_by_creator_id():
+    rows = [
+        _history_row("z_v1", 500, creator_id="zzz_creator"),
+        _history_row("a_v1", 500, creator_id="aaa_creator"),
+    ]
+    topic_by_video = {"z_v1": "chatting", "a_v1": "chatting"}
+    partials = creator_topic_partials(rows, topic_by_video=topic_by_video)
+    board = topic_creator_leaderboards(partials, dimensions_by_creator={})["chatting"]
+
+    assert [e.creator_id for e in board.by_total_views] == ["aaa_creator", "zzz_creator"]
+    assert [e.creator_id for e in board.by_average_views_per_video] == ["aaa_creator", "zzz_creator"]
+
+
+def test_topic_creator_leaderboards_has_no_entry_and_no_divide_by_zero_for_zero_matching_videos():
+    """A creator with zero videos in a given topic must simply never appear
+    in that topic's leaderboard -- never a fabricated zero-count row, never
+    a ZeroDivisionError."""
+    rows = [_history_row("v1", 300, creator_id="c1")]  # only ever "apex"
+    topic_by_video = {"v1": "apex"}
+    partials = creator_topic_partials(rows, topic_by_video=topic_by_video)
+
+    # "singing" never appears in creator_topic_partials at all for this
+    # shard -- topic_creator_leaderboards must not invent a leaderboard for
+    # a topic nothing was ever aggregated into.
+    leaderboards = topic_creator_leaderboards(partials, dimensions_by_creator={})
+    assert "singing" not in leaderboards
+    assert [e.creator_id for e in leaderboards["apex"].by_total_views] == ["c1"]
+
+
+def test_creator_topic_partials_merge_across_shards_via_incremental_ranking_merger():
+    """The same cross-shard scattering every other partial type tolerates:
+    one creator's videos for one topic split across two shards must merge
+    into one exact total, the same as IncrementalRankingMerger already does
+    for creator_partials."""
+    shard_a_rows = [_history_row("v1", 100, creator_id="c1"), _history_row("v2", 200, creator_id="c1")]
+    shard_b_rows = [_history_row("v3", 300, creator_id="c1")]
+    topic_by_video = {"v1": "apex", "v2": "apex", "v3": "apex"}
+
+    merger = IncrementalRankingMerger()
+    merger.add_shard({}, {}, creator_topic_partials(shard_a_rows, topic_by_video=topic_by_video))
+    merger.add_shard({}, {}, creator_topic_partials(shard_b_rows, topic_by_video=topic_by_video))
+
+    merged = merger.topic_partials()
+    assert merged["c1"]["apex"].view_sum == 100 + 200 + 300
+    assert merged["c1"]["apex"].video_count == 3
+
+
+def test_incremental_ranking_merger_add_shard_still_works_without_topic_partials():
+    """An existing caller/test that only ever passed the first two positional
+    arguments to add_shard (no topic_partials at all) must keep working
+    unchanged -- topic_partials() then simply reports nothing."""
+    merger = IncrementalRankingMerger()
+    merger.add_shard({}, {})  # no third argument at all
+    assert merger.topic_partials() == {}

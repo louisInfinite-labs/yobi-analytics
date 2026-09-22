@@ -270,6 +270,140 @@ def test_new_cache_namespace_never_collides_with_existing_scope_ranking_keys():
     assert new_creator_key != new_org_key
 
 
+# --- persist_topic_rankings (Topic Phase 3, #6/#7) ---------------------------
+
+
+def test_persist_topic_rankings_writes_one_item_per_topic():
+    from analytics.history_ranking import creator_topic_partials, topic_creator_leaderboards
+
+    report_date = date(2026, 9, 9)
+    from stores.history_store import HistoryRow
+
+    today_rows = [
+        HistoryRow(video_id="v1", creator_id="c1", view_count=1_000, observed_at="2026-09-09T18:00:00+09:00", availability_status="available"),
+        HistoryRow(video_id="v2", creator_id="c2", view_count=2_000, observed_at="2026-09-09T18:00:00+09:00", availability_status="available"),
+    ]
+    topic_by_video = {"v1": "apex", "v2": "singing"}
+    partials = creator_topic_partials(today_rows, topic_by_video=topic_by_video)
+    leaderboards = topic_creator_leaderboards(partials, dimensions_by_creator={})
+
+    writes_log = []
+    writes = ranking_reducer.persist_topic_rankings(
+        leaderboards,
+        report_date=report_date,
+        put_cached_trending=lambda key, payload, *, computed_at: writes_log.append((key, payload)),
+        computed_at="2026-09-09T18:05:00+09:00",
+        wru_budget=_instant_budget(),
+    )
+
+    assert writes == 2
+    keys_written = {key for key, _ in writes_log}
+    assert keys_written == {"topicLeaderboard:apex:all:2026-09-09", "topicLeaderboard:singing:all:2026-09-09"}
+
+
+def test_persist_topic_rankings_payload_fields_are_complete():
+    from analytics.history_ranking import creator_topic_partials, topic_creator_leaderboards
+    from stores.history_store import HistoryRow
+
+    report_date = date(2026, 9, 9)
+    today_rows = [
+        HistoryRow(video_id="a1", creator_id="A", view_count=600, observed_at="2026-09-09T18:00:00+09:00", availability_status="available"),
+        HistoryRow(video_id="a2", creator_id="A", view_count=400, observed_at="2026-09-09T18:00:00+09:00", availability_status="available"),
+        HistoryRow(video_id="b1", creator_id="B", view_count=900, observed_at="2026-09-09T18:00:00+09:00", availability_status="available"),
+    ]
+    topic_by_video = {"a1": "valorant", "a2": "valorant", "b1": "valorant"}
+    partials = creator_topic_partials(today_rows, topic_by_video=topic_by_video)
+    dimensions_by_creator = {
+        "A": ranking_reducer.CreatorDimensions(organization="hololive", branch="holo_jp"),
+        "B": ranking_reducer.CreatorDimensions(organization="vspo", branch="vspo_jp"),
+    }
+    leaderboards = topic_creator_leaderboards(partials, dimensions_by_creator=dimensions_by_creator)
+
+    writes_log = []
+    ranking_reducer.persist_topic_rankings(
+        leaderboards,
+        report_date=report_date,
+        put_cached_trending=lambda key, payload, *, computed_at: writes_log.append((key, payload)),
+        computed_at="2026-09-09T18:05:00+09:00",
+        wru_budget=_instant_budget(),
+    )
+
+    ((key, payload),) = writes_log
+    assert key == "topicLeaderboard:valorant:all:2026-09-09"
+    assert payload["topic"] == "valorant"
+    assert payload["period"] == "all"
+    assert payload["reportDate"] == "2026-09-09"
+    assert payload["creatorCount"] == 2
+    assert payload["videoCount"] == 3
+    assert [e["creatorId"] for e in payload["byTotalViews"]] == ["A", "B"]
+    assert payload["byTotalViews"][0] == {
+        "rank": 1, "creatorId": "A", "organization": "hololive", "branch": "holo_jp",
+        "topicTotalViews": 1000, "topicVideoCount": 2, "topicAverageViewsPerVideo": 500.0,
+    }
+    assert [e["creatorId"] for e in payload["byAverageViewsPerVideo"]] == ["B", "A"]
+
+
+def test_new_topic_leaderboard_cache_namespace_never_collides_with_existing_keys():
+    """topicLeaderboard:* must never equal any key the existing scope-ranking/
+    creator-summary/organization-leaderboard namespaces can produce for the
+    same identifiers -- YobiTrendingCache has only one partition key."""
+    from api.read_api import trending_cache_key
+
+    report_date = date(2026, 9, 9)
+    topic_key = ranking_reducer.topic_leaderboard_cache_key(topic="valorant", period="all", report_date=report_date)
+    other_keys = {
+        ranking_reducer.creator_summary_cache_key(creator_id="valorant", period="all", report_date=report_date),
+        ranking_reducer.organization_leaderboard_cache_key(organization="valorant", period="all", report_date=report_date),
+        trending_cache_key(
+            scope_type="creator", scope_value="valorant", period="all", ranking_type="daily_trending", report_date=report_date
+        ),
+    }
+    assert topic_key not in other_keys
+
+
+def test_lambda_handler_writes_topic_leaderboards_from_shard_bundles(monkeypatch):
+    """End-to-end: topic_partials written per-shard via S3PartialRankingStore
+    must survive the reducer's own read/merge loop and land as a
+    topicLeaderboard cache write, alongside the pre-existing scope/creator/
+    organization writes -- not instead of them."""
+    from analytics.history_ranking import TopicPeriodPartial
+
+    report_date = date(2026, 9, 9)
+    client = _CountingS3Client()
+    store = S3PartialRankingStore("test-bucket", s3_client=client)
+
+    topic_partials_shard_0 = {"c1": {"apex": TopicPeriodPartial(creator_id="c1", topic="apex", view_sum=500, video_count=1)}}
+    for shard in range(HISTORY_SHARD_COUNT):
+        if shard == 0:
+            store.write(report_date, shard, {}, {}, topic_partials_shard_0)
+        else:
+            store.write(report_date, shard, {}, {})
+
+    monkeypatch.setattr(ranking_reducer, "S3PartialRankingStore", lambda bucket_name: store)
+    monkeypatch.setenv("YOBI_HISTORY_BUCKET", "test-bucket")
+    monkeypatch.setattr(dynamodb_store, "get_video", lambda video_id: None)
+    monkeypatch.setattr(ranking_reducer, "load_creators", lambda: [_creator("c1", organization="vspo")])
+    monkeypatch.setattr(execution_lock, "renew_execution_lock", lambda **kwargs: None)
+    cache_writes = []
+    monkeypatch.setattr(
+        dynamodb_store, "put_cached_trending", lambda key, payload, *, computed_at: cache_writes.append((key, payload))
+    )
+
+    result = ranking_reducer.lambda_handler({"reportDate": report_date.isoformat(), "ownerToken": "exec-1"}, None)
+
+    keys_written = {key for key, _ in cache_writes}
+    topic_key = "topicLeaderboard:apex:all:2026-09-09"
+    assert topic_key in keys_written
+    payload = dict(cache_writes)[topic_key]
+    assert payload["byTotalViews"] == [
+        {
+            "rank": 1, "creatorId": "c1", "organization": "vspo", "branch": "vspo_jp",
+            "topicTotalViews": 500, "topicVideoCount": 1, "topicAverageViewsPerVideo": 500.0,
+        }
+    ]
+    assert result["cacheWrites"] == len(cache_writes)
+
+
 def test_organization_scope_write_key_matches_get_organization_trending_contract():
     """Cross-contract regression (V5.11/V5.12): the exact cache key
     persist_rankings writes for an organization-scoped ranking must be the

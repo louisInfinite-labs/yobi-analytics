@@ -254,6 +254,63 @@ def scan_video_topic_items() -> list[dict[str, Any]]:
     return items
 
 
+# DynamoDB's own per-call cap for BatchGetItem's Keys list.
+_BATCH_GET_ITEM_LIMIT = 100
+
+# Bounded the same way youtube_client.py's own MAX_RETRIES bounds its retry
+# loop (collection/quota_ledger.IMMEDIATE_MAX_ATTEMPTS) -- UnprocessedKeys
+# should shrink to empty within a couple of attempts under normal
+# throttling, but nothing here may loop forever on a chunk DynamoDB keeps
+# returning as unprocessed.
+_BATCH_GET_ITEM_MAX_ATTEMPTS = 5
+
+
+def get_video_topics(video_ids: list[str]) -> list[dict[str, Any]]:
+    """Batch-read videoId/title/topic for exactly these ids, chunked to
+    DynamoDB's 100-key BatchGetItem limit -- the bounded, per-shard analog of
+    scan_video_topic_items()'s full-table scan (Topic Phase 3: a shard worker
+    needs topics only for the handful of videos it actually collected today,
+    never the whole table). Duplicate ids are deduplicated up front (a
+    caller passing the same video_id twice must never cost two reads or
+    produce two result items). Retries UnprocessedKeys up to
+    _BATCH_GET_ITEM_MAX_ATTEMPTS times per chunk, then raises rather than
+    looping forever -- a video genuinely absent from the table is not
+    retried at all (BatchGetItem never lists a nonexistent key under
+    UnprocessedKeys; it's simply missing from Responses), so this bound only
+    ever triggers on a real, persistent, exhausted-retries failure.
+    """
+    if not video_ids:
+        return []
+    resource = _resource()
+    items: list[dict[str, Any]] = []
+    unique_ids = sorted(set(video_ids))
+    for start in range(0, len(unique_ids), _BATCH_GET_ITEM_LIMIT):
+        keys_to_fetch = [{"videoId": video_id} for video_id in unique_ids[start : start + _BATCH_GET_ITEM_LIMIT]]
+        for attempt in range(1, _BATCH_GET_ITEM_MAX_ATTEMPTS + 1):
+            if not keys_to_fetch:
+                break
+            try:
+                response = resource.batch_get_item(
+                    RequestItems={
+                        VIDEO_MASTER_TABLE: {
+                            "Keys": keys_to_fetch,
+                            "ProjectionExpression": "#videoId, #title, #topic",
+                            "ExpressionAttributeNames": {"#videoId": "videoId", "#title": "title", "#topic": "topic"},
+                        }
+                    }
+                )
+            except ClientError as exc:
+                raise VideoMasterError(f"Failed to batch-read {VIDEO_MASTER_TABLE}: {exc}") from exc
+            items.extend(response.get("Responses", {}).get(VIDEO_MASTER_TABLE, []))
+            keys_to_fetch = response.get("UnprocessedKeys", {}).get(VIDEO_MASTER_TABLE, {}).get("Keys", [])
+            if keys_to_fetch and attempt == _BATCH_GET_ITEM_MAX_ATTEMPTS:
+                raise VideoMasterError(
+                    f"Failed to batch-read {VIDEO_MASTER_TABLE}: {len(keys_to_fetch)} key(s) still "
+                    f"unprocessed after {_BATCH_GET_ITEM_MAX_ATTEMPTS} attempts"
+                )
+    return items
+
+
 def set_video_topic(video_id: str, topic: str, *, overwrite: bool) -> bool:
     """Set only the `topic` attribute of an existing video, leaving every other field untouched.
 

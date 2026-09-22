@@ -134,7 +134,7 @@ class _FakePartialStore:
     def __init__(self, bucket_name):
         self.bucket_name = bucket_name
 
-    def write(self, collection_date, shard, rankings, creator_partials):
+    def write(self, collection_date, shard, rankings, creator_partials, topic_partials=None):
         return f"partial/{collection_date.isoformat()}/{shard}"
 
 
@@ -226,7 +226,7 @@ def _wire_reducer_normal_branch(monkeypatch, *, read_bundle_spy=None):
         def read_bundle(self, report_date, shard):
             if read_bundle_spy is not None:
                 read_bundle_spy(report_date=report_date, shard=shard)
-            return {}, {}
+            return {}, {}, {}
 
     monkeypatch.setattr(ranking_reducer, "S3PartialRankingStore", FakeStore)
     monkeypatch.setattr(ranking_reducer, "load_creators", lambda: [])

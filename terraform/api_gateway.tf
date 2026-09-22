@@ -37,6 +37,7 @@ locals {
     "GET /organizations/{organization}/leaderboard",
     "GET /leaderboard",
     "GET /topics",
+    "GET /topics/{topic}/leaderboard",
     "GET /dashboard/chart-catalog",
     "GET /dashboard/comparison-items",
     "GET /dashboard/comparison-data",

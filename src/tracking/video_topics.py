@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import NamedTuple
+from typing import Any, Iterable, Mapping, NamedTuple
 
 OTHER_TOPIC = "other"
 
@@ -54,3 +54,25 @@ def classify_video_topic(title: str) -> str:
     """Return the single primary topic id for a video title, `other` when nothing matches."""
     normalized = unicodedata.normalize("NFKC", title).casefold()
     return next((topic_id for topic_id, pattern in _COMPILED_PATTERNS if pattern.search(normalized)), OTHER_TOPIC)
+
+
+def resolve_video_topics(items: Iterable[Mapping[str, Any]]) -> dict[str, str]:
+    """videoId -> topic, classifying from title in memory when a persisted
+    `topic` is missing OR is not one of the canonical TOPIC_IDS (Topic Phase
+    3: the live topic backfill has not necessarily run, so ranking must not
+    depend on it; a corrupted/stale/manually-edited persisted value must
+    never leak an unrecognized string into a downstream cache key). A
+    missing or empty `title` classifies safely to OTHER_TOPIC (the same
+    "nothing matched" result classify_video_topic already returns for a
+    genuinely unclassifiable title), never a KeyError. Read-only — never
+    writes the classified result back anywhere; a caller that also wants to
+    persist it must do that itself via a separate, explicit write.
+    """
+    resolved: dict[str, str] = {}
+    for item in items:
+        persisted = item.get("topic")
+        if persisted in TOPIC_IDS:
+            resolved[item["videoId"]] = persisted
+        else:
+            resolved[item["videoId"]] = classify_video_topic(item.get("title") or "")
+    return resolved

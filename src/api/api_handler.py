@@ -183,6 +183,10 @@ def _handle_get_global_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_global_leaderboard(_merged_params(event))
 
 
+def _handle_get_topic_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_topic_leaderboard(_merged_params(event))
+
+
 def _handle_post_heartbeat(event: dict[str, Any]) -> dict[str, Any]:
     """Validate and record one heartbeat, returning the record actually stored."""
     record = heartbeat_api.record_heartbeat(_json_body(event))
@@ -329,6 +333,7 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /creators/{creatorId}/summary": _handle_get_creator_summary,
     "GET /organizations/{organization}/leaderboard": _handle_get_organization_leaderboard,
     "GET /leaderboard": _handle_get_global_leaderboard,
+    "GET /topics/{topic}/leaderboard": _handle_get_topic_leaderboard,
     "POST /heartbeat": _handle_post_heartbeat,
     "GET /heartbeat/{clientId}/status": _handle_get_heartbeat_status,
     "POST /clients/{clientId}/credential": _handle_post_client_credential,
