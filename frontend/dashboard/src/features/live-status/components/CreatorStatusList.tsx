@@ -133,7 +133,7 @@ function CreatorRow({
           <span className="live-status-member__main">
             <span className="live-status-member__name-row">
               <span className="live-status-member__name">{creator.channelName}</span>
-              {isActive && <span className="live-status-member__main-badge">MAIN</span>}
+              {isActive && <span className="live-status-member__main-badge">{t(locale, "creatorStatusList.mainBadge")}</span>}
             </span>
             {topic && <span className="live-status-member__topic">{topic}</span>}
           </span>
@@ -189,6 +189,7 @@ export interface CreatorStatusListProps {
   onConfirmOshiSwitchChange: (next: boolean) => void
 }
 
+/** An unset `favoriteOnlyIds` means the "all" view -- every creator matches. */
 function matchesFavoriteFilter(channelId: string, favoriteOnlyIds: Set<string> | undefined): boolean {
   return !favoriteOnlyIds || favoriteOnlyIds.has(channelId)
 }

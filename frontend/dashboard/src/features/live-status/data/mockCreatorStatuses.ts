@@ -36,6 +36,9 @@ const MOCK_UPCOMING_TOPICS = [
   "Collab announcement",
 ]
 
+/** Deterministic per-creator topic pick. `salt` ("live"/"upcoming") keeps the
+ * two pools independently varied -- without it, a creator's live and
+ * upcoming topic would always hash to the same index. */
 function pickMockTopic(topics: string[], channelId: string, salt: string): string {
   return topics[hashString(`${channelId}:${salt}`) % topics.length]
 }

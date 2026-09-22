@@ -17,6 +17,7 @@ export type TranslationKey =
   | "creatorStatusList.switchOshiTo"
   | "creatorStatusList.otherGroupLabel"
   | "creatorStatusList.gamersGroupLabel"
+  | "creatorStatusList.mainBadge"
   | "recentVideos.tag.latestVideos"
   | "recentVideos.tag.latestLive"
   | "recentVideos.tag.all"
@@ -34,11 +35,24 @@ export type TranslationKey =
   | "recentVideos.empty.latestVideos"
   | "recentVideos.empty.latestLive"
   | "recentVideos.empty.other"
+  | "liveScheduleDock.title"
+  | "liveScheduleDock.close"
   | "liveScheduleDock.panelAriaLabel"
   | "liveScheduleDock.resize.shrink"
   | "liveScheduleDock.resize.expand"
   | "liveScheduleDock.resize.shrinkAria"
   | "liveScheduleDock.resize.expandAria"
+  | "oshiStatus.liveNext"
+  | "oshiStatus.noScheduledStream"
+  | "oshiStatus.liveNow"
+  | "oshiStatus.sinceLastVisit"
+  | "oshiStatus.uploads"
+  | "oshiStatus.streams"
+  | "oshiStatus.viewGrowth"
+  | "oshiStatus.firstVisit"
+  | "oshiStatus.thisWeek"
+  | "oshiStatus.recent"
+  | "oshiStatus.noRecentActivity"
   | "errorState.code"
   | "errorState.defaultMessage"
   | "errorState.retry"
@@ -137,6 +151,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.switchOshiTo": "切換推し為 {{creatorName}}",
     "creatorStatusList.otherGroupLabel": "其他",
     "creatorStatusList.gamersGroupLabel": "Gamers",
+    "creatorStatusList.mainBadge": "MAIN",
     "recentVideos.tag.latestVideos": "最新影片",
     "recentVideos.tag.latestLive": "最新直播",
     "recentVideos.tag.all": "ALL",
@@ -154,11 +169,24 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "尚無最新影片",
     "recentVideos.empty.latestLive": "尚無最新直播",
     "recentVideos.empty.other": "沒有影片",
+    "liveScheduleDock.title": "直播狀態",
+    "liveScheduleDock.close": "關閉",
     "liveScheduleDock.panelAriaLabel": "直播排程搜尋",
     "liveScheduleDock.resize.shrink": "縮小",
     "liveScheduleDock.resize.expand": "放大",
     "liveScheduleDock.resize.shrinkAria": "縮小面板",
     "liveScheduleDock.resize.expandAria": "展開面板至全高",
+    "oshiStatus.liveNext": "直播／接下來",
+    "oshiStatus.noScheduledStream": "尚無排定的直播",
+    "oshiStatus.liveNow": "直播中",
+    "oshiStatus.sinceLastVisit": "自上次造訪後",
+    "oshiStatus.uploads": "上傳影片",
+    "oshiStatus.streams": "直播場次",
+    "oshiStatus.viewGrowth": "觀看成長",
+    "oshiStatus.firstVisit": "首次造訪 — 尚無可回顧的內容",
+    "oshiStatus.thisWeek": "本週",
+    "oshiStatus.recent": "最近動態",
+    "oshiStatus.noRecentActivity": "尚無最近動態",
     "errorState.code": "(代碼: {{code}})",
     "errorState.defaultMessage": "載入資料時發生錯誤。",
     "errorState.retry": "重試",
@@ -256,6 +284,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.switchOshiTo": "Switch Oshi to {{creatorName}}",
     "creatorStatusList.otherGroupLabel": "Other",
     "creatorStatusList.gamersGroupLabel": "Gamers",
+    "creatorStatusList.mainBadge": "MAIN",
     "recentVideos.tag.latestVideos": "Latest Videos",
     "recentVideos.tag.latestLive": "Latest Live",
     "recentVideos.tag.all": "ALL",
@@ -273,11 +302,24 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "No recent videos",
     "recentVideos.empty.latestLive": "No recent streams",
     "recentVideos.empty.other": "No videos",
+    "liveScheduleDock.title": "LIVE STATUS",
+    "liveScheduleDock.close": "Close",
     "liveScheduleDock.panelAriaLabel": "Live schedule search",
     "liveScheduleDock.resize.shrink": "Shrink",
     "liveScheduleDock.resize.expand": "Expand",
     "liveScheduleDock.resize.shrinkAria": "Shrink panel",
     "liveScheduleDock.resize.expandAria": "Expand panel to full height",
+    "oshiStatus.liveNext": "Live / Next",
+    "oshiStatus.noScheduledStream": "No scheduled stream",
+    "oshiStatus.liveNow": "LIVE NOW",
+    "oshiStatus.sinceLastVisit": "Since your last visit",
+    "oshiStatus.uploads": "Uploads",
+    "oshiStatus.streams": "Streams",
+    "oshiStatus.viewGrowth": "View growth",
+    "oshiStatus.firstVisit": "First visit — nothing to catch up on yet",
+    "oshiStatus.thisWeek": "This week",
+    "oshiStatus.recent": "Recent",
+    "oshiStatus.noRecentActivity": "No recent activity",
     "errorState.code": "(Code: {{code}})",
     "errorState.defaultMessage": "Something went wrong loading this data.",
     "errorState.retry": "Retry",
@@ -375,6 +417,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.switchOshiTo": "推しを{{creatorName}}に切り替える",
     "creatorStatusList.otherGroupLabel": "その他",
     "creatorStatusList.gamersGroupLabel": "ゲーマーズ",
+    "creatorStatusList.mainBadge": "MAIN",
     "recentVideos.tag.latestVideos": "最新動画",
     "recentVideos.tag.latestLive": "最新配信",
     "recentVideos.tag.all": "ALL",
@@ -392,11 +435,24 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "最新動画はありません",
     "recentVideos.empty.latestLive": "最新配信はありません",
     "recentVideos.empty.other": "動画がありません",
+    "liveScheduleDock.title": "配信ステータス",
+    "liveScheduleDock.close": "閉じる",
     "liveScheduleDock.panelAriaLabel": "配信スケジュール検索",
     "liveScheduleDock.resize.shrink": "縮小",
     "liveScheduleDock.resize.expand": "拡大",
     "liveScheduleDock.resize.shrinkAria": "パネルを縮小",
     "liveScheduleDock.resize.expandAria": "パネルを全画面に拡大",
+    "oshiStatus.liveNext": "配信中／次回",
+    "oshiStatus.noScheduledStream": "予定されている配信はありません",
+    "oshiStatus.liveNow": "配信中",
+    "oshiStatus.sinceLastVisit": "前回の訪問から",
+    "oshiStatus.uploads": "アップロード",
+    "oshiStatus.streams": "配信",
+    "oshiStatus.viewGrowth": "視聴成長",
+    "oshiStatus.firstVisit": "初回訪問 — まだ追いつく内容はありません",
+    "oshiStatus.thisWeek": "今週",
+    "oshiStatus.recent": "最近の動き",
+    "oshiStatus.noRecentActivity": "最近の動きはありません",
     "errorState.code": "(コード: {{code}})",
     "errorState.defaultMessage": "データの読み込み中にエラーが発生しました。",
     "errorState.retry": "再試行",

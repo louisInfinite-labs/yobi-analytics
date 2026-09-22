@@ -13,6 +13,9 @@ export interface ActivityEntry {
   publishedAt: string
 }
 
+/** `since` exclusive, `until` inclusive -- so two adjacent windows (e.g. this
+ * week vs. since-last-visit) never double-count a video published exactly on
+ * their shared boundary. An unparseable publishedAt never matches. */
 function publishedWithin(video: RecentVideo, since: Date, until: Date): boolean {
   const published = new Date(video.publishedAt).getTime()
   return Number.isFinite(published) && published > since.getTime() && published <= until.getTime()

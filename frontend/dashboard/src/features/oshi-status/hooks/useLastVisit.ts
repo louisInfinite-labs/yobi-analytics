@@ -1,5 +1,8 @@
 const STORAGE_KEY = "yobi.home.lastVisitAt"
 
+/** Null on a first visit, an unparseable stored value, or a storage read
+ * failure (private browsing, quota) -- every case just means "nothing to
+ * compare against yet", not an error worth surfacing. */
 function readPreviousVisit(): Date | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)

@@ -4,6 +4,8 @@ import { BRANCH_LABELS } from "../../../entities/creator/model/domain"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
 import { useCountdownLanguage } from "../../../shared/i18n/hooks/useCountdownLanguage"
+import { useLocale } from "../../../shared/i18n/hooks/useLocale"
+import { t } from "../../../shared/i18n/translations"
 import { formatAbsoluteTime, formatCountdown } from "../../live-status/model/creatorStatusFormat"
 import { usePreviousVisit } from "../hooks/useLastVisit"
 import { formatActivityTime, measureActivity, selectRecentActivity, WEEK_MS } from "../utils/oshiActivity"
@@ -26,6 +28,9 @@ interface OshiStatusPanelProps {
   loading: boolean
 }
 
+/** One value/label pair in the compact 3-column metric rows -- `value` is a
+ * pre-formatted string (already localized/compacted by the caller) since
+ * this component has no numeric or locale knowledge of its own. */
 function Metric({ value, label }: { value: string; label: string }) {
   return (
     <div className="oshi-status__metric">
@@ -40,15 +45,16 @@ function Metric({ value, label }: { value: string; label: string }) {
  * picking one — both slots exist, and neither is derived data. */
 function LiveOrNext({ status, now }: { status: CreatorStatus; now: Date }) {
   const [language] = useCountdownLanguage()
+  const [locale] = useLocale()
 
   if (status.kind === "offline") {
-    return <div className="oshi-empty-state">No scheduled stream</div>
+    return <div className="oshi-empty-state">{t(locale, "oshiStatus.noScheduledStream")}</div>
   }
   return (
     <div className="oshi-status__next">
       <div className="oshi-status__next-main">
         <div className="oshi-status__next-time">
-          {status.kind === "live" ? "LIVE NOW" : formatAbsoluteTime(status.scheduledStart)}
+          {status.kind === "live" ? t(locale, "oshiStatus.liveNow") : formatAbsoluteTime(status.scheduledStart)}
         </div>
         <div className="oshi-status__next-title">{status.title}</div>
       </div>
@@ -67,6 +73,7 @@ export function OshiStatusPanel({ creatorId, status, now, uploads, streams, load
   const creator = mockCreators.find((entry) => entry.channelId === creatorId)
   const accent = getMemberAccent(creatorId)
   const previousVisit = usePreviousVisit()
+  const [locale] = useLocale()
 
   const sinceLastVisit = useMemo(
     () => (previousVisit ? measureActivity(uploads, streams, previousVisit, now) : null),
@@ -100,34 +107,34 @@ export function OshiStatusPanel({ creatorId, status, now, uploads, streams, load
 
       <div className="oshi-status__body">
         <section className="oshi-status__section">
-          <div className="oshi-status__section-title">Live / Next</div>
+          <div className="oshi-status__section-title">{t(locale, "oshiStatus.liveNext")}</div>
           <LiveOrNext status={status} now={now} />
         </section>
 
         <section className="oshi-status__section">
-          <div className="oshi-status__section-title">Since your last visit</div>
+          <div className="oshi-status__section-title">{t(locale, "oshiStatus.sinceLastVisit")}</div>
           {sinceLastVisit ? (
             <div className="oshi-status__metrics">
-              <Metric value={String(sinceLastVisit.uploads)} label="Uploads" />
-              <Metric value={String(sinceLastVisit.streams)} label="Streams" />
-              <Metric value={VIEW_GROWTH_UNAVAILABLE} label="View growth" />
+              <Metric value={String(sinceLastVisit.uploads)} label={t(locale, "oshiStatus.uploads")} />
+              <Metric value={String(sinceLastVisit.streams)} label={t(locale, "oshiStatus.streams")} />
+              <Metric value={VIEW_GROWTH_UNAVAILABLE} label={t(locale, "oshiStatus.viewGrowth")} />
             </div>
           ) : (
-            <div className="oshi-empty-state">First visit — nothing to catch up on yet</div>
+            <div className="oshi-empty-state">{t(locale, "oshiStatus.firstVisit")}</div>
           )}
         </section>
 
         <section className="oshi-status__section">
-          <div className="oshi-status__section-title">This week</div>
+          <div className="oshi-status__section-title">{t(locale, "oshiStatus.thisWeek")}</div>
           <div className="oshi-status__metrics">
-            <Metric value={VIEW_GROWTH_UNAVAILABLE} label="View growth" />
-            <Metric value={String(thisWeek.streams)} label="Streams" />
-            <Metric value={String(thisWeek.uploads)} label="Uploads" />
+            <Metric value={VIEW_GROWTH_UNAVAILABLE} label={t(locale, "oshiStatus.viewGrowth")} />
+            <Metric value={String(thisWeek.streams)} label={t(locale, "oshiStatus.streams")} />
+            <Metric value={String(thisWeek.uploads)} label={t(locale, "oshiStatus.uploads")} />
           </div>
         </section>
 
         <section className="oshi-status__section oshi-status__section--recent">
-          <div className="oshi-status__section-title">Recent</div>
+          <div className="oshi-status__section-title">{t(locale, "oshiStatus.recent")}</div>
           {loading ? (
             <div className="oshi-status__recent-list">
               {[0, 1, 2, 3].map((row) => (
@@ -138,7 +145,7 @@ export function OshiStatusPanel({ creatorId, status, now, uploads, streams, load
               ))}
             </div>
           ) : recent.length === 0 ? (
-            <div className="oshi-empty-state">No recent activity</div>
+            <div className="oshi-empty-state">{t(locale, "oshiStatus.noRecentActivity")}</div>
           ) : (
             <div className="oshi-status__recent-list">
               {recent.map((entry) => (

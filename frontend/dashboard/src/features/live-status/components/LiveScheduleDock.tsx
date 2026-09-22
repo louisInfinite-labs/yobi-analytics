@@ -80,6 +80,11 @@ export function LiveScheduleDock() {
   const reducedMotion = usePrefersReducedMotion()
   const dockRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  // Set by closeExplicitly(), consumed by the focus-restore effect below --
+  // see that effect's own comment for why the trigger can't be focused
+  // synchronously inside closeExplicitly itself.
+  const restoreFocusRef = useRef(false)
 
   const favoriteOnlyIds = viewMode === "favorites" ? favorites : undefined
   const summaryStatuses = favoriteOnlyIds
@@ -100,7 +105,7 @@ export function LiveScheduleDock() {
     searchInputRef.current?.focus()
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setExpanded(false)
+      if (event.key === "Escape") closeExplicitly()
     }
     function handlePointerDown(event: PointerEvent) {
       if (!(event.target instanceof Node) || !dockRef.current) return
@@ -125,6 +130,32 @@ export function LiveScheduleDock() {
     setExpanded(true)
   }
 
+  // Runs once the DOM has actually committed the closed state (not
+  // synchronously inside closeExplicitly): the trigger is still
+  // visibility:hidden at the moment expanded flips to false -- CSS only
+  // un-hides it once .live-status-dock's own data-live-status-open attribute
+  // re-renders -- and focusing a still-hidden element is a silent no-op in
+  // every engine, not a deferred one. Waiting for this effect (which runs
+  // after that render has painted) is what makes the focus call land.
+  useEffect(() => {
+    if (expanded || !restoreFocusRef.current) return
+    restoreFocusRef.current = false
+    triggerRef.current?.focus()
+  }, [expanded])
+
+  // Escape and the close button explicitly dismiss the drawer -- `inert`
+  // then makes its subtree unfocusable, so if focus was still inside it
+  // (the search input, a creator row) it would otherwise be dropped to
+  // <body> instead of landing anywhere sensible. Outside-click and
+  // video-selection closes are deliberately NOT routed through this: the
+  // user's focus in those cases is already elsewhere (whatever they clicked,
+  // or the video modal that just opened), so forcing it back to the trigger
+  // would fight what they were already doing.
+  function closeExplicitly() {
+    restoreFocusRef.current = true
+    setExpanded(false)
+  }
+
   return (
     <>
       <div
@@ -133,7 +164,7 @@ export function LiveScheduleDock() {
         data-live-status-open={expanded}
         style={creatorThemeStyle(selectedCreatorId)}
       >
-        <button type="button" className="live-status-trigger" onClick={open}>
+        <button ref={triggerRef} type="button" className="live-status-trigger" onClick={open}>
           <span className={`live-status-trigger__dot live-status-trigger__dot--${summary.dotColor}`} aria-hidden="true" />
           {summary.text}
         </button>
@@ -147,7 +178,7 @@ export function LiveScheduleDock() {
         >
           <div className="live-status-drawer__header">
             <div className="live-status-drawer__title-row">
-              <span className="live-status-drawer__title">LIVE STATUS</span>
+              <span className="live-status-drawer__title">{t(locale, "liveScheduleDock.title")}</span>
               <button
                 type="button"
                 className="live-status-drawer__resize"
@@ -158,7 +189,7 @@ export function LiveScheduleDock() {
               >
                 {panelSize === "full" ? "⤡" : "⤢"}
               </button>
-              <button type="button" className="live-status-drawer__close" onClick={() => setExpanded(false)} aria-label="Close">
+              <button type="button" className="live-status-drawer__close" onClick={closeExplicitly} aria-label={t(locale, "liveScheduleDock.close")}>
                 ×
               </button>
             </div>
@@ -168,7 +199,7 @@ export function LiveScheduleDock() {
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="Search creator..."
+                placeholder={t(locale, "oshiSettings.searchPlaceholder")}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
@@ -181,7 +212,7 @@ export function LiveScheduleDock() {
                 aria-pressed={viewMode === "all"}
                 onClick={() => setViewMode("all")}
               >
-                ALL
+                {t(locale, "recentVideos.tag.all")}
               </button>
               <button
                 type="button"
@@ -189,7 +220,7 @@ export function LiveScheduleDock() {
                 aria-pressed={viewMode === "favorites"}
                 onClick={() => setViewMode("favorites")}
               >
-                FAVORITES
+                {t(locale, "oshiSettings.viewFilter.favoritesOnly")}
               </button>
             </div>
           </div>

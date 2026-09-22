@@ -42,6 +42,8 @@ const VISIBLE_COUNT_STEP = 20
  * boundary on rather than drifting by the gap each time. */
 const CARD_GAP = 10
 
+/** "{views} views · MM/DD", dropping either half that's missing data (no
+ * viewCount, or an unparseable publishedAt) rather than showing a blank. */
 function formatCardMeta(video: RecentVideo): string {
   const date = new Date(video.publishedAt)
   const published = Number.isNaN(date.getTime())
