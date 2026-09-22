@@ -2,6 +2,7 @@ import { useState } from "react"
 import { MyOshiSettings } from "../../features/oshi/components/MyOshiSettings"
 import { NotificationSettings } from "../../features/notifications/components/NotificationSettings"
 import { OshiSettings } from "../../features/oshi/components/OshiSettings"
+import { DisplaySettings } from "./DisplaySettings"
 import { SettingsSecondaryNavbar, type SettingsSection } from "./SettingsSecondaryNavbar"
 
 /** Settings' own [MainNavbar] [SettingsSecondaryNavbar] [Content] layout
@@ -17,6 +18,7 @@ export function SettingsPage() {
     activeSection === "myOshi" ? "settings-page__content--main-oshi" : "",
     activeSection === "oshi" ? "settings-page__content--favorites" : "",
     activeSection === "notification" ? "settings-page__content--notification" : "",
+    activeSection === "display" ? "settings-page__content--display" : "",
   ]
     .filter(Boolean)
     .join(" ")
@@ -28,6 +30,7 @@ export function SettingsPage() {
         {activeSection === "myOshi" && <MyOshiSettings />}
         {activeSection === "oshi" && <OshiSettings />}
         {activeSection === "notification" && <NotificationSettings />}
+        {activeSection === "display" && <DisplaySettings />}
       </div>
     </div>
   )

@@ -163,6 +163,30 @@ describe("hierarchical narrowing", () => {
     expect(keys).toContain("Myth")
     expect(keys).not.toContain("1期生")
   })
+
+  it("orders Hololive categories by the official talent directory", () => {
+    expect(availableGroupKeys("hololive", "holo_jp", mockCreators)).toEqual([
+      "0期生",
+      "1期生",
+      "2期生",
+      "ゲーマーズ",
+      "3期生",
+      "4期生",
+      "5期生",
+      "6期生",
+      "ReGLOSS",
+      "FLOWGLOW",
+    ])
+  })
+
+  it.each(["vspo_jp", "vspo_en"] as const)("hides Generation / Unit for %s", (branch) => {
+    expect(availableGroupKeys("vspo", branch, mockCreators)).toEqual([])
+  })
+
+  it("clears a Hololive group selection when the scope changes to VSPO", () => {
+    const state = { ...EMPTY_FILTER_STATE, organization: "hololive" as const, groupKey: ["Myth"] }
+    expect(setOrganization(state, "vspo", mockCreators).groupKey).toEqual([])
+  })
 })
 
 describe("toggle helpers", () => {

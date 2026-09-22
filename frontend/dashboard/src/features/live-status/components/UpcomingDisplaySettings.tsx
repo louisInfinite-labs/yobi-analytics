@@ -1,3 +1,4 @@
+import { Select } from "antd"
 import { useCountdownLanguage } from "../../../shared/i18n/hooks/useCountdownLanguage"
 import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
 
@@ -15,34 +16,35 @@ export function UpcomingDisplaySettings() {
 
   return (
     <>
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)" }}>
+      <label className="preference-control">
         Upcoming display
-        <select
-          className="soft-select"
+        <Select
           value={mode}
-          onChange={(e) => setMode(e.target.value as typeof mode)}
+          onChange={(next) => setMode(next as typeof mode)}
           aria-label="Upcoming stream time display"
-        >
-          <option value="absolute">HH:mm</option>
-          <option value="countdown">Countdown</option>
-        </select>
+          options={[
+            { value: "absolute", label: "HH:mm" },
+            { value: "countdown", label: "Countdown" },
+          ]}
+          popupMatchSelectWidth={false}
+          size="small"
+        />
       </label>
 
       {mode === "countdown" && (
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)" }}>
+        <label className="preference-control">
           Countdown language
-          <select
-            className="soft-select"
+          <Select
             value={language}
-            onChange={(e) => setLanguage(e.target.value as typeof language)}
+            onChange={(next) => setLanguage(next as typeof language)}
             aria-label="Countdown label language"
-          >
-            {(Object.keys(LANGUAGE_LABELS) as (keyof typeof LANGUAGE_LABELS)[]).map((key) => (
-              <option key={key} value={key}>
-                {LANGUAGE_LABELS[key]}
-              </option>
-            ))}
-          </select>
+            options={(Object.keys(LANGUAGE_LABELS) as (keyof typeof LANGUAGE_LABELS)[]).map((key) => ({
+              value: key,
+              label: LANGUAGE_LABELS[key],
+            }))}
+            popupMatchSelectWidth={false}
+            size="small"
+          />
         </label>
       )}
     </>

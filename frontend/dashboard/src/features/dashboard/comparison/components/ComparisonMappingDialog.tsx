@@ -1,4 +1,5 @@
 import { useRef } from "react"
+import { Button } from "antd"
 import { ComparisonOrderBadge } from "./ComparisonOrderBadge"
 import { useModalFocus } from "../../../../shared/hooks/useModalFocus"
 import { groupCreatorsForDock } from "../../../../entities/creator/utils/dockCreatorOrder"
@@ -120,12 +121,10 @@ export function ComparisonMappingDialog({
         {error && <p role="alert">{error}</p>}
 
         <div className="comparison-mapping-dialog__actions">
-          <button type="button" className="soft-button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="button" className="soft-button soft-button--primary" disabled={!canSave || isSaving} onClick={onSave}>
+          <Button onClick={onCancel}>Cancel</Button>
+          <Button type="primary" disabled={!canSave || isSaving} onClick={onSave}>
             Save
-          </button>
+          </Button>
         </div>
       </div>
     </div>

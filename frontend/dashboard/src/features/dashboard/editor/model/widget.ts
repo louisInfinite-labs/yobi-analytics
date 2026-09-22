@@ -37,6 +37,8 @@ export interface WidgetDefinition<TSettings = Record<string, never>> {
   allowedHeights: WidgetHeight[]
   /** Reserved for future scoped-data widgets (Roadmap Phase 9+); empty for every v1 widget. */
   permissions: readonly string[]
+  /** Whether this widget can independently filter its data by creator IDs. */
+  supportsCreatorScope: boolean
   defaultSettings: TSettings
   /** Upgrades a persisted settings object from an older schemaVersion; absent means the shape never changed. */
   migrateSettings?: (settings: unknown, fromVersion: number) => TSettings

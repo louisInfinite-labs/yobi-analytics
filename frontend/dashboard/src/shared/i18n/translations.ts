@@ -60,6 +60,7 @@ export type TranslationKey =
   | "settingsSecondaryNavbar.myOshiSettings"
   | "settingsSecondaryNavbar.oshiSettings"
   | "settingsSecondaryNavbar.notificationSettings"
+  | "settingsSecondaryNavbar.displaySettings"
   | "myOshiSettings.selectAria"
   | "myOshiSettings.pageTitle"
   | "myOshiSettings.statusMarker"
@@ -167,6 +168,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.myOshiSettings": "我推設定",
     "settingsSecondaryNavbar.oshiSettings": "收藏名單",
     "settingsSecondaryNavbar.notificationSettings": "推送通知(直播 / 新片)",
+    "settingsSecondaryNavbar.displaySettings": "顯示設定",
     "oshiSettings.searchPlaceholder": "搜尋成員",
     "oshiSettings.noResults": "找不到符合的成員",
     "oshiSettings.addFavoriteAria": "將 {{name}} 加入我推",
@@ -273,6 +275,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
     "settingsSecondaryNavbar.oshiSettings": "Favorites List",
     "settingsSecondaryNavbar.notificationSettings": "Live/Video Notifications",
+    "settingsSecondaryNavbar.displaySettings": "Display",
     "oshiSettings.searchPlaceholder": "Search creators",
     "oshiSettings.noResults": "No creators found",
     "oshiSettings.addFavoriteAria": "Add {{name}} to favorites",
@@ -379,6 +382,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.myOshiSettings": "推し設定",
     "settingsSecondaryNavbar.oshiSettings": "お気に入りリスト",
     "settingsSecondaryNavbar.notificationSettings": "通知設定(配信 / 新着動画)",
+    "settingsSecondaryNavbar.displaySettings": "表示設定",
     "oshiSettings.searchPlaceholder": "メンバーを検索",
     "oshiSettings.noResults": "該当するメンバーが見つかりません",
     "oshiSettings.addFavoriteAria": "{{name}}を推しに追加",

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { Button } from "antd"
 import type { GridChangeConfirmation } from "../hooks/useDashboardEditor"
 
 interface GridChangeConfirmationDialogProps {
@@ -104,12 +105,12 @@ export function GridChangeConfirmationDialog({ confirmation, disabled, onCancel,
           {affectedWidgetIds.length === 1 ? "" : "s"}. Review before continuing.
         </p>
         <div className="grid-change-confirmation__actions">
-          <button type="button" ref={cancelButtonRef} className="soft-button" onClick={onCancel}>
+          <Button ref={cancelButtonRef} onClick={onCancel}>
             Cancel
-          </button>
-          <button type="button" ref={confirmButtonRef} className="soft-button" onClick={onConfirm} disabled={disabled}>
+          </Button>
+          <Button ref={confirmButtonRef} type="primary" onClick={onConfirm} disabled={disabled}>
             Continue and Save
-          </button>
+          </Button>
         </div>
       </div>
     </div>

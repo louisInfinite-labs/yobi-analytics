@@ -92,6 +92,45 @@ export function addWidget(layout: CanonicalLayout, widget: DashboardWidget): Lay
   return { layout: candidate, committed: true, result }
 }
 
+const rectsOverlap = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }): boolean =>
+  a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+
+/** A plain move (this patch leaves width/height exactly as they already
+ * are) that lands exactly on one other widget's cell may swap that widget
+ * into the mover's old position instead of being rejected outright -- an
+ * ordinary drag-driven position exchange (left<->right, top<->bottom).
+ * Guidelines Section 9's collision rejection is for genuine overlaps; it
+ * never addresses two widgets trading places in one gesture, and Section 8
+ * already accepts one edit changing more than one widget's geometry
+ * atomically (there, a grid-size change; here, a two-widget swap). Both
+ * widgets keep their own widgetId (Section 4, rule 2) and the swap is only
+ * ever committed if the fully swapped layout itself validates cleanly --
+ * this never weakens collision/bounds/height/fill validation, it only tries
+ * one additional candidate before giving up. A resize (width or height
+ * actually changing) never swaps. */
+function tryPositionSwap(layout: CanonicalLayout, original: DashboardWidget, patch: Partial<WidgetPlacement>): LayoutMutationOutcome | null {
+  const isResize = (patch.width !== undefined && patch.width !== original.width) || (patch.height !== undefined && patch.height !== original.height)
+  if (isResize) return null
+
+  const movedRect = { x: patch.x ?? original.x, y: patch.y ?? original.y, width: original.width, height: original.height }
+  const colliding = layout.widgets.filter((w) => w.widgetId !== original.widgetId && rectsOverlap(movedRect, w))
+  if (colliding.length !== 1) return null
+  const [other] = colliding
+  if (other.width !== original.width || other.height !== original.height) return null
+
+  const swapCandidate: CanonicalLayout = {
+    ...layout,
+    widgets: layout.widgets.map((widget) => {
+      if (widget.widgetId === original.widgetId) return { ...widget, ...patch }
+      if (widget.widgetId === other.widgetId) return { ...widget, x: original.x, y: original.y }
+      return widget
+    }),
+  }
+  const swapResult = validateCandidate(swapCandidate)
+  if (!swapResult.valid) return null
+  return { layout: swapCandidate, committed: true, result: swapResult }
+}
+
 /** Updates only the geometry of the widget matching `widgetId`; every other
  * field, including `widgetId` itself, is left untouched — the basis for
  * move/resize preserving identity (Section 4, rule 2). */
@@ -100,13 +139,18 @@ export function updateWidgetGeometry(
   widgetId: string,
   patch: Partial<WidgetPlacement>,
 ): LayoutMutationOutcome {
+  const original = layout.widgets.find((w) => w.widgetId === widgetId)
   const candidate: CanonicalLayout = {
     ...layout,
     widgets: layout.widgets.map((widget) => (widget.widgetId === widgetId ? { ...widget, ...patch } : widget)),
   }
   const result = validateCandidate(candidate)
-  if (!result.valid) return { layout, committed: false, result }
-  return { layout: candidate, committed: true, result }
+  if (result.valid) return { layout: candidate, committed: true, result }
+
+  const swapOutcome = original && tryPositionSwap(layout, original, patch)
+  if (swapOutcome) return swapOutcome
+
+  return { layout, committed: false, result }
 }
 
 /** MT-05's production drag path: repositions a widget without touching its

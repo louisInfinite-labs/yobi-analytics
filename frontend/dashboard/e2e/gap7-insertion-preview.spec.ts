@@ -13,7 +13,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
  */
 
 const STORAGE_KEY = "yobi-analytics-canonical-dashboard-layout"
-const DESKTOP = { width: 1280, height: 1500 }
+// Height raised from 1500: Defect A's fix (frontend/dashboard's Manual
+// Layout Correction Pass) grew the default layout's real page height (its
+// 1X widgets now render tall enough for their content with no internal
+// scroll), so 1500 no longer fits the whole page without an incidental
+// scroll -- this suite's absolute-viewport-coordinate assertions need every
+// measured widget on screen at once, not a taller page's scroll position.
+const DESKTOP = { width: 1280, height: 2600 }
 
 interface Rect {
   id: string | null

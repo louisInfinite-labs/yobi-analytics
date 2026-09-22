@@ -1,5 +1,6 @@
 import type { BranchKey, ChannelType, ContentFormat, ContentTagKey, GroupKey, LifecycleStage, OrganizationKey } from "../../../entities/creator/model/domain"
 import type { MockCreator } from "../../../entities/creator/data/mockCreators"
+import { hololiveOfficialGroupRank } from "../../../entities/creator/utils/hololiveSubgrouping"
 
 export interface FilterState {
   organization: OrganizationKey | null
@@ -58,8 +59,9 @@ function filterValidGroupKeys(
   branch: BranchKey | null,
   creators: MockCreator[],
 ): GroupKey[] {
+  if (organization === "vspo" || branch === "vspo_jp" || branch === "vspo_en") return []
   const scoped = creators.filter(
-    (c) => (organization === null || c.organization === organization) && (branch === null || c.branch === branch),
+    (c) => c.organization === "hololive" && (organization === null || c.organization === organization) && (branch === null || c.branch === branch),
   )
   const valid = new Set(scoped.flatMap((c) => c.groupKey))
   return selected.filter((key) => valid.has(key))
@@ -85,10 +87,17 @@ export function availableBranches(organization: OrganizationKey | null, creators
 
 /** Every groupKey present among creators under the given organization+branch scope, excluding the "NO" placeholder. */
 export function availableGroupKeys(organization: OrganizationKey | null, branch: BranchKey | null, creators: MockCreator[]): GroupKey[] {
+  if (organization === "vspo" || branch === "vspo_jp" || branch === "vspo_en") return []
   const scoped = creators.filter(
-    (c) => (organization === null || c.organization === organization) && (branch === null || c.branch === branch),
+    (c) => c.organization === "hololive" && (organization === null || c.organization === organization) && (branch === null || c.branch === branch),
   )
-  return Array.from(new Set(scoped.flatMap((c) => c.groupKey))).filter((key) => key !== "NO")
+  return Array.from(new Set(scoped.flatMap((c) => c.groupKey)))
+    .filter((key) =>
+      key !== "NO" && scoped.some(
+        (creator) => creator.groupKey.includes(key) && (creator.organization !== "hololive" || hololiveOfficialGroupRank(key) !== Number.MAX_SAFE_INTEGER),
+      ),
+    )
+    .sort((a, b) => hololiveOfficialGroupRank(a) - hololiveOfficialGroupRank(b))
 }
 
 /** Matches a single item's classification fields against the filter state:

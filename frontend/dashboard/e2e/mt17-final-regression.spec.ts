@@ -12,7 +12,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const API = "http://127.0.0.1:8787"
 const CORS = { "access-control-allow-origin": "*" }
 const LAYOUT_KEY = "yobi-analytics-canonical-dashboard-layout"
-const VIEWPORT = { width: 1280, height: 1500 }
+// Height raised from 1500 for the same reason as gap7-insertion-preview.spec.ts's
+// DESKTOP constant: Defect A's fix grew the default layout's real page
+// height (1X widgets now render tall enough for their content with no
+// internal scroll), so this suite's absolute-pixel drag/measurement
+// sequences need the whole page on screen without an incidental scroll.
+const VIEWPORT = { width: 1280, height: 2600 }
 const GROWTH = "daily-view-growth"
 const TOTAL = "total-views"
 const COMPARISON = "creator-comparison-chart"
@@ -212,14 +217,23 @@ test.describe("MT-17: full normal edit workflow on the real Dashboard", () => {
     const rects = await measure(page)
     const ring = rects.items.find((r) => r.id === ringId)!
     const rank = rects.items.find((r) => r.id === rankId)!
+    const colPitch = rank.x - ring.x
 
-    // Invalid target: dropping the ring onto the ranking cell is rejected; nothing (including the neighbour) moves canonically.
-    await drag(page, { x: ring.x + ring.width / 2, y: ring.y + 10 }, { x: rank.x + rank.width / 2, y: rank.y + 10 })
+    // Invalid target: widening the ring into rank's still-occupied cell is
+    // rejected (a resize, not a move -- resize never swaps, see
+    // dashboardWidgetActions.ts's tryPositionSwap); nothing moves
+    // canonically. Deliberately not a *drag* directly onto rank's cell here:
+    // since the Manual Layout Correction Pass (Defect B), a same-footprint
+    // widget *moved* exactly onto another's cell swaps them instead of
+    // rejecting -- see the dedicated swap coverage in
+    // gap4c-pointer-wiring.spec.ts and dashboardWidgetActions.test.ts. This
+    // is the same resize the "valid resize" step below performs successfully
+    // once rank has actually moved out of the way.
+    await resizeSE(page, ringId, colPitch, 0)
     expect(await gsGeometry(page)).toEqual(before)
     await expectSound(page)
 
     // Valid drag: ranking moves into the empty third column of the second row; its widgetId is unchanged.
-    const colPitch = rank.x - ring.x
     await drag(page, { x: rank.x + rank.width / 2, y: rank.y + 10 }, { x: rank.x + rank.width / 2 + colPitch, y: rank.y + 10 })
     const afterDrag = await gsGeometry(page)
     const movedRank = afterDrag.find((g) => g.id === rankId)!

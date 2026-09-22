@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { GridStack, type GridItemHTMLElement } from "gridstack"
 import "gridstack/dist/gridstack.css"
+import { Button } from "antd"
 import { X } from "lucide-react"
 import { useDroppable } from "@dnd-kit/core"
 import type { WidgetTypeId } from "../model/widget"
-import { renderWidget, type DashboardWidgetData } from "../utils/widgetRegistry"
+import { renderWidget, supportsCreatorScope, type DashboardWidgetData } from "../utils/widgetRegistry"
 import { getGridWidgetMeta, type GridWidgetInstance, type GridWidgetType } from "../utils/gridWidgetMeta"
 import { COMPARISON_WIDGET_TYPE } from "../../comparison/utils/dashboardComparisonWidgets"
 import {
@@ -28,8 +29,13 @@ interface DashboardGridProps {
    * what makes a canonical `width` render at its real proportion of the row
    * instead of a sliver of an unrelated 12-column track. */
   columns: number
+  /** Canonical row boundary. GridStack must never grow the document while
+   * a pointer approaches the bottom edge of Edit Mode. */
+  rows: number
   editable: boolean
   data: DashboardWidgetData
+  getWidgetData?: (widgetId: string) => DashboardWidgetData
+  getWidgetScopeLabels?: (widgetId: string) => string[]
   /** The canonical geometry-commit boundary. Called once a pointer
    * gesture (drag or resize) finishes, with the manipulated widget's final
    * geometry already translated to canonical units. Returns whether the
@@ -69,22 +75,35 @@ interface DroppableShellProps {
   className: string
   ariaInvalid: boolean
   children: ReactNode
+  scopeLabels?: string[]
 }
 
 /** Every widget shell is a `@dnd-kit/core` drop target
- * for a creator dragged out of the Creator List. Only a comparison chart is a
- * compatible target ("active"); any other widget shows a disabled target. The
- * state is a visible label plus border *style*, never color alone (Guidelines
- * Section 0.2). The indicator is an absolutely positioned overlay, so it adds
- * no geometry. Outside a `DndContext` (or when not editing) this is inert. */
-function DroppableShell({ widgetId, type, editable, className, ariaInvalid, children }: DroppableShellProps) {
-  const { setNodeRef, isOver } = useDroppable({ id: widgetId })
-  const dropState = editable && isOver ? (type === COMPARISON_WIDGET_TYPE ? "active" : "disabled") : undefined
+ * for a creator dragged out of the Creator List. A comparison chart or any
+ * `supportsCreatorScope` widget is a compatible target ("active"); any other
+ * widget shows a disabled target. The state is a visible label plus border
+ * *style*, never color alone (Guidelines Section 0.2). The indicator is an
+ * absolutely positioned overlay, so it adds no geometry. Outside a
+ * `DndContext` (or when not editing) this is inert. */
+function DroppableShell({ widgetId, type, editable, className, ariaInvalid, scopeLabels = [], children }: DroppableShellProps) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: widgetId })
+  const compatible = supportsCreatorScope(type) || type === COMPARISON_WIDGET_TYPE
+  const dropState = editable && active ? (compatible ? (isOver ? "active" : "ready") : "disabled") : undefined
   return (
     <div ref={setNodeRef} className={className} aria-invalid={ariaInvalid ? "true" : undefined} data-drop-state={dropState}>
       {dropState && (
         <div data-testid="drop-indicator" className={`drop-indicator drop-indicator--${dropState}`}>
-          {dropState === "active" ? "Drop to compare" : "Not a comparison chart"}
+          {dropState === "active"
+            ? "Release to apply members"
+            : dropState === "ready"
+              ? "Drop members here"
+              : "This widget does not support member filters"}
+        </div>
+      )}
+      {scopeLabels.length > 0 && !dropState && (
+        <div className="widget-shell__creator-scope" title={scopeLabels.join(", ")}>
+          <strong>{scopeLabels.length} member{scopeLabels.length === 1 ? "" : "s"}</strong>
+          <span>{scopeLabels.join(", ")}</span>
         </div>
       )}
       {children}
@@ -123,8 +142,11 @@ function DroppableShell({ widgetId, type, editable, className, ariaInvalid, chil
 export function DashboardGrid({
   widgets,
   columns,
+  rows,
   editable,
   data,
+  getWidgetData,
+  getWidgetScopeLabels,
   renderComparisonWidget,
   onCommitGeometry,
   onRemoveWidget,
@@ -145,6 +167,7 @@ export function DashboardGrid({
   // see the very first render's `widgets`/`columns`/`onCommitGeometry`).
   const widgetsRef = useRef(widgets)
   const columnsRef = useRef(columns)
+  const rowsRef = useRef(rows)
   const onCommitGeometryRef = useRef(onCommitGeometry)
   const validateGesturePreviewRef = useRef(validateGesturePreview)
   const onAnnounceRef = useRef(onAnnounce)
@@ -157,6 +180,7 @@ export function DashboardGrid({
     const grid = gridRef.current
     if (!grid) return
     if (grid.getColumn() !== columnsRef.current) grid.column(columnsRef.current)
+    grid.opts.maxRow = rowsRef.current * GRIDSTACK_ROW_SCALE
 
     grid.load(
       widgetsRef.current.map((w) => {
@@ -190,8 +214,18 @@ export function DashboardGrid({
       {
         column: columnsRef.current,
         margin: 8,
-        cellHeight: 90,
+        // Raised from 90: at 90, a 1X widget's usable body height (164px)
+        // clipped the default kpi-summary/contribution-ring/ranking widgets'
+        // real content, forcing an internal scrollbar (Defect A). 180 gives
+        // enough room for the tallest default 1X widget's content with no
+        // scroll, measured directly against the rendered page rather than
+        // assumed. This is a pixel-per-canonical-row-unit constant, not a
+        // canonical grid/height value -- 1X/0.5X and the 1x1-3x3 grid
+        // contract are unchanged.
+        cellHeight: 180,
         float: true,
+        maxRow: rowsRef.current * GRIDSTACK_ROW_SCALE,
+        draggable: { scroll: false },
         staticGrid: !editable,
       },
       containerRef.current,
@@ -317,11 +351,27 @@ export function DashboardGrid({
   useEffect(() => {
     widgetsRef.current = widgets
     columnsRef.current = columns
+    rowsRef.current = rows
     syncGridToCurrentWidgets()
-  }, [widgets, columns, syncGridToCurrentWidgets])
+  }, [widgets, columns, rows, syncGridToCurrentWidgets])
 
   return (
     <div className="dashboard-grid-v2">
+      {editable && (
+        <div
+          className="dashboard-grid-v2__slot-guides"
+          data-testid="grid-slot-guides"
+          aria-hidden="true"
+          style={{
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${rows}, 360px)`,
+          }}
+        >
+          {Array.from({ length: columns * rows }, (_, index) => (
+            <span key={index} />
+          ))}
+        </div>
+      )}
       <div ref={containerRef} className="grid-stack" />
       {widgets.map((widget) => {
         const node = contentNodes[widget.instanceId]
@@ -355,20 +405,23 @@ export function DashboardGrid({
             editable={editable}
             className={shellClassName}
             ariaInvalid={gestureValid === false}
+            scopeLabels={getWidgetScopeLabels?.(widget.instanceId)}
           >
             {editable && (
-              <button
-                type="button"
+              <Button
                 className="widget-shell__remove"
+                shape="circle"
+                size="small"
                 disabled={locked}
                 onClick={() => onRemoveWidget(widget.instanceId)}
                 aria-label={`Remove ${getGridWidgetMeta(widget.type).title}`}
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
+                icon={<X size={14} aria-hidden="true" />}
+              />
             )}
             <div className="widget-shell__body">
-              {widget.type === COMPARISON_WIDGET_TYPE ? renderComparisonWidget?.(widget.instanceId) : renderWidget(widget.type as WidgetTypeId, data)}
+              {widget.type === COMPARISON_WIDGET_TYPE
+                ? renderComparisonWidget?.(widget.instanceId)
+                : renderWidget(widget.type as WidgetTypeId, getWidgetData?.(widget.instanceId) ?? data)}
             </div>
           </DroppableShell>,
           node,

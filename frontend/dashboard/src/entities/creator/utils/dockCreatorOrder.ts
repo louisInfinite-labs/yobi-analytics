@@ -1,6 +1,6 @@
 import type { MockCreator } from "../data/mockCreators"
 import { normalizeJapaneseReadingForSort } from "./japaneseReading"
-import { subgroupsForBranch, type Subgroup } from "./hololiveSubgrouping"
+import { hololiveOfficialGroupRank, subgroupsForBranch, type Subgroup } from "./hololiveSubgrouping"
 import type { BranchKey } from "../model/domain"
 
 /** Spec's required Dock grouping/order: VSPO JP, VSPO EN, hololive JP, EN,
@@ -33,8 +33,6 @@ function compareByNormalizedKana(a: MockCreator, b: MockCreator): number {
   return normalizeJapaneseReadingForSort(a.kana).localeCompare(normalizeJapaneseReadingForSort(b.kana), "ja")
 }
 
-const NUMBERED_GENERATION_PATTERN = /^(\d+)期生$/
-
 /** Non-numbered Hololive JP units, in the exact order confirmed this
  * session (2026-09-11) — everything else (e.g. a staff channel's "NO" tag,
  * or any future unrecognized groupKey) sorts after all of these and keeps
@@ -49,8 +47,8 @@ const HOLOLIVE_JP_FIXED_GROUP_ORDER = ["ゲーマーズ", "holoX", "DEV_IS", "Re
  * then the fixed non-numbered units above; anything unrecognized sorts
  * last of all. */
 function hololiveJpGroupRank(groupKey: string): number {
-  const numbered = groupKey.match(NUMBERED_GENERATION_PATTERN)
-  if (numbered) return Number(numbered[1])
+  const officialRank = hololiveOfficialGroupRank(groupKey)
+  if (officialRank !== Number.MAX_SAFE_INTEGER) return officialRank
   const fixedIndex = HOLOLIVE_JP_FIXED_GROUP_ORDER.indexOf(groupKey)
   if (fixedIndex !== -1) return 1000 + fixedIndex
   // Finite sentinel: keeps rank subtraction well-defined when BOTH creators

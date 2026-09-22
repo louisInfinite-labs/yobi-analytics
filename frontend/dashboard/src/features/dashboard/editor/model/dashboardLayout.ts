@@ -35,6 +35,12 @@ export interface DashboardWidget {
    * fixture, and validation path from MT-01 through MT-10 is unaffected by
    * a widget that never sets it. */
   comparison?: CreatorComparisonConfig
+  /** Optional per-widget creator filter used by ordinary analytics charts. */
+  creatorScope?: CreatorScopeConfig
+}
+
+export interface CreatorScopeConfig {
+  creatorIds: string[]
 }
 
 export interface CanonicalLayout {

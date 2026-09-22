@@ -1,4 +1,5 @@
 import { CONTENT_FORMAT_LABELS, type ContentFormat } from "../../../entities/creator/model/domain"
+import { NullableSegmented } from "../../../shared/ui/NullableSegmented"
 
 const OPTIONS = Object.keys(CONTENT_FORMAT_LABELS) as ContentFormat[]
 
@@ -11,18 +12,11 @@ interface ContentFormatFilterProps {
  * — deliberately not an option here (dashboard_ui_direction_en.md section 5). */
 export function ContentFormatFilter({ value, onChange }: ContentFormatFilterProps) {
   return (
-    <div className="filter-row">
-      <span className="filter-row__label">Format</span>
-      <div className="filter-chip-group">
-        <button type="button" className="filter-chip" aria-pressed={value === null} onClick={() => onChange(null)}>
-          All
-        </button>
-        {OPTIONS.map((format) => (
-          <button key={format} type="button" className="filter-chip" aria-pressed={value === format} onClick={() => onChange(format)}>
-            {CONTENT_FORMAT_LABELS[format]}
-          </button>
-        ))}
-      </div>
-    </div>
+    <NullableSegmented
+      label="Format"
+      value={value}
+      onChange={onChange}
+      options={OPTIONS.map((format) => ({ label: CONTENT_FORMAT_LABELS[format], value: format }))}
+    />
   )
 }

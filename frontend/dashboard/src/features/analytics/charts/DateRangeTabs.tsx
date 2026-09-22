@@ -1,3 +1,4 @@
+import { Segmented } from "antd"
 import type { Period } from "../../../entities/creator/model/domain"
 
 const PERIODS: { value: Period; label: string }[] = [
@@ -14,18 +15,12 @@ interface DateRangeTabsProps {
 /** Today / 7 Day / 30 Day period toggle group driving the whole page's growth window. */
 export function DateRangeTabs({ value, onChange }: DateRangeTabsProps) {
   return (
-    <div role="group" aria-label="Growth period" style={{ display: "flex", gap: 4 }}>
-      {PERIODS.map((p) => (
-        <button
-          key={p.value}
-          type="button"
-          aria-pressed={value === p.value}
-          className="soft-button"
-          onClick={() => onChange(p.value)}
-        >
-          {p.label}
-        </button>
-      ))}
+    <div role="group" aria-label="Growth period">
+      <Segmented
+        value={value}
+        onChange={(next) => onChange(next as Period)}
+        options={PERIODS.map((p) => ({ label: p.label, value: p.value }))}
+      />
     </div>
   )
 }

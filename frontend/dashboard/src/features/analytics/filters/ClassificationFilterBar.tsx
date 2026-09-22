@@ -8,6 +8,8 @@ import { ContentTagFilter } from "./ContentTagFilter"
 import { LifecycleStageFilter } from "./LifecycleStageFilter"
 import { OrganizationFilter } from "./OrganizationFilter"
 import { TagFilter } from "./TagFilter"
+import { Button } from "antd"
+import { RotateCcw } from "lucide-react"
 
 interface ClassificationFilterBarProps {
   state: FilterState
@@ -18,6 +20,7 @@ interface ClassificationFilterBarProps {
   onLifecycleStageChange: (value: LifecycleStage | null) => void
   onContentTagToggle: (tag: ContentTagKey) => void
   onContentFormatChange: (value: ContentFormat | null) => void
+  onReset: () => void
 }
 
 /** Composes every creator- and video-level filter dimension into one bar,
@@ -32,19 +35,46 @@ export function ClassificationFilterBar({
   onLifecycleStageChange,
   onContentTagToggle,
   onContentFormatChange,
+  onReset,
 }: ClassificationFilterBarProps) {
   const branches = availableBranches(state.organization, mockCreators)
   const groupKeys = availableGroupKeys(state.organization, state.branch, mockCreators)
+  const activeCount = [
+    state.organization,
+    state.branch,
+    state.channelType,
+    state.lifecycleStage,
+    state.contentFormat,
+    ...state.groupKey,
+    ...state.contentTags,
+  ].filter(Boolean).length
 
   return (
-    <div className="filter-bar">
-      <OrganizationFilter value={state.organization} onChange={onOrganizationChange} />
-      <BranchFilter value={state.branch} options={branches} onChange={onBranchChange} />
-      <TagFilter selected={state.groupKey} options={groupKeys} onToggle={onGroupKeyToggle} />
-      <ChannelTypeFilter value={state.channelType} onChange={onChannelTypeChange} />
-      <LifecycleStageFilter value={state.lifecycleStage} onChange={onLifecycleStageChange} />
-      <ContentTagFilter selected={state.contentTags} onToggle={onContentTagToggle} />
-      <ContentFormatFilter value={state.contentFormat} onChange={onContentFormatChange} />
-    </div>
+    <section className="filter-bar" aria-labelledby="analytics-filter-title">
+      <div className="filter-bar__header">
+        <div>
+          <h2 id="analytics-filter-title">Filter analytics</h2>
+          <span>{activeCount === 0 ? "All dashboard data" : `${activeCount} active filter${activeCount === 1 ? "" : "s"}`}</span>
+        </div>
+        <Button type="text" icon={<RotateCcw size={15} />} disabled={activeCount === 0} onClick={onReset}>
+          Clear filters
+        </Button>
+      </div>
+      <div className="filter-bar__groups">
+        <fieldset className="filter-bar__group">
+          <legend>Creator scope</legend>
+          <OrganizationFilter value={state.organization} onChange={onOrganizationChange} />
+          <BranchFilter value={state.branch} options={branches} onChange={onBranchChange} />
+          <TagFilter selected={state.groupKey} options={groupKeys} onToggle={onGroupKeyToggle} branch={state.branch} />
+          <ChannelTypeFilter value={state.channelType} onChange={onChannelTypeChange} />
+          <LifecycleStageFilter value={state.lifecycleStage} onChange={onLifecycleStageChange} />
+        </fieldset>
+        <fieldset className="filter-bar__group">
+          <legend>Content scope</legend>
+          <ContentTagFilter selected={state.contentTags} onToggle={onContentTagToggle} />
+          <ContentFormatFilter value={state.contentFormat} onChange={onContentFormatChange} />
+        </fieldset>
+      </div>
+    </section>
   )
 }
