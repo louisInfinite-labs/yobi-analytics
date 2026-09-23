@@ -95,16 +95,16 @@ describe("CreatorStatusList", () => {
 
   it("does not render a favorite indicator for a non-favorited creator", () => {
     const { container } = renderList()
-    expect(container.querySelector(".creator-status-list__favorite-indicator")).not.toBeInTheDocument()
+    expect(container.querySelector(".live-status-member__favorite-indicator")).not.toBeInTheDocument()
   })
 
   it("renders a favorite indicator only for the favorited creator", () => {
     const { container } = renderList({ favorites: new Set(["ch_aizawa_ema"]) })
-    const rows = container.querySelectorAll(".creator-status-list__row")
+    const rows = container.querySelectorAll(".live-status-member")
     const emaRow = [...rows].find((row) => row.textContent?.includes("藍沢エマ"))
     const fubukiRow = [...rows].find((row) => row.textContent?.includes("白上フブキ"))
-    expect(emaRow?.querySelector(".creator-status-list__favorite-indicator")).toBeInTheDocument()
-    expect(fubukiRow?.querySelector(".creator-status-list__favorite-indicator")).not.toBeInTheDocument()
+    expect(emaRow?.querySelector(".live-status-member__favorite-indicator")).toBeInTheDocument()
+    expect(fubukiRow?.querySelector(".live-status-member__favorite-indicator")).not.toBeInTheDocument()
   })
 })
 
@@ -157,7 +157,7 @@ describe("CreatorStatusList Oshi-switch confirmation", () => {
 })
 
 function findRow(container: HTMLElement, name: string): HTMLElement {
-  const rows = container.querySelectorAll(".creator-status-list__row")
+  const rows = container.querySelectorAll(".live-status-member")
   return [...rows].find((row) => row.textContent?.includes(name)) as HTMLElement
 }
 
@@ -176,7 +176,7 @@ describe("CreatorStatusList swipe-to-favorite", () => {
     dragRow(row, 30) // crosses the 8px swipe-start threshold, well short of +72px
     // A real mouse drag-then-release still fires a native click on release;
     // this simulates that so the suppression itself is under test.
-    fireEvent.click(row.querySelector(".creator-status-list__creator-button")!)
+    fireEvent.click(row.querySelector(".live-status-member__creator-button")!)
     expect(onToggleFavorite).not.toHaveBeenCalled()
     expect(onSelectCreator).not.toHaveBeenCalled()
     expect(onSelectVideo).not.toHaveBeenCalled()
@@ -188,7 +188,7 @@ describe("CreatorStatusList swipe-to-favorite", () => {
     })
     const row = findRow(container, "藍沢エマ")
     dragRow(row, 80) // past the +72px commit threshold
-    fireEvent.click(row.querySelector(".creator-status-list__creator-button")!)
+    fireEvent.click(row.querySelector(".live-status-member__creator-button")!)
     expect(onToggleFavorite).toHaveBeenCalledWith("ch_aizawa_ema")
     expect(onSelectCreator).not.toHaveBeenCalled()
     expect(onSelectVideo).not.toHaveBeenCalled()
@@ -201,7 +201,7 @@ describe("CreatorStatusList swipe-to-favorite", () => {
     })
     const row = findRow(container, "藍沢エマ")
     dragRow(row, -80) // past the -72px commit threshold
-    fireEvent.click(row.querySelector(".creator-status-list__status-button")!)
+    fireEvent.click(row.querySelector(".live-status-member__status")!)
     expect(onToggleFavorite).toHaveBeenCalledWith("ch_aizawa_ema")
     expect(onSelectCreator).not.toHaveBeenCalled()
     expect(onSelectVideo).not.toHaveBeenCalled()
@@ -229,9 +229,9 @@ describe("CreatorStatusList swipe-to-favorite", () => {
     const row = findRow(container, "藍沢エマ")
     fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 })
     fireEvent.pointerMove(row, { pointerId: 1, clientX: 30, clientY: 0 })
-    // The reveal is a sibling of .creator-status-list__row (both children of
+    // The reveal is a sibling of .live-status-member (both children of
     // the swipe wrapper), not a descendant of it -- see CreatorRow's markup.
-    expect(row.parentElement!.querySelector(".creator-status-list__reveal--left")).toHaveTextContent("加入收藏")
+    expect(row.parentElement!.querySelector(".live-status-member__reveal--left")).toHaveTextContent("加入收藏")
   })
 
   it("shows the localized 'Remove Favorite' reveal label (en/ja) while dragging left on a favorited creator", () => {
@@ -239,7 +239,7 @@ describe("CreatorStatusList swipe-to-favorite", () => {
     let row = findRow(container, "藍沢エマ")
     fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 })
     fireEvent.pointerMove(row, { pointerId: 1, clientX: -30, clientY: 0 })
-    expect(row.parentElement!.querySelector(".creator-status-list__reveal--right")).toHaveTextContent("Remove Favorite")
+    expect(row.parentElement!.querySelector(".live-status-member__reveal--right")).toHaveTextContent("Remove Favorite")
 
     rerender(
       <CreatorStatusList
@@ -260,7 +260,7 @@ describe("CreatorStatusList swipe-to-favorite", () => {
     row = findRow(container, "藍沢エマ")
     fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 })
     fireEvent.pointerMove(row, { pointerId: 1, clientX: -30, clientY: 0 })
-    expect(row.parentElement!.querySelector(".creator-status-list__reveal--right")).toHaveTextContent("お気に入りから削除")
+    expect(row.parentElement!.querySelector(".live-status-member__reveal--right")).toHaveTextContent("お気に入りから削除")
   })
 })
 
@@ -297,12 +297,12 @@ describe("CreatorStatusList swipe + shared favorites state", () => {
     const { getByTestId } = render(<TwoConsumers />)
     const rowA = findRow(getByTestId("consumer-a"), "藍沢エマ")
     const rowBBefore = findRow(getByTestId("consumer-b"), "藍沢エマ")
-    expect(rowBBefore.querySelector(".creator-status-list__favorite-indicator")).not.toBeInTheDocument()
+    expect(rowBBefore.querySelector(".live-status-member__favorite-indicator")).not.toBeInTheDocument()
 
     dragRow(rowA, 80) // commits Add Favorite in consumer A
 
     const rowBAfter = findRow(getByTestId("consumer-b"), "藍沢エマ")
-    expect(rowBAfter.querySelector(".creator-status-list__favorite-indicator")).toBeInTheDocument()
+    expect(rowBAfter.querySelector(".live-status-member__favorite-indicator")).toBeInTheDocument()
   })
 })
 

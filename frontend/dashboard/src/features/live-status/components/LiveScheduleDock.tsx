@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { Search } from "lucide-react"
 import { CreatorStatusList } from "./CreatorStatusList"
 import { useConfirmOshiSwitchPreference } from "../../oshi/hooks/useConfirmOshiSwitchPreference"
 import { useCountdownLanguage } from "../../../shared/i18n/hooks/useCountdownLanguage"
@@ -9,6 +10,7 @@ import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { usePrefersReducedMotion } from "../../../shared/hooks/usePrefersReducedMotion"
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
+import { creatorThemeStyle } from "../../../shared/theme/creatorThemeStyle"
 import { t } from "../../../shared/i18n/translations"
 import { formatCountdown } from "../model/creatorStatusFormat"
 import type { CountdownLanguage } from "../../../shared/i18n/model/countdownLanguage"
@@ -18,9 +20,9 @@ import { VideoPlayerModal } from "../../media-player/components/VideoPlayerModal
 /** "favorites" — only creators the user has starred; "all" — everyone. */
 type ViewMode = "all" | "favorites"
 
-/** "full" — panel reaches the top of the screen (the default every time the
- * panel opens); "compact" — the original min(70vh,520px)-capped size, one
- * click away via the header's resize button. */
+/** "full" — the drawer reaches the top of the screen (the default every time
+ * it opens); "compact" — the original min(70vh, 520px) size, one click away
+ * via the header's resize button. Width is 360px either way. */
 type PanelSize = "full" | "compact"
 
 /** Collapsed-state summary: nothing to fetch here — it only reads the
@@ -48,19 +50,22 @@ function summarize(
   return { text: "OFFLINE", dotColor: "grey" }
 }
 
-/** Global Live Schedule Dock (spec section of the same name) — collapsed
- * bottom-right summary that expands into a searchable, grouped creator
- * list (CreatorStatusList, shared with Home's inline "ListStatus" panel).
- * Mounted once above every page (App.tsx), so it stays visible across
- * Dashboard/Admin/Home regardless of which one is showing.
+/** Global Live Status: a dark floating trigger that opens a 360px right-side
+ * drawer. The drawer OVERLAYS whatever page is showing (position: fixed) and
+ * is never a layout column of it, so opening it can't resize Home's stream,
+ * player or video strip. Mounted once above every page (App.tsx), so it
+ * stays available across Dashboard/Admin/Home.
  *
- * The collapsed pill also carries the favorites-view switch (⇄) merged
- * directly into it, one pill, no second widget next to it — Home briefly
- * had its own separate creator-name+switch+live pill, but that just
- * duplicated this one already-existing bottom-right pill, so the switch
- * was merged in here instead rather than kept as a second widget. */
+ * The trigger stays neutral dark on purpose — it is not bound to
+ * --creator-main — while the drawer's own accents do follow the current
+ * Oshi, which is why the creator theme variables are set on this wrapper
+ * rather than inside Home (both of these render outside Home's own tree). */
 export function LiveScheduleDock() {
   const [expanded, setExpanded] = useState(false)
+  // The roster only mounts on the first open and stays mounted afterwards:
+  // the drawer itself is always in the DOM so it can slide, but rendering
+  // ~70 status rows before anyone has asked for them isn't free.
+  const [hasOpened, setHasOpened] = useState(false)
   const [panelSize, setPanelSize] = useState<PanelSize>("full")
   const [viewMode, setViewMode] = useState<ViewMode>("all")
   const [query, setQuery] = useState("")
@@ -69,12 +74,17 @@ export function LiveScheduleDock() {
   const [language] = useCountdownLanguage()
   const { statuses, now } = useCreatorStatuses()
   const { favorites, toggleFavorite } = useFavoriteCreators()
-  const [, setSelectedCreatorId] = useSelectedCreator()
+  const [selectedCreatorId, setSelectedCreatorId] = useSelectedCreator()
   const [locale] = useLocale()
   const [confirmOshiSwitch, setConfirmOshiSwitch] = useConfirmOshiSwitchPreference()
   const reducedMotion = usePrefersReducedMotion()
   const dockRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  // Set by closeExplicitly(), consumed by the focus-restore effect below --
+  // see that effect's own comment for why the trigger can't be focused
+  // synchronously inside closeExplicitly itself.
+  const restoreFocusRef = useRef(false)
 
   const favoriteOnlyIds = viewMode === "favorites" ? favorites : undefined
   const summaryStatuses = favoriteOnlyIds
@@ -83,9 +93,9 @@ export function LiveScheduleDock() {
   const summary = summarize(summaryStatuses, now, language)
 
   // Mirrors this component's own `expanded` state out to the module-level
-  // useLiveDockExpanded store so Home's scene frame can react to it (to
-  // stay flush against this dock's own panel edges when open) without this
-  // component needing to know Home exists at all.
+  // useLiveDockExpanded store so Home can expose it to CSS as
+  // data-live-status-open without this component needing to know Home
+  // exists at all.
   useEffect(() => {
     setLiveDockExpanded(expanded)
   }, [expanded])
@@ -95,12 +105,16 @@ export function LiveScheduleDock() {
     searchInputRef.current?.focus()
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setExpanded(false)
+      if (event.key === "Escape") closeExplicitly()
     }
     function handlePointerDown(event: PointerEvent) {
-      if (dockRef.current && event.target instanceof Node && !dockRef.current.contains(event.target)) {
-        setExpanded(false)
-      }
+      if (!(event.target instanceof Node) || !dockRef.current) return
+      if (dockRef.current.contains(event.target)) return
+      // The Oshi-switch confirmation portals to <body> (it has to escape the
+      // drawer's own transform), so it is outside the dock by construction —
+      // interacting with it must not count as clicking away from the drawer.
+      if (event.target instanceof Element && event.target.closest(".oshi-switch-confirm__backdrop")) return
+      setExpanded(false)
     }
     document.addEventListener("keydown", handleKeyDown)
     document.addEventListener("pointerdown", handlePointerDown)
@@ -110,63 +124,64 @@ export function LiveScheduleDock() {
     }
   }, [expanded])
 
-  // The favorites-view switch — shown both on the collapsed pill and inside
-  // the expanded panel's own header, so switching all/favorites never
-  // requires closing the list first. Same button, same shared viewMode,
-  // just rendered in two different places.
-  const viewToggle = (
-    <button
-      type="button"
-      className="live-schedule-dock__view-toggle"
-      onClick={() => setViewMode((prev) => (prev === "all" ? "favorites" : "all"))}
-      aria-label={t(locale, viewMode === "all" ? "liveScheduleDock.viewToggle.showFavoritesAria" : "liveScheduleDock.viewToggle.showAllAria")}
-      aria-pressed={viewMode === "favorites"}
-      title={t(locale, viewMode === "all" ? "liveScheduleDock.viewToggle.allThenFavorites" : "liveScheduleDock.viewToggle.favoritesThenAll")}
-    >
-      ⇄
-    </button>
-  )
+  function open() {
+    setHasOpened(true)
+    setPanelSize("full")
+    setExpanded(true)
+  }
+
+  // Runs once the DOM has actually committed the closed state (not
+  // synchronously inside closeExplicitly): the trigger is still
+  // visibility:hidden at the moment expanded flips to false -- CSS only
+  // un-hides it once .live-status-dock's own data-live-status-open attribute
+  // re-renders -- and focusing a still-hidden element is a silent no-op in
+  // every engine, not a deferred one. Waiting for this effect (which runs
+  // after that render has painted) is what makes the focus call land.
+  useEffect(() => {
+    if (expanded || !restoreFocusRef.current) return
+    restoreFocusRef.current = false
+    triggerRef.current?.focus()
+  }, [expanded])
+
+  // Escape and the close button explicitly dismiss the drawer -- `inert`
+  // then makes its subtree unfocusable, so if focus was still inside it
+  // (the search input, a creator row) it would otherwise be dropped to
+  // <body> instead of landing anywhere sensible. Outside-click and
+  // video-selection closes are deliberately NOT routed through this: the
+  // user's focus in those cases is already elsewhere (whatever they clicked,
+  // or the video modal that just opened), so forcing it back to the trigger
+  // would fight what they were already doing.
+  function closeExplicitly() {
+    restoreFocusRef.current = true
+    setExpanded(false)
+  }
 
   return (
     <>
       <div
         ref={dockRef}
-        className={`live-schedule-dock${expanded ? " live-schedule-dock--expanded" : ""}${reducedMotion ? " live-schedule-dock--no-motion" : ""}`}
+        className={`live-status-dock${reducedMotion ? " live-status-dock--no-motion" : ""}`}
+        data-live-status-open={expanded}
+        style={creatorThemeStyle(selectedCreatorId)}
       >
-        {!expanded ? (
-          <div className="live-schedule-dock__summary">
-            {viewToggle}
-            <button
-              type="button"
-              className="live-schedule-dock__summary-text"
-              onClick={() => {
-                setPanelSize("full")
-                setExpanded(true)
-              }}
-            >
-              <span className={`live-schedule-dock__dot live-schedule-dock__dot--${summary.dotColor}`} aria-hidden="true" />
-              {summary.text}
-            </button>
-          </div>
-        ) : (
-          <div
-            className={`live-schedule-dock__panel${panelSize === "full" ? " live-schedule-dock__panel--full" : ""}`}
-            role="dialog"
-            aria-label={t(locale, "liveScheduleDock.panelAriaLabel")}
-          >
-            <div className="live-schedule-dock__header">
-              {viewToggle}
-              <input
-                ref={searchInputRef}
-                type="text"
-                className="live-schedule-dock__search"
-                placeholder="Search creator..."
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
+        <button ref={triggerRef} type="button" className="live-status-trigger" onClick={open}>
+          <span className={`live-status-trigger__dot live-status-trigger__dot--${summary.dotColor}`} aria-hidden="true" />
+          {summary.text}
+        </button>
+
+        <aside
+          className="live-status-drawer"
+          role="dialog"
+          aria-label={t(locale, "liveScheduleDock.panelAriaLabel")}
+          data-size={panelSize}
+          inert={!expanded}
+        >
+          <div className="live-status-drawer__header">
+            <div className="live-status-drawer__title-row">
+              <span className="live-status-drawer__title">{t(locale, "liveScheduleDock.title")}</span>
               <button
                 type="button"
-                className="live-schedule-dock__resize"
+                className="live-status-drawer__resize"
                 onClick={() => setPanelSize((prev) => (prev === "full" ? "compact" : "full"))}
                 aria-label={t(locale, panelSize === "full" ? "liveScheduleDock.resize.shrinkAria" : "liveScheduleDock.resize.expandAria")}
                 aria-pressed={panelSize === "full"}
@@ -174,12 +189,44 @@ export function LiveScheduleDock() {
               >
                 {panelSize === "full" ? "⤡" : "⤢"}
               </button>
-              <button type="button" className="live-schedule-dock__close" onClick={() => setExpanded(false)} aria-label="Close">
+              <button type="button" className="live-status-drawer__close" onClick={closeExplicitly} aria-label={t(locale, "liveScheduleDock.close")}>
                 ×
               </button>
             </div>
 
-            <div className="live-schedule-dock__list">
+            <div className="live-status-search">
+              <Search size={13} aria-hidden="true" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder={t(locale, "oshiSettings.searchPlaceholder")}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+
+            <div className="live-status-filter-row">
+              <button
+                type="button"
+                className="live-status-filter"
+                aria-pressed={viewMode === "all"}
+                onClick={() => setViewMode("all")}
+              >
+                {t(locale, "recentVideos.tag.all")}
+              </button>
+              <button
+                type="button"
+                className="live-status-filter"
+                aria-pressed={viewMode === "favorites"}
+                onClick={() => setViewMode("favorites")}
+              >
+                {t(locale, "oshiSettings.viewFilter.favoritesOnly")}
+              </button>
+            </div>
+          </div>
+
+          <div className="live-status-drawer__body">
+            {hasOpened && (
               <CreatorStatusList
                 statuses={statuses}
                 now={now}
@@ -198,9 +245,9 @@ export function LiveScheduleDock() {
                   setExpanded(false)
                 }}
               />
-            </div>
+            )}
           </div>
-        )}
+        </aside>
       </div>
 
       {embed && <VideoPlayerModal videoId={embed.videoId} title={embed.title} onClose={() => setEmbed(null)} />}

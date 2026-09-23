@@ -1,797 +1,1639 @@
-/* ============ Home page shell ============ */
+/* ============================================================
+   OshiYobi Home — tokens
+   These are additive (`--oshi-*`, `--creator-*`): nothing here renames or
+   overrides the app-wide tokens in app/styles/index.css, so only the
+   selectors below consume them.
+   --creator-main/--creator-sub are re-bound at runtime from the CURRENT
+   Oshi (see shared/theme/creatorThemeStyle.ts); the values here are only
+   the fallback for anything rendered before/outside that binding.
+   ============================================================ */
 
-/* height-budgeted, not min-height: the toolbar + RecentVideosSection +
-   scene together must fit one 1920x1080 viewport with no vertical scroll
-   (this session's own explicit requirement) — 100dvh falls back to 100vh
-   in engines without dynamic-viewport-unit support. */
-/* padding-bottom is var(--space-4) (16px), not var(--space-5), so
-   RecentVideosSection's last row sits exactly 16px above the viewport
-   bottom edge once it's grown to fill the space. padding-left is also
-   var(--space-4) -- matching padding-top exactly, rather than
-   var(--space-6) like the right side -- and margin is 0 (not the
-   auto-centering every other max-width shell on this page uses) so
-   home-scene/the tag bar/the video thumbnails -- every one of this page's
-   direct-or-nested children shares this same left inset -- sit exactly
-   var(--space-4) from Main Navbar's right edge, the same distance home-scene
-   already sits from the top, at any viewport width (auto-centering would
-   reopen a bigger, viewport-dependent gap the moment this page's content
-   grows narrower than --home-page-max-width). */
-.home-page {
+:root {
+  --oshi-bg: #08111d;
+  --oshi-surface-1: #0c1724;
+  --oshi-surface-2: #101d2b;
+  --oshi-surface-3: #142233;
+
+  --oshi-text-1: rgba(255, 255, 255, 0.94);
+  --oshi-text-2: rgba(255, 255, 255, 0.66);
+  --oshi-text-3: rgba(255, 255, 255, 0.42);
+
+  --oshi-border: rgba(255, 255, 255, 0.08);
+  --oshi-border-strong: rgba(255, 255, 255, 0.13);
+
+  --creator-main: #b4f1f9;
+  --creator-sub: #1b8796;
+
+  --home-gap: 12px;
+
+  --oshi-status-width: 360px;
+  --live-status-width: 360px;
+
+  /* Derived, not chosen: a 220px card holds a 16:9 thumbnail (123.75px) +
+     5px gap + a 2-line title (28px) + meta (14px) = 171px, plus the list's
+     own 9/8px padding (188px) plus the 34px header and 1px borders. The
+     spec's original 184px could not fit a real 16:9 thumbnail AND the title
+     — it left ~2px for text — so the shelf height follows the card instead
+     of the thumbnail being squashed to fit the shelf. Each breakpoint below
+     recomputes this from its own card width. */
+  --oshi-videos-height: 224px;
+
+  --player-frame-padding: 4px;
+  --player-frame-radius: 4px;
+
+  --meta-strip-height: 64px;
+  --live-status-row-height: 52px;
+
+  --transition-fast: 140ms ease;
+  --transition-normal: 200ms ease;
+}
+
+/* The no-page-scroll contract is enforced on Home's own root rather than on
+   html/body: Settings sizes itself with min-height:100vh and relies on
+   document scrolling, so a global overflow:hidden would trap its content.
+   .oshi-home is the tallest thing this page puts in the document, so
+   capping it at the viewport is what keeps scrollHeight === viewport
+   height here. */
+.oshi-home {
+  position: relative;
+
+  width: 100%;
   height: 100vh;
   height: 100dvh;
+
+  min-width: 0;
+  min-height: 0;
+
   overflow: hidden;
-  padding: var(--space-4) var(--space-6) var(--space-4) var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  --home-page-max-width: 1440px;
-  max-width: var(--home-page-max-width);
-  margin: 0;
-  box-sizing: border-box;
+
+  color: var(--oshi-text-1);
+  background: var(--oshi-bg);
 }
 
-/* ============ Upper part: RecentVideosSection, left-aligned under the
-   scene, grown to fill the rest of the page's height (see .home-page's own
-   comment above) instead of sizing to its content. ============ */
-
-.home-page__upper {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  align-items: stretch;
-  gap: var(--space-5);
-}
-
-/* The section grows via flex-grow to fill whatever height is left below
-   home-scene, its thumbnails filling whatever the section has left after
-   its toolbar -- so it never asks for more room than is actually
-   available and spills upward into home-scene above it. */
-.recent-videos {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-/* Tag bar + (conditionally) the sort dropdown, side by side. Shrink-wraps
-   to its own content width (not stretched to the section's full width) so
-   the row below can measure and match it, keeping the row's right-scroll
-   arrow aligned with the dropdown's own right edge (or the tag bar's right
-   edge when no dropdown is shown) -- see RecentVideosSection.tsx's
-   toolbarRef/ResizeObserver. */
-.recent-videos__toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: fit-content;
-  max-width: 100%;
-}
-
-.recent-videos__toolbar .filter-chip-group {
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-.recent-videos__toolbar .soft-select {
-  flex: 0 0 auto;
-}
-
-.recent-videos__section {
-  flex: 1 1 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-/* [scrollable track][right arrow] -- the track's own left edge is the
-   row's left edge, which lines up with home-scene's left edge above it, so
-   the leftmost video card aligns directly under home-scene rather than
-   under an arrow button. Width is set inline from RecentVideosSection.tsx
-   (matching the toolbar's own measured width) so the right-scroll-arrow
-   lines up with the toolbar's right edge instead of always stretching to
-   the section's full available width; `flex`/no explicit width here is
-   just the pre-measurement fallback for the first paint. */
-.recent-videos__row {
+.oshi-home__canvas {
   position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 
-/* YouTube-style circular scroll button. */
-.recent-videos__scroll-button {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--surface-card, #fff);
-  border: 1px solid var(--surface-border, #dcd9e0);
-  box-shadow: var(--shadow-sm);
-  color: var(--text-primary, #232028);
-  cursor: pointer;
-}
-
-/* Overlaid on the track's own left edge (half in, half out) rather than
-   taking up its own flex slot -- otherwise it would push the track (and
-   the leftmost video card) to the right, away from home-scene's left edge
-   above it. */
-.recent-videos__scroll-button--left {
-  position: absolute;
-  left: -16px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-}
-
-/* Left arrow only, while the track is scrolled all the way left (see
-   VideoRow's canScrollLeft). */
-.recent-videos__scroll-button--hidden {
-  visibility: hidden;
-}
-
-.recent-videos__track {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
-  display: flex;
-  gap: var(--space-3);
-  overflow-x: auto;
-  scroll-behavior: smooth;
-  scrollbar-width: none; /* Firefox */
-}
-
-.recent-videos__track::-webkit-scrollbar {
-  display: none; /* Chrome/Safari/Edge */
-}
-
-/* Exactly 4 cards visible at once on desktop -- width is 1/4 of the track
-   minus its own 3 inter-card gaps (var(--space-3), matching
-   .recent-videos__track's own `gap`), not a fixed px value like the
-   previous 176px. scrollByOneCard/handleScroll in RecentVideosSection.tsx
-   already read `card.offsetWidth` at runtime, so the existing
-   arrow-scroll-step/prefetch-threshold logic needed no code change to
-   adapt to this width. */
-.recent-videos__card {
-  flex: 0 0 calc((100% - 3 * var(--space-3)) / 4);
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  width: calc((100% - 3 * var(--space-3)) / 4);
-  background: transparent;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-  color: inherit;
-}
-
-/* Fills whatever height its row actually has (never more), capped so it
-   doesn't balloon when space is abundant -- a modest bump from the
-   original 99px, not an unbounded stretch. */
-.recent-videos__thumb {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  max-height: 126px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  overflow: hidden;
-}
-
-.recent-videos__thumb-image {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  display: block;
-}
 
-.recent-videos__thumb-placeholder {
-  position: absolute;
-  inset: 0;
-}
+  min-width: 0;
+  min-height: 0;
 
-.recent-videos__card:hover .recent-videos__thumb,
-.recent-videos__card:focus-visible .recent-videos__thumb {
-  border-color: var(--home-overlay-accent, rgba(255, 255, 255, 0.35));
-}
+  display: grid;
 
-.recent-videos__live-badge {
-  position: absolute;
-  top: var(--space-1);
-  left: var(--space-1);
-  background: var(--live-red);
-  color: #fff;
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  padding: 2px 6px;
-  border-radius: 999px;
-}
+  grid-template-rows:
+    minmax(0, 1fr)
+    var(--oshi-videos-height);
 
-.recent-videos__title {
-  font-size: 0.72rem;
-  line-height: 1.3;
-  color: var(--text-secondary, #6b6774);
+  gap: var(--home-gap);
+
+  padding: 0;
+
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.oshi-home__top {
+  width: 100%;
+  height: 100%;
+
+  min-width: 0;
+  min-height: 0;
+
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1fr)
+    var(--oshi-status-width);
+
+  gap: var(--home-gap);
+
+  overflow: hidden;
+}
+
+.oshi-section-title {
+  height: 26px;
+
+  display: flex;
+  align-items: center;
+
+  margin: 0;
+  padding: 0 2px;
+
+  color: var(--oshi-text-2);
+
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 26px;
+
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+
   white-space: nowrap;
 }
 
-.recent-videos__empty {
+/* ============ Oshi Stream ============ */
+
+.oshi-stream {
+  width: 100%;
+  height: 100%;
+
+  min-width: 0;
+  min-height: 0;
+
+  display: grid;
+
+  grid-template-rows:
+    26px
+    minmax(0, 1fr)
+    var(--meta-strip-height);
+
+  gap: 6px;
+
+  overflow: hidden;
+}
+
+.oshi-player-frame {
+  position: relative;
+
+  width: 100%;
+  height: 100%;
+
+  min-width: 0;
+  min-height: 0;
+
+  padding: var(--player-frame-padding);
+
+  overflow: hidden;
+
+  border: 1px solid color-mix(in srgb, var(--creator-main) 42%, var(--oshi-border));
+
+  border-radius: var(--player-frame-radius);
+
+  background: #050a10;
+
+  transition:
+    border-color var(--transition-normal),
+    box-shadow var(--transition-normal);
+}
+
+.oshi-player-frame::before {
+  content: "";
+
+  position: absolute;
+
+  z-index: 2;
+
+  top: -1px;
+  left: 18px;
+
+  width: 82px;
+  height: 2px;
+
+  background: linear-gradient(90deg, var(--creator-main), var(--creator-sub));
+
+  pointer-events: none;
+}
+
+.oshi-player-frame[data-live="true"] {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--creator-main) 10%, transparent);
+}
+
+/* container-type: size turns the stage into the query container the ratio
+   box below measures itself against. */
+.oshi-player-frame__stage {
+  position: relative;
+
+  width: 100%;
+  height: 100%;
+
+  min-width: 0;
+  min-height: 0;
+
   display: flex;
   align-items: center;
-  height: 99px;
-  font-size: 0.75rem;
-  color: rgba(107, 103, 116, 0.7);
-}
+  justify-content: center;
 
-@media (max-width: 900px) {
-  .home-page__upper {
-    flex-direction: column;
-  }
-}
-
-/* ============ Scene: an empty outlined frame plus SceneStatusLine in its
-   bottom-right corner. Height is 64% of the available vertical space,
-   width left-aligned so it lines up with RecentVideosSection below it.
-   ============ */
-
-.home-scene {
-  position: relative;
-  flex: 0 0 64%;
-  min-height: 0;
-  width: auto;
-  max-width: 100%;
-  aspect-ratio: 16 / 9;
   overflow: hidden;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--surface-border, #dcd9e0);
-  margin: 0;
+
+  container-type: size;
+
+  background: #000;
 }
 
-/* LiveScheduleDock floats as a fixed, viewport-anchored overlay with no
-   layout space reserved for it, so without this the scene sits underneath
-   it instead of stopping flush at its left edge, with zero gap, while the
-   dock is open. A plain percentage max-width can't guarantee that:
-   home-scene's own width normally comes from its OWN height × its 16/9
-   aspect-ratio, not from how much horizontal room is available, so on a
-   wide/short viewport its natural width is already narrower than any
-   percentage-based cap -- nothing to clip, so the gap to the dock stays
-   open. --home-scene-flush-width computes home-scene's exact required
-   width in absolute viewport terms: the dock's left edge (100vw - dock
-   width, min(90vw,380px) mirroring .live-schedule-dock__panel's own
-   width) minus home-scene's own left edge -- Main Navbar's own fixed width
-   plus .home-page's own var(--space-4) left padding (see .home-page's own
-   comment above), since .home-page has no centering margin of its own to
-   add on top of those two.
-     On a viewport wide enough that .home-page's own max-width caps it
-   (--home-page-max-width, 1440px) before the dock's edge is reached,
-   --home-scene-flush-width overshoots past .home-page's own right edge --
-   home-scene would then get clipped by .home-page's overflow:hidden,
-   stopping short of the dock and leaving a visible gap between the two,
-   which looks like a bug rather than the intentional content-width cap it
-   actually is. --home-page-available-width is .home-page's own capped
-   outer width (min(--home-page-max-width, 100vw - main navbar width)) minus
-   its own left+right padding -- the most home-scene could ever occupy
-   without overflowing its parent -- and the final width takes whichever
-   of the two is smaller, so home-scene either reaches the dock flush or
-   stops flush at .home-page's own right edge, never overflowing between
-   the two. Setting `width` (not `max-width`) forces this exact size
-   regardless of the natural aspect-ratio width, which is also what
-   overrides the 16:9 ratio here on a wide viewport -- flush against the
-   dock (or .home-page's own edge) wins over keeping the frame's own
-   proportions while it's open -- only RecentVideosSection stays put. */
-.home-scene--dock-open {
-  --home-scene-flush-width: calc(100vw - min(90vw, 380px) - var(--main-navbar-width) - var(--space-4));
-  --home-page-available-width: calc(
-    min(var(--home-page-max-width), 100vw - var(--main-navbar-width)) - var(--space-4) - var(--space-6)
-  );
-  width: min(var(--home-scene-flush-width), var(--home-page-available-width));
-  max-width: none;
+/* Exactly 16:9, whichever axis binds. `width: 100%` + `max-height: 100%`
+   cannot do this: an explicit width wins over aspect-ratio, so a
+   height-limited stage yielded a too-wide box (1478x772 = 1.91:1) that only
+   LOOKED 16:9 because YouTube letterboxed it internally. Sizing the width
+   from the smaller of the stage's own two axes makes the element itself
+   16:9, and the stage's flex centering handles the leftover margin. */
+.oshi-player-frame__ratio {
+  position: relative;
+
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  height: auto;
+
+  aspect-ratio: 16 / 9;
+
+  overflow: hidden;
+
+  background: #000;
 }
 
-/* Below the breakpoint where .home-page__upper already stacks vertically,
-   the dock's own min(90vw,380px) width leaves too little room for the
-   flush-against-dock formula above to produce a usable scene width (it can
-   shrink to a few px on a narrow phone) -- revert to the normal 16:9/
-   max-width:100% sizing instead of chasing the dock's edge. */
-@media (max-width: 900px) {
-  .home-scene--dock-open {
-    width: auto;
-    max-width: 100%;
-  }
-}
+.oshi-player-frame__ratio iframe,
+.oshi-player-frame__ratio video,
+.oshi-player-frame__ratio > div {
+  display: block;
 
-.home-scene__layer {
-  position: absolute;
-}
-
-.home-scene__background {
-  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-}
 
-/* The real YouTube embed (LiveEmbedPlayer) filling the frame. z-index: auto
-   (no explicit value) keeps it below __status-line's z-index: 10 without
-   this needing one of its own. */
-.home-scene__player {
-  inset: 0;
-  width: 100%;
-  height: 100%;
   border: 0;
 }
 
-.home-placeholder {
+/* ============ Creator meta strip ============ */
+
+.oshi-meta {
+  width: 100%;
+  height: var(--meta-strip-height);
+
+  min-width: 0;
+
+  display: grid;
+
+  grid-template-columns:
+    38px
+    minmax(0, 1fr)
+    auto;
+
+  align-items: center;
+
+  column-gap: 10px;
+
+  padding: 8px 10px;
+
+  overflow: hidden;
+
+  border: 1px solid var(--oshi-border);
+
+  border-left: 2px solid color-mix(in srgb, var(--creator-main) 65%, transparent);
+
+  border-radius: 4px;
+
+  background: var(--oshi-surface-1);
+}
+
+.oshi-meta__avatar {
+  width: 38px;
+  height: 38px;
+
+  flex: 0 0 38px;
+
+  display: block;
+
+  object-fit: cover;
+
+  border-radius: 50%;
+
+  border: 1px solid color-mix(in srgb, var(--creator-main) 42%, var(--oshi-border));
+}
+
+.oshi-meta__identity {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  justify-content: center;
+
+  gap: 2px;
+}
+
+.oshi-meta__name {
+  min-width: 0;
+
+  overflow: hidden;
+
+  color: var(--oshi-text-1);
+
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 17px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.oshi-meta__group {
+  min-width: 0;
+
+  overflow: hidden;
+
+  color: var(--oshi-text-2);
+
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 14px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ============ Oshi Status ============ */
+
+.oshi-status {
+  width: 100%;
+  height: 100%;
+
+  min-width: 0;
+  min-height: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 4px;
+
+  background: var(--oshi-surface-1);
+}
+
+.oshi-status__header {
+  position: relative;
+
+  flex: 0 0 auto;
+
+  display: flex;
+  align-items: center;
+
+  min-height: 44px;
+
+  padding: 8px 12px;
+
+  border-bottom: 1px solid var(--oshi-border);
+}
+
+.oshi-status__header::before {
+  content: "";
+
+  position: absolute;
+
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+
+  width: 2px;
+
+  background: var(--creator-main);
+
+  opacity: 0.72;
+}
+
+.oshi-status__creator {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+}
+
+.oshi-status__creator-avatar {
+  width: 32px;
+  height: 32px;
+
+  flex: 0 0 32px;
+
+  border-radius: 50%;
+
+  object-fit: cover;
+}
+
+.oshi-status__creator-text {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 1px;
+}
+
+.oshi-status__creator-name {
+  overflow: hidden;
+
+  color: var(--oshi-text-1);
+
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 16px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.oshi-status__creator-group {
+  overflow: hidden;
+
+  color: var(--oshi-text-3);
+
+  font-size: 10px;
+  line-height: 13px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.oshi-status__body {
+  min-height: 0;
+
+  flex: 1 1 auto;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+}
+
+.oshi-status__section {
+  position: relative;
+
+  flex: 0 0 auto;
+
+  padding: 9px 12px;
+
+  border-bottom: 1px solid var(--oshi-border);
+}
+
+.oshi-status__section:last-child {
+  border-bottom: 0;
+}
+
+.oshi-status__section--recent {
+  min-height: 0;
+
+  flex: 1 1 auto;
+
+  overflow: hidden;
+}
+
+.oshi-status__section-title {
+  margin: 0 0 6px;
+
+  color: var(--oshi-text-3);
+
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.oshi-status__next {
+  min-width: 0;
+
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto;
+
+  align-items: start;
+
+  column-gap: 8px;
+}
+
+.oshi-status__next-main {
+  min-width: 0;
+}
+
+.oshi-status__next-time {
+  color: var(--creator-main);
+
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 15px;
+}
+
+.oshi-status__next-title {
+  margin-top: 2px;
+
+  overflow: hidden;
+
+  color: var(--oshi-text-1);
+
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 15px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.oshi-status__next-countdown {
+  color: var(--oshi-text-2);
+
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+
+  white-space: nowrap;
+}
+
+.oshi-status__metrics {
+  display: grid;
+
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+
+  gap: 6px;
+}
+
+.oshi-status__metric {
+  min-width: 0;
+}
+
+.oshi-status__metric-value {
+  overflow: hidden;
+
+  color: var(--oshi-text-1);
+
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 16px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.oshi-status__metric-label {
+  margin-top: 1px;
+
+  overflow: hidden;
+
+  color: var(--oshi-text-3);
+
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 12px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.oshi-status__recent-list {
+  min-height: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 0;
+
+  overflow: hidden;
+}
+
+.oshi-status__recent-row {
+  min-width: 0;
+
+  display: grid;
+
+  grid-template-columns:
+    52px
+    minmax(0, 1fr);
+
+  align-items: center;
+
+  min-height: 27px;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.oshi-status__recent-row:first-child {
+  border-top: 0;
+}
+
+.oshi-status__recent-time {
+  color: var(--oshi-text-3);
+
+  font-size: 9px;
+  font-weight: 500;
+
+  white-space: nowrap;
+}
+
+.oshi-status__recent-text {
+  min-width: 0;
+
+  overflow: hidden;
+
+  color: var(--oshi-text-2);
+
+  font-size: 10px;
+  font-weight: 500;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ============ Oshi Videos ============ */
+
+.oshi-videos {
+  width: 100%;
+  height: var(--oshi-videos-height);
+
+  min-width: 0;
+  min-height: 0;
+
+  display: grid;
+
+  grid-template-rows:
+    34px
+    minmax(0, 1fr);
+
+  overflow: hidden;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 4px;
+
+  background: var(--oshi-surface-1);
+}
+
+.oshi-videos__header {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+
+  padding: 0 10px;
+
+  overflow: hidden;
+
+  border-bottom: 1px solid var(--oshi-border);
+}
+
+.oshi-videos__filters {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 5px;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  scrollbar-width: none;
+}
+
+.oshi-videos__filters::-webkit-scrollbar {
+  display: none;
+}
+
+/* The Ant Design Segmented control replacing the former ten independent
+   filter buttons -- colors/radius come from the ConfigProvider component
+   tokens in RecentVideosSection.tsx (theme-bound, incl. --creator-main on
+   the selected segment); this block only fixes the compact dimensions the
+   old chips had, which antd's own "small" size doesn't match exactly. A
+   flex child of .oshi-videos__filters, shrinkable so oversized content
+   scrolls within .oshi-videos__filters's own existing overflow-x rather
+   than wrapping to a second row or forcing page-level horizontal scroll. */
+.oshi-videos__segmented.ant-segmented {
+  flex: 0 1 auto;
+  min-width: 0;
+
+  font-size: 10px;
+}
+
+.oshi-videos__segment-item {
+  min-height: 22px;
+}
+
+.oshi-videos__segment-label {
+  min-height: 22px;
+
+  display: flex;
+  align-items: center;
+
+  padding: 0 8px;
+
+  font-size: 10px;
+  font-weight: 600;
+
+  white-space: nowrap;
+}
+
+/* The existing sort dropdown, restyled to sit in this dark header instead of
+   inheriting the light .soft-select treatment the analytics pages use. It
+   renders as the last child of .oshi-videos__filters (not a header-level
+   sibling), so it picks up that row's own 5px gap instead of a margin of
+   its own -- same spacing as between the topic chips themselves. */
+.oshi-videos__sort {
+  height: 22px;
+
+  flex: 0 0 auto;
+
+  padding: 0 6px;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 4px;
+
+  background: rgba(0, 0, 0, 0.2);
+
+  color: var(--oshi-text-2);
+
+  font-size: 10px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+/* Non-scrolling wrapper so the scroll arrows can sit over the track without
+   scrolling away with it. */
+.oshi-videos__row {
+  position: relative;
+
+  min-width: 0;
+  min-height: 0;
+}
+
+.oshi-videos__viewport {
+  width: 100%;
+  height: 100%;
+
+  min-width: 0;
+  min-height: 0;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  scrollbar-width: thin;
+}
+
+.oshi-videos__scroll {
+  position: absolute;
+
+  z-index: 2;
+
+  top: 50%;
+
+  width: 28px;
+  height: 28px;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px dashed rgba(255, 255, 255, 0.25);
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.75rem;
-  text-align: center;
-  padding: var(--space-2);
+
+  border: 1px solid var(--oshi-border-strong);
+  border-radius: 50%;
+
+  background: rgba(8, 17, 29, 0.9);
+
+  color: var(--oshi-text-1);
+
+  cursor: pointer;
+
+  transform: translateY(-50%);
+
+  transition: background var(--transition-fast);
 }
 
-/* Creator name + live status, one line, bottom-right corner of the frame.
-   No border/fill of its own — sits directly inside the frame's own
-   border. */
-.home-scene__status-line {
-  right: var(--space-3);
-  bottom: var(--space-3);
+.oshi-videos__scroll:hover {
+  background: rgba(20, 34, 51, 0.95);
+}
+
+.oshi-videos__scroll--left {
+  left: 2px;
+}
+
+.oshi-videos__scroll--right {
+  right: 2px;
+}
+
+.oshi-videos__scroll--hidden {
+  visibility: hidden;
+}
+
+.oshi-videos__list {
+  height: 100%;
+
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-primary, #232028);
-  font-size: 0.8rem;
-  z-index: 10;
+  align-items: stretch;
+
+  gap: 10px;
+
+  padding: 9px 10px 8px;
+
+  width: max-content;
+  min-width: 100%;
 }
 
-.home-scene__status-line__name {
+.oshi-video-card {
+  width: 220px;
+  height: 100%;
+
+  min-width: 220px;
+
+  display: grid;
+
+  grid-template-rows:
+    auto
+    minmax(0, 1fr);
+
+  gap: 5px;
+
+  padding: 0;
+
+  overflow: hidden;
+
+  border: 0;
+
+  background: transparent;
+
+  color: inherit;
+
+  text-align: left;
+  text-decoration: none;
+
+  cursor: pointer;
+}
+
+.oshi-video-card__thumbnail {
+  position: relative;
+
+  width: 100%;
+  height: auto;
+
+  aspect-ratio: 16 / 9;
+
+  overflow: hidden;
+
+  border-radius: 3px;
+
+  background: #050a10;
+}
+
+.oshi-video-card__thumbnail img {
+  width: 100%;
+  height: 100%;
+
+  display: block;
+
+  object-fit: cover;
+}
+
+.oshi-video-card:hover .oshi-video-card__thumbnail {
+  outline: 1px solid color-mix(in srgb, var(--creator-main) 45%, transparent);
+}
+
+.oshi-video-card__live-badge {
+  position: absolute;
+
+  top: 4px;
+  left: 4px;
+
+  padding: 1px 5px;
+
+  border-radius: 999px;
+
+  background: var(--live-red);
+
+  color: #fff;
+
+  font-size: 9px;
   font-weight: 700;
+  line-height: 13px;
+
+  letter-spacing: 0.03em;
 }
 
-.home-scene__status-line__status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
+.oshi-video-card__body {
+  min-width: 0;
+
+  display: block;
+
+  overflow: hidden;
 }
 
-/* ============ Global Live Schedule Dock ============ */
+.oshi-video-card__title {
+  display: -webkit-box;
 
-.live-schedule-dock {
-  position: fixed;
-  right: var(--space-4);
-  bottom: var(--space-4);
-  z-index: 40;
+  overflow: hidden;
+
+  color: var(--oshi-text-1);
+
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 14px;
+
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
-.live-schedule-dock--no-motion,
-.live-schedule-dock--no-motion * {
+.oshi-video-card__meta {
+  display: block;
+
+  margin-top: 2px;
+
+  overflow: hidden;
+
+  color: var(--oshi-text-3);
+
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 12px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ============ Live Status: trigger + overlay drawer ============ */
+
+/* Layout-neutral wrapper: both children are position:fixed, so this only
+   exists to scope the click-outside ref and to carry --creator-main/--sub
+   down to the drawer (which renders outside Home's own tree). */
+.live-status-dock {
+  display: contents;
+}
+
+.live-status-dock--no-motion *,
+.live-status-dock--no-motion *::before,
+.live-status-dock--no-motion *::after {
   transition: none !important;
 }
 
-/* Once opened (either size mode), the panel docks flush against the
-   screen's right/bottom edges instead of floating with the collapsed
-   pill's own var(--space-4) gap. */
-.live-schedule-dock--expanded {
-  right: 0;
-  bottom: 0;
-}
+.live-status-trigger {
+  position: fixed;
 
-/* One pill holding two buttons — the favorites-view switch and the
-   live-status summary — with no divider between them. */
-.live-schedule-dock__summary {
-  display: flex;
-  align-items: stretch;
-  background: rgba(20, 19, 24, 0.85);
-  color: #f2f0f5;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 999px;
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-}
+  z-index: 220;
 
-.live-schedule-dock__view-toggle {
-  flex: 0 0 auto;
-  display: flex;
+  right: 14px;
+  bottom: 14px;
+
+  min-width: 70px;
+  height: 34px;
+
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  background: none;
-  border: none;
-  color: inherit;
+
+  gap: 6px;
+
+  padding: 0 11px;
+
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+
+  background: #111820;
+
+  color: rgba(255, 255, 255, 0.88);
+
+  font-size: 11px;
+  font-weight: 700;
+
   cursor: pointer;
-  font-size: 0.9rem;
-  line-height: 1;
-  padding: var(--space-2) 0;
+
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
+
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    opacity var(--transition-fast);
 }
 
-.live-schedule-dock__view-toggle[aria-pressed="true"] {
-  color: #e8b923;
+.live-status-trigger:hover {
+  background: #17212c;
+
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
-.live-schedule-dock__summary-text {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  background: none;
-  border: none;
-  color: inherit;
-  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-1);
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-}
+.live-status-trigger__dot {
+  width: 7px;
+  height: 7px;
 
-.live-schedule-dock__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  flex: 0 0 auto;
+
   display: inline-block;
-  flex-shrink: 0;
+
+  border-radius: 50%;
 }
 
-.live-schedule-dock__dot--red {
+.live-status-trigger__dot--red {
   background: var(--live-red);
 }
 
-.live-schedule-dock__dot--grey {
+.live-status-trigger__dot--grey {
   background: #8a8790;
 }
 
-.live-schedule-dock__panel {
-  width: min(90vw, 380px);
-  max-height: min(70vh, 520px);
+.live-status-dock[data-live-status-open="true"] .live-status-trigger {
+  visibility: hidden;
+  opacity: 0;
+
+  pointer-events: none;
+}
+
+.live-status-drawer {
+  position: fixed;
+
+  z-index: 300;
+
+  top: 0;
+  right: 0;
+  bottom: 0;
+
+  width: var(--live-status-width);
+
+  min-width: 0;
+
   display: flex;
   flex-direction: column;
-  background: rgba(20, 19, 24, 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+
   overflow: hidden;
-  color: #f2f0f5;
-  transition: transform 0.15s ease, opacity 0.15s ease;
+
+  border-left: 1px solid var(--oshi-border-strong);
+
+  background: #0b1521;
+
+  box-shadow: -12px 0 28px rgba(0, 0, 0, 0.28);
+
+  transform: translateX(100%);
+
+  transition: transform var(--transition-normal);
+
+  pointer-events: none;
 }
 
-/* Default size when the panel opens: reaches all the way to the top of the
-   screen (not the min(70vh,520px) cap above) -- an explicit height, not a
-   max-height, so it holds the full viewport height even when there's too
-   little content to need it. The resize button (__resize) toggles back to
-   the capped size above. */
-.live-schedule-dock__panel--full {
-  height: 100vh;
-  max-height: 100vh;
+.live-status-dock[data-live-status-open="true"] .live-status-drawer {
+  transform: translateX(0);
+
+  pointer-events: auto;
 }
 
-.live-schedule-dock__header {
+/* The pre-existing full/compact size control: "full" is the default
+   top-to-bottom drawer above; "compact" restores the original
+   min(70vh, 520px) panel anchored to the bottom-right. Width stays 360px
+   either way. */
+.live-status-drawer[data-size="compact"] {
+  top: auto;
+
+  height: min(70vh, 520px);
+
+  border-top: 1px solid var(--oshi-border-strong);
+  border-top-left-radius: 4px;
+}
+
+.live-status-drawer__header {
+  flex: 0 0 auto;
+
+  padding: 12px;
+
+  border-bottom: 1px solid var(--oshi-border);
+}
+
+.live-status-drawer__title-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  justify-content: space-between;
+
+  gap: 8px;
+
+  margin-bottom: 10px;
 }
 
-/* Same (transparent) background as __header -- blends in, no button-shaped
-   patch of color -- matching __close's own existing style. */
-.live-schedule-dock__resize {
-  flex: 0 0 auto;
-  background: transparent;
-  border: none;
-  color: inherit;
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: var(--space-1);
-}
+.live-status-drawer__title {
+  flex: 1 1 auto;
 
-.live-schedule-dock__search {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-sm);
-  color: inherit;
-  padding: var(--space-1) var(--space-2);
-  font-size: 0.85rem;
-}
+  color: var(--oshi-text-1);
 
-.live-schedule-dock__close {
-  background: transparent;
-  border: none;
-  color: inherit;
-  font-size: 1.1rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: var(--space-1);
-}
+  font-size: 13px;
+  font-weight: 700;
 
-/* Scrollbar hidden, still scrollable. Solid background matching each row's
-   own #141318 (not the panel's translucent rgba(20,19,24,.92)) so the
-   gaps between rows read as the same single background as the rows
-   themselves -- no visible two-tone split. __header above keeps the
-   panel's own translucent background untouched. */
-.live-schedule-dock__list {
-  overflow-y: auto;
-  scrollbar-width: none; /* Firefox */
-  background: #141318;
-}
-
-.live-schedule-dock__list::-webkit-scrollbar {
-  display: none; /* Chrome/Safari/Edge */
-}
-
-/* ============ Creator status list (shared: Dock's expanded panel + Home's inline ListStatus panel) ============ */
-
-.creator-status-list {
-  padding: var(--space-2) 0;
-}
-
-.creator-status-list__group-label {
-  font-size: 0.65rem;
-  text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(242, 240, 245, 0.5);
-  padding: var(--space-2) var(--space-3) var(--space-1);
 }
 
-/* One level below .creator-status-list__group-label (branch, e.g. "VSPO
-   JP") -- the generation/unit heading within it (e.g. "1期生", "Gamers"),
-   same subgroup breakdown Notification Settings/Oshi Settings already
-   show. Smaller and unstyled (no uppercase/letter-spacing) so the branch
-   label above it stays the more prominent of the two. */
-.creator-status-list__subgroup-label {
-  font-size: 0.6rem;
-  color: rgba(242, 240, 245, 0.38);
-  padding: var(--space-1) var(--space-3) 0;
+.live-status-drawer__resize,
+.live-status-drawer__close {
+  width: 28px;
+  height: 28px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  flex: 0 0 28px;
+
+  border: 0;
+  border-radius: 4px;
+
+  background: transparent;
+
+  color: var(--oshi-text-2);
+
+  font-size: 16px;
+  line-height: 1;
+
+  cursor: pointer;
 }
 
-/* Rows stack as flex items (not plain block flow) purely so adjacent rows'
-   vertical margins do NOT collapse -- each row donates 5px top + 5px bottom,
-   so two neighboring rows add up to exactly 10px between them (5+5), while
-   a lone row still gets its own 5px on each side. Block-flow margin
-   collapsing would otherwise reduce that same 5px+5px down to a single 5px. */
-.creator-status-list__group {
+.live-status-drawer__resize:hover,
+.live-status-drawer__close:hover {
+  background: rgba(255, 255, 255, 0.05);
+
+  color: var(--oshi-text-1);
+}
+
+.live-status-search {
+  width: 100%;
+  height: 32px;
+
   display: flex;
-  flex-direction: column;
+  align-items: center;
+
+  gap: 7px;
+
+  padding: 0 9px;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 4px;
+
+  background: rgba(0, 0, 0, 0.14);
+
+  color: var(--oshi-text-3);
+}
+
+.live-status-search:focus-within {
+  border-color: color-mix(in srgb, var(--creator-main) 30%, var(--oshi-border));
+}
+
+.live-status-search input {
+  min-width: 0;
+
+  flex: 1 1 auto;
+
+  border: 0;
+  outline: 0;
+
+  background: transparent;
+
+  color: var(--oshi-text-1);
+
+  font-size: 11px;
+}
+
+.live-status-search input::placeholder {
+  color: var(--oshi-text-3);
+}
+
+.live-status-filter-row {
+  display: flex;
+  align-items: center;
+
+  gap: 5px;
+
+  margin-top: 8px;
+}
+
+.live-status-filter {
+  height: 25px;
+
+  display: inline-flex;
+  align-items: center;
+
+  padding: 0 9px;
+
+  border: 1px solid transparent;
+  border-radius: 4px;
+
+  background: transparent;
+
+  color: var(--oshi-text-3);
+
+  font-size: 10px;
+  font-weight: 650;
+
+  cursor: pointer;
+}
+
+.live-status-filter[data-active="true"],
+.live-status-filter[aria-pressed="true"] {
+  color: var(--oshi-text-1);
+
+  border-color: var(--oshi-border-strong);
+
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.live-status-drawer__body {
+  min-height: 0;
+
+  flex: 1 1 auto;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy compatibility */
+}
+
+.live-status-drawer__body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+
+  display: none; /* Chromium / Safari */
+}
+
+.live-status-group {
+  width: 100%;
+}
+
+.live-status-group__heading {
+  position: sticky;
+
+  z-index: 1;
+
+  top: 0;
+
+  height: 28px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 8px;
+
+  padding: 0 12px;
+
+  border-bottom: 1px solid var(--oshi-border);
+
+  background: #0d1825;
+
+  color: var(--oshi-text-3);
+
+  font-size: 9px;
+  font-weight: 750;
+
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.live-status-group__live-count {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 5px;
+
+  flex: 0 0 auto;
+
+  color: var(--oshi-text-2);
+}
+
+.live-status-group__live-dot {
+  width: 6px;
+  height: 6px;
+
+  display: inline-block;
+
+  border-radius: 50%;
+
+  background: var(--live-red);
+}
+
+/* One level below the branch heading (e.g. "1期生", "Gamers") — the same
+   subgroup breakdown Oshi/Notification Settings already show. */
+.live-status-group__subheading {
+  padding: 6px 12px 2px;
+
+  color: var(--oshi-text-3);
+
+  font-size: 9px;
+  font-weight: 500;
+
+  opacity: 0.8;
 }
 
 /* Swipe-to-favorite wrapper: houses the reveal layer (behind) and the
-   draggable row (in front, same DOM order = on top, no z-index needed).
-   position: relative only -- no size/height changes (spec section 4/38).
-   margin: 10px left/right (full amount, no neighboring row beside it to
-   share with) and 5px top/bottom (see .creator-status-list__group above).
-   All spacing here is measured against the AVATAR icon itself (not this
-   wrapper or the button), so .creator-status-list__creator-button's own
-   vertical padding is removed below -- otherwise it would sit between this
-   margin and the avatar and inflate icon-to-icon spacing past 10px. */
-.creator-status-list__swipe-row {
+   draggable row (in front, same DOM order = on top, no z-index needed). */
+.live-status-member-swipe {
   position: relative;
-  margin: 5px 10px;
 }
 
-/* The first row after EITHER label (branch, or -- when present -- the
-   subgroup beneath it) needs a full 10px above it (spec: icon-to-
-   organization-label = 10px, not the 5px used between two icons) --
-   override just this row's own top margin rather than touching either
-   label's own spacing. Adjacent-sibling combinator, not :first-of-type --
-   the labels are also <div>s, so one of them (not the first row) already
-   counts as "first of type" among divs. */
-.creator-status-list__group-label + .creator-status-list__swipe-row,
-.creator-status-list__subgroup-label + .creator-status-list__swipe-row {
-  margin-top: 10px;
-}
-
-/* Static reveal layer behind the row (spec section 17: "must remain behind
-   the translated row content"). Uses the row's own dimensions via inset: 0
-   rather than any new size. */
-.creator-status-list__reveal {
+.live-status-member__reveal {
   position: absolute;
+
   inset: 0;
+
   display: flex;
   align-items: center;
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    "Noto Sans JP",
-    "Yu Gothic",
-    Meiryo,
-    sans-serif;
+
   font-size: 12px;
   font-weight: 600;
   line-height: 16px;
+
   letter-spacing: 0.04em;
+
   white-space: nowrap;
+
   transition: opacity 100ms ease-out;
 }
 
-.creator-status-list__reveal--left {
+.live-status-member__reveal--left {
   justify-content: flex-start;
+
   padding-left: 18px;
-  background: rgba(27, 135, 150, 0.18);
-  color: #b4f1f9;
+
+  background: color-mix(in srgb, var(--creator-main) 16%, transparent);
+
+  color: var(--creator-main);
 }
 
-.creator-status-list__reveal--right {
+.live-status-member__reveal--right {
   justify-content: flex-end;
+
   padding-right: 18px;
+
   background: rgba(255, 255, 255, 0.075);
+
   color: rgba(255, 255, 255, 0.78);
 }
 
-.creator-status-list__row {
-  display: flex;
+/* The spec's 36px / 1fr / auto row, split one level down: the avatar and the
+   name+topic block share ONE button (clicking either switches Oshi) and the
+   status is its own button (clicking it opens that stream), which is the
+   existing behavior — so the 36px + 9px + 1fr track lives on that button
+   and the row itself carries the remaining 1fr / auto split. */
+.live-status-member {
+  position: relative;
+
+  min-width: 0;
+  min-height: var(--live-status-row-height);
+
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto;
+
   align-items: center;
-  gap: var(--space-1);
-  padding-right: var(--space-2);
-  /* Opaque so the reveal layer behind only shows through the gap the drag
-     actually opens up, not through the whole row (it was transparent
-     before -- harmless at rest since it only ever sat over the same-toned
-     panel background, but swiping needs it to actually occlude). Same base
-     hue as both host panels' own rgba(20, 19, 24, .92/.95) background. */
-  background: #141318;
+
+  column-gap: 9px;
+
+  padding: 6px 10px 6px 12px;
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+
+  background: #0b1521;
+
+  transition: background var(--transition-fast);
+
   touch-action: pan-y;
   user-select: none;
 }
 
-.creator-status-list__row--snapping {
+.live-status-member:hover {
+  background: rgba(255, 255, 255, 0.028);
+}
+
+.live-status-member--snapping {
   transition: transform 180ms ease-out;
 }
 
-.creator-status-list__creator-button {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  /* Icon-to-name gap (spec: 10px) -- not var(--space-2)/8px. */
-  gap: 10px;
+.live-status-member[data-main-oshi="true"]::before {
+  content: "";
+
+  position: absolute;
+
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+
+  width: 2px;
+
+  background: var(--creator-main);
+}
+
+.live-status-member__creator-button {
   min-width: 0;
-  background: transparent;
-  border: none;
-  color: inherit;
-  /* No top/bottom padding: the avatar's own 5px top/bottom margin (see
-     .creator-status-list__swipe-row/:first-of-type above) is what creates
-     the icon-to-icon and icon-to-label spacing, so padding here would only
-     add unwanted extra space on top of that. */
-  padding: 0 var(--space-2) 0 0;
-  font-size: 0.82rem;
-  cursor: pointer;
-  text-align: left;
-}
 
-/* 48px placeholder avatar (spec's own example size — no avatar existed in
-   the prior implementation to preserve the size of). Deterministic
-   per-creator color reuses getMemberAccent, whose own doc comment already
-   names "avatars" as an intended use. */
-.creator-status-list__avatar {
-  position: relative;
-  flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: flex;
+  display: grid;
+
+  grid-template-columns:
+    36px
+    minmax(0, 1fr);
+
   align-items: center;
-  justify-content: center;
-  font-size: 0.9rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  overflow: visible;
-  /* Selected-Oshi glow lives here as a transparent, always-present
-     outline/box-shadow (spec section 3/5) -- transitioning color/shadow
-     only, never the avatar's own 48px size. */
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  box-shadow: 0 0 8px transparent;
-  transition:
-    outline-color 160ms ease-out,
-    box-shadow 160ms ease-out;
+
+  column-gap: 9px;
+
+  padding: 0;
+
+  border: 0;
+
+  background: transparent;
+
+  color: inherit;
+
+  text-align: left;
+
+  cursor: pointer;
 }
 
-/* CURRENT ACTIVE OSHI only (spec section 2) -- not hover/focus/LIVE/favorite. */
-.creator-status-list__avatar--active {
-  /* Leans white rather than the raw theme color, for a brighter/glowing
-     feel, while still tracking the current Oshi's own theme -- a
-     white-tinted version of it, not a fixed unrelated color. */
-  --avatar-glow-color: color-mix(in srgb, white 65%, var(--theme-primary) 35%);
-  outline-color: var(--avatar-glow-color);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--avatar-glow-color) 70%, transparent);
-}
+.live-status-member__avatar-wrap {
+  position: relative;
 
-/* Real YouTube channel avatar (spec: "USE REAL YOUTUBE CHANNEL AVATAR").
-   Only rendered when creator.avatarUrl is set and hasn't failed to load —
-   otherwise CreatorAvatar falls back to the colored-circle/initial. */
-.creator-status-list__avatar-image {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
+  width: 36px;
+  height: 36px;
+
   display: block;
 }
 
-/* Display-only, favorited-only filled heart overlapping the avatar's
-   top-right corner (spec: 20.8%/-4.2%/-4.2% of avatar diameter ->
-   10px/-2px/-2px at 48px). #FF4D67, no outline-heart state, not clickable. */
-.creator-status-list__favorite-indicator {
+.live-status-member__avatar {
+  width: 36px;
+  height: 36px;
+
+  display: block;
+
+  border-radius: 50%;
+
+  object-fit: cover;
+}
+
+.live-status-member__favorite-indicator {
   position: absolute;
+
   top: -2px;
   right: -2px;
+
   width: 10px;
   height: 10px;
+
   fill: var(--live-red);
+
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+
   pointer-events: none;
 }
 
-.creator-status-list__row-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.live-status-member__main {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  justify-content: center;
+
+  gap: 2px;
 }
 
-.creator-status-list__status-button {
-  flex: 0 0 auto;
+.live-status-member__name-row {
+  min-width: 0;
+
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  background: transparent;
-  border: none;
-  color: inherit;
-  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
-  font-size: 0.72rem;
+
+  gap: 5px;
+}
+
+.live-status-member__name {
+  min-width: 0;
+
+  overflow: hidden;
+
+  color: var(--oshi-text-1);
+
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 15px;
+
   white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.live-status-member__main-badge {
+  flex: 0 0 auto;
+
+  color: var(--creator-main);
+
+  font-size: 8px;
+  font-weight: 750;
+
+  letter-spacing: 0.05em;
+}
+
+.live-status-member__topic {
+  min-width: 0;
+
+  overflow: hidden;
+
+  color: var(--oshi-text-3);
+
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 13px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.live-status-member__status {
+  align-self: center;
+
+  max-width: 74px;
+
+  overflow: hidden;
+
+  padding: 0;
+
+  border: 0;
+
+  background: transparent;
+
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
   cursor: pointer;
 }
 
-.creator-status-list__status-button:disabled {
+.live-status-member__status:disabled {
   cursor: default;
-  color: rgba(242, 240, 245, 0.45);
 }
 
-.creator-status-list__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  flex-shrink: 0;
+.live-status-member__status[data-status="live"] {
+  color: #ff6f7d;
 }
 
-.creator-status-list__dot--red {
-  background: var(--live-red);
+.live-status-member__status[data-status="upcoming"] {
+  color: var(--creator-main);
 }
 
-.creator-status-list__dot--grey {
-  background: #8a8790;
+.live-status-member__status[data-status="offline"] {
+  color: var(--oshi-text-3);
 }
 
-.creator-status-list__empty {
-  padding: var(--space-3);
-  font-size: 0.8rem;
-  color: rgba(242, 240, 245, 0.6);
+/* ============ Shared empty / loading states ============ */
+
+.oshi-empty-state {
+  min-height: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 12px;
+
+  color: var(--oshi-text-3);
+
+  font-size: 11px;
   text-align: center;
 }
 
-@media (max-width: 640px) {
-  .live-schedule-dock {
-    right: var(--space-3);
-    bottom: var(--space-3);
-    left: var(--space-3);
+.home-placeholder {
+  position: absolute;
+
+  inset: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 8px;
+
+  background: rgba(255, 255, 255, 0.04);
+
+  color: var(--oshi-text-3);
+
+  font-size: 10px;
+  text-align: center;
+}
+
+.oshi-loading-line {
+  display: block;
+
+  border-radius: 3px;
+
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.035),
+    rgba(255, 255, 255, 0.075),
+    rgba(255, 255, 255, 0.035)
+  );
+
+  background-size: 200% 100%;
+
+  animation: oshi-loading 1.4s linear infinite;
+}
+
+@keyframes oshi-loading {
+  from {
+    background-position: 200% 0;
   }
 
-  .live-schedule-dock__panel {
-    width: 100%;
+  to {
+    background-position: -200% 0;
   }
 }
 
@@ -862,4 +1704,76 @@
   background: var(--theme-primary);
   border: 1px solid var(--theme-primary);
   color: #fff;
+}
+
+/* ============ Narrower desktops ============ */
+
+@media (max-width: 1600px) {
+  :root {
+    --oshi-status-width: 338px;
+    --live-status-width: 350px;
+
+    /* 205px card -> 115.31px thumbnail + 5 + 42 = 162.31, + 17 padding,
+       + 34 header + 2 borders. */
+    --oshi-videos-height: 216px;
+  }
+
+  .oshi-video-card {
+    width: 205px;
+    min-width: 205px;
+  }
+}
+
+@media (max-width: 1366px) {
+  :root {
+    --home-gap: 10px;
+
+    --oshi-status-width: 318px;
+    --live-status-width: 340px;
+
+    /* 190px card -> 106.88px thumbnail + 5 + 42 = 153.88, + 17 padding,
+       + 34 header + 2 borders. */
+    --oshi-videos-height: 208px;
+
+    --meta-strip-height: 60px;
+  }
+
+  .oshi-stream {
+    grid-template-rows:
+      24px
+      minmax(0, 1fr)
+      var(--meta-strip-height);
+  }
+
+  .oshi-section-title {
+    height: 24px;
+    line-height: 24px;
+  }
+
+  .oshi-meta {
+    grid-template-columns:
+      36px
+      minmax(0, 1fr)
+      auto;
+
+    column-gap: 8px;
+
+    padding: 6px 8px;
+  }
+
+  .oshi-meta__avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .oshi-video-card {
+    width: 190px;
+    min-width: 190px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --live-status-width: 100vw;
+  }
 }

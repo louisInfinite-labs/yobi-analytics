@@ -57,14 +57,13 @@ describe("OshiSwitchConfirmDialog", () => {
 
   it("backdrop click cancels, but a click inside the panel does not", async () => {
     const onCancel = vi.fn()
-    const { container } = render(
-      <OshiSwitchConfirmDialog creatorName="藍沢エマ" locale="en" onCancel={onCancel} onConfirm={vi.fn()} />,
-    )
+    render(<OshiSwitchConfirmDialog creatorName="藍沢エマ" locale="en" onCancel={onCancel} onConfirm={vi.fn()} />)
     const user = userEvent.setup()
     await user.click(screen.getByText('Switch your Oshi to "藍沢エマ"?'))
     expect(onCancel).not.toHaveBeenCalled()
 
-    const backdrop = container.querySelector(".oshi-switch-confirm__backdrop")!
+    // Portalled to <body>, so it is outside render()'s own container.
+    const backdrop = document.querySelector(".oshi-switch-confirm__backdrop")!
     await user.click(backdrop)
     expect(onCancel).toHaveBeenCalled()
   })

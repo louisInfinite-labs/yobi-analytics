@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { t, type Locale } from "../../../shared/i18n/translations"
 
 interface OshiSwitchConfirmDialogProps {
@@ -77,7 +78,11 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
 
   const message = t(locale, "oshiSwitch.confirmMessage", { creatorName })
 
-  return (
+  // Portalled to <body>: this renders from inside the Live Status drawer,
+  // which is transformed — and a transformed ancestor becomes the
+  // containing block for position:fixed, so the backdrop would otherwise
+  // cover only the 360px drawer instead of the viewport.
+  return createPortal(
     <div className="oshi-switch-confirm__backdrop" onClick={onCancel} role="dialog" aria-modal="true" aria-label={message}>
       <div ref={panelRef} className="oshi-switch-confirm__panel" onClick={(event) => event.stopPropagation()}>
         <p className="oshi-switch-confirm__message">{message}</p>
@@ -104,6 +109,7 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
