@@ -1,6 +1,6 @@
 import { Avatar } from "antd"
 import { Heart } from "lucide-react"
-import { Fragment, useState } from "react"
+import { Fragment, useState, type CSSProperties } from "react"
 import { mockCreators, type MockCreator } from "../../../entities/creator/data/mockCreators"
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import { useSwipeToFavorite } from "../../favorites/hooks/useSwipeToFavorite"
@@ -43,8 +43,18 @@ function formatBranchHeading(branch: BranchKey): string {
  * (mockCreators.ts's own avatarUrl field is left unset on every entry, per
  * its own doc comment); this stays avatar-ready for the moment a real URL
  * source exists, without inventing one. */
+type CreatorNameAccentStyle = CSSProperties & { "--member-theme-color": string }
+
+/** Per-row hover/focus accent for the creator's OWN name -- independent of
+ * currentOshi (creatorThemeStyle's --creator-main), which stays bound to
+ * whichever creator is actually selected, not whichever row the pointer
+ * happens to be over. */
+function creatorNameAccentStyle(creator: MockCreator): CreatorNameAccentStyle {
+  return { "--member-theme-color": getMemberAccent(creator.channelId, creator.themeColor).primary }
+}
+
 function CreatorAvatar({ creator, isFavorite }: { creator: MockCreator; isFavorite: boolean }) {
-  const accent = getMemberAccent(creator.channelId)
+  const accent = getMemberAccent(creator.channelId, creator.themeColor)
   const spokenName = creator.channelName.replace(/\n/g, " ")
 
   return (
@@ -126,6 +136,7 @@ function CreatorRow({
         <button
           type="button"
           className="live-status-member__creator-button"
+          style={creatorNameAccentStyle(creator)}
           onClick={swipe.guardClick(() => onCreatorButtonClick(creator))}
           aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.channelName })}
         >

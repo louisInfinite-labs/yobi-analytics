@@ -2,13 +2,21 @@ import { Avatar } from "antd"
 import { useMemo } from "react"
 import { BRANCH_LABELS } from "../../../entities/creator/model/domain"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
+import { resolvePlaybackVideoId } from "../../home-room/data/mockRecentVideos"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
 import { useCountdownLanguage } from "../../../shared/i18n/hooks/useCountdownLanguage"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
-import { t } from "../../../shared/i18n/translations"
+import { t, type Locale } from "../../../shared/i18n/translations"
 import { formatAbsoluteTime, formatCountdown } from "../../live-status/model/creatorStatusFormat"
-import { usePreviousVisit } from "../hooks/useLastVisit"
-import { formatActivityTime, measureActivity, selectRecentActivity, WEEK_MS } from "../utils/oshiActivity"
+import { resetPreviousVisit, usePreviousVisit } from "../hooks/useLastVisit"
+import {
+  formatActivityTime,
+  isUnseenActivity,
+  measureActivity,
+  selectRecentActivity,
+  WEEK_MS,
+  type ActivityEntry,
+} from "../utils/oshiActivity"
 import type { CreatorStatus } from "../../live-status/model/creatorStatus"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 
@@ -26,6 +34,55 @@ interface OshiStatusPanelProps {
   uploads: RecentVideo[]
   streams: RecentVideo[]
   loading: boolean
+  /** The one shared Home selected-video path (see HomePage.tsx) -- switches
+   * the central Oshi Stream player directly, never a modal/second player. */
+  onSelectVideo: (video: { videoId: string; title: string }) => void
+}
+
+/** One Recent Activity row: [time + NEW] / [clickable title] / [thumbnail],
+ * always exactly these three grid columns -- see home.css's own
+ * .oshi-status__recent-row. NEW lives under the timestamp specifically so
+ * it can never eat into the title's own width or shrink the thumbnail;
+ * every entry here already has a real videoId (selectRecentActivity only
+ * ever draws from the video pools), so the title is always clickable. */
+function RecentActivityRow({
+  entry,
+  now,
+  previousVisit,
+  locale,
+  onOpen,
+}: {
+  entry: ActivityEntry
+  now: Date
+  previousVisit: Date | null
+  locale: Locale
+  onOpen: (video: { videoId: string; title: string }) => void
+}) {
+  const isNew = isUnseenActivity(entry.publishedAt, previousVisit, now)
+
+  return (
+    <div className="oshi-status__recent-row">
+      <div className="oshi-status__recent-time-column">
+        <span className="oshi-status__recent-time">{formatActivityTime(entry.publishedAt, now)}</span>
+        {isNew && <span className="oshi-status__recent-new-badge">{t(locale, "oshiStatus.newBadge")}</span>}
+      </div>
+      <div className="oshi-status__recent-content">
+        <button
+          type="button"
+          className="oshi-status__recent-video-link"
+          onClick={() => onOpen({ videoId: entry.videoId, title: entry.title })}
+        >
+          {entry.title}
+        </button>
+      </div>
+      <img
+        className="oshi-status__recent-thumbnail"
+        src={`https://img.youtube.com/vi/${resolvePlaybackVideoId(entry.videoId)}/hqdefault.jpg`}
+        alt=""
+        draggable={false}
+      />
+    </div>
+  )
 }
 
 /** One value/label pair in the compact 3-column metric rows -- `value` is a
@@ -69,9 +126,9 @@ function LiveOrNext({ status, now }: { status: CreatorStatus; now: Date }) {
  * streaming, what changed since the last visit, and this week's activity.
  * Every number is derived from the video pools Home already loaded and the
  * shared Holodex status — nothing here fetches on its own. */
-export function OshiStatusPanel({ creatorId, status, now, uploads, streams, loading }: OshiStatusPanelProps) {
+export function OshiStatusPanel({ creatorId, status, now, uploads, streams, loading, onSelectVideo }: OshiStatusPanelProps) {
   const creator = mockCreators.find((entry) => entry.channelId === creatorId)
-  const accent = getMemberAccent(creatorId)
+  const accent = getMemberAccent(creatorId, creator?.themeColor)
   const previousVisit = usePreviousVisit()
   const [locale] = useLocale()
 
@@ -103,6 +160,11 @@ export function OshiStatusPanel({ creatorId, status, now, uploads, streams, load
             {creator && <div className="oshi-status__creator-group">{BRANCH_LABELS[creator.branch]}</div>}
           </div>
         </div>
+        {import.meta.env.DEV && (
+          <button type="button" className="oshi-status__dev-reset" onClick={resetPreviousVisit}>
+            {t(locale, "oshiStatus.devResetVisit")}
+          </button>
+        )}
       </div>
 
       <div className="oshi-status__body">
@@ -141,6 +203,7 @@ export function OshiStatusPanel({ creatorId, status, now, uploads, streams, load
                 <div key={row} className="oshi-status__recent-row">
                   <span className="oshi-loading-line" style={{ height: 9, width: 34 }} />
                   <span className="oshi-loading-line" style={{ height: 9 }} />
+                  <span className="oshi-loading-line" style={{ height: 27, width: 48 }} />
                 </div>
               ))}
             </div>
@@ -149,10 +212,14 @@ export function OshiStatusPanel({ creatorId, status, now, uploads, streams, load
           ) : (
             <div className="oshi-status__recent-list">
               {recent.map((entry) => (
-                <div key={entry.videoId} className="oshi-status__recent-row">
-                  <span className="oshi-status__recent-time">{formatActivityTime(entry.publishedAt, now)}</span>
-                  <span className="oshi-status__recent-text">{entry.title}</span>
-                </div>
+                <RecentActivityRow
+                  key={entry.videoId}
+                  entry={entry}
+                  now={now}
+                  previousVisit={previousVisit}
+                  locale={locale}
+                  onOpen={onSelectVideo}
+                />
               ))}
             </div>
           )}

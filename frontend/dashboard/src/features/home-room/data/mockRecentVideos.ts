@@ -43,8 +43,19 @@ export function resolvePlaybackVideoId(videoId: string): string {
  * (Read API/Holodex) once that exists — see homeAssets.ts/
  * mockCreatorStatuses.ts for the same swap-point pattern used elsewhere in
  * Home. */
+/** now minus N minutes, as an ISO string -- computed at module load (same
+ * moment useLastVisit.ts's own previousVisit is captured), so these two
+ * entries land after any realistic previousVisit and actually demonstrate
+ * the Recent Activity NEW badge (Oshi Status) in dev/mock mode. A fixed
+ * past date could never do this once "today" moves past it. */
+function minutesAgoIso(minutes: number): string {
+  return new Date(Date.now() - minutes * 60_000).toISOString()
+}
+
 export const mockRecentVideos: Record<string, RecentVideo[]> = {
   ch_aizawa_ema: [
+    { videoId: "mock_ema_unseen_1", title: "【告知】新衣装お披露目のお知らせ", publishedAt: minutesAgoIso(5), contentFormat: "normal_video", category: "other", viewCount: 3200 },
+    { videoId: "mock_ema_unseen_2", title: "【VALORANT】新シーズン初配信！", publishedAt: minutesAgoIso(20), contentFormat: "live_archive", category: "valo", viewCount: 8100 },
     { videoId: "mock_ema_live_now", title: "【VALORANT】ランクを本気で上げる配信", publishedAt: "2026-09-03T12:00:00+09:00", contentFormat: "live_now", category: "valo", viewCount: 12000 },
     { videoId: "mock_ema_archive_1", title: "【雑談】最近あったこと話す", publishedAt: "2026-09-02T21:00:00+09:00", contentFormat: "live_archive", category: "chatting", viewCount: 45000 },
     { videoId: "mock_ema_archive_2", title: "【歌枠】久しぶりの歌配信", publishedAt: "2026-08-30T20:00:00+09:00", contentFormat: "live_archive", category: "singing", viewCount: 180000 },

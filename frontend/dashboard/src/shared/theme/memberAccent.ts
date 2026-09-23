@@ -1,7 +1,10 @@
-// Deterministic, restrained per-creator accent colors for small-area use
-// (avatars, badges, chart series) — derived from a curated muted palette
-// rather than one hand-authored theme per individual member, so it scales
-// to the full ~70-creator roster without per-creator authoring.
+// Per-creator accent colors for small-area use (avatars, badges, chart
+// series, currentOshi theme binding). A verified backend themeColor (Creator
+// Master's own field, see creator_master.py) is always preferred when the
+// caller has one; the curated muted palette below is the fallback for every
+// creator without a verified color yet, hashed deterministically so it's
+// still stable across reloads and scales to the full ~120-creator roster
+// without per-creator authoring.
 
 export interface MemberAccent {
   primary: string
@@ -20,6 +23,8 @@ const PALETTE: MemberAccent[] = [
   { primary: "#d97b3f", soft: "#f7ded0", textAccent: "#8a4a1f" }, // soft orange
 ]
 
+const THEME_COLOR_RE = /^#[0-9a-fA-F]{6}$/
+
 /** Simple deterministic string hash (djb2-style), used to pick a stable palette index. */
 function hashString(value: string): number {
   let hash = 0
@@ -29,8 +34,51 @@ function hashString(value: string): number {
   return hash
 }
 
-/** Return this creator's deterministic small-area accent color from the shared palette. */
-export function getMemberAccent(channelId: string): MemberAccent {
+function hexToRgb(hex: string): [number, number, number] {
+  return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)]
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)))
+  return `#${[r, g, b].map((n) => clamp(n).toString(16).padStart(2, "0")).join("")}`.toUpperCase()
+}
+
+/** themeColor mixed toward `target` by `ratio` -- used for both the light
+ * "soft" tint (mixed toward white) and the "textAccent" shade (mixed toward
+ * whichever of black/white contrasts against themeColor itself). */
+function mixToward(hex: string, target: [number, number, number], ratio: number): string {
+  const [r, g, b] = hexToRgb(hex)
+  const [tr, tg, tb] = target
+  return rgbToHex(r + (tr - r) * ratio, g + (tg - g) * ratio, b + (tb - b) * ratio)
+}
+
+/** ITU-R BT.601 perceived brightness (0-255) -- only used to pick a contrast
+ * direction for textAccent, not a WCAG-grade luminance calculation. */
+function perceivedBrightness(hex: string): number {
+  const [r, g, b] = hexToRgb(hex)
+  return (r * 299 + g * 587 + b * 114) / 1000
+}
+
+/** A verified backend color (any hue/lightness, including #FFFFFF/#000000 --
+ * see Creator Master's own themeColor field) still needs a soft tint and a
+ * textAccent that contrasts against it; both are derived rather than stored,
+ * since only one canonical color is ever persisted per creator. */
+function accentFromThemeColor(themeColor: string): MemberAccent {
+  const textTarget: [number, number, number] = perceivedBrightness(themeColor) > 140 ? [0, 0, 0] : [255, 255, 255]
+  return {
+    primary: themeColor,
+    soft: mixToward(themeColor, [255, 255, 255], 0.82),
+    textAccent: mixToward(themeColor, textTarget, 0.62),
+  }
+}
+
+/** This creator's accent color: their verified backend themeColor when one
+ * exists, otherwise the deterministic hashed palette fallback. `channelId`
+ * alone (not a full creator record) is deliberate -- every existing call
+ * site already has just an id in hand in several places, and hashing it is
+ * itself the fallback's whole mechanism. */
+export function getMemberAccent(channelId: string, themeColor?: string | null): MemberAccent {
+  if (themeColor && THEME_COLOR_RE.test(themeColor)) return accentFromThemeColor(themeColor)
   const index = hashString(channelId) % PALETTE.length
   return PALETTE[index]
 }

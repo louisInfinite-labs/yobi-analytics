@@ -13,6 +13,12 @@
   --oshi-surface-1: #0c1724;
   --oshi-surface-2: #101d2b;
   --oshi-surface-3: #142233;
+  /* Scrollbar-only tones -- no existing --oshi-surface-* value is a close
+     enough match to double as one, so these stay their own pair rather
+     than reusing e.g. --oshi-surface-3 and losing the intended contrast
+     against --oshi-bg. */
+  --oshi-surface-scrollbar-thumb: #263342;
+  --oshi-surface-scrollbar-thumb-hover: #344354;
 
   --oshi-text-1: rgba(255, 255, 255, 0.94);
   --oshi-text-2: rgba(255, 255, 255, 0.66);
@@ -41,7 +47,7 @@
   --player-frame-padding: 4px;
   --player-frame-radius: 4px;
 
-  --meta-strip-height: 64px;
+  --meta-strip-height: 70px;
   --live-status-row-height: 52px;
 
   --transition-fast: 140ms ease;
@@ -55,6 +61,15 @@
    capping it at the viewport is what keeps scrollHeight === viewport
    height here. */
 .oshi-home {
+  /* The app root (app/styles/index.css) sets color-scheme: light for the
+     rest of the (light-themed) dashboard; without overriding it here, any
+     native browser chrome this dark page renders -- scrollbars above all --
+     falls back to the light-scheme system palette (a light track, a pale
+     thumb, a visible native edge) no matter what the -webkit-scrollbar-*
+     rules below say, since those rules only recolor parts the scrollbar-
+     color/color-scheme machinery doesn't already claim. */
+  color-scheme: dark;
+
   position: relative;
 
   width: 100%;
@@ -70,29 +85,15 @@
   background: var(--oshi-bg);
 }
 
+/* One 2x2 grid for the whole canvas (Oshi Stream/Oshi Videos share the left
+   column, Oshi Status spans both rows of the right column -- see the three
+   section rules' own grid-column/grid-row below) rather than a nested
+   top-row-only grid: that's what makes Oshi Videos inherit its width from
+   the SAME column as Oshi Stream instead of computing its own, and lets
+   Oshi Status reach the full Home height instead of only the top row's. */
 .oshi-home__canvas {
   position: relative;
 
-  width: 100%;
-  height: 100%;
-
-  min-width: 0;
-  min-height: 0;
-
-  display: grid;
-
-  grid-template-rows:
-    minmax(0, 1fr)
-    var(--oshi-videos-height);
-
-  gap: var(--home-gap);
-
-  padding: 0;
-
-  overflow: hidden;
-}
-
-.oshi-home__top {
   width: 100%;
   height: 100%;
 
@@ -105,7 +106,13 @@
     minmax(0, 1fr)
     var(--oshi-status-width);
 
+  grid-template-rows:
+    minmax(0, 1fr)
+    var(--oshi-videos-height);
+
   gap: var(--home-gap);
+
+  padding: 0;
 
   overflow: hidden;
 }
@@ -134,6 +141,9 @@
 /* ============ Oshi Stream ============ */
 
 .oshi-stream {
+  grid-column: 1;
+  grid-row: 1;
+
   width: 100%;
   height: 100%;
 
@@ -250,26 +260,22 @@
   border: 0;
 }
 
-/* ============ Creator meta strip ============ */
+/* ============ Player meta strip ============ */
 
 .oshi-meta {
   width: 100%;
   height: var(--meta-strip-height);
 
   min-width: 0;
+  min-height: 0;
 
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 
-  grid-template-columns:
-    38px
-    minmax(0, 1fr)
-    auto;
+  gap: 4px;
 
-  align-items: center;
-
-  column-gap: 10px;
-
-  padding: 8px 10px;
+  padding: 6px 10px;
 
   overflow: hidden;
 
@@ -280,6 +286,32 @@
   border-radius: 4px;
 
   background: var(--oshi-surface-1);
+}
+
+/* The CURRENT central player's video title -- not creator name/static text,
+   see PlayerMetaStrip's own docstring in HomePage.tsx. */
+.oshi-meta__title {
+  margin: 0;
+  min-width: 0;
+
+  color: var(--oshi-text-1);
+
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oshi-meta__channel {
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+
+  min-width: 0;
 }
 
 .oshi-meta__avatar {
@@ -297,7 +329,7 @@
   border: 1px solid color-mix(in srgb, var(--creator-main) 42%, var(--oshi-border));
 }
 
-.oshi-meta__identity {
+.oshi-meta__channel-text {
   min-width: 0;
 
   display: flex;
@@ -308,31 +340,31 @@
   gap: 2px;
 }
 
-.oshi-meta__name {
+.oshi-meta__channel-name {
   min-width: 0;
 
   overflow: hidden;
 
   color: var(--oshi-text-1);
 
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 650;
-  line-height: 17px;
+  line-height: 15px;
 
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.oshi-meta__group {
+.oshi-meta__subscriber-count {
   min-width: 0;
 
   overflow: hidden;
 
-  color: var(--oshi-text-2);
+  color: var(--oshi-text-3);
 
   font-size: 11px;
   font-weight: 500;
-  line-height: 14px;
+  line-height: 13px;
 
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -341,6 +373,9 @@
 /* ============ Oshi Status ============ */
 
 .oshi-status {
+  grid-column: 2;
+  grid-row: 1 / 3;
+
   width: 100%;
   height: 100%;
 
@@ -441,6 +476,35 @@
 
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* DEV-only utility (see OshiStatusPanel.tsx's import.meta.env.DEV gate) --
+   a developer control, not a product feature, so it's deliberately never
+   bound to --creator-main. */
+.oshi-status__dev-reset {
+  flex: 0 0 auto;
+  margin-left: auto;
+
+  appearance: none;
+
+  height: 22px;
+  padding: 0 7px;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 3px;
+
+  background: transparent;
+  color: var(--oshi-text-3);
+
+  font-size: 10px;
+  line-height: 20px;
+
+  cursor: pointer;
+}
+
+.oshi-status__dev-reset:hover {
+  color: var(--oshi-text-1);
+  border-color: var(--oshi-text-3);
 }
 
 .oshi-status__body {
@@ -588,21 +652,33 @@
 
   gap: 0;
 
-  overflow: hidden;
+  /* The list itself scrolls (not the section around it) if taller rows --
+     the thumbnail column below made every row taller than the old
+     time+text-only version -- ever don't all fit; the section's own
+     compact-sections/Recent-absorbs-remaining-space layout is unchanged. */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
+/* Exactly 3 columns, always: time+NEW / title / thumbnail. NEW lives INSIDE
+   column 1 (.oshi-status__recent-time-column below) -- it must never become
+   a 4th column, eat into the title's space, or shrink the thumbnail. */
 .oshi-status__recent-row {
   min-width: 0;
 
   display: grid;
 
   grid-template-columns:
-    52px
-    minmax(0, 1fr);
+    58px
+    minmax(0, 1fr)
+    48px;
 
-  align-items: center;
+  align-items: start;
+  column-gap: 8px;
 
-  min-height: 27px;
+  min-height: 46px;
+
+  padding: 8px 0;
 
   border-top: 1px solid rgba(255, 255, 255, 0.045);
 }
@@ -611,34 +687,112 @@
   border-top: 0;
 }
 
+.oshi-status__recent-time-column {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+
+  gap: 4px;
+}
+
 .oshi-status__recent-time {
   color: var(--oshi-text-3);
 
   font-size: 9px;
   font-weight: 500;
+  line-height: 1.4;
 
   white-space: nowrap;
 }
 
-.oshi-status__recent-text {
+.oshi-status__recent-new-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 16px;
+  min-width: 30px;
+  padding: 0 5px;
+
+  border-radius: 3px;
+
+  color: var(--oshi-bg);
+  background: var(--creator-main);
+
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+}
+
+.oshi-status__recent-content {
   min-width: 0;
+}
 
-  overflow: hidden;
+.oshi-status__recent-video-link {
+  appearance: none;
 
-  color: var(--oshi-text-2);
+  max-width: 100%;
 
+  margin: 0;
+  padding: 0;
+
+  border: 0;
+  background: transparent;
+
+  color: var(--oshi-text-1);
+  font: inherit;
   font-size: 10px;
   font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
 
+  overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+
+  cursor: pointer;
+}
+
+.oshi-status__recent-video-link:hover {
+  color: var(--creator-main);
+
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.oshi-status__recent-video-link:focus-visible {
+  outline: 1px solid var(--creator-main);
+  outline-offset: 2px;
+}
+
+.oshi-status__recent-thumbnail {
+  width: 48px;
+
+  aspect-ratio: 16 / 9;
+
+  display: block;
+
+  object-fit: cover;
+  border-radius: 3px;
 }
 
 /* ============ Oshi Videos ============ */
 
 .oshi-videos {
+  /* Same left/right edges as Oshi Stream because it's the same grid column
+     (.oshi-home__canvas), not an independently computed width -- the Live
+     Status drawer (position: fixed to the viewport, not a layout column of
+     Home -- see LiveScheduleDock.tsx) never enters into this at all, since
+     that column's own width already stops short of the drawer's reserved
+     strip via var(--oshi-status-width) sitting to the right of it. */
+  grid-column: 1;
+  grid-row: 2;
+
   width: 100%;
-  height: var(--oshi-videos-height);
+  height: 100%;
 
   min-width: 0;
   min-height: 0;
@@ -651,7 +805,6 @@
 
   overflow: hidden;
 
-  border: 1px solid var(--oshi-border);
   border-radius: 4px;
 
   background: var(--oshi-surface-1);
@@ -748,6 +901,46 @@
   cursor: pointer;
 }
 
+/* Suppresses the app-wide :focus-visible ring (app/styles/index.css) for
+   this one control -- that global rule outlines every focusable element in
+   --theme-primary, which read as a decorative accent rail this plain
+   dropdown was never meant to have. The control's own 1px border above is
+   the only frame it keeps, focused or not. */
+.oshi-videos__sort:focus-visible {
+  outline: none;
+}
+
+/* Sibling of VideoSectionTagBar inside .oshi-videos__header (NOT a child of
+   .oshi-videos__filters, which scrolls) -- margin-left: auto pushes it to
+   the header's far-right edge regardless of how wide the Segmented/Sort
+   cluster is, without disturbing their own existing 5px gap. */
+.oshi-videos__view-all {
+  margin-left: auto;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  height: 24px;
+
+  padding: 0 6px;
+
+  border: 0;
+  background: transparent;
+
+  color: var(--oshi-text-3);
+
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 24px;
+
+  cursor: pointer;
+}
+
+.oshi-videos__view-all:hover {
+  color: var(--creator-main);
+}
+
 /* Non-scrolling wrapper so the scroll arrows can sit over the track without
    scrolling away with it. */
 .oshi-videos__row {
@@ -767,51 +960,73 @@
   overflow-x: auto;
   overflow-y: hidden;
 
+  /* pan-y (not the default auto/none) keeps a touchscreen's own vertical
+     page gesture working over this row while still letting the pointer
+     handlers below (mouse only -- see VideoTrack's handlePointerDown)
+     drive horizontal movement; native touch/trackpad horizontal scrolling
+     is untouched, since neither is a mouse-button drag. */
+  touch-action: pan-y;
+
+  cursor: grab;
+
+  /* Hidden at rest, thin on hover -- see the :hover block below. The
+     scrollbar's own presence never affects layout height in either state,
+     since both are overlay-style (no reserved gutter) on every browser
+     this targets. scrollbar-color is set even at rest (Firefox has no
+     "hidden" scrollbar state of its own to match scrollbar-width: none --
+     this just keeps its thumb/track dark for the instant before :hover
+     swaps scrollbar-width to thin, rather than an unstyled default). */
+  scrollbar-width: none;
+  scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
+}
+
+.oshi-videos__viewport::-webkit-scrollbar,
+.oshi-videos__viewport::-webkit-scrollbar-button {
+  height: 0;
+  width: 0;
+  display: none;
+  background: transparent;
+}
+
+.oshi-videos__viewport:hover {
   scrollbar-width: thin;
 }
 
-.oshi-videos__scroll {
-  position: absolute;
-
-  z-index: 2;
-
-  top: 50%;
-
-  width: 28px;
-  height: 28px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  border: 1px solid var(--oshi-border-strong);
-  border-radius: 50%;
-
-  background: rgba(8, 17, 29, 0.9);
-
-  color: var(--oshi-text-1);
-
-  cursor: pointer;
-
-  transform: translateY(-50%);
-
-  transition: background var(--transition-fast);
+.oshi-videos__viewport:hover::-webkit-scrollbar {
+  height: 7px;
+  background: var(--oshi-bg);
 }
 
-.oshi-videos__scroll:hover {
-  background: rgba(20, 34, 51, 0.95);
+.oshi-videos__viewport:hover::-webkit-scrollbar-button {
+  display: none;
 }
 
-.oshi-videos__scroll--left {
-  left: 2px;
+.oshi-videos__viewport:hover::-webkit-scrollbar-track {
+  background: var(--oshi-bg);
+  border: 0;
+  outline: 0;
+  box-shadow: none;
 }
 
-.oshi-videos__scroll--right {
-  right: 2px;
+.oshi-videos__viewport:hover::-webkit-scrollbar-thumb {
+  background: var(--oshi-surface-scrollbar-thumb);
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  border-radius: 999px;
 }
 
-.oshi-videos__scroll--hidden {
-  visibility: hidden;
+.oshi-videos__viewport:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--oshi-surface-scrollbar-thumb-hover);
+}
+
+.oshi-videos__viewport:hover::-webkit-scrollbar-corner {
+  background: var(--oshi-bg);
+}
+
+.oshi-videos__viewport[data-dragging="true"] {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .oshi-videos__list {
@@ -856,6 +1071,12 @@
   text-decoration: none;
 
   cursor: pointer;
+
+  /* The <img> already has draggable={false} (VideoThumbCard); this is the
+     same protection against a native browser drag-ghost for the card as a
+     whole, so grab-dragging the shelf never starts one from anywhere on
+     the card. */
+  -webkit-user-drag: none;
 }
 
 .oshi-video-card__thumbnail {
@@ -1507,6 +1728,17 @@
 
   white-space: nowrap;
   text-overflow: ellipsis;
+
+  transition: color 120ms ease;
+}
+
+/* --member-theme-color (creatorNameAccentStyle, CreatorStatusList.tsx) is
+   this ROW's own creator's accent, independent of --creator-main
+   (currentOshi's accent, set once on the whole dock) -- hovering/focusing
+   a row never recolors any other row. */
+.live-status-member__creator-button:hover .live-status-member__name,
+.live-status-member__creator-button:focus-visible .live-status-member__name {
+  color: var(--member-theme-color);
 }
 
 .live-status-member__main-badge {
@@ -1735,7 +1967,7 @@
        + 34 header + 2 borders. */
     --oshi-videos-height: 208px;
 
-    --meta-strip-height: 60px;
+    --meta-strip-height: 66px;
   }
 
   .oshi-stream {
@@ -1751,19 +1983,17 @@
   }
 
   .oshi-meta {
-    grid-template-columns:
-      36px
-      minmax(0, 1fr)
-      auto;
+    padding: 5px 8px;
+  }
 
-    column-gap: 8px;
-
-    padding: 6px 8px;
+  .oshi-meta__channel {
+    gap: 8px;
   }
 
   .oshi-meta__avatar {
     width: 36px;
     height: 36px;
+    flex: 0 0 36px;
   }
 
   .oshi-video-card {

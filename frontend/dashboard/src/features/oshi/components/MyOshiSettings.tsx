@@ -38,7 +38,7 @@ function subgroupTitle(locale: Locale, label: string): string {
 }
 
 function creatorAccentStyle(creator: MockCreator): CreatorAccentStyle {
-  const accent = getMemberAccent(creator.channelId)
+  const accent = getMemberAccent(creator.channelId, creator.themeColor)
   return {
     "--creator-accent": accent.primary,
     "--creator-accent-soft": accent.soft,
