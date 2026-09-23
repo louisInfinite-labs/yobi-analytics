@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -25,6 +26,7 @@ class CreatorMasterError(JsonStoreError):
 VALID_BRANCHES = {"holo_jp", "holo_en", "holo_id", "vspo_jp", "vspo_en"}
 VALID_CHANNEL_TYPES = {"member", "group", "staff"}
 VALID_LIFECYCLE_STAGES = {"active", "pre_debut", "graduated", "retired"}
+THEME_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,12 @@ class Creator:
     # haven't (sparse — see Roadmap 1.3). Set if and only if
     # lifecycle_stage == "graduated" — enforced in _parse_creator.
     graduated_at: str | None = None
+    # "#RRGGBB", the creator's verified official brand color, or None when
+    # no verified value exists yet (sparse by design — never guessed/
+    # generated; see this field's own migration task). The frontend's
+    # deterministic hashed palette is the fallback for None, not something
+    # this field ever needs to account for.
+    theme_color: str | None = None
 
 
 def load_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
@@ -115,6 +123,8 @@ def _parse_creator(raw: dict) -> Creator:
                 "graduated requires graduatedAt, and only graduated may set it"
             )
 
+        theme_color = _optional_theme_color(raw, "themeColor", creator_id)
+
         return Creator(
             creator_id=creator_id,
             display_name=display_name,
@@ -127,6 +137,7 @@ def _parse_creator(raw: dict) -> Creator:
             lifecycle_stage=lifecycle_stage,
             discovery_enabled=discovery_enabled,
             graduated_at=graduated_at,
+            theme_color=theme_color,
         )
     except (KeyError, TypeError) as exc:
         raise CreatorMasterError(f"Malformed Creator Master record, missing/invalid field: {exc}") from exc
@@ -170,3 +181,20 @@ def _optional_iso_date(raw: dict, field: str, creator_id: str) -> str | None:
     if parsed.isoformat() != value:
         raise CreatorMasterError(f"Creator {creator_id!r} has invalid {field!r}: {value!r}")
     return value
+
+
+def _optional_theme_color(raw: dict, field: str, creator_id: str) -> str | None:
+    """Return raw[field] as a normalized "#RRGGBB" string, or None if the key is absent.
+
+    Sparse by design, same as graduatedAt: omitted for every creator without
+    a verified official color rather than a guessed/generated placeholder.
+    A present-but-malformed value (wrong length, no '#', non-hex digits) is
+    rejected rather than silently dropped, so a bad value fails here instead
+    of reaching the frontend unnoticed.
+    """
+    if field not in raw:
+        return None
+    value = raw[field]
+    if not isinstance(value, str) or not THEME_COLOR_PATTERN.match(value):
+        raise CreatorMasterError(f"Creator {creator_id!r} has invalid {field!r}: {value!r}")
+    return value.upper()
