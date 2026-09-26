@@ -11,7 +11,13 @@
 
   --schedule-time-column-width: 98px;
   --schedule-day-header-height: 56px;
-  --schedule-time-slot-height: 24px;
+  /* 24px packed multiple same-slot creator avatars too tightly (adjacent
+     rows visibly overlapped) -- 38px is the single shared value every row,
+     label, and avatar-centering rule below reads from, so they can't drift
+     out of alignment with each other. The page scrolls vertically to fit
+     the resulting taller grid (see .schedule-grid) rather than shrinking
+     this back down to force everything into one viewport. */
+  --schedule-time-slot-height: 38px;
 }
 
 /* Page renders inside the existing app-shell's content area (next to
@@ -158,9 +164,81 @@
 
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
+  container-type: size;
 }
 
+/* Trailing space so even the last rows can be scrolled up under the sticky
+   headers -- without it the browser clamps the scroll at the bottom, and the
+   initial "earliest live row at the top" scroll (ScheduleGrid.tsx) could not
+   land on a late-evening row. Sized so the final 23:30 row can reach the top. */
+.schedule-grid::after {
+  content: "";
+  grid-column: 1 / -1;
+  height: calc(100cqh - var(--schedule-day-header-height) - var(--schedule-time-slot-height));
+}
+
+/* Same hidden-at-rest/thin-on-hover scrollbar as Home's Oshi Videos row
+   (home.css's .oshi-videos__viewport) -- reusing its own --oshi-* tokens
+   directly rather than duplicating their hex values, so the two stay in
+   sync if Home's palette ever changes. This is a vertical scrollbar where
+   Oshi Videos' is horizontal, so width/height are swapped from its rules. */
+.schedule-grid {
+  scrollbar-width: none;
+  scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
+}
+
+.schedule-grid::-webkit-scrollbar,
+.schedule-grid::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.schedule-grid:hover {
+  scrollbar-width: thin;
+}
+
+.schedule-grid:hover::-webkit-scrollbar {
+  width: 7px;
+  background: var(--oshi-bg);
+}
+
+.schedule-grid:hover::-webkit-scrollbar-button {
+  display: none;
+}
+
+.schedule-grid:hover::-webkit-scrollbar-track {
+  background: var(--oshi-bg);
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.schedule-grid:hover::-webkit-scrollbar-thumb {
+  background: var(--oshi-surface-scrollbar-thumb);
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  border-radius: 999px;
+}
+
+.schedule-grid:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--oshi-surface-scrollbar-thumb-hover);
+}
+
+.schedule-grid:hover::-webkit-scrollbar-corner {
+  background: var(--oshi-bg);
+}
+
+/* Sticky so the initial scroll-to-row (ScheduleGrid.tsx) leaves the day
+   names visible; opaque backing so scrolled rows don't show through. */
 .time-header {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--schedule-bg-page);
+
   height: var(--schedule-day-header-height);
 
   display: flex;
@@ -176,6 +254,10 @@
 }
 
 .schedule-day-header {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+
   height: var(--schedule-day-header-height);
 
   display: flex;
@@ -187,7 +269,7 @@
   border-bottom: 1px solid #263a54;
   border-right: 1px solid #172a40;
 
-  background: linear-gradient(180deg, rgba(13, 25, 43, 0.92), rgba(9, 18, 32, 0.92));
+  background: linear-gradient(180deg, rgba(13, 25, 43, 0.92), rgba(9, 18, 32, 0.92)), var(--schedule-bg-page);
 }
 
 .day-name {
@@ -203,7 +285,7 @@
 }
 
 .schedule-day-header.is-today {
-  background: linear-gradient(180deg, rgba(19, 55, 95, 0.75), rgba(10, 30, 52, 0.8));
+  background: linear-gradient(180deg, rgba(19, 55, 95, 0.75), rgba(10, 30, 52, 0.8)), var(--schedule-bg-page);
   box-shadow: inset 0 -1px 0 #258cff;
 }
 
@@ -217,7 +299,7 @@
 
 .time-body {
   display: grid;
-  grid-template-rows: repeat(32, var(--schedule-time-slot-height));
+  grid-auto-rows: var(--schedule-time-slot-height);
 }
 
 .time-label {
@@ -242,7 +324,7 @@
   position: relative;
 
   display: grid;
-  grid-template-rows: repeat(32, var(--schedule-time-slot-height));
+  grid-auto-rows: var(--schedule-time-slot-height);
 
   border-right: 1px solid rgba(29, 49, 72, 0.9);
 }
@@ -279,6 +361,7 @@
 }
 
 .stream-avatar-button {
+  position: relative;
   width: 27px;
   height: 27px;
   padding: 0;
@@ -319,6 +402,31 @@
 .stream-avatar-button:hover .stream-avatar {
   transform: scale(1.08);
   box-shadow: 0 0 0 2px rgba(57, 178, 255, 0.28);
+}
+
+/* Same pill language as Home's .oshi-video-card__live-badge (--live-red,
+   9px/700), pinned to the avatar's top-right. Protrudes 4px sideways (< the
+   5px group gap) and 4px upward (< the 5.5px row margin), so it never
+   reaches a neighbouring avatar, the +N pill, or the adjacent row. */
+.stream-avatar-live-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  z-index: 1;
+
+  padding: 1px 4px;
+
+  border-radius: 999px;
+  background: var(--live-red);
+  box-shadow: 0 0 0 1.5px var(--schedule-bg-page);
+
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 10px;
+  letter-spacing: 0.03em;
+
+  pointer-events: none;
 }
 
 .more-streams {

@@ -30,7 +30,7 @@ export function LiveSchedulePage() {
         <ScheduleToolbar locale={locale} weekStart={weekStart} onPreviousWeek={goToPreviousWeek} onNextWeek={goToNextWeek} />
       </header>
 
-      <ScheduleGrid locale={locale} days={days} selectedStreamId={selectedStream?.id ?? null} onSelectStream={setSelectedStream} />
+      <ScheduleGrid locale={locale} days={days} now={now} selectedStreamId={selectedStream?.id ?? null} onSelectStream={setSelectedStream} />
 
       <StreamDetailModal
         stream={selectedStream}

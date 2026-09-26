@@ -21,6 +21,13 @@ describe("getMockWeeklySchedule", () => {
     expect(withTimezoneSpread).toBeDefined()
   })
 
+  it("includes streams in the small hours (00:00-07:30 JST) so the full-day grid can be verified", () => {
+    const streams = getMockWeeklySchedule(new Date(2026, 8, 20))
+    const jstHours = streams.map((stream) => new Date(stream.scheduledStartMs + 9 * 3_600_000).getUTCHours())
+    expect(jstHours.some((hour) => hour < 8)).toBe(true)
+    expect(jstHours.some((hour) => hour >= 8)).toBe(true)
+  })
+
   it("is deterministic for the same calendar week regardless of the exact time-of-day passed in", () => {
     const morning = new Date(2026, 8, 20, 1, 0, 0)
     const evening = new Date(2026, 8, 20, 23, 0, 0)

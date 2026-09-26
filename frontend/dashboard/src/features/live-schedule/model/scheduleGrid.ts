@@ -1,19 +1,22 @@
+import type { ScheduledStream } from "./scheduledStream"
+
 export const DAYS_PER_WEEK = 7
-/** Streams are only ever scheduled 08:00-24:00 JST (this roster's actual
- * streaming hours) -- a 24h/48-slot grid would spend two thirds of its
- * vertical space on a dead overnight block nothing ever occupies. */
-export const TIME_START_HOUR = 8
+/** The grid covers the full local calendar day (00:00-23:30, 48 slots) --
+ * an 08:00 start was only ever a leftover of the original concept mock's
+ * demo range. Once placement is local-timezone-based (see slotIndexForMs),
+ * a stream scheduled late JST evening can convert to the small hours in a
+ * viewer further west/east, and starting the grid at 08:00 would leave it
+ * with nowhere to render. */
+export const TIME_START_HOUR = 0
 export const SLOT_MINUTES = 30
 export const SLOT_COUNT = ((24 - TIME_START_HOUR) * 60) / SLOT_MINUTES
 
-/** Monday 00:00 (local) of `date`'s week, shifted by `weekOffset` whole
- * weeks. `getDay()` is 0 (Sun) - 6 (Sat); treating Sunday as day 6 of the
- * *previous* Monday-start week is what makes the Mon-start math a single
- * formula instead of a special case. */
+/** Sunday 00:00 (local) of `date`'s week, shifted by `weekOffset` whole
+ * weeks. `getDay()` is already 0 (Sun) - 6 (Sat), so a Sunday-start week
+ * needs no reindexing the way a Monday-start week would. */
 export function startOfWeek(date: Date, weekOffset: number): Date {
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  const mondayIndex = (start.getDay() + 6) % 7
-  start.setDate(start.getDate() - mondayIndex + weekOffset * DAYS_PER_WEEK)
+  start.setDate(start.getDate() - start.getDay() + weekOffset * DAYS_PER_WEEK)
   return start
 }
 
@@ -29,15 +32,36 @@ export function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
-/** The grid row (0-indexed) `ms` falls into within `day`'s own 08:00-24:00
- * window, or null when it falls outside that window (before 08:00, or the
- * timestamp isn't actually on this calendar day). */
+/** The grid row (0-indexed) `ms` falls into within `day`'s own local
+ * calendar day, or null when the timestamp isn't actually on this day. */
 export function slotIndexForMs(ms: number, day: Date): number | null {
   const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), TIME_START_HOUR, 0, 0, 0)
   const minutesFromStart = (ms - dayStart.getTime()) / 60_000
   if (minutesFromStart < 0) return null
   const index = Math.floor(minutesFromStart / SLOT_MINUTES)
   return index < SLOT_COUNT ? index : null
+}
+
+/** Row to bring to the top of the grid on entry: the row of the earliest-
+ * started stream that is live right now, in any displayed day column (an
+ * overnight stream that began before midnight is still "live" and counts),
+ * else the row `now` falls in. */
+export function initialScrollSlotIndex(days: { slots: ScheduledStream[][] }[], now: Date): number {
+  let earliestStartMs = Infinity
+  let liveIndex = -1
+  for (const day of days) {
+    day.slots.forEach((streams, slotIndex) => {
+      for (const stream of streams) {
+        if (stream.status === "live" && stream.scheduledStartMs < earliestStartMs) {
+          earliestStartMs = stream.scheduledStartMs
+          liveIndex = slotIndex
+        }
+      }
+    })
+  }
+  if (liveIndex >= 0) return liveIndex
+  const minutesFromStart = now.getHours() * 60 + now.getMinutes() - TIME_START_HOUR * 60
+  return Math.min(Math.max(Math.floor(minutesFromStart / SLOT_MINUTES), 0), SLOT_COUNT - 1)
 }
 
 export function slotLabel(slotIndex: number): { hour: string; minute: "00" | "30" } {

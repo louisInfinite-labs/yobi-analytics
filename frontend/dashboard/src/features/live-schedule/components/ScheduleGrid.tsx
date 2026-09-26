@@ -1,6 +1,7 @@
+import { useLayoutEffect, useRef } from "react"
 import { getCreatorAvatarVisual } from "../../analytics/charts/CreatorAvatar"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
-import { SLOT_COUNT, slotLabel } from "../model/scheduleGrid"
+import { SLOT_COUNT, initialScrollSlotIndex, slotLabel } from "../model/scheduleGrid"
 import type { ScheduleDay } from "../hooks/useWeeklySchedule"
 import type { ScheduledStream } from "../model/scheduledStream"
 import { t, type Locale } from "../../../shared/i18n/translations"
@@ -15,6 +16,7 @@ const VISIBLE_AVATARS_WHEN_OVERFLOWING = 3
 interface ScheduleGridProps {
   locale: Locale
   days: ScheduleDay[]
+  now: Date
   selectedStreamId: string | null
   onSelectStream: (stream: ScheduledStream) => void
 }
@@ -34,6 +36,7 @@ function StreamAvatarGroup({ streams, locale, onSelectStream }: { streams: Sched
             <span className="stream-avatar" style={visual.avatarUrl ? undefined : { background: visual.background, color: visual.color }}>
               {visual.avatarUrl ? <img src={visual.avatarUrl} alt="" /> : visual.initial}
             </span>
+            {stream.status === "live" && <span className="stream-avatar-live-badge">{t(locale, "liveSchedule.liveBadge")}</span>}
           </button>
         )
       })}
@@ -55,10 +58,27 @@ function StreamAvatarGroup({ streams, locale, onSelectStream }: { streams: Sched
   )
 }
 
-export function ScheduleGrid({ locale, days, selectedStreamId, onSelectStream }: ScheduleGridProps) {
+export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStream }: ScheduleGridProps) {
+  const gridRef = useRef<HTMLDivElement>(null)
+  const hasScrolledRef = useRef(false)
+
+  // Once on mount only -- later `days`/`now` refreshes must never move a
+  // viewport the user may already be scrolling by hand.
+  useLayoutEffect(() => {
+    if (hasScrolledRef.current) return
+    hasScrolledRef.current = true
+    const grid = gridRef.current
+    if (!grid) return
+    const slotIndex = initialScrollSlotIndex(days, now)
+    const row = grid.querySelector(".time-body")?.children[slotIndex]
+    if (!row) return
+    const headerHeight = grid.querySelector<HTMLElement>(".schedule-day-header")?.offsetHeight ?? 0
+    grid.scrollTop += row.getBoundingClientRect().top - grid.getBoundingClientRect().top - headerHeight
+  }, [days, now])
+
   return (
     <section className="schedule-grid-shell">
-      <div className="schedule-grid">
+      <div className="schedule-grid" ref={gridRef}>
         <div className="time-column">
           <div className="time-header">{t(locale, "liveSchedule.timeColumnHeader")}</div>
           <div className="time-body">
