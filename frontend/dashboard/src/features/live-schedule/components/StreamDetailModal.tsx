@@ -2,7 +2,6 @@ import { useState } from "react"
 import { Modal } from "antd"
 import { getCreatorAvatarVisual } from "../../analytics/charts/CreatorAvatar"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
-import { ORGANIZATION_LABELS } from "../../../entities/creator/model/domain"
 import { resolvePlaybackVideoId } from "../../home-room/data/mockRecentVideos"
 import { shouldShowLiveBadge, type ScheduledStream } from "../model/scheduledStream"
 import { t, type Locale } from "../../../shared/i18n/translations"
@@ -69,8 +68,6 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream }
 
           <div className="creator-detail-identity">
             <div className="creator-detail-name">{creator?.channelName ?? stream.channelId}</div>
-            {creator?.kana && <div className="creator-detail-native-name">{creator.kana}</div>}
-            {creator && <div className="creator-agency-pill">{ORGANIZATION_LABELS[creator.organization]}</div>}
           </div>
 
           <div className="creator-live-state">
@@ -80,15 +77,6 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream }
         </div>
 
         <h2 className="stream-detail-title">{stream.title}</h2>
-        <div className="stream-description">{stream.description}</div>
-
-        <div className="stream-topic-tags">
-          {stream.topics.map((topic) => (
-            <span key={topic} className="stream-topic-tag">
-              {topic}
-            </span>
-          ))}
-        </div>
 
         <div className="stream-modal-actions">
           <button type="button" className="reminder-button" disabled>
