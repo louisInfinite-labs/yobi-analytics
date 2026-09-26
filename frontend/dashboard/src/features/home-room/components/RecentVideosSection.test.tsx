@@ -50,11 +50,33 @@ describe("RecentVideosSection video selection", () => {
     const viewport = document.querySelector(".oshi-videos__viewport") as HTMLElement
 
     fireEvent.pointerDown(viewport, { pointerId: 1, button: 0, pointerType: "mouse", clientX: 0 })
-    fireEvent.pointerMove(viewport, { pointerId: 1, clientX: 40 })
+    fireEvent.pointerMove(viewport, { pointerId: 1, clientX: 40, buttons: 1 })
     fireEvent.pointerUp(viewport, { pointerId: 1 })
     fireEvent.click(screen.getByRole("button", { name: /Test video title/ }))
 
     expect(onSelectVideo).not.toHaveBeenCalled()
+  })
+
+  it("does not start a drag from a stale pointerId once the button is no longer held (button released outside the viewport, before crossing the threshold)", () => {
+    const onSelectVideo = renderSection()
+    const viewport = document.querySelector(".oshi-videos__viewport") as HTMLElement
+
+    fireEvent.pointerDown(viewport, { pointerId: 1, button: 0, pointerType: "mouse", clientX: 0 })
+    // Sub-threshold move while the button is still down -- capture is not
+    // engaged yet, matching the reported repro (button released outside the
+    // viewport before dragging ever started, so no pointerup/pointercancel
+    // ever reaches endDrag to clear dragRef).
+    fireEvent.pointerMove(viewport, { pointerId: 1, clientX: 3, buttons: 1 })
+    expect(viewport.dataset.dragging).toBeUndefined()
+
+    // The pointer returns and moves again, past what would be the drag
+    // threshold from the original startX -- but with no button held, this
+    // is plain hover and must not be mistaken for a resumed drag.
+    fireEvent.pointerMove(viewport, { pointerId: 1, clientX: 50, buttons: 0 })
+    expect(viewport.dataset.dragging).toBeUndefined()
+
+    fireEvent.click(screen.getByRole("button", { name: /Test video title/ }))
+    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "video_1", title: "Test video title" })
   })
 
   it("still selects a video for a click with no meaningful pointer movement", () => {

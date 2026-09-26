@@ -161,6 +161,17 @@ function VideoTrack({
     const viewport = viewportRef.current
     if (state.pointerId !== event.pointerId || !viewport) return
 
+    if ((event.buttons & 1) === 0) {
+      // The left button was released outside this viewport (no pointerup
+      // ever reached endDrag) -- reset here too, so this stale pointerId
+      // can't still read as an active drag on the next move once the
+      // pointer returns, which would otherwise auto-scroll on plain hover.
+      if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId)
+      if (state.dragging) setIsDragging(false)
+      dragRef.current = { pointerId: null, startX: 0, startScrollLeft: 0, dragging: false }
+      return
+    }
+
     const deltaX = event.clientX - state.startX
     if (!state.dragging) {
       if (Math.abs(deltaX) < DRAG_THRESHOLD) return

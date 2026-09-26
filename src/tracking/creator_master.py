@@ -195,6 +195,6 @@ def _optional_theme_color(raw: dict, field: str, creator_id: str) -> str | None:
     if field not in raw:
         return None
     value = raw[field]
-    if not isinstance(value, str) or not THEME_COLOR_PATTERN.match(value):
+    if not isinstance(value, str) or not THEME_COLOR_PATTERN.fullmatch(value):
         raise CreatorMasterError(f"Creator {creator_id!r} has invalid {field!r}: {value!r}")
     return value.upper()

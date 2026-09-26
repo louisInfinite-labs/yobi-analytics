@@ -58,4 +58,22 @@ describe("getMemberAccent", () => {
     const fromUppercase = getMemberAccent("ch_aizawa_ema", "#B4F1F9")
     expect(fromLowercase).toEqual(fromUppercase)
   })
+
+  it("picks the higher-contrast textAccent for #EA5506 (regression: the fixed 'mix toward white' direction only reached ~2.2:1 against this primary)", () => {
+    const accent = getMemberAccent("ch_regression_ea5506", "#EA5506")
+    expect(contrastRatio(accent.primary, accent.textAccent)).toBeGreaterThanOrEqual(3)
+  })
 })
+
+/** Local copy of the same WCAG contrast-ratio formula memberAccent.ts uses
+ * internally, so this test verifies the actual resulting textAccent contrast
+ * rather than an implementation-internal "target" choice. */
+function contrastRatio(hexA: string, hexB: string): number {
+  const luminance = (hex: string) => {
+    const channels = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    const [r, g, b] = channels.map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  const [lighter, darker] = [luminance(hexA), luminance(hexB)].sort((a, b) => b - a)
+  return (lighter + 0.05) / (darker + 0.05)
+}

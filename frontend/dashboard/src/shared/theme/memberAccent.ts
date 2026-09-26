@@ -52,11 +52,21 @@ function mixToward(hex: string, target: [number, number, number], ratio: number)
   return rgbToHex(r + (tr - r) * ratio, g + (tg - g) * ratio, b + (tb - b) * ratio)
 }
 
-/** ITU-R BT.601 perceived brightness (0-255) -- only used to pick a contrast
- * direction for textAccent, not a WCAG-grade luminance calculation. */
-function perceivedBrightness(hex: string): number {
-  const [r, g, b] = hexToRgb(hex)
-  return (r * 299 + g * 587 + b * 114) / 1000
+/** WCAG relative luminance, used only to rank the two textAccent candidates
+ * below by their actual resulting contrast against `themeColor` -- not a
+ * full WCAG compliance calculation. */
+function relativeLuminance(hex: string): number {
+  const channels = hexToRgb(hex).map((channel) => {
+    const c = channel / 255
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  })
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+}
+
+/** WCAG contrast ratio between two colors (1 to 21). */
+function contrastRatio(hexA: string, hexB: string): number {
+  const [lighter, darker] = [relativeLuminance(hexA), relativeLuminance(hexB)].sort((a, b) => b - a)
+  return (lighter + 0.05) / (darker + 0.05)
 }
 
 /** A verified backend color (any hue/lightness, including #FFFFFF/#000000 --
@@ -69,11 +79,21 @@ function perceivedBrightness(hex: string): number {
  * hex values disagree on case. */
 function accentFromThemeColor(themeColor: string): MemberAccent {
   const normalizedThemeColor = themeColor.toUpperCase()
-  const textTarget: [number, number, number] = perceivedBrightness(normalizedThemeColor) > 140 ? [0, 0, 0] : [255, 255, 255]
+  // Both candidates are mixed at the same ratio, then picked by whichever
+  // actually contrasts more against themeColor itself -- picking only a
+  // black/white "target" by brightness (the previous approach) can still
+  // land the mixed-down result at a low contrast ratio, since the mix
+  // ratio pulls it back toward themeColor either way.
+  const towardBlack = mixToward(normalizedThemeColor, [0, 0, 0], 0.62)
+  const towardWhite = mixToward(normalizedThemeColor, [255, 255, 255], 0.62)
+  const textAccent =
+    contrastRatio(normalizedThemeColor, towardBlack) >= contrastRatio(normalizedThemeColor, towardWhite)
+      ? towardBlack
+      : towardWhite
   return {
     primary: normalizedThemeColor,
     soft: mixToward(normalizedThemeColor, [255, 255, 255], 0.82),
-    textAccent: mixToward(normalizedThemeColor, textTarget, 0.62),
+    textAccent,
   }
 }
 

@@ -344,7 +344,9 @@ def test_theme_color_is_parsed_and_normalized_to_uppercase(tmp_path):
     assert creators[0].theme_color == "#B4F1F9"
 
 
-@pytest.mark.parametrize("value", ["B4F1F9", "#FFF", "#GGGGGG", "rgb(1,2,3)", "", "#1234567"])
+@pytest.mark.parametrize(
+    "value", ["B4F1F9", "#FFF", "#GGGGGG", "rgb(1,2,3)", "", "#1234567", "#B4F1F9\n"]
+)
 def test_malformed_theme_color_is_rejected(tmp_path, value):
     """A themeColor that isn't exactly '#' followed by 6 hex digits is
     rejected, instead of reaching the frontend as a bad value."""
