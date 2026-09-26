@@ -37,11 +37,16 @@ export function useWeeklySchedule() {
     return () => clearInterval(interval)
   }, [])
 
-  const weekStart = useMemo(() => startOfWeek(new Date(), weekOffset), [weekOffset])
+  // Local calendar parts (not a UTC/ISO string) so a tick that crosses local
+  // midnight yields a new `today`, and with it a new week when Sunday starts.
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const dayOfMonth = now.getDate()
+  const today = useMemo(() => new Date(year, month, dayOfMonth), [year, month, dayOfMonth])
+  const weekStart = useMemo(() => startOfWeek(today, weekOffset), [today, weekOffset])
   const rawStreams = useMemo(() => getMockWeeklySchedule(weekStart), [weekStart])
 
   const days = useMemo<ScheduleDay[]>(() => {
-    const today = new Date()
     return getWeekDays(weekStart).map((date) => {
       const slots: ScheduledStream[][] = Array.from({ length: SLOT_COUNT }, () => [])
       for (const raw of rawStreams) {
@@ -51,7 +56,7 @@ export function useWeeklySchedule() {
       }
       return { date, isToday: isSameDay(date, today), slots }
     })
-  }, [weekStart, rawStreams, now])
+  }, [weekStart, rawStreams, today, now])
 
   return {
     weekStart,

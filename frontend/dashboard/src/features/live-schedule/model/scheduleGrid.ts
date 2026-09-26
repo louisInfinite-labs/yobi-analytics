@@ -33,10 +33,13 @@ export function isSameDay(a: Date, b: Date): boolean {
 }
 
 /** The grid row (0-indexed) `ms` falls into within `day`'s own local
- * calendar day, or null when the timestamp isn't actually on this day. */
+ * calendar day, or null when the timestamp isn't actually on this day. Uses
+ * the local wall-clock hour/minute (what slotLabel shows), not elapsed time
+ * since midnight, so a 23- or 25-hour DST day still lines up with its labels. */
 export function slotIndexForMs(ms: number, day: Date): number | null {
-  const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), TIME_START_HOUR, 0, 0, 0)
-  const minutesFromStart = (ms - dayStart.getTime()) / 60_000
+  const at = new Date(ms)
+  if (!isSameDay(at, day)) return null
+  const minutesFromStart = at.getHours() * 60 + at.getMinutes() - TIME_START_HOUR * 60
   if (minutesFromStart < 0) return null
   const index = Math.floor(minutesFromStart / SLOT_MINUTES)
   return index < SLOT_COUNT ? index : null

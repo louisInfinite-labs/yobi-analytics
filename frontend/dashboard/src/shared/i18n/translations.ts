@@ -150,6 +150,7 @@ export type TranslationKey =
   | "liveSchedule.nextWeekAria"
   | "liveSchedule.filterLabel"
   | "liveSchedule.liveBadge"
+  | "liveSchedule.noThumbnail"
   | "liveSchedule.moreStreamsAria"
   | "liveSchedule.closeAria"
   | "liveSchedule.setReminderButton"
@@ -303,6 +304,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.nextWeekAria": "下一週",
     "liveSchedule.filterLabel": "篩選",
     "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.noThumbnail": "沒有縮圖",
     "liveSchedule.moreStreamsAria": "還有 {{count}} 個直播",
     "liveSchedule.closeAria": "關閉",
     "liveSchedule.setReminderButton": "設定提醒",
@@ -455,6 +457,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.nextWeekAria": "Next week",
     "liveSchedule.filterLabel": "Filter",
     "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.noThumbnail": "No thumbnail",
     "liveSchedule.moreStreamsAria": "{{count}} more streams",
     "liveSchedule.closeAria": "Close",
     "liveSchedule.setReminderButton": "Set Reminder",
@@ -607,6 +610,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.nextWeekAria": "次の週",
     "liveSchedule.filterLabel": "フィルター",
     "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.noThumbnail": "サムネイルなし",
     "liveSchedule.moreStreamsAria": "他に{{count}}件の配信",
     "liveSchedule.closeAria": "閉じる",
     "liveSchedule.setReminderButton": "リマインダーを設定",

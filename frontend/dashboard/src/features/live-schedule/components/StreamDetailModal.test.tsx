@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it } from "vitest"
 import { StreamDetailModal } from "./StreamDetailModal"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
@@ -39,5 +39,18 @@ describe("StreamDetailModal", () => {
   it("keeps the reminder and open-stream actions", () => {
     render(<StreamDetailModal stream={stream} locale="en" now={new Date(0)} onClose={() => {}} onOpenStream={() => {}} />)
     expect(screen.getAllByRole("button").filter((button) => button.classList.contains("reminder-button") || button.classList.contains("open-stream-button"))).toHaveLength(2)
+  })
+
+  it.each([
+    ["en", "No thumbnail"],
+    ["zh-TW", "沒有縮圖"],
+    ["ja", "サムネイルなし"],
+  ] as const)("localizes the thumbnail fallback for %s", (locale, expected) => {
+    render(<StreamDetailModal stream={stream} locale={locale} now={new Date(0)} onClose={() => {}} onOpenStream={() => {}} />)
+
+    fireEvent.error(document.querySelector(".stream-detail-thumbnail")!)
+
+    expect(document.querySelector(".schedule-thumbnail-placeholder")).toHaveTextContent(expected)
+    if (locale !== "en") expect(screen.queryByText("No thumbnail")).not.toBeInTheDocument()
   })
 })

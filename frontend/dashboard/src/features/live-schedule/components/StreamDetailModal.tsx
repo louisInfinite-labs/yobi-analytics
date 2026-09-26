@@ -35,7 +35,7 @@ function StreamThumbnail({ stream, locale }: { stream: ScheduledStream; locale: 
   return (
     <div className="stream-detail-thumbnail-wrap">
       {thumbFailed ? (
-        <span className="schedule-thumbnail-placeholder">No thumbnail</span>
+        <span className="schedule-thumbnail-placeholder">{t(locale, "liveSchedule.noThumbnail")}</span>
       ) : (
         <img
           className="stream-detail-thumbnail"
