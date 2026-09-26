@@ -70,6 +70,7 @@ export type TranslationKey =
   | "mainNavbar.dashboard"
   | "mainNavbar.home"
   | "mainNavbar.settings"
+  | "mainNavbar.schedule"
   | "settingsSecondaryNavbar.title"
   | "settingsSecondaryNavbar.navAriaLabel"
   | "settingsSecondaryNavbar.myOshiSettings"
@@ -142,6 +143,20 @@ export type TranslationKey =
   | "displaySettings.description"
   | "displaySettings.appearanceGroup"
   | "displaySettings.upcomingStreamsGroup"
+  | "liveSchedule.pageTitle"
+  | "liveSchedule.pageSubtitle"
+  | "liveSchedule.timeColumnHeader"
+  | "liveSchedule.prevWeekAria"
+  | "liveSchedule.nextWeekAria"
+  | "liveSchedule.filterLabel"
+  | "liveSchedule.liveBadge"
+  | "liveSchedule.noThumbnail"
+  | "liveSchedule.moreStreamsAria"
+  | "liveSchedule.closeAria"
+  | "liveSchedule.setReminderButton"
+  | "liveSchedule.openStreamButton"
+  | "liveSchedule.startsInMinutes"
+  | "liveSchedule.startedMinutesAgo"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -209,6 +224,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.dashboard": "影片數據",
     "mainNavbar.home": "首頁",
     "mainNavbar.settings": "設定",
+    "mainNavbar.schedule": "時間表",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
     "settingsSecondaryNavbar.myOshiSettings": "我推設定",
@@ -281,6 +297,20 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.description": "選擇應用程式的外觀，以及即將到來的直播時間顯示方式。",
     "displaySettings.appearanceGroup": "外觀",
     "displaySettings.upcomingStreamsGroup": "即將到來的直播",
+    "liveSchedule.pageTitle": "直播時間表",
+    "liveSchedule.pageSubtitle": "你所選創作者的即將到來與直播中節目。",
+    "liveSchedule.timeColumnHeader": "時間",
+    "liveSchedule.prevWeekAria": "上一週",
+    "liveSchedule.nextWeekAria": "下一週",
+    "liveSchedule.filterLabel": "篩選",
+    "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.noThumbnail": "沒有縮圖",
+    "liveSchedule.moreStreamsAria": "還有 {{count}} 個直播",
+    "liveSchedule.closeAria": "關閉",
+    "liveSchedule.setReminderButton": "設定提醒",
+    "liveSchedule.openStreamButton": "開啟直播",
+    "liveSchedule.startsInMinutes": "{{minutes}} 分鐘後開始",
+    "liveSchedule.startedMinutesAgo": "{{minutes}} 分鐘前開始",
   },
   en: {
     "common.cancel": "Cancel",
@@ -347,6 +377,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.dashboard": "Video Data",
     "mainNavbar.home": "Home",
     "mainNavbar.settings": "Settings",
+    "mainNavbar.schedule": "Schedule",
     "settingsSecondaryNavbar.title": "Settings",
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
     "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
@@ -419,6 +450,20 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.description": "Choose how the app looks and how upcoming stream times are shown.",
     "displaySettings.appearanceGroup": "Appearance",
     "displaySettings.upcomingStreamsGroup": "Upcoming streams",
+    "liveSchedule.pageTitle": "Live Schedule",
+    "liveSchedule.pageSubtitle": "Upcoming and live streams across your selected creators.",
+    "liveSchedule.timeColumnHeader": "Time",
+    "liveSchedule.prevWeekAria": "Previous week",
+    "liveSchedule.nextWeekAria": "Next week",
+    "liveSchedule.filterLabel": "Filter",
+    "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.noThumbnail": "No thumbnail",
+    "liveSchedule.moreStreamsAria": "{{count}} more streams",
+    "liveSchedule.closeAria": "Close",
+    "liveSchedule.setReminderButton": "Set Reminder",
+    "liveSchedule.openStreamButton": "Open Stream",
+    "liveSchedule.startsInMinutes": "Starts in {{minutes}}m",
+    "liveSchedule.startedMinutesAgo": "Started {{minutes}}m ago",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -485,6 +530,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.dashboard": "動画データ",
     "mainNavbar.home": "ホーム",
     "mainNavbar.settings": "設定",
+    "mainNavbar.schedule": "スケジュール",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
     "settingsSecondaryNavbar.myOshiSettings": "推し設定",
@@ -557,6 +603,20 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.description": "アプリの見た目と、今後の配信時間の表示方法を選択します。",
     "displaySettings.appearanceGroup": "外観",
     "displaySettings.upcomingStreamsGroup": "今後の配信",
+    "liveSchedule.pageTitle": "配信スケジュール",
+    "liveSchedule.pageSubtitle": "選択したクリエイターの今後の配信と配信中の番組。",
+    "liveSchedule.timeColumnHeader": "時間",
+    "liveSchedule.prevWeekAria": "前の週",
+    "liveSchedule.nextWeekAria": "次の週",
+    "liveSchedule.filterLabel": "フィルター",
+    "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.noThumbnail": "サムネイルなし",
+    "liveSchedule.moreStreamsAria": "他に{{count}}件の配信",
+    "liveSchedule.closeAria": "閉じる",
+    "liveSchedule.setReminderButton": "リマインダーを設定",
+    "liveSchedule.openStreamButton": "配信を開く",
+    "liveSchedule.startsInMinutes": "{{minutes}}分後に開始",
+    "liveSchedule.startedMinutesAgo": "{{minutes}}分前に開始",
   },
 }
 

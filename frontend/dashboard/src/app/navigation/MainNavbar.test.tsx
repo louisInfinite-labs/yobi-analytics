@@ -18,6 +18,7 @@ describe("MainNavbar", () => {
     setLocale("en")
     render(<MainNavbar />)
     expect(screen.getByText("Home")).toBeInTheDocument()
+    expect(screen.getByText("Schedule")).toBeInTheDocument()
     expect(screen.getByText("Video Data")).toBeInTheDocument()
     expect(screen.getByText("Settings")).toBeInTheDocument()
   })

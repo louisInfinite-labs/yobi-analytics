@@ -1,0 +1,681 @@
+/* ============================================================
+   Live Schedule -- tokens (additive `--schedule-*`, scoped to this page's
+   own selectors only, same convention as Home's `--oshi-*` tokens).
+   ============================================================ */
+:root {
+  --schedule-bg-page: #17141d;
+  --schedule-border: #20334d;
+  --schedule-text-main: #f4f7fb;
+  --schedule-text-secondary: #9fb0c8;
+  --schedule-text-muted: #71839d;
+
+  --schedule-time-column-width: 98px;
+  --schedule-day-header-height: 56px;
+  /* 24px packed multiple same-slot creator avatars too tightly (adjacent
+     rows visibly overlapped) -- 44px is the single shared value every row,
+     label, and avatar-placement rule below reads from, so they can't drift
+     out of alignment with each other. It leaves room for a 10px LIVE badge
+     + 2px gap + 27px avatar (39px) inside one row. The page scrolls
+     vertically to fit the resulting taller grid (see .schedule-grid) rather
+     than shrinking this back down to force everything into one viewport. */
+  --schedule-time-slot-height: 44px;
+}
+
+/* Page renders inside the existing app-shell's content area (next to
+   MainNavbar), not as its own full-viewport shell -- width:100% (not
+   100vw) and no sidebar-width margin, since MainNavbar/app-shell already
+   reserve that space (see main-navbar.css's .app-shell__content). Same
+   no-page-scroll-on-the-page-root contract as .oshi-home. */
+.schedule-page {
+  color-scheme: dark;
+
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+
+  min-width: 0;
+  min-height: 0;
+
+  overflow: hidden;
+
+  display: flex;
+  flex-direction: column;
+
+  padding: 16px 20px 20px 20px;
+  box-sizing: border-box;
+
+  background: var(--schedule-bg-page);
+  color: var(--schedule-text-main);
+}
+
+.schedule-header {
+  flex: 0 0 auto;
+
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  padding: 0 0 12px 6px;
+}
+
+.schedule-title {
+  margin: 0;
+
+  font-size: 31px;
+  line-height: 38px;
+  font-weight: 700;
+  letter-spacing: -0.7px;
+
+  color: #f6f8fc;
+}
+
+.schedule-subtitle {
+  margin-top: 1px;
+
+  color: #9baac0;
+  font-size: 15px;
+  line-height: 21px;
+}
+
+/* ============ Toolbar ============ */
+
+.schedule-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.schedule-control {
+  height: 42px;
+
+  border: 1px solid #29405d;
+  background: #0c1728;
+  color: #e8eef7;
+  border-radius: 8px;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 13px;
+
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.schedule-control:disabled {
+  color: var(--schedule-text-muted);
+  cursor: not-allowed;
+}
+
+.week-selector {
+  padding-inline: 0;
+
+  display: grid;
+  grid-template-columns: 36px auto 36px;
+
+  overflow: hidden;
+}
+
+.week-selector__arrow {
+  display: grid;
+  place-items: center;
+
+  height: 100%;
+
+  border: 0;
+  background: transparent;
+  color: #9db0c9;
+
+  cursor: pointer;
+}
+
+.week-selector__label {
+  display: grid;
+  place-items: center;
+
+  border-inline: 1px solid #203650;
+
+  padding-inline: 13px;
+  white-space: nowrap;
+}
+
+.filter-button {
+  justify-content: center;
+}
+
+/* ============ Timetable shell ============ */
+
+.schedule-grid-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+
+  border: 1px solid #28405d;
+  border-radius: 9px;
+
+  overflow: hidden;
+
+  background: rgba(23, 20, 29, 0.78);
+}
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: var(--schedule-time-column-width) repeat(7, minmax(0, 1fr));
+
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  container-type: size;
+}
+
+/* Trailing space so even the last rows can be scrolled up under the sticky
+   headers -- without it the browser clamps the scroll at the bottom, and the
+   initial "earliest live row at the top" scroll (ScheduleGrid.tsx) could not
+   land on a late-evening row. Sized so the final 23:30 row can reach the top. */
+.schedule-grid::after {
+  content: "";
+  grid-column: 1 / -1;
+  height: calc(100cqh - var(--schedule-day-header-height) - var(--schedule-time-slot-height));
+}
+
+/* Same hidden-at-rest/thin-on-hover scrollbar as Home's Oshi Videos row
+   (home.css's .oshi-videos__viewport) -- reusing its own --oshi-* tokens
+   directly rather than duplicating their hex values, so the two stay in
+   sync if Home's palette ever changes. This is a vertical scrollbar where
+   Oshi Videos' is horizontal, so width/height are swapped from its rules. */
+.schedule-grid {
+  scrollbar-width: none;
+  scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
+}
+
+.schedule-grid::-webkit-scrollbar,
+.schedule-grid::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.schedule-grid:hover {
+  scrollbar-width: thin;
+}
+
+.schedule-grid:hover::-webkit-scrollbar {
+  width: 7px;
+  background: var(--oshi-bg);
+}
+
+.schedule-grid:hover::-webkit-scrollbar-button {
+  display: none;
+}
+
+.schedule-grid:hover::-webkit-scrollbar-track {
+  background: var(--oshi-bg);
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.schedule-grid:hover::-webkit-scrollbar-thumb {
+  background: var(--oshi-surface-scrollbar-thumb);
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  border-radius: 999px;
+}
+
+.schedule-grid:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--oshi-surface-scrollbar-thumb-hover);
+}
+
+.schedule-grid:hover::-webkit-scrollbar-corner {
+  background: var(--oshi-bg);
+}
+
+/* Sticky so the initial scroll-to-row (ScheduleGrid.tsx) leaves the day
+   names visible; opaque backing so scrolled rows don't show through. */
+.time-header {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--schedule-bg-page);
+
+  height: var(--schedule-day-header-height);
+
+  display: flex;
+  align-items: center;
+  padding-left: 15px;
+
+  font-size: 13px;
+  font-weight: 650;
+  color: #d3dce8;
+
+  border-bottom: 1px solid #263a54;
+  border-right: 1px solid #263a54;
+}
+
+.schedule-day-header {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+
+  height: var(--schedule-day-header-height);
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+
+  border-bottom: 1px solid #263a54;
+  border-right: 1px solid #172a40;
+
+  background: linear-gradient(180deg, rgba(13, 25, 43, 0.92), rgba(9, 18, 32, 0.92)), var(--schedule-bg-page);
+}
+
+.day-name {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 650;
+  color: #f0f4fa;
+}
+
+.day-date {
+  font-size: 12px;
+  color: #93a5bd;
+}
+
+.schedule-day-header.is-today {
+  background: linear-gradient(180deg, rgba(19, 55, 95, 0.75), rgba(10, 30, 52, 0.8)), var(--schedule-bg-page);
+  box-shadow: inset 0 -1px 0 #258cff;
+}
+
+.schedule-day-header.is-today .day-name {
+  color: #79c8ff;
+}
+
+.schedule-day-header.is-today .day-date {
+  color: #4fb4ff;
+}
+
+.time-body {
+  display: grid;
+  grid-auto-rows: var(--schedule-time-slot-height);
+}
+
+.time-label {
+  height: var(--schedule-time-slot-height);
+
+  display: flex;
+  align-items: center;
+  padding-left: 15px;
+
+  color: #9cafc6;
+  font-size: 12px;
+
+  border-bottom: 1px solid rgba(32, 54, 79, 0.6);
+  border-right: 1px solid #263a54;
+}
+
+.time-label[data-minute="00"] {
+  color: #b9c8da;
+}
+
+.day-timeline {
+  position: relative;
+
+  display: grid;
+  grid-auto-rows: var(--schedule-time-slot-height);
+
+  border-right: 1px solid rgba(29, 49, 72, 0.9);
+}
+
+.day-timeline.is-today {
+  background: rgba(21, 92, 156, 0.055);
+}
+
+.schedule-slot {
+  position: relative;
+  min-width: 0;
+
+  border-bottom: 1px solid rgba(32, 54, 79, 0.58);
+}
+
+.schedule-slot.has-selected-stream {
+  background: linear-gradient(90deg, rgba(34, 132, 221, 0.12), rgba(34, 132, 221, 0.035));
+}
+
+/* ============ Avatar group ============ */
+
+/* Every group (live or not) sits 4.5px below row centre, so all avatars in a
+   time row share one baseline and the LIVE badge above any of them (10px +
+   2px gap) still lands inside the same row: badge 1-11px, avatar 13-40px of
+   the 44px row, leaving 5px between one row's avatar and the next row's badge. */
+.stream-avatar-group {
+  position: absolute;
+  top: calc(50% + 4.5px);
+  left: 50%;
+  transform: translate(-50%, -50%);
+
+  display: flex;
+  align-items: center;
+  gap: 5px;
+
+  height: 28px;
+  z-index: 4;
+}
+
+.stream-avatar-item {
+  position: relative;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.stream-avatar-button {
+  width: 27px;
+  height: 27px;
+  padding: 0;
+
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+
+  cursor: pointer;
+}
+
+.stream-avatar {
+  width: 27px;
+  height: 27px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+  border: 1.5px solid rgba(220, 233, 247, 0.72);
+  background: #16233a;
+
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--schedule-text-main);
+
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.stream-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.stream-avatar-button:hover .stream-avatar {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 2px rgba(57, 178, 255, 0.28);
+}
+
+/* Same pill language as Home's .oshi-video-card__live-badge (--live-red,
+   bold, tight tracking), centred 2px directly above its own avatar and never
+   touching it. */
+.stream-avatar-live-badge {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+
+  padding: 0 5px;
+
+  border-radius: 999px;
+  background: var(--live-red);
+
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 10px;
+  letter-spacing: 0.03em;
+
+  pointer-events: none;
+}
+
+.more-streams {
+  height: 25px;
+  min-width: 35px;
+  padding: 0 9px;
+
+  border-radius: 999px;
+  border: 1px solid #344b69;
+  background: #14223a;
+  color: #b9c8dc;
+
+  font-size: 11px;
+  font-weight: 650;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+}
+
+.live-badge {
+  height: 22px;
+  padding: 0 8px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 5px;
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff405d, #e91f43);
+  box-shadow: 0 0 10px rgba(255, 33, 70, 0.48);
+
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 750;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+/* ============ Stream detail modal ============ */
+/* rootClassName scopes both the mask and the dialog content (StreamDetailModal.tsx),
+   width comes from the Modal's own `width` prop rather than an !important override. */
+
+.stream-detail-dialog .ant-modal-mask {
+  background: rgba(1, 7, 14, 0.34);
+  backdrop-filter: none;
+}
+
+/* antd v6 renamed the visual card surface from v5's .ant-modal-content to
+   .ant-modal-container (.ant-modal-content no longer exists in the rendered
+   DOM at all) -- confirmed via computed styles, since antd's own default
+   white background was otherwise still showing through underneath this
+   rule's old, now-dead selector. */
+.stream-detail-dialog .ant-modal-container {
+  padding: 22px 24px 24px;
+
+  background: #17141d;
+  border: 1px solid #273c58;
+  border-radius: 15px;
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.62);
+}
+
+.stream-detail-dialog .ant-modal-close {
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+
+  border-radius: 8px;
+  background: rgba(8, 17, 31, 0.72);
+  color: #c0ccda;
+}
+
+.stream-detail-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.stream-detail-thumbnail-wrap {
+  position: relative;
+
+  width: 100%;
+  aspect-ratio: 16 / 9;
+
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(83, 113, 151, 0.46);
+
+  background: #111b2d;
+}
+
+.stream-detail-thumbnail {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.schedule-thumbnail-placeholder {
+  position: absolute;
+  inset: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: var(--schedule-text-muted);
+  font-size: 13px;
+}
+
+.thumbnail-live-badge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  height: 25px;
+  padding: 0 10px;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  border-radius: 6px;
+  background: #f12243;
+  color: #ffffff;
+
+  font-size: 11px;
+  font-weight: 750;
+
+  box-shadow: 0 4px 14px rgba(241, 34, 67, 0.28);
+}
+
+.stream-creator-header {
+  margin-top: 18px;
+
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.creator-detail-avatar {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+  border: 2px solid #c9d7e8;
+
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.creator-detail-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.creator-detail-identity {
+  min-width: 0;
+  flex: 1;
+}
+
+.creator-detail-name {
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 700;
+  color: #f5f7fa;
+}
+
+.creator-live-state {
+  margin-left: auto;
+
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.started-time {
+  color: #bac6d6;
+  font-size: 12px;
+}
+
+.stream-detail-title {
+  margin: 18px 0 0;
+
+  font-size: 22px;
+  line-height: 29px;
+  font-weight: 700;
+  letter-spacing: -0.25px;
+  color: #f6f8fc;
+}
+
+.stream-modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+
+  margin-top: 22px;
+}
+
+.reminder-button {
+  height: 50px;
+
+  border-radius: 8px;
+  border: 1px solid #334d6d;
+  background: #132138;
+  color: #eff4fa;
+
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.reminder-button:disabled {
+  color: var(--schedule-text-muted);
+  cursor: not-allowed;
+}
+
+.open-stream-button {
+  height: 50px;
+
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #36b9ff, #3198ff);
+  color: #06101d;
+
+  font-size: 14px;
+  font-weight: 750;
+
+  box-shadow: 0 5px 18px rgba(48, 162, 255, 0.27);
+
+  cursor: pointer;
+}

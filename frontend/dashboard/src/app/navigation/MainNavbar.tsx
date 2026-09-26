@@ -1,4 +1,4 @@
-import { Gauge, Home, Settings } from "lucide-react"
+import { CalendarClock, Gauge, Home, Settings } from "lucide-react"
 import type { ComponentType } from "react"
 import brandIcon from "../../assets/brand-icon.png"
 import type { Page } from "./useCurrentPage"
@@ -8,6 +8,7 @@ import { t, type TranslationKey } from "../../shared/i18n/translations"
 
 const NAV_ITEMS: { page: Page; labelKey: TranslationKey; Icon: ComponentType<{ size?: number; strokeWidth?: number }> }[] = [
   { page: "home", labelKey: "mainNavbar.home", Icon: Home },
+  { page: "schedule", labelKey: "mainNavbar.schedule", Icon: CalendarClock },
   { page: "dashboard", labelKey: "mainNavbar.dashboard", Icon: Gauge },
   { page: "settings", labelKey: "mainNavbar.settings", Icon: Settings },
 ]
