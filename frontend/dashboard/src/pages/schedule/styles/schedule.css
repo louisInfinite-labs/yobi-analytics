@@ -3,7 +3,7 @@
    own selectors only, same convention as Home's `--oshi-*` tokens).
    ============================================================ */
 :root {
-  --schedule-bg-page: #08111f;
+  --schedule-bg-page: #17141d;
   --schedule-border: #20334d;
   --schedule-text-main: #f4f7fb;
   --schedule-text-secondary: #9fb0c8;
@@ -43,7 +43,7 @@
   padding: 16px 20px 20px 20px;
   box-sizing: border-box;
 
-  background: radial-gradient(circle at 60% 0%, rgba(30, 65, 110, 0.1), transparent 36%), var(--schedule-bg-page);
+  background: var(--schedule-bg-page);
   color: var(--schedule-text-main);
 }
 
@@ -155,7 +155,7 @@
 
   overflow: hidden;
 
-  background: rgba(7, 16, 29, 0.78);
+  background: rgba(23, 20, 29, 0.78);
 }
 
 .schedule-grid {
@@ -478,10 +478,15 @@
   backdrop-filter: none;
 }
 
-.stream-detail-dialog .ant-modal-content {
+/* antd v6 renamed the visual card surface from v5's .ant-modal-content to
+   .ant-modal-container (.ant-modal-content no longer exists in the rendered
+   DOM at all) -- confirmed via computed styles, since antd's own default
+   white background was otherwise still showing through underneath this
+   rule's old, now-dead selector. */
+.stream-detail-dialog .ant-modal-container {
   padding: 22px 24px 24px;
 
-  background: linear-gradient(180deg, #0b1525, #091321);
+  background: #17141d;
   border: 1px solid #273c58;
   border-radius: 15px;
   box-shadow: 0 22px 80px rgba(0, 0, 0, 0.62);
