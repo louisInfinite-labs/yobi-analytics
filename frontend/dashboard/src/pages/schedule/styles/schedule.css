@@ -12,12 +12,13 @@
   --schedule-time-column-width: 98px;
   --schedule-day-header-height: 56px;
   /* 24px packed multiple same-slot creator avatars too tightly (adjacent
-     rows visibly overlapped) -- 38px is the single shared value every row,
-     label, and avatar-centering rule below reads from, so they can't drift
-     out of alignment with each other. The page scrolls vertically to fit
-     the resulting taller grid (see .schedule-grid) rather than shrinking
-     this back down to force everything into one viewport. */
-  --schedule-time-slot-height: 38px;
+     rows visibly overlapped) -- 44px is the single shared value every row,
+     label, and avatar-placement rule below reads from, so they can't drift
+     out of alignment with each other. It leaves room for a 10px LIVE badge
+     + 2px gap + 27px avatar (39px) inside one row. The page scrolls
+     vertically to fit the resulting taller grid (see .schedule-grid) rather
+     than shrinking this back down to force everything into one viewport. */
+  --schedule-time-slot-height: 44px;
 }
 
 /* Page renders inside the existing app-shell's content area (next to
@@ -346,9 +347,13 @@
 
 /* ============ Avatar group ============ */
 
+/* Every group (live or not) sits 4.5px below row centre, so all avatars in a
+   time row share one baseline and the LIVE badge above any of them (10px +
+   2px gap) still lands inside the same row: badge 1-11px, avatar 13-40px of
+   the 44px row, leaving 5px between one row's avatar and the next row's badge. */
 .stream-avatar-group {
   position: absolute;
-  top: 50%;
+  top: calc(50% + 4.5px);
   left: 50%;
   transform: translate(-50%, -50%);
 
@@ -360,8 +365,16 @@
   z-index: 4;
 }
 
-.stream-avatar-button {
+.stream-avatar-item {
   position: relative;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.stream-avatar-button {
   width: 27px;
   height: 27px;
   padding: 0;
@@ -405,23 +418,22 @@
 }
 
 /* Same pill language as Home's .oshi-video-card__live-badge (--live-red,
-   9px/700), pinned to the avatar's top-right. Protrudes 4px sideways (< the
-   5px group gap) and 4px upward (< the 5.5px row margin), so it never
-   reaches a neighbouring avatar, the +N pill, or the adjacent row. */
+   bold, tight tracking), centred 2px directly above its own avatar and never
+   touching it. */
 .stream-avatar-live-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1;
 
-  padding: 1px 4px;
+  padding: 0 5px;
 
   border-radius: 999px;
   background: var(--live-red);
-  box-shadow: 0 0 0 1.5px var(--schedule-bg-page);
 
   color: #fff;
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 700;
   line-height: 10px;
   letter-spacing: 0.03em;

@@ -32,12 +32,14 @@ function StreamAvatarGroup({ streams, locale, onSelectStream }: { streams: Sched
         const creator = creatorsById.get(stream.channelId)
         const visual = getCreatorAvatarVisual(stream.channelId, creator?.channelName ?? stream.channelId)
         return (
-          <button key={stream.id} type="button" className="stream-avatar-button" onClick={() => onSelectStream(stream)} aria-label={stream.title}>
-            <span className="stream-avatar" style={visual.avatarUrl ? undefined : { background: visual.background, color: visual.color }}>
-              {visual.avatarUrl ? <img src={visual.avatarUrl} alt="" /> : visual.initial}
-            </span>
+          <div key={stream.id} className="stream-avatar-item">
             {stream.status === "live" && <span className="stream-avatar-live-badge">{t(locale, "liveSchedule.liveBadge")}</span>}
-          </button>
+            <button type="button" className="stream-avatar-button" onClick={() => onSelectStream(stream)} aria-label={stream.title}>
+              <span className="stream-avatar" style={visual.avatarUrl ? undefined : { background: visual.background, color: visual.color }}>
+                {visual.avatarUrl ? <img src={visual.avatarUrl} alt="" /> : visual.initial}
+              </span>
+            </button>
+          </div>
         )
       })}
       {hiddenStreams.length > 0 && (

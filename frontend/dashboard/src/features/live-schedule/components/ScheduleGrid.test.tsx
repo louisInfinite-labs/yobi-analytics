@@ -56,9 +56,15 @@ describe("ScheduleGrid avatar LIVE badge", () => {
     const { container } = renderGrid(
       makeDays({ 5: [makeStream("a", "live"), makeStream("b", "upcoming"), makeStream("c", "live"), makeStream("d", "ended")] }),
     )
-    const buttons = Array.from(container.querySelectorAll(".stream-avatar-button"))
-    expect(buttons.map((button) => button.querySelector(".stream-avatar-live-badge") !== null)).toEqual([true, false, true, false])
+    const items = Array.from(container.querySelectorAll(".stream-avatar-item"))
+    expect(items.map((item) => item.querySelector(".stream-avatar-live-badge") !== null)).toEqual([true, false, true, false])
     expect(container.querySelector(".stream-avatar-live-badge")).toHaveTextContent("LIVE")
+  })
+
+  it("keeps the badge outside the avatar button so it never sits on the avatar", () => {
+    const { container } = renderGrid(makeDays({ 5: [makeStream("a", "live")] }))
+    expect(container.querySelector(".stream-avatar-button .stream-avatar-live-badge")).toBeNull()
+    expect(container.querySelector(".stream-avatar-item > .stream-avatar-live-badge")).not.toBeNull()
   })
 
   it("does not badge an upcoming stream that starts within the hour", () => {
