@@ -5,6 +5,9 @@ interface VideoPlayerModalProps {
   videoId: string
   title: string
   onClose: () => void
+  /** "player-only" renders just the 16:9 player (no close button, no visible
+   * title, no card padding); backdrop click and Escape still close it. */
+  variant?: "standard" | "player-only"
 }
 
 /** Centered, medium-sized YouTube player over a dimmed backdrop. Closes on
@@ -12,15 +15,18 @@ interface VideoPlayerModalProps {
  * the player itself. Traps Tab/Shift+Tab between the close button and the
  * iframe (the panel's only two focusable elements) and restores focus to
  * whatever opened it on close, so keyboard users never land on background
- * controls while the modal is open. */
-export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalProps) {
+ * controls while the modal is open. In the "player-only" variant there is no
+ * close button, so the panel itself is the first focus stop. */
+export function VideoPlayerModal({ videoId, title, onClose, variant = "standard" }: VideoPlayerModalProps) {
+  const playerOnly = variant === "player-only"
   const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const openerRef = useRef<Element | null>(document.activeElement)
 
   useEffect(() => {
-    closeButtonRef.current?.focus()
+    const firstStop = () => (playerOnly ? panelRef.current : closeButtonRef.current)
+    firstStop()?.focus()
     const opener = openerRef.current
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -30,7 +36,7 @@ export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalPr
       }
       if (event.key !== "Tab") return
 
-      const first = closeButtonRef.current
+      const first = firstStop()
       const last = iframeRef.current
       if (!first || !last) return
 
@@ -53,7 +59,7 @@ export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalPr
     function handleFocusIn(event: FocusEvent) {
       const panel = panelRef.current
       if (panel && event.target instanceof Node && !panel.contains(event.target)) {
-        closeButtonRef.current?.focus()
+        firstStop()?.focus()
       }
     }
     document.addEventListener("keydown", handleKeyDown)
@@ -63,7 +69,7 @@ export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalPr
       document.removeEventListener("focusin", handleFocusIn)
       if (opener instanceof HTMLElement) opener.focus()
     }
-  }, [onClose])
+  }, [onClose, playerOnly])
 
   return (
     <div
@@ -73,10 +79,17 @@ export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalPr
       aria-modal="true"
       aria-label={`Playing ${title}`}
     >
-      <div ref={panelRef} className="video-player-modal__panel" onClick={(e) => e.stopPropagation()}>
-        <button type="button" ref={closeButtonRef} className="video-player-modal__close" onClick={onClose} aria-label="Close video player">
-          <X size={18} aria-hidden="true" />
-        </button>
+      <div
+        ref={panelRef}
+        className={`video-player-modal__panel${playerOnly ? " video-player-modal__panel--player-only" : ""}`}
+        tabIndex={playerOnly ? -1 : undefined}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {!playerOnly && (
+          <button type="button" ref={closeButtonRef} className="video-player-modal__close" onClick={onClose} aria-label="Close video player">
+            <X size={18} aria-hidden="true" />
+          </button>
+        )}
         <div className="video-player-modal__frame">
           <iframe
             ref={iframeRef}
@@ -86,7 +99,7 @@ export function VideoPlayerModal({ videoId, title, onClose }: VideoPlayerModalPr
             allowFullScreen
           />
         </div>
-        <p className="video-player-modal__title">{title}</p>
+        {!playerOnly && <p className="video-player-modal__title">{title}</p>}
       </div>
     </div>
   )

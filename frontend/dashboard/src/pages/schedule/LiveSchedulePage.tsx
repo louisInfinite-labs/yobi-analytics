@@ -43,7 +43,7 @@ export function LiveSchedulePage() {
         }}
       />
 
-      {embed && <VideoPlayerModal videoId={embed.videoId} title={embed.title} onClose={() => setEmbed(null)} />}
+      {embed && <VideoPlayerModal videoId={embed.videoId} title={embed.title} variant="player-only" onClose={() => setEmbed(null)} />}
     </div>
   )
 }
