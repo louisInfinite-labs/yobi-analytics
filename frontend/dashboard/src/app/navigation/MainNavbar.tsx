@@ -13,15 +13,18 @@ const NAV_ITEMS: { page: Page; labelKey: TranslationKey; Icon: ComponentType<{ s
 ]
 
 /** App-wide fixed nav (Mantine's "Main Navbar" naming -- see
- * ui.mantine.dev/category/navbars -- not "Sidebar"), ported pixel-for-
- * pixel from that page's own "Navbar with 2 sections" demo (DoubleNavbar
- * .tsx/.module.css): a 60px icon-only rail, each icon a 44px button with
- * a hover tooltip carrying its label, no visible text otherwise. The only
- * two things swapped for our own branding are the icon in the top logo
- * slot (this app's cat mark instead of Mantine's own logo) and the
- * document <title> (index.html's own "OshiYobi", not anything rendered
- * here -- "Section Title" from this feature's spec turned out to mean
- * the browser tab title, not on-screen navbar text).
+ * ui.mantine.dev/category/navbars -- not "Sidebar"), originally ported
+ * pixel-for-pixel from that page's own "Navbar with 2 sections" demo
+ * (DoubleNavbar.tsx/.module.css) as a 60px icon-only rail with a hover
+ * tooltip carrying each label. Now a 160px rail with the label always
+ * visible instead (160px was sized against the longest known nav label
+ * across every locale, "Video Data"/"動画データ"), so the tooltip that
+ * used to carry that same text is gone rather than showing it twice. The
+ * only two things swapped for our own branding are the icon
+ * in the top logo slot (this app's cat mark instead of Mantine's own logo)
+ * and the document <title> (index.html's own "OshiYobi", not anything
+ * rendered here -- "Section Title" from this feature's spec turned out to
+ * mean the browser tab title, not on-screen navbar text).
  *
  * Full viewport height, docked to the left edge -- every page's content
  * sits directly to its right (see .app-shell in main-navbar.css), so its
@@ -49,9 +52,7 @@ export function MainNavbar() {
             aria-label={label}
           >
             <item.Icon size={22} strokeWidth={1.5} />
-            <span className="main-navbar__tooltip" aria-hidden="true">
-              {label}
-            </span>
+            <span className="main-navbar__label">{label}</span>
           </button>
         )
       })}

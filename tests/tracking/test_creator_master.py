@@ -323,6 +323,86 @@ def test_non_graduated_with_graduated_at_is_rejected(tmp_path):
         load_creators(path)
 
 
+def test_theme_color_defaults_to_none_when_absent(tmp_path):
+    """A record without 'themeColor' parses as theme_color=None (sparse by
+    design, same as graduatedAt), not a guessed/generated placeholder."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record()]), encoding="utf-8")
+
+    creators = load_creators(path)
+
+    assert creators[0].theme_color is None
+
+
+def test_theme_color_is_parsed_and_normalized_to_uppercase(tmp_path):
+    """A valid '#rrggbb' themeColor is parsed and normalized to uppercase."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(themeColor="#b4f1f9")]), encoding="utf-8")
+
+    creators = load_creators(path)
+
+    assert creators[0].theme_color == "#B4F1F9"
+
+
+@pytest.mark.parametrize(
+    "value", ["B4F1F9", "#FFF", "#GGGGGG", "rgb(1,2,3)", "", "#1234567", "#B4F1F9\n"]
+)
+def test_malformed_theme_color_is_rejected(tmp_path, value):
+    """A themeColor that isn't exactly '#' followed by 6 hex digits is
+    rejected, instead of reaching the frontend as a bad value."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(themeColor=value)]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
+def test_non_string_theme_color_is_rejected(tmp_path):
+    """A non-string 'themeColor' (e.g. a number) is rejected."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(themeColor=123456)]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
+def test_asobimawaritai_members_have_verified_theme_colors():
+    """The four アソビ★まわり隊！ pre-debut members are no longer reported as
+    NO_VERIFIED_THEME_COLOR -- a later addition to the original 94-creator pass."""
+    creators = {c.creator_id: c for c in load_creators()}
+
+    assert creators["achichi_mela"].theme_color == "#1C97FF"
+    assert creators["sorashina_sopia"].theme_color == "#7B7EFF"
+    assert creators["suzuna_tsuzuri"].theme_color == "#E2383B"
+    assert creators["hyakuto_kyoko"].theme_color == "#F86701"
+
+
+def test_extreme_theme_colors_are_accepted_unchanged():
+    """#FFFFFF and #000000 are valid verified colors and must not be coerced
+    into something else for presentation reasons — the frontend, not this
+    canonical data, is responsible for contrast handling."""
+    creators = {c.creator_id: c for c in load_creators()}
+
+    assert creators["sorasumi_sena"].theme_color == "#FFFFFF"
+    assert creators["arya_kuroha"].theme_color == "#000000"
+
+
+def test_production_roster_theme_color_coverage():
+    """98 of the 118 production creators carry a verified themeColor
+    (Justice/ReGLOSS/FLOWGLOW, every VSPO JP/EN member, and all four
+    アソビ★まわり隊！ pre-debut members included); the remaining 20 (graduated
+    members, pre-debut mekPark units, staff/group channels with no verified
+    color) are correctly left unset for the frontend hashed-palette
+    fallback."""
+    creators = load_creators()
+
+    with_color = [c for c in creators if c.theme_color is not None]
+    without_color = [c for c in creators if c.theme_color is None]
+
+    assert len(with_color) == 98
+    assert len(without_color) == 20
+
+
 def test_production_roster_loads_with_unique_ids_and_the_verified_asobimawaritai_unit():
     creators = load_creators()
 

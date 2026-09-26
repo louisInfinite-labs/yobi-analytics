@@ -56,6 +56,16 @@ export function formatCompactCount(value: number): string {
   return String(value)
 }
 
+/** True only once there IS a previous visit to compare against and
+ * `publishedAt` falls after it (same exclusive/inclusive boundary as
+ * publishedWithin, for the same double-count reason) -- a first-ever visit
+ * has no baseline, so nothing is "new" yet rather than everything being. */
+export function isUnseenActivity(publishedAt: string, previousVisit: Date | null, now: Date): boolean {
+  if (!previousVisit) return false
+  const published = new Date(publishedAt).getTime()
+  return Number.isFinite(published) && published > previousVisit.getTime() && published <= now.getTime()
+}
+
 /** HH:mm for something published today, MM/DD otherwise. */
 export function formatActivityTime(iso: string, now: Date): string {
   const date = new Date(iso)

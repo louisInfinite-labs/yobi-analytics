@@ -10,7 +10,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#BECCFF"
   },
   {
     "creatorId": "kaga_nazuna",
@@ -23,7 +24,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#FABEDC"
   },
   {
     "creatorId": "kosuzume_toto",
@@ -36,7 +38,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#FFF33F"
   },
   {
     "creatorId": "ichinose_uruha",
@@ -49,7 +52,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#4182FA"
   },
   {
     "creatorId": "kurumi_noa",
@@ -62,7 +66,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#B297D7"
   },
   {
     "creatorId": "usaki_mimi",
@@ -75,7 +80,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#C7B2D6"
   },
   {
     "creatorId": "sorasumi_sena",
@@ -88,7 +94,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#FFFFFF"
   },
   {
     "creatorId": "tachibana_hinano",
@@ -101,7 +108,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#FA96C8"
   },
   {
     "creatorId": "hanabusa_risa",
@@ -114,7 +122,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#D1DE79"
   },
   {
     "creatorId": "kisaragi_ren",
@@ -127,7 +136,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#BE2152"
   },
   {
     "creatorId": "kanari_kyupi",
@@ -140,7 +150,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#FFD23C"
   },
   {
     "creatorId": "yakumo_beni",
@@ -153,7 +164,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#85CAB3"
   },
   {
     "creatorId": "aizawa_ema",
@@ -166,7 +178,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#B4F1F9"
   },
   {
     "creatorId": "shinomiya_runa",
@@ -179,7 +192,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#D6ADFF"
   },
   {
     "creatorId": "nekota_tsuna",
@@ -192,7 +206,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#FF3652"
   },
   {
     "creatorId": "shiranami_ramune",
@@ -205,7 +220,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#8ECED9"
   },
   {
     "creatorId": "komori_meto",
@@ -218,7 +234,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#FBA03F"
   },
   {
     "creatorId": "yumeno_akari",
@@ -231,7 +248,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#FF8684"
   },
   {
     "creatorId": "yano_kuromu",
@@ -244,7 +262,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#909EC8"
   },
   {
     "creatorId": "tsumugi_kokage",
@@ -257,7 +276,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#5195E1"
   },
   {
     "creatorId": "sendo_yuuhi",
@@ -270,7 +290,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#ED784A"
   },
   {
     "creatorId": "choya_hanabi",
@@ -283,7 +304,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#EA5506"
   },
   {
     "creatorId": "amayui_moka",
@@ -296,7 +318,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#ECA0AA"
   },
   {
     "creatorId": "ginjo_saine",
@@ -309,7 +332,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#58535E"
   },
   {
     "creatorId": "tatsumaki_chise",
@@ -322,7 +346,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#BEFF77"
   },
   {
     "creatorId": "tokino_sora",
@@ -335,7 +360,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "0期生"
-    ]
+    ],
+    "themeColor": "#0146E9"
   },
   {
     "creatorId": "robocosan",
@@ -348,7 +374,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "0期生"
-    ]
+    ],
+    "themeColor": "#804F7F"
   },
   {
     "creatorId": "azki",
@@ -361,7 +388,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "0期生"
-    ]
+    ],
+    "themeColor": "#D11C76"
   },
   {
     "creatorId": "sakura_miko",
@@ -374,7 +402,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "0期生"
-    ]
+    ],
+    "themeColor": "#FF4B74"
   },
   {
     "creatorId": "hoshimachi_suisei",
@@ -387,7 +416,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "0期生"
-    ]
+    ],
+    "themeColor": "#6A98D0"
   },
   {
     "creatorId": "yozora_mel",
@@ -415,7 +445,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "1期生"
-    ]
+    ],
+    "themeColor": "#D40680"
   },
   {
     "creatorId": "akai_haato",
@@ -428,7 +459,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "1期生"
-    ]
+    ],
+    "themeColor": "#D90629"
   },
   {
     "creatorId": "shirakami_fubuki",
@@ -442,7 +474,8 @@
     "groupKey": [
       "1期生",
       "ゲーマーズ"
-    ]
+    ],
+    "themeColor": "#2BCDFF"
   },
   {
     "creatorId": "natsuiro_matsuri",
@@ -455,7 +488,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "1期生"
-    ]
+    ],
+    "themeColor": "#FF5506"
   },
   {
     "creatorId": "minato_aqua",
@@ -498,7 +532,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "2期生"
-    ]
+    ],
+    "themeColor": "#CD233A"
   },
   {
     "creatorId": "yuzuki_choco",
@@ -511,7 +546,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "2期生"
-    ]
+    ],
+    "themeColor": "#E9BB5D"
   },
   {
     "creatorId": "oozora_subaru",
@@ -524,7 +560,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "2期生"
-    ]
+    ],
+    "themeColor": "#BCE717"
   },
   {
     "creatorId": "ookami_mio",
@@ -537,7 +574,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "ゲーマーズ"
-    ]
+    ],
+    "themeColor": "#4F5072"
   },
   {
     "creatorId": "nekomata_okayu",
@@ -550,7 +588,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "ゲーマーズ"
-    ]
+    ],
+    "themeColor": "#BF66E8"
   },
   {
     "creatorId": "inugami_korone",
@@ -563,7 +602,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "ゲーマーズ"
-    ]
+    ],
+    "themeColor": "#DCB414"
   },
   {
     "creatorId": "usada_pekora",
@@ -576,7 +616,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "3期生"
-    ]
+    ],
+    "themeColor": "#65BBEB"
   },
   {
     "creatorId": "uruha_rushia",
@@ -604,7 +645,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "3期生"
-    ]
+    ],
+    "themeColor": "#DB3A11"
   },
   {
     "creatorId": "shirogane_noel",
@@ -617,7 +659,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "3期生"
-    ]
+    ],
+    "themeColor": "#8A939E"
   },
   {
     "creatorId": "houshou_marine",
@@ -630,7 +673,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "3期生"
-    ]
+    ],
+    "themeColor": "#A82413"
   },
   {
     "creatorId": "amane_kanata",
@@ -673,7 +717,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "4期生"
-    ]
+    ],
+    "themeColor": "#DBDB89"
   },
   {
     "creatorId": "tokoyami_towa",
@@ -686,7 +731,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "4期生"
-    ]
+    ],
+    "themeColor": "#A9A2EB"
   },
   {
     "creatorId": "himemori_luna",
@@ -699,7 +745,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "4期生"
-    ]
+    ],
+    "themeColor": "#DE6DAE"
   },
   {
     "creatorId": "yukihana_lamy",
@@ -712,7 +759,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "5期生"
-    ]
+    ],
+    "themeColor": "#47B4DF"
   },
   {
     "creatorId": "momosuzu_nene",
@@ -725,7 +773,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "5期生"
-    ]
+    ],
+    "themeColor": "#FF7810"
   },
   {
     "creatorId": "shishiro_botan",
@@ -738,7 +787,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "5期生"
-    ]
+    ],
+    "themeColor": "#5FCFA7"
   },
   {
     "creatorId": "omaru_polka",
@@ -751,7 +801,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "5期生"
-    ]
+    ],
+    "themeColor": "#AA0909"
   },
   {
     "creatorId": "mano_aloe",
@@ -779,7 +830,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "6期生"
-    ]
+    ],
+    "themeColor": "#471497"
   },
   {
     "creatorId": "takane_lui",
@@ -792,7 +844,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "6期生"
-    ]
+    ],
+    "themeColor": "#52363E"
   },
   {
     "creatorId": "hakui_koyori",
@@ -805,7 +858,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "6期生"
-    ]
+    ],
+    "themeColor": "#FF68AD"
   },
   {
     "creatorId": "sakamata_chloe",
@@ -833,7 +887,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "6期生"
-    ]
+    ],
+    "themeColor": "#45BFB6"
   },
   {
     "creatorId": "hiodoshi_ao",
@@ -861,7 +916,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "ReGLOSS"
-    ]
+    ],
+    "themeColor": "#F6C663"
   },
   {
     "creatorId": "ichijou_ririka",
@@ -874,7 +930,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "ReGLOSS"
-    ]
+    ],
+    "themeColor": "#EE558B"
   },
   {
     "creatorId": "juufuutei_raden",
@@ -887,7 +944,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "ReGLOSS"
-    ]
+    ],
+    "themeColor": "#1C5E4F"
   },
   {
     "creatorId": "todoroki_hajime",
@@ -900,7 +958,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "ReGLOSS"
-    ]
+    ],
+    "themeColor": "#9293FE"
   },
   {
     "creatorId": "isaki_riona",
@@ -913,7 +972,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "FLOWGLOW"
-    ]
+    ],
+    "themeColor": "#C92655"
   },
   {
     "creatorId": "koganei_niko",
@@ -926,7 +986,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "FLOWGLOW"
-    ]
+    ],
+    "themeColor": "#F25E11"
   },
   {
     "creatorId": "mizumiya_su",
@@ -939,7 +1000,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "FLOWGLOW"
-    ]
+    ],
+    "themeColor": "#64CCE4"
   },
   {
     "creatorId": "rindo_chihaya",
@@ -952,7 +1014,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "FLOWGLOW"
-    ]
+    ],
+    "themeColor": "#2C8C8B"
   },
   {
     "creatorId": "kikirara_vivi",
@@ -965,7 +1028,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "FLOWGLOW"
-    ]
+    ],
+    "themeColor": "#E6499B"
   },
   {
     "creatorId": "hyakuto_kyoko",
@@ -978,7 +1042,8 @@
     "lifecycleStage": "pre_debut",
     "groupKey": [
       "アソビ★まわり隊！"
-    ]
+    ],
+    "themeColor": "#F86701"
   },
   {
     "creatorId": "achichi_mela",
@@ -991,7 +1056,8 @@
     "lifecycleStage": "pre_debut",
     "groupKey": [
       "アソビ★まわり隊！"
-    ]
+    ],
+    "themeColor": "#1C97FF"
   },
   {
     "creatorId": "suzuna_tsuzuri",
@@ -1004,7 +1070,8 @@
     "lifecycleStage": "pre_debut",
     "groupKey": [
       "アソビ★まわり隊！"
-    ]
+    ],
+    "themeColor": "#E2383B"
   },
   {
     "creatorId": "sorashina_sopia",
@@ -1017,7 +1084,8 @@
     "lifecycleStage": "pre_debut",
     "groupKey": [
       "アソビ★まわり隊！"
-    ]
+    ],
+    "themeColor": "#7B7EFF"
   },
   {
     "creatorId": "unit_b_pre_debut",
@@ -1108,7 +1176,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Myth"
-    ]
+    ],
+    "themeColor": "#A1030D"
   },
   {
     "creatorId": "takanashi_kiara",
@@ -1121,7 +1190,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Myth"
-    ]
+    ],
+    "themeColor": "#FF511C"
   },
   {
     "creatorId": "ninomae_inanis",
@@ -1134,7 +1204,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Myth"
-    ]
+    ],
+    "themeColor": "#3F3F6A"
   },
   {
     "creatorId": "gawr_gura",
@@ -1177,7 +1248,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Promise"
-    ]
+    ],
+    "themeColor": "#BC96B0"
   },
   {
     "creatorId": "ceres_fauna",
@@ -1205,7 +1277,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Promise"
-    ]
+    ],
+    "themeColor": "#1B189B"
   },
   {
     "creatorId": "nanashi_mumei",
@@ -1233,7 +1306,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Promise"
-    ]
+    ],
+    "themeColor": "#FB3D29"
   },
   {
     "creatorId": "shiori_novella",
@@ -1246,7 +1320,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Advent"
-    ]
+    ],
+    "themeColor": "#8D81AE"
   },
   {
     "creatorId": "koseki_bijou",
@@ -1259,7 +1334,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Advent"
-    ]
+    ],
+    "themeColor": "#4B44DE"
   },
   {
     "creatorId": "nerissa_ravencroft",
@@ -1272,7 +1348,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Advent"
-    ]
+    ],
+    "themeColor": "#2D3799"
   },
   {
     "creatorId": "fuwamoco",
@@ -1286,7 +1363,8 @@
     "groupKey": [
       "Advent",
       "FUWAMOCO"
-    ]
+    ],
+    "themeColor": "#A66FEF"
   },
   {
     "creatorId": "elizabeth_rose_bloodflame",
@@ -1299,7 +1377,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Justice"
-    ]
+    ],
+    "themeColor": "#97303A"
   },
   {
     "creatorId": "gigi_murin",
@@ -1312,7 +1391,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Justice"
-    ]
+    ],
+    "themeColor": "#CD9328"
   },
   {
     "creatorId": "cecilia_immergreen",
@@ -1325,7 +1405,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Justice"
-    ]
+    ],
+    "themeColor": "#137A42"
   },
   {
     "creatorId": "raora_panthera",
@@ -1338,7 +1419,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "Justice"
-    ]
+    ],
+    "themeColor": "#E75786"
   },
   {
     "creatorId": "ayunda_risu",
@@ -1351,7 +1433,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "1期生"
-    ]
+    ],
+    "themeColor": "#ED8282"
   },
   {
     "creatorId": "moona_hoshinova",
@@ -1364,7 +1447,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "1期生"
-    ]
+    ],
+    "themeColor": "#794EBE"
   },
   {
     "creatorId": "airani_iofifteen",
@@ -1377,7 +1461,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "1期生"
-    ]
+    ],
+    "themeColor": "#7EDD0B"
   },
   {
     "creatorId": "kureiji_ollie",
@@ -1390,7 +1475,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "2期生"
-    ]
+    ],
+    "themeColor": "#D90C52"
   },
   {
     "creatorId": "anya_melfissa",
@@ -1403,7 +1489,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "2期生"
-    ]
+    ],
+    "themeColor": "#E79F11"
   },
   {
     "creatorId": "pavolia_reine",
@@ -1416,7 +1503,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "2期生"
-    ]
+    ],
+    "themeColor": "#040F7F"
   },
   {
     "creatorId": "vestia_zeta",
@@ -1429,7 +1517,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "3期生"
-    ]
+    ],
+    "themeColor": "#98A1AC"
   },
   {
     "creatorId": "kaela_kovalskia",
@@ -1442,7 +1531,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "3期生"
-    ]
+    ],
+    "themeColor": "#DC2528"
   },
   {
     "creatorId": "kobo_kanaeru",
@@ -1455,7 +1545,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "3期生"
-    ]
+    ],
+    "themeColor": "#93BFE4"
   },
   {
     "creatorId": "jira_jisaki",
@@ -1468,7 +1559,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#606D3D"
   },
   {
     "creatorId": "remia_aotsuki",
@@ -1481,7 +1573,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#398FB2"
   },
   {
     "creatorId": "arya_kuroha",
@@ -1494,7 +1587,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#000000"
   },
   {
     "creatorId": "narin_mikure",
@@ -1507,7 +1601,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#F3A6EF"
   },
   {
     "creatorId": "riko_solari",
@@ -1520,7 +1615,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#9373D7"
   },
   {
     "creatorId": "eris_suzukami",
@@ -1533,7 +1629,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#90B2F8"
   },
   {
     "creatorId": "juno_umezono",
@@ -1546,7 +1643,8 @@
     "lifecycleStage": "active",
     "groupKey": [
       "NO"
-    ]
+    ],
+    "themeColor": "#923173"
   },
   {
     "creatorId": "vspo_official",

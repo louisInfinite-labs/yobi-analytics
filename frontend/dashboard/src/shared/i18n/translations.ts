@@ -35,6 +35,7 @@ export type TranslationKey =
   | "recentVideos.empty.latestVideos"
   | "recentVideos.empty.latestLive"
   | "recentVideos.empty.other"
+  | "recentVideos.viewAll"
   | "liveScheduleDock.title"
   | "liveScheduleDock.close"
   | "liveScheduleDock.panelAriaLabel"
@@ -53,6 +54,10 @@ export type TranslationKey =
   | "oshiStatus.thisWeek"
   | "oshiStatus.recent"
   | "oshiStatus.noRecentActivity"
+  | "oshiStatus.newBadge"
+  | "oshiStatus.subscribers"
+  | "oshiStatus.nowPlaying"
+  | "oshiStatus.devResetVisit"
   | "errorState.code"
   | "errorState.defaultMessage"
   | "errorState.retry"
@@ -169,6 +174,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "尚無最新影片",
     "recentVideos.empty.latestLive": "尚無最新直播",
     "recentVideos.empty.other": "沒有影片",
+    "recentVideos.viewAll": "查看全部",
     "liveScheduleDock.title": "直播狀態",
     "liveScheduleDock.close": "關閉",
     "liveScheduleDock.panelAriaLabel": "直播排程搜尋",
@@ -187,6 +193,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.thisWeek": "本週",
     "oshiStatus.recent": "最近動態",
     "oshiStatus.noRecentActivity": "尚無最近動態",
+    "oshiStatus.newBadge": "NEW",
+    "oshiStatus.subscribers": "訂閱者",
+    "oshiStatus.nowPlaying": "正在播放",
+    "oshiStatus.devResetVisit": "重置造訪",
     "errorState.code": "(代碼: {{code}})",
     "errorState.defaultMessage": "載入資料時發生錯誤。",
     "errorState.retry": "重試",
@@ -302,6 +312,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "No recent videos",
     "recentVideos.empty.latestLive": "No recent streams",
     "recentVideos.empty.other": "No videos",
+    "recentVideos.viewAll": "View All",
     "liveScheduleDock.title": "LIVE STATUS",
     "liveScheduleDock.close": "Close",
     "liveScheduleDock.panelAriaLabel": "Live schedule search",
@@ -320,6 +331,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.thisWeek": "This week",
     "oshiStatus.recent": "Recent",
     "oshiStatus.noRecentActivity": "No recent activity",
+    "oshiStatus.newBadge": "NEW",
+    "oshiStatus.subscribers": "subscribers",
+    "oshiStatus.nowPlaying": "Now Playing",
+    "oshiStatus.devResetVisit": "Reset visit",
     "errorState.code": "(Code: {{code}})",
     "errorState.defaultMessage": "Something went wrong loading this data.",
     "errorState.retry": "Retry",
@@ -435,6 +450,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "最新動画はありません",
     "recentVideos.empty.latestLive": "最新配信はありません",
     "recentVideos.empty.other": "動画がありません",
+    "recentVideos.viewAll": "すべて見る",
     "liveScheduleDock.title": "配信ステータス",
     "liveScheduleDock.close": "閉じる",
     "liveScheduleDock.panelAriaLabel": "配信スケジュール検索",
@@ -453,6 +469,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.thisWeek": "今週",
     "oshiStatus.recent": "最近の動き",
     "oshiStatus.noRecentActivity": "最近の動きはありません",
+    "oshiStatus.newBadge": "NEW",
+    "oshiStatus.subscribers": "登録者数",
+    "oshiStatus.nowPlaying": "再生中",
+    "oshiStatus.devResetVisit": "訪問をリセット",
     "errorState.code": "(コード: {{code}})",
     "errorState.defaultMessage": "データの読み込み中にエラーが発生しました。",
     "errorState.retry": "再試行",

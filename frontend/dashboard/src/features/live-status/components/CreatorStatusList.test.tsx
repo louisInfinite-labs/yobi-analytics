@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest"
 import { CreatorStatusList, countLiveAndOffline } from "./CreatorStatusList"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
+import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import type { CreatorStatus } from "../model/creatorStatus"
 
 const now = new Date("2026-09-09T12:00:00.000Z")
@@ -75,13 +76,16 @@ describe("CreatorStatusList", () => {
     expect(onToggleFavorite).not.toHaveBeenCalled()
   })
 
-  it("opens the video when the status area is clicked for a live creator", async () => {
+  it("opens the video when the status area is clicked for a live creator, for that same creator", async () => {
     const { onSelectVideo, onSelectCreator } = renderList({
       statuses: { ...allOffline, ch_aizawa_ema: { kind: "live", videoId: "v1", title: "t1" } },
     })
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: /LIVE/ }))
-    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "v1", title: "t1" })
+    // ch_aizawa_ema is also currentOshi's own default (mockCreators[0]), so
+    // this is the "video for the creator already being viewed" path -- no
+    // creator switch.
+    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "v1", title: "t1" }, "ch_aizawa_ema")
     expect(onSelectCreator).not.toHaveBeenCalled()
   })
 
@@ -156,6 +160,52 @@ describe("CreatorStatusList Oshi-switch confirmation", () => {
   })
 })
 
+// ch_aizawa_ema is currentOshi's own untouched default (mockCreators[0]),
+// so a LIVE click on 白上フブキ (ch_shirakami_fubuki) below is always the
+// "video belongs to another creator" case this describe block covers.
+describe("CreatorStatusList video selection for a different creator", () => {
+  const fubukiLive: Record<string, CreatorStatus> = {
+    ...allOffline,
+    ch_shirakami_fubuki: { kind: "live", videoId: "v2", title: "t2" },
+  }
+
+  it("opens the Oshi-switch confirm dialog instead of selecting the video when confirmOshiSwitch is true", async () => {
+    const { onSelectCreator, onSelectVideo } = renderList({ statuses: fubukiLive, confirmOshiSwitch: true })
+    const user = userEvent.setup()
+    await user.click(screen.getAllByRole("button", { name: /LIVE/ })[0])
+    expect(onSelectCreator).not.toHaveBeenCalled()
+    expect(onSelectVideo).not.toHaveBeenCalled()
+    expect(screen.getByText('Switch your Oshi to "白上フブキ"?')).toBeInTheDocument()
+  })
+
+  it("Cancel leaves both currentOshi and the selected video unchanged", async () => {
+    const { onSelectCreator, onSelectVideo } = renderList({ statuses: fubukiLive, confirmOshiSwitch: true })
+    const user = userEvent.setup()
+    await user.click(screen.getAllByRole("button", { name: /LIVE/ })[0])
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(onSelectCreator).not.toHaveBeenCalled()
+    expect(onSelectVideo).not.toHaveBeenCalled()
+  })
+
+  it("confirming the switch both switches currentOshi and selects the video for the new creator", async () => {
+    const { onSelectCreator, onSelectVideo } = renderList({ statuses: fubukiLive, confirmOshiSwitch: true })
+    const user = userEvent.setup()
+    await user.click(screen.getAllByRole("button", { name: /LIVE/ })[0])
+    await user.click(screen.getByRole("button", { name: "Switch" }))
+    expect(onSelectCreator).toHaveBeenCalledWith("ch_shirakami_fubuki")
+    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "v2", title: "t2" }, "ch_shirakami_fubuki")
+  })
+
+  it("switches currentOshi and selects the video immediately, with no dialog, when confirmOshiSwitch is false", async () => {
+    const { onSelectCreator, onSelectVideo } = renderList({ statuses: fubukiLive, confirmOshiSwitch: false })
+    const user = userEvent.setup()
+    await user.click(screen.getAllByRole("button", { name: /LIVE/ })[0])
+    expect(onSelectCreator).toHaveBeenCalledWith("ch_shirakami_fubuki")
+    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "v2", title: "t2" }, "ch_shirakami_fubuki")
+    expect(screen.queryByText('Switch your Oshi to "白上フブキ"?')).not.toBeInTheDocument()
+  })
+})
+
 function findRow(container: HTMLElement, name: string): HTMLElement {
   const rows = container.querySelectorAll(".live-status-member")
   return [...rows].find((row) => row.textContent?.includes(name)) as HTMLElement
@@ -221,7 +271,7 @@ describe("CreatorStatusList swipe-to-favorite", () => {
     })
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: /LIVE/ }))
-    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "v1", title: "t1" })
+    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "v1", title: "t1" }, "ch_aizawa_ema")
   })
 
   it("shows the localized 'Add Favorite' reveal label while dragging right past the swipe-start threshold", () => {
@@ -303,6 +353,88 @@ describe("CreatorStatusList swipe + shared favorites state", () => {
 
     const rowBAfter = findRow(getByTestId("consumer-b"), "藍沢エマ")
     expect(rowBAfter.querySelector(".live-status-member__favorite-indicator")).toBeInTheDocument()
+  })
+})
+
+// Mounts the real useSelectedCreator() store (not a mock) so clicking a row
+// actually moves currentOshi the same way LiveScheduleDock's own setter
+// does -- onSelectCreator here is that real setter, not vi.fn(). defaultOshi
+// is left at its untouched fallback (mockCreators[0] = 藍沢エマ) throughout,
+// matching the regression scenario: only currentOshi ever changes.
+function RealCurrentOshi(overrides: Partial<React.ComponentProps<typeof CreatorStatusList>> = {}) {
+  const [, setSelectedCreatorId] = useSelectedCreator()
+  return (
+    <CreatorStatusList
+      statuses={allOffline}
+      now={now}
+      displayMode="absolute"
+      language="en"
+      query=""
+      favorites={new Set()}
+      onToggleFavorite={vi.fn()}
+      onSelectCreator={setSelectedCreatorId}
+      onSelectVideo={vi.fn()}
+      locale="en"
+      confirmOshiSwitch={false}
+      onConfirmOshiSwitchChange={vi.fn()}
+      {...overrides}
+    />
+  )
+}
+
+describe("CreatorStatusList MAIN vs CURRENT Oshi semantics", () => {
+  it("defaultOshi === currentOshi: the same row shows MAIN and the selected/current rail", () => {
+    const { container } = render(<RealCurrentOshi />)
+    const row = findRow(container, "藍沢エマ")
+    expect(row.querySelector(".live-status-member__main-badge")).toBeInTheDocument()
+    expect(row.getAttribute("data-current-oshi")).toBe("true")
+  })
+
+  it("switching currentOshi moves the selected rail but leaves MAIN fixed on defaultOshi", async () => {
+    const { container } = render(<RealCurrentOshi />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Switch Oshi to 花芽すみれ" }))
+
+    const emaRow = findRow(container, "藍沢エマ")
+    const sumireRow = findRow(container, "花芽すみれ")
+
+    expect(emaRow.querySelector(".live-status-member__main-badge")).toBeInTheDocument()
+    expect(emaRow.getAttribute("data-current-oshi")).toBe("false")
+
+    expect(sumireRow.querySelector(".live-status-member__main-badge")).not.toBeInTheDocument()
+    expect(sumireRow.getAttribute("data-current-oshi")).toBe("true")
+  })
+
+  it("switching to a third creator keeps MAIN fixed and moves the selected rail again", async () => {
+    const { container } = render(<RealCurrentOshi />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Switch Oshi to 花芽すみれ" }))
+    await user.click(screen.getByRole("button", { name: "Switch Oshi to 花芽なずな" }))
+
+    expect(findRow(container, "藍沢エマ").querySelector(".live-status-member__main-badge")).toBeInTheDocument()
+    expect(findRow(container, "藍沢エマ").getAttribute("data-current-oshi")).toBe("false")
+    expect(findRow(container, "花芽すみれ").getAttribute("data-current-oshi")).toBe("false")
+    expect(findRow(container, "花芽なずな").getAttribute("data-current-oshi")).toBe("true")
+    expect(findRow(container, "花芽なずな").querySelector(".live-status-member__main-badge")).not.toBeInTheDocument()
+  })
+
+  // The MAIN badge's color rule (home.css) reads --member-theme-color, this
+  // row's own per-creator accent set as an inline style on
+  // .live-status-member__creator-button -- never the global --creator-main
+  // (currentOshi's color). jsdom doesn't apply the project's external
+  // stylesheet, so this asserts the structural source (the inline custom
+  // property itself) stays this creator's own value regardless of which
+  // other row is currently selected, rather than a computed color.
+  it("MAIN row's own per-row accent is unaffected by which creator is currently selected", async () => {
+    const { container } = render(<RealCurrentOshi />)
+    const emaButton = () => findRow(container, "藍沢エマ").querySelector(".live-status-member__creator-button") as HTMLElement
+    const accentBefore = emaButton().style.getPropertyValue("--member-theme-color")
+    expect(accentBefore).not.toBe("")
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Switch Oshi to 花芽すみれ" }))
+
+    expect(emaButton().style.getPropertyValue("--member-theme-color")).toBe(accentBefore)
   })
 })
 
