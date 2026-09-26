@@ -69,3 +69,77 @@ describe("RecentVideosSection video selection", () => {
     expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "video_1", title: "Test video title" })
   })
 })
+
+describe("RecentVideosSection View All", () => {
+  it("renders, is disabled, and has no click handler wired", async () => {
+    renderSection()
+    const viewAll = screen.getByRole("button", { name: /View All/ })
+
+    expect(viewAll).toBeDisabled()
+    // A disabled native button dispatches no click at all -- this asserts
+    // the actual DOM contract (not just "no visible effect"), so a future
+    // onClick={() => {}} regression would still show up as a real click.
+    const clickSpy = vi.fn()
+    viewAll.addEventListener("click", clickSpy)
+    const user = userEvent.setup()
+    await user.click(viewAll)
+    expect(clickSpy).not.toHaveBeenCalled()
+  })
+
+  it("cannot be activated with the keyboard (disabled elements are not tab-focusable)", () => {
+    renderSection()
+    const viewAll = screen.getByRole("button", { name: /View All/ })
+
+    viewAll.focus()
+    expect(document.activeElement).not.toBe(viewAll)
+  })
+
+  it("does not shift the Segmented/Sort cluster's own position when rendered", () => {
+    renderSection()
+    const header = document.querySelector(".oshi-videos__header") as HTMLElement
+    const viewAll = screen.getByRole("button", { name: /View All/ })
+
+    // margin-left: auto (see home.css) keeps it the header's LAST child --
+    // this is what actually pins it to the far right regardless of how wide
+    // the Segmented/Sort cluster is, so asserting DOM order here is asserting
+    // the geometry contract this task must not disturb.
+    expect(header.lastElementChild).toBe(viewAll)
+  })
+})
+
+describe("RecentVideosSection category filtering and sort, unaffected by the View All change", () => {
+  it("switching the Segmented tag still changes which videos are shown", async () => {
+    const streamVideo: RecentVideo = {
+      videoId: "video_2",
+      title: "Stream video title",
+      publishedAt: "2026-09-09T12:00:00+09:00",
+      contentFormat: "live_archive",
+    }
+    render(
+      <RecentVideosSection
+        creatorId="ch_aizawa_ema"
+        latestVideos={makePage([video])}
+        streamVideos={makePage([streamVideo])}
+        onSelectVideo={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("button", { name: /Test video title/ })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Stream video title/ })).not.toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByText("Latest Live"))
+
+    expect(screen.getByRole("button", { name: /Stream video title/ })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Test video title/ })).not.toBeInTheDocument()
+  })
+
+  it("the Sort dropdown is hidden for the default latest-videos tag and appears once a category tag is selected", async () => {
+    renderSection()
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByText("ALL"))
+
+    expect(screen.getByRole("combobox")).toBeInTheDocument()
+  })
+})

@@ -48,8 +48,14 @@ describe("getMemberAccent", () => {
 
   it("normalizes a lowercase themeColor to uppercase output", () => {
     const accent = getMemberAccent("ch_aizawa_ema", "#b4f1f9")
-    expect(accent.primary).toBe("#b4f1f9")
+    expect(accent.primary).toBe("#B4F1F9")
     expect(accent.soft).toMatch(HEX)
     expect(accent.textAccent).toMatch(HEX)
+  })
+
+  it("produces the identical accent object for a lowercase and its uppercase equivalent", () => {
+    const fromLowercase = getMemberAccent("ch_aizawa_ema", "#b4f1f9")
+    const fromUppercase = getMemberAccent("ch_aizawa_ema", "#B4F1F9")
+    expect(fromLowercase).toEqual(fromUppercase)
   })
 })

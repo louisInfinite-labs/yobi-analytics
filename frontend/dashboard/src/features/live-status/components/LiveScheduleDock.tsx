@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react"
+import { ConfigProvider, Segmented } from "antd"
 import { Search } from "lucide-react"
 import { CreatorStatusList } from "./CreatorStatusList"
+import { mockCreators } from "../../../entities/creator/data/mockCreators"
+import { useCurrentPage } from "../../../app/navigation/useCurrentPage"
 import { useConfirmOshiSwitchPreference } from "../../oshi/hooks/useConfirmOshiSwitchPreference"
 import { useCountdownLanguage } from "../../../shared/i18n/hooks/useCountdownLanguage"
 import { useCreatorStatuses } from "../hooks/useCreatorStatuses"
@@ -11,6 +14,7 @@ import { usePrefersReducedMotion } from "../../../shared/hooks/usePrefersReduced
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
 import { creatorThemeStyle } from "../../../shared/theme/creatorThemeStyle"
+import { selectHomeVideo } from "../../home-room/hooks/useHomeSelectedVideo"
 import { t } from "../../../shared/i18n/translations"
 import { formatCountdown } from "../model/creatorStatusFormat"
 import type { CountdownLanguage } from "../../../shared/i18n/model/countdownLanguage"
@@ -22,7 +26,8 @@ type ViewMode = "all" | "favorites"
 
 /** "full" — the drawer reaches the top of the screen (the default every time
  * it opens); "compact" — the original min(70vh, 520px) size, one click away
- * via the header's resize button. Width is 360px either way. */
+ * via the header's resize button. Width is var(--live-status-width) either
+ * way (aliased to the shared --home-status-width token -- see home.css). */
 type PanelSize = "full" | "compact"
 
 /** Collapsed-state summary: nothing to fetch here — it only reads the
@@ -50,11 +55,12 @@ function summarize(
   return { text: "OFFLINE", dotColor: "grey" }
 }
 
-/** Global Live Status: a dark floating trigger that opens a 360px right-side
- * drawer. The drawer OVERLAYS whatever page is showing (position: fixed) and
- * is never a layout column of it, so opening it can't resize Home's stream,
- * player or video strip. Mounted once above every page (App.tsx), so it
- * stays available across Dashboard/Admin/Home.
+/** Global Live Status: a dark floating trigger that opens a right-side drawer
+ * whose width always matches Home's Oshi Status column exactly (the shared
+ * --home-status-width token). The drawer OVERLAYS whatever page is showing
+ * (position: fixed) and is never a layout column of it, so opening it can't
+ * resize Home's stream, player or video strip. Mounted once above every page
+ * (App.tsx), so it stays available across Dashboard/Admin/Home.
  *
  * The trigger stays neutral dark on purpose — it is not bound to
  * --creator-main — while the drawer's own accents do follow the current
@@ -69,12 +75,21 @@ export function LiveScheduleDock() {
   const [panelSize, setPanelSize] = useState<PanelSize>("full")
   const [viewMode, setViewMode] = useState<ViewMode>("all")
   const [query, setQuery] = useState("")
+  // Non-Home only (see the onSelectVideo callback below) -- Home has its own
+  // central player (useHomeSelectedVideo) with no modal, so this never gets
+  // set while Home is the active page.
   const [embed, setEmbed] = useState<{ videoId: string; title: string } | null>(null)
+  const [page] = useCurrentPage()
   const [displayMode] = useUpcomingDisplayMode()
   const [language] = useCountdownLanguage()
   const { statuses, now } = useCreatorStatuses()
   const { favorites, toggleFavorite } = useFavoriteCreators()
   const [selectedCreatorId, setSelectedCreatorId] = useSelectedCreator()
+  // The one lookup into this dock's current mock creator source needed to
+  // bind its own theme wrapper below -- see creatorThemeStyle's own
+  // docstring for why it takes the resolved themeColor instead of doing
+  // this same lookup itself.
+  const selectedCreator = mockCreators.find((entry) => entry.channelId === selectedCreatorId)
   const [locale] = useLocale()
   const [confirmOshiSwitch, setConfirmOshiSwitch] = useConfirmOshiSwitchPreference()
   const reducedMotion = usePrefersReducedMotion()
@@ -162,7 +177,7 @@ export function LiveScheduleDock() {
         ref={dockRef}
         className={`live-status-dock${reducedMotion ? " live-status-dock--no-motion" : ""}`}
         data-live-status-open={expanded}
-        style={creatorThemeStyle(selectedCreatorId)}
+        style={creatorThemeStyle(selectedCreatorId, selectedCreator?.themeColor)}
       >
         <button ref={triggerRef} type="button" className="live-status-trigger" onClick={open}>
           <span className={`live-status-trigger__dot live-status-trigger__dot--${summary.dotColor}`} aria-hidden="true" />
@@ -206,22 +221,43 @@ export function LiveScheduleDock() {
             </div>
 
             <div className="live-status-filter-row">
-              <button
-                type="button"
-                className="live-status-filter"
-                aria-pressed={viewMode === "all"}
-                onClick={() => setViewMode("all")}
+              {/* Ant Design Segmented, same dark-token pattern as Settings >
+               * Oshi Settings' own All/Favorites control and Home > Oshi
+               * Videos' tag bar -- itemSelectedBg is the only token tied to
+               * --creator-main (a low color-mix, not a solid fill), so
+               * switching currentOshi tints just the selected segment. */}
+              <ConfigProvider
+                theme={{
+                  components: {
+                    Segmented: {
+                      trackBg: "var(--oshi-surface-2)",
+                      trackPadding: 2,
+                      itemColor: "var(--oshi-text-3)",
+                      itemHoverColor: "var(--oshi-text-1)",
+                      itemHoverBg: "rgba(255, 255, 255, 0.05)",
+                      itemSelectedBg: "color-mix(in srgb, var(--creator-main) 18%, var(--oshi-surface-3))",
+                      itemSelectedColor: "var(--oshi-text-1)",
+                      borderRadius: 4,
+                      borderRadiusSM: 4,
+                    },
+                  },
+                }}
               >
-                {t(locale, "recentVideos.tag.all")}
-              </button>
-              <button
-                type="button"
-                className="live-status-filter"
-                aria-pressed={viewMode === "favorites"}
-                onClick={() => setViewMode("favorites")}
-              >
-                {t(locale, "oshiSettings.viewFilter.favoritesOnly")}
-              </button>
+                <Segmented<ViewMode>
+                  size="small"
+                  classNames={{
+                    root: "live-status-view-segmented",
+                    item: "live-status-view-segment-item",
+                    label: "live-status-view-segment-label",
+                  }}
+                  value={viewMode}
+                  onChange={setViewMode}
+                  options={[
+                    { value: "all", label: t(locale, "recentVideos.tag.all") },
+                    { value: "favorites", label: t(locale, "oshiSettings.viewFilter.favoritesOnly") },
+                  ]}
+                />
+              </ConfigProvider>
             </div>
           </div>
 
@@ -240,8 +276,20 @@ export function LiveScheduleDock() {
                 locale={locale}
                 confirmOshiSwitch={confirmOshiSwitch}
                 onConfirmOshiSwitchChange={setConfirmOshiSwitch}
-                onSelectVideo={(video) => {
-                  setEmbed(video)
+                onSelectVideo={(video, creatorId) => {
+                  // On Home, route into the same canonical player-selection
+                  // path Oshi Videos/Recent Activity use (never this
+                  // drawer's own modal) so there is only ever one player
+                  // surface. Off Home there is no central player to select
+                  // into, so the modal remains -- this is the one legitimate
+                  // remaining use of it (see this component's own top
+                  // docstring: the dock is mounted above every page, not
+                  // just Home).
+                  if (page === "home") {
+                    selectHomeVideo(video, creatorId)
+                  } else {
+                    setEmbed(video)
+                  }
                   setExpanded(false)
                 }}
               />

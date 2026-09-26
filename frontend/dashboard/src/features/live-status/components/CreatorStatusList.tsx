@@ -2,6 +2,7 @@ import { Avatar } from "antd"
 import { Heart } from "lucide-react"
 import { Fragment, useState, type CSSProperties } from "react"
 import { mockCreators, type MockCreator } from "../../../entities/creator/data/mockCreators"
+import { useDefaultOshiCreator } from "../../oshi/hooks/useDefaultOshiCreator"
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import { useSwipeToFavorite } from "../../favorites/hooks/useSwipeToFavorite"
 import { creatorMatchesSearch, groupCreatorsForDockWithSubgroups } from "../../../entities/creator/utils/dockCreatorOrder"
@@ -82,7 +83,12 @@ interface CreatorRowProps {
   language: CountdownLanguage
   now: Date
   isFavorite: boolean
-  isActive: boolean
+  /** Settings > 我推設定's persistent pick (defaultOshi) -- drives the MAIN
+   * badge only, independent of whichever row is currently being viewed. */
+  isMainOshi: boolean
+  /** The creator this session currently has open (currentOshi) -- drives
+   * the row's own selected accent rail, independent of MAIN. */
+  isCurrentOshi: boolean
   locale: Locale
   onCreatorButtonClick: (creator: MockCreator) => void
   onSelectVideo: (video: { videoId: string; title: string }) => void
@@ -106,7 +112,8 @@ function CreatorRow({
   language,
   now,
   isFavorite,
-  isActive,
+  isMainOshi,
+  isCurrentOshi,
   locale,
   onCreatorButtonClick,
   onSelectVideo,
@@ -129,7 +136,7 @@ function CreatorRow({
       )}
       <div
         className={`live-status-member${swipe.isSnapping ? " live-status-member--snapping" : ""}`}
-        data-main-oshi={isActive}
+        data-current-oshi={isCurrentOshi}
         style={{ transform: `translateX(${swipe.translateX}px)` }}
         {...swipe.rowHandlers}
       >
@@ -144,7 +151,7 @@ function CreatorRow({
           <span className="live-status-member__main">
             <span className="live-status-member__name-row">
               <span className="live-status-member__name">{creator.channelName}</span>
-              {isActive && <span className="live-status-member__main-badge">{t(locale, "creatorStatusList.mainBadge")}</span>}
+              {isMainOshi && <span className="live-status-member__main-badge">{t(locale, "creatorStatusList.mainBadge")}</span>}
             </span>
             {topic && <span className="live-status-member__topic">{topic}</span>}
           </span>
@@ -174,7 +181,10 @@ export interface CreatorStatusListProps {
   language: CountdownLanguage
   /** Search text already typed by the caller — this component only filters/renders, the search input itself is the caller's own UI. */
   query: string
-  onSelectVideo: (video: { videoId: string; title: string }) => void
+  /** `creatorId` is the clicked row's own creator, which may not be
+   * currentOshi -- see handleVideoSelect below for how that case is
+   * resolved before this ever fires. */
+  onSelectVideo: (video: { videoId: string; title: string }, creatorId: string) => void
   /** Avatar+name click (spec: "switches the active Oshi") — never opens
    * YouTube and never touches favorite state. */
   onSelectCreator: (channelId: string) => void
@@ -227,18 +237,48 @@ export function CreatorStatusList({
   const groups = groupCreatorsForDockWithSubgroups(
     mockCreators.filter((creator) => matchesFavoriteFilter(creator.channelId, favoriteOnlyIds) && creatorMatchesSearch(creator, query)),
   )
-  const [pendingSwitch, setPendingSwitch] = useState<{ channelId: string; channelName: string } | null>(null)
-  // The shared active-Oshi selection (Home + drawer both already read/write
-  // this same store) -- read-only here, purely to compare against each row's
-  // own channelId for the MAIN treatment (spec: "reuse the existing shared
-  // selected-Oshi state, do NOT create a second local selected state").
-  const [activeOshiId] = useSelectedCreator()
+  // `video` is only set when the switch was triggered by a video click (not
+  // a plain name/avatar click) -- see handleVideoSelect below -- so the
+  // confirm dialog's own onConfirm knows whether to also select a video
+  // once the switch goes through.
+  const [pendingSwitch, setPendingSwitch] = useState<{
+    channelId: string
+    channelName: string
+    video?: { videoId: string; title: string }
+  } | null>(null)
+  // MAIN and CURRENT are two independent states, both read-only here --
+  // confirmed with the user: switching creator from this list must move the
+  // selected accent rail to the newly picked row without ever moving the
+  // MAIN badge, which stays fixed on defaultOshi until changed from
+  // Settings > 我推設定.
+  const [currentOshiId] = useSelectedCreator()
+  const [defaultOshiId] = useDefaultOshiCreator()
 
   function handleCreatorClick(creator: MockCreator) {
     if (confirmOshiSwitch) {
       setPendingSwitch({ channelId: creator.channelId, channelName: creator.channelName })
     } else {
       onSelectCreator(creator.channelId)
+    }
+  }
+
+  /** Video clicks reuse this same confirm-switch mechanism rather than a
+   * second one: a video for the creator already being viewed selects
+   * straight away, but a video for a DIFFERENT creator must switch
+   * currentOshi first (through the identical confirm-preference check
+   * handleCreatorClick above already uses) so Home's central player never
+   * ends up showing one creator's video under another creator's identity/
+   * theme. */
+  function handleVideoSelect(creator: MockCreator, video: { videoId: string; title: string }) {
+    if (creator.channelId === currentOshiId) {
+      onSelectVideo(video, creator.channelId)
+      return
+    }
+    if (confirmOshiSwitch) {
+      setPendingSwitch({ channelId: creator.channelId, channelName: creator.channelName, video })
+    } else {
+      onSelectCreator(creator.channelId)
+      onSelectVideo(video, creator.channelId)
     }
   }
 
@@ -281,10 +321,11 @@ export function CreatorStatusList({
                       language={language}
                       now={now}
                       isFavorite={isFavorite}
-                      isActive={creator.channelId === activeOshiId}
+                      isMainOshi={creator.channelId === defaultOshiId}
+                      isCurrentOshi={creator.channelId === currentOshiId}
                       locale={locale}
                       onCreatorButtonClick={handleCreatorClick}
-                      onSelectVideo={onSelectVideo}
+                      onSelectVideo={(video) => handleVideoSelect(creator, video)}
                       onToggleFavorite={onToggleFavorite}
                     />
                   )
@@ -306,6 +347,7 @@ export function CreatorStatusList({
           onCancel={() => setPendingSwitch(null)}
           onConfirm={(dontAskAgain) => {
             onSelectCreator(pendingSwitch.channelId)
+            if (pendingSwitch.video) onSelectVideo(pendingSwitch.video, pendingSwitch.channelId)
             if (dontAskAgain) onConfirmOshiSwitchChange(false)
             setPendingSwitch(null)
           }}

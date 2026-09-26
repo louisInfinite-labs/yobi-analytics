@@ -30,10 +30,57 @@
   --creator-main: #b4f1f9;
   --creator-sub: #1b8796;
 
-  --home-gap: 12px;
+  /* Horizontal-only: Stream/Videos -> Status/Live Status, per the accepted
+     product requirement -- NOT the same value as the vertical Stream <->
+     Videos row gap below, which stays independent (--home-row-gap). */
+  --home-gap: 16px;
+  --home-row-gap: 12px;
 
-  --oshi-status-width: 360px;
-  --live-status-width: 360px;
+  /* The fixed vertical space around the player stage at THIS breakpoint --
+     --oshi-videos-height + --home-row-gap (the row below the player) +
+     10px player-frame chrome (1px border + 4px padding, both sides) --
+     i.e. 100vh minus this equals the player stage's own available height.
+     Re-declared (not derived) at each breakpoint below, alongside
+     --oshi-videos-height/--home-row-gap themselves, since all three move
+     together. Used only by --home-status-width's own formula below. */
+  --home-vertical-chrome: 246px;
+
+  /* Single source of truth: Home's right column, Oshi Status's own width,
+     and the Live Status drawer's width must always be the exact same
+     number -- see .oshi-home__canvas/.oshi-status/.live-status-drawer
+     below, all of which read this one token, never their own value.
+
+     340px is the measured floor (the narrowest of 400/380/360/340 that
+     keeps Recent Activity/Live Status usable at 1366px -- see that
+     task's own report). 518px is the measured ceiling (the reference
+     width for a future native YouTube Live Chat surface in this same
+     column). Between those two, the formula below grows this column
+     ONLY by however much horizontal slack currently exists between the
+     player stage and the actual 16:9 ratio box at the current viewport
+     -- i.e. only on wide-but-short viewports where the player is
+     height-bound (ratio box narrower than its stage), never by shrinking
+     the ratio box itself. On a normal-aspect desktop the player is
+     width-bound (zero such slack) and this floors to 340px, unchanged
+     from before. Confirmed against 6 measured viewports (1366x768,
+     1440x900, 1600x900, 1881x765, 1920x1080, 1920x720): floors to 340px
+     at every width-bound case, reaches the 518px ceiling at both
+     height-bound cases (1881x765, 1920x720) with room to spare, and
+     the video's own pixel size is provably unchanged in between (see
+     that investigation's report) since 100vh/100vw are viewport-wide
+     units, independent of this token's own resolved value -- no
+     circular dependency on the grid column this token itself defines. */
+  --home-status-width: clamp(
+    340px,
+    calc(100vw - 218px - ((100vh - var(--home-vertical-chrome)) * 16 / 9)),
+    518px
+  );
+  /* Live Status's own consumed variable, aliased to the shared token above
+     rather than deleted outright -- this is what lets the ≤640px mobile
+     override further down stay untouched (mobile diverges Oshi
+     Status/Live Status on purpose already; see that block's own comment)
+     while every desktop/narrow-desktop breakpoint has just one real
+     numeric source. */
+  --live-status-width: var(--home-status-width);
 
   /* Derived, not chosen: a 220px card holds a 16:9 thumbnail (123.75px) +
      5px gap + a 2-line title (28px) + meta (14px) = 171px, plus the list's
@@ -47,7 +94,6 @@
   --player-frame-padding: 4px;
   --player-frame-radius: 4px;
 
-  --meta-strip-height: 70px;
   --live-status-row-height: 52px;
 
   --transition-fast: 140ms ease;
@@ -104,42 +150,31 @@
 
   grid-template-columns:
     minmax(0, 1fr)
-    var(--oshi-status-width);
+    var(--home-status-width);
 
   grid-template-rows:
     minmax(0, 1fr)
     var(--oshi-videos-height);
 
-  gap: var(--home-gap);
+  column-gap: var(--home-gap);
+  row-gap: var(--home-row-gap);
 
-  padding: 0;
+  /* Sidebar->Home AND Status->viewport-edge gutters, both the same
+     --home-gap token as the Stream->Status gap between them -- three
+     equal 16px gutters from one source, not three separately maintained
+     values. Home is the only page that needs the left one (a page-level
+     concern), so it lives here rather than on the shared
+     .app-shell__content, which every other page (Dashboard, Settings)
+     also uses and which stays flush by its own existing convention. */
+  padding: 0 var(--home-gap) 0 var(--home-gap);
 
   overflow: hidden;
 }
 
-.oshi-section-title {
-  height: 26px;
-
-  display: flex;
-  align-items: center;
-
-  margin: 0;
-  padding: 0 2px;
-
-  color: var(--oshi-text-2);
-
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 26px;
-
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-
-  white-space: nowrap;
-}
-
 /* ============ Oshi Stream ============ */
 
+/* No section title (removed -- the recovered height goes entirely to the
+   player row below, see .oshi-player-frame); one row, not a 2-row grid. */
 .oshi-stream {
   grid-column: 1;
   grid-row: 1;
@@ -152,12 +187,7 @@
 
   display: grid;
 
-  grid-template-rows:
-    26px
-    minmax(0, 1fr)
-    var(--meta-strip-height);
-
-  gap: 6px;
+  grid-template-rows: minmax(0, 1fr);
 
   overflow: hidden;
 }
@@ -179,7 +209,11 @@
 
   border-radius: var(--player-frame-radius);
 
-  background: #050a10;
+  /* Exact same background as Oshi Videos/Oshi Status (both
+     var(--oshi-surface-1)), not just the same "family" -- currentOshi's
+     own color stays reserved for this frame's border/glow accents above,
+     never its background. */
+  background: var(--oshi-surface-1);
 
   transition:
     border-color var(--transition-normal),
@@ -260,116 +294,6 @@
   border: 0;
 }
 
-/* ============ Player meta strip ============ */
-
-.oshi-meta {
-  width: 100%;
-  height: var(--meta-strip-height);
-
-  min-width: 0;
-  min-height: 0;
-
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-
-  gap: 4px;
-
-  padding: 6px 10px;
-
-  overflow: hidden;
-
-  border: 1px solid var(--oshi-border);
-
-  border-left: 2px solid color-mix(in srgb, var(--creator-main) 65%, transparent);
-
-  border-radius: 4px;
-
-  background: var(--oshi-surface-1);
-}
-
-/* The CURRENT central player's video title -- not creator name/static text,
-   see PlayerMetaStrip's own docstring in HomePage.tsx. */
-.oshi-meta__title {
-  margin: 0;
-  min-width: 0;
-
-  color: var(--oshi-text-1);
-
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.3;
-
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.oshi-meta__channel {
-  display: flex;
-  align-items: center;
-
-  gap: 10px;
-
-  min-width: 0;
-}
-
-.oshi-meta__avatar {
-  width: 38px;
-  height: 38px;
-
-  flex: 0 0 38px;
-
-  display: block;
-
-  object-fit: cover;
-
-  border-radius: 50%;
-
-  border: 1px solid color-mix(in srgb, var(--creator-main) 42%, var(--oshi-border));
-}
-
-.oshi-meta__channel-text {
-  min-width: 0;
-
-  display: flex;
-  flex-direction: column;
-
-  justify-content: center;
-
-  gap: 2px;
-}
-
-.oshi-meta__channel-name {
-  min-width: 0;
-
-  overflow: hidden;
-
-  color: var(--oshi-text-1);
-
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 15px;
-
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.oshi-meta__subscriber-count {
-  min-width: 0;
-
-  overflow: hidden;
-
-  color: var(--oshi-text-3);
-
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 13px;
-
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
 /* ============ Oshi Status ============ */
 
 .oshi-status {
@@ -399,13 +323,18 @@
   flex: 0 0 auto;
 
   display: flex;
-  align-items: center;
-
-  min-height: 44px;
+  flex-direction: column;
 
   padding: 8px 12px;
 
   border-bottom: 1px solid var(--oshi-border);
+}
+
+.oshi-status__header-top {
+  display: flex;
+  align-items: center;
+
+  min-height: 44px;
 }
 
 .oshi-status__header::before {
@@ -434,10 +363,10 @@
 }
 
 .oshi-status__creator-avatar {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
 
-  flex: 0 0 32px;
+  flex: 0 0 36px;
 
   border-radius: 50%;
 
@@ -466,13 +395,48 @@
   text-overflow: ellipsis;
 }
 
-.oshi-status__creator-group {
+/* Replaces the old branch/group label -- the identity block's second line
+   is now the channel's subscriber count (Home layout rework), matching
+   PlayerMetaStrip's former subscriber-count styling since that strip no
+   longer exists. No fabricated fallback metric: most mock creators simply
+   have no subscriberCount yet (see mockCreators.ts), so the caller omits
+   this element entirely for them rather than rendering it empty. */
+.oshi-status__subscriber-count {
   overflow: hidden;
 
   color: var(--oshi-text-3);
 
-  font-size: 10px;
+  font-size: 11px;
   line-height: 13px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.oshi-status__now-playing {
+  margin-top: 8px;
+}
+
+.oshi-status__now-playing-label {
+  color: var(--oshi-text-3);
+
+  font-size: 10px;
+  font-weight: 600;
+
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.oshi-status__now-playing-title {
+  margin-top: 2px;
+
+  overflow: hidden;
+
+  color: var(--oshi-text-1);
+
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
 
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -787,7 +751,7 @@
      Status drawer (position: fixed to the viewport, not a layout column of
      Home -- see LiveScheduleDock.tsx) never enters into this at all, since
      that column's own width already stops short of the drawer's reserved
-     strip via var(--oshi-status-width) sitting to the right of it. */
+     strip via var(--home-status-width) sitting to the right of it. */
   grid-column: 1;
   grid-row: 2;
 
@@ -914,6 +878,10 @@
    .oshi-videos__filters, which scrolls) -- margin-left: auto pushes it to
    the header's far-right edge regardless of how wide the Segmented/Sort
    cluster is, without disturbing their own existing 5px gap. */
+/* Always disabled for now (see ViewAllButton's own docstring -- there is no
+   destination yet), so this never needs a :not(:disabled) split for its own
+   base rule; :disabled below only exists to override the two states
+   (cursor, hover) that would otherwise still read as interactive. */
 .oshi-videos__view-all {
   margin-left: auto;
 
@@ -933,11 +901,16 @@
   font-size: 11px;
   font-weight: 500;
   line-height: 24px;
-
-  cursor: pointer;
 }
 
-.oshi-videos__view-all:hover {
+.oshi-videos__view-all:disabled {
+  cursor: default;
+}
+
+/* :not(:disabled) -- a native `disabled` button can still match :hover, so
+   without this a disabled View All would tint toward --creator-main on
+   hover exactly like a working control. */
+.oshi-videos__view-all:hover:not(:disabled) {
   color: var(--creator-main);
 }
 
@@ -1260,7 +1233,11 @@
   z-index: 300;
 
   top: 0;
-  right: 0;
+  /* --home-gap, not 0 -- Home's own right-outer-gutter (see
+     .oshi-home__canvas's padding) applies to this drawer too, since it
+     must land exactly where Oshi Status's own right edge sits when
+     closed, not flush against the raw viewport edge. */
+  right: var(--home-gap);
   bottom: 0;
 
   width: var(--live-status-width);
@@ -1278,7 +1255,14 @@
 
   box-shadow: -12px 0 28px rgba(0, 0, 0, 0.28);
 
-  transform: translateX(100%);
+  /* +var(--home-gap), not a bare 100% -- this box's own right edge already
+     sits --home-gap short of the viewport (see `right` above), so
+     translateX(100%) alone would only walk its LEFT edge as far as that
+     same viewport-minus-gap line, leaving a --home-gap-wide sliver of the
+     drawer (creator-list strip) still on-screen at the right edge. The
+     extra --home-gap clears that sliver so the closed drawer is fully
+     off-viewport. */
+  transform: translateX(calc(100% + var(--home-gap)));
 
   transition: transform var(--transition-normal);
 
@@ -1293,8 +1277,8 @@
 
 /* The pre-existing full/compact size control: "full" is the default
    top-to-bottom drawer above; "compact" restores the original
-   min(70vh, 520px) panel anchored to the bottom-right. Width stays 360px
-   either way. */
+   min(70vh, 520px) panel anchored to the bottom-right. Width stays
+   var(--live-status-width) either way. */
 .live-status-drawer[data-size="compact"] {
   top: auto;
 
@@ -1409,40 +1393,62 @@
 .live-status-filter-row {
   display: flex;
   align-items: center;
+  justify-content: center;
+
+  width: 100%;
+  padding-inline: 16px;
+  box-sizing: border-box;
 
   gap: 5px;
 
   margin-top: 8px;
 }
 
-.live-status-filter {
-  height: 25px;
+/* The Ant Design Segmented control replacing the former two independent
+   All/Favorites buttons -- colors/radius come from the ConfigProvider
+   component tokens in LiveScheduleDock.tsx (theme-bound, incl.
+   --creator-main on the selected segment); this block fixes the compact
+   toolbar dimensions (same approach as Oshi Videos' own
+   .oshi-videos__segmented block) AND makes it a full-width, exactly-50/50
+   ALL/Favorites control instead of a content-width chip pair -- unlike Oshi
+   Videos' own scrollable multi-tag bar, there are always exactly two options
+   here, so an equal flex split reads as one continuous 2-column control. */
+.live-status-view-segmented.ant-segmented {
+  width: 100%;
 
-  display: inline-flex;
-  align-items: center;
-
-  padding: 0 9px;
-
-  border: 1px solid transparent;
-  border-radius: 4px;
-
-  background: transparent;
-
-  color: var(--oshi-text-3);
-
-  font-size: 10px;
-  font-weight: 650;
-
-  cursor: pointer;
+  font-size: 11px;
 }
 
-.live-status-filter[data-active="true"],
-.live-status-filter[aria-pressed="true"] {
-  color: var(--oshi-text-1);
+.live-status-filter-row .ant-segmented-group {
+  display: flex;
 
-  border-color: var(--oshi-border-strong);
+  width: 100%;
+}
 
-  background: rgba(255, 255, 255, 0.045);
+.live-status-filter-row .ant-segmented-item {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.live-status-view-segment-item {
+  min-height: 26px;
+}
+
+.live-status-view-segment-label {
+  width: 100%;
+  min-height: 26px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0 10px;
+
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+
+  white-space: nowrap;
 }
 
 .live-status-drawer__body {
@@ -1619,7 +1625,7 @@
   transition: transform 180ms ease-out;
 }
 
-.live-status-member[data-main-oshi="true"]::before {
+.live-status-member[data-current-oshi="true"]::before {
   content: "";
 
   position: absolute;
@@ -1744,7 +1750,10 @@
 .live-status-member__main-badge {
   flex: 0 0 auto;
 
-  color: var(--creator-main);
+  /* This row's OWN creator accent (see --member-theme-color comment above),
+     never --creator-main -- MAIN identifies defaultOshi and must not
+     recolor when some other row becomes currentOshi. */
+  color: var(--member-theme-color);
 
   font-size: 8px;
   font-weight: 750;
@@ -1942,12 +1951,13 @@
 
 @media (max-width: 1600px) {
   :root {
-    --oshi-status-width: 338px;
-    --live-status-width: 350px;
-
     /* 205px card -> 115.31px thumbnail + 5 + 42 = 162.31, + 17 padding,
        + 34 header + 2 borders. */
     --oshi-videos-height: 216px;
+
+    /* --oshi-videos-height(216) + --home-row-gap(12, unchanged here) + 10px
+       player-frame chrome -- see --home-vertical-chrome's own root comment. */
+    --home-vertical-chrome: 238px;
   }
 
   .oshi-video-card {
@@ -1958,42 +1968,18 @@
 
 @media (max-width: 1366px) {
   :root {
-    --home-gap: 10px;
-
-    --oshi-status-width: 318px;
-    --live-status-width: 340px;
+    /* --home-gap (horizontal, Stream/Videos -> Status) stays 16px at every
+       desktop width -- only the vertical Stream <-> Videos row gap shrinks
+       here. */
+    --home-row-gap: 10px;
 
     /* 190px card -> 106.88px thumbnail + 5 + 42 = 153.88, + 17 padding,
        + 34 header + 2 borders. */
     --oshi-videos-height: 208px;
 
-    --meta-strip-height: 66px;
-  }
-
-  .oshi-stream {
-    grid-template-rows:
-      24px
-      minmax(0, 1fr)
-      var(--meta-strip-height);
-  }
-
-  .oshi-section-title {
-    height: 24px;
-    line-height: 24px;
-  }
-
-  .oshi-meta {
-    padding: 5px 8px;
-  }
-
-  .oshi-meta__channel {
-    gap: 8px;
-  }
-
-  .oshi-meta__avatar {
-    width: 36px;
-    height: 36px;
-    flex: 0 0 36px;
+    /* --oshi-videos-height(208) + --home-row-gap(10) + 10px player-frame
+       chrome -- see --home-vertical-chrome's own root comment. */
+    --home-vertical-chrome: 228px;
   }
 
   .oshi-video-card {
@@ -2004,6 +1990,12 @@
 
 @media (max-width: 640px) {
   :root {
+    /* Deliberately independent of --home-status-width (the shared desktop
+       token): mobile's Live Status becomes a full-screen sheet by design,
+       which has never been mirrored onto Oshi Status's own grid column at
+       this breakpoint -- see --live-status-width's own root comment for why
+       this one override stays a real, non-aliased value here instead of
+       inheriting the shared token. */
     --live-status-width: 100vw;
   }
 }

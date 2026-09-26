@@ -62,13 +62,18 @@ function perceivedBrightness(hex: string): number {
 /** A verified backend color (any hue/lightness, including #FFFFFF/#000000 --
  * see Creator Master's own themeColor field) still needs a soft tint and a
  * textAccent that contrasts against it; both are derived rather than stored,
- * since only one canonical color is ever persisted per creator. */
+ * since only one canonical color is ever persisted per creator. `primary` is
+ * normalized to the same uppercase canonical form `soft`/`textAccent`
+ * already get from rgbToHex, so a lowercase-but-valid input (e.g. from a
+ * mock/test/future API source) can never produce a MemberAccent whose three
+ * hex values disagree on case. */
 function accentFromThemeColor(themeColor: string): MemberAccent {
-  const textTarget: [number, number, number] = perceivedBrightness(themeColor) > 140 ? [0, 0, 0] : [255, 255, 255]
+  const normalizedThemeColor = themeColor.toUpperCase()
+  const textTarget: [number, number, number] = perceivedBrightness(normalizedThemeColor) > 140 ? [0, 0, 0] : [255, 255, 255]
   return {
-    primary: themeColor,
-    soft: mixToward(themeColor, [255, 255, 255], 0.82),
-    textAccent: mixToward(themeColor, textTarget, 0.62),
+    primary: normalizedThemeColor,
+    soft: mixToward(normalizedThemeColor, [255, 255, 255], 0.82),
+    textAccent: mixToward(normalizedThemeColor, textTarget, 0.62),
   }
 }
 

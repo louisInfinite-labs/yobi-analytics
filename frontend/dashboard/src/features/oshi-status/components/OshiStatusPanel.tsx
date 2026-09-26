@@ -1,6 +1,5 @@
 import { Avatar } from "antd"
 import { useMemo } from "react"
-import { BRANCH_LABELS } from "../../../entities/creator/model/domain"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { resolvePlaybackVideoId } from "../../home-room/data/mockRecentVideos"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
@@ -11,6 +10,7 @@ import { formatAbsoluteTime, formatCountdown } from "../../live-status/model/cre
 import { resetPreviousVisit, usePreviousVisit } from "../hooks/useLastVisit"
 import {
   formatActivityTime,
+  formatCompactCount,
   isUnseenActivity,
   measureActivity,
   selectRecentActivity,
@@ -37,6 +37,11 @@ interface OshiStatusPanelProps {
   /** The one shared Home selected-video path (see HomePage.tsx) -- switches
    * the central Oshi Stream player directly, never a modal/second player. */
   onSelectVideo: (video: { videoId: string; title: string }) => void
+  /** The CURRENT central Oshi Stream player's video title (HomePage.tsx's own
+   * `embed?.title`), never the live/upcoming stream title (`status.title`,
+   * shown separately in Live/Next below) -- those are different concepts
+   * that happen to often match. Null when nothing is loaded in the player. */
+  nowPlayingTitle: string | null
 }
 
 /** One Recent Activity row: [time + NEW] / [clickable title] / [thumbnail],
@@ -126,7 +131,16 @@ function LiveOrNext({ status, now }: { status: CreatorStatus; now: Date }) {
  * streaming, what changed since the last visit, and this week's activity.
  * Every number is derived from the video pools Home already loaded and the
  * shared Holodex status — nothing here fetches on its own. */
-export function OshiStatusPanel({ creatorId, status, now, uploads, streams, loading, onSelectVideo }: OshiStatusPanelProps) {
+export function OshiStatusPanel({
+  creatorId,
+  status,
+  now,
+  uploads,
+  streams,
+  loading,
+  onSelectVideo,
+  nowPlayingTitle,
+}: OshiStatusPanelProps) {
   const creator = mockCreators.find((entry) => entry.channelId === creatorId)
   const accent = getMemberAccent(creatorId, creator?.themeColor)
   const previousVisit = usePreviousVisit()
@@ -145,25 +159,42 @@ export function OshiStatusPanel({ creatorId, status, now, uploads, streams, load
   return (
     <aside className="oshi-status">
       <div className="oshi-status__header">
-        <div className="oshi-status__creator">
-          <Avatar
-            size={32}
-            src={creator?.avatarUrl}
-            alt={creator?.channelName ?? creatorId}
-            className="oshi-status__creator-avatar"
-            style={creator?.avatarUrl ? undefined : { background: accent.primary, color: accent.textAccent }}
-          >
-            {creator?.channelName.charAt(0)}
-          </Avatar>
-          <div className="oshi-status__creator-text">
-            <div className="oshi-status__creator-name">{creator?.channelName ?? creatorId}</div>
-            {creator && <div className="oshi-status__creator-group">{BRANCH_LABELS[creator.branch]}</div>}
+        <div className="oshi-status__header-top">
+          <div className="oshi-status__creator">
+            <Avatar
+              size={36}
+              src={creator?.avatarUrl}
+              alt={creator?.channelName ?? creatorId}
+              className="oshi-status__creator-avatar"
+              style={creator?.avatarUrl ? undefined : { background: accent.primary, color: accent.textAccent }}
+            >
+              {creator?.channelName.charAt(0)}
+            </Avatar>
+            <div className="oshi-status__creator-text">
+              <div className="oshi-status__creator-name">{creator?.channelName ?? creatorId}</div>
+              {/* No backend/mock field carries a real subscriber count for
+               * most creators yet -- only the primary dev/test creator has
+               * one, so the line is simply omitted rather than showing a
+               * fabricated number for everyone else. See this task's final
+               * report. */}
+              {creator?.subscriberCount != null && (
+                <div className="oshi-status__subscriber-count">
+                  {formatCompactCount(creator.subscriberCount)} {t(locale, "oshiStatus.subscribers")}
+                </div>
+              )}
+            </div>
           </div>
+          {import.meta.env.DEV && (
+            <button type="button" className="oshi-status__dev-reset" onClick={resetPreviousVisit}>
+              {t(locale, "oshiStatus.devResetVisit")}
+            </button>
+          )}
         </div>
-        {import.meta.env.DEV && (
-          <button type="button" className="oshi-status__dev-reset" onClick={resetPreviousVisit}>
-            {t(locale, "oshiStatus.devResetVisit")}
-          </button>
+        {nowPlayingTitle && (
+          <div className="oshi-status__now-playing">
+            <div className="oshi-status__now-playing-label">{t(locale, "oshiStatus.nowPlaying")}</div>
+            <div className="oshi-status__now-playing-title">{nowPlayingTitle}</div>
+          </div>
         )}
       </div>
 

@@ -36,6 +36,7 @@ function renderPanel(uploads: RecentVideo[], onSelectVideo = vi.fn()) {
       streams={[]}
       loading={false}
       onSelectVideo={onSelectVideo}
+      nowPlayingTitle={null}
     />,
   )
   return onSelectVideo

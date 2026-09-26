@@ -334,11 +334,13 @@ function VideoSortDropdown({
  * Settings exist, see app/navigation/useCurrentPage.ts, and Dashboard is
  * aggregate KPI/chart/ranking analytics, not a per-creator video list).
  * Per this task's own instruction not to invent a new page/route without
- * reporting that gap first, this button is placed and styled but not yet
- * wired to a destination. */
+ * reporting that gap first, this reserves the label's position but stays
+ * `disabled` (native semantics -- unclickable, unfocusable, no hover state;
+ * see home.css's own :disabled rule) until that destination exists, rather
+ * than presenting an inert control as a working one. */
 function ViewAllButton({ locale }: { locale: Locale }) {
   return (
-    <button type="button" className="oshi-videos__view-all">
+    <button type="button" className="oshi-videos__view-all" disabled>
       {t(locale, "recentVideos.viewAll")}
       <ChevronRight size={12} aria-hidden="true" />
     </button>
