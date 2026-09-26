@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Filter, Globe2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Filter } from "lucide-react"
 import { t, type Locale } from "../../../shared/i18n/translations"
 
 interface ScheduleToolbarProps {
@@ -15,11 +15,14 @@ function formatWeekRange(weekStart: Date, locale: Locale): string {
   return `${formatter.format(weekStart)} - ${formatter.format(weekEnd)}`
 }
 
-/** Timezone/Filter render per the approved reference image but aren't wired
- * to real behavior (no timezone-conversion or filtering logic exists to back
- * them) -- native `disabled` rather than a fake, clickable no-op, same
- * "don't pretend to be functional" call already made for Home's Oshi Videos
- * View All button. */
+/** No manual timezone control -- the whole page is placed by the viewer's
+ * own browser/device timezone (see scheduleGrid.ts's use of local Date
+ * getters), never a fixed JST toggle, so there's nothing for a timezone
+ * button to switch. Filter renders per the approved reference image but
+ * isn't wired to real behavior (no filtering logic exists to back it) --
+ * native `disabled` rather than a fake, clickable no-op, same "don't
+ * pretend to be functional" call already made for Home's Oshi Videos View
+ * All button. */
 export function ScheduleToolbar({ locale, weekStart, onPreviousWeek, onNextWeek }: ScheduleToolbarProps) {
   return (
     <div className="schedule-toolbar">
@@ -32,11 +35,6 @@ export function ScheduleToolbar({ locale, weekStart, onPreviousWeek, onNextWeek 
           <ChevronRight size={16} />
         </button>
       </div>
-
-      <button type="button" className="timezone-button schedule-control" disabled>
-        <Globe2 size={16} />
-        {t(locale, "liveSchedule.timezoneLabel")}
-      </button>
 
       <button type="button" className="filter-button schedule-control" disabled>
         <Filter size={16} />

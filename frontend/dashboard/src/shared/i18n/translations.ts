@@ -148,7 +148,6 @@ export type TranslationKey =
   | "liveSchedule.timeColumnHeader"
   | "liveSchedule.prevWeekAria"
   | "liveSchedule.nextWeekAria"
-  | "liveSchedule.timezoneLabel"
   | "liveSchedule.filterLabel"
   | "liveSchedule.liveBadge"
   | "liveSchedule.moreStreamsAria"
@@ -299,10 +298,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.upcomingStreamsGroup": "即將到來的直播",
     "liveSchedule.pageTitle": "直播時間表",
     "liveSchedule.pageSubtitle": "你所選創作者的即將到來與直播中節目。",
-    "liveSchedule.timeColumnHeader": "時間 (JST)",
+    "liveSchedule.timeColumnHeader": "時間",
     "liveSchedule.prevWeekAria": "上一週",
     "liveSchedule.nextWeekAria": "下一週",
-    "liveSchedule.timezoneLabel": "JST",
     "liveSchedule.filterLabel": "篩選",
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.moreStreamsAria": "還有 {{count}} 個直播",
@@ -452,10 +450,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.upcomingStreamsGroup": "Upcoming streams",
     "liveSchedule.pageTitle": "Live Schedule",
     "liveSchedule.pageSubtitle": "Upcoming and live streams across your selected creators.",
-    "liveSchedule.timeColumnHeader": "Time (JST)",
+    "liveSchedule.timeColumnHeader": "Time",
     "liveSchedule.prevWeekAria": "Previous week",
     "liveSchedule.nextWeekAria": "Next week",
-    "liveSchedule.timezoneLabel": "JST",
     "liveSchedule.filterLabel": "Filter",
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.moreStreamsAria": "{{count}} more streams",
@@ -605,10 +602,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.upcomingStreamsGroup": "今後の配信",
     "liveSchedule.pageTitle": "配信スケジュール",
     "liveSchedule.pageSubtitle": "選択したクリエイターの今後の配信と配信中の番組。",
-    "liveSchedule.timeColumnHeader": "時間 (JST)",
+    "liveSchedule.timeColumnHeader": "時間",
     "liveSchedule.prevWeekAria": "前の週",
     "liveSchedule.nextWeekAria": "次の週",
-    "liveSchedule.timezoneLabel": "JST",
     "liveSchedule.filterLabel": "フィルター",
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.moreStreamsAria": "他に{{count}}件の配信",

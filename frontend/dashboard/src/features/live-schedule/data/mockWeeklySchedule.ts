@@ -26,16 +26,36 @@ function pickTopic(channelId: string, salt: string): string {
 }
 
 const DAY_HOURS = 24 - TIME_START_HOUR
+// This roster's schedules are conventionally authored/announced in JST
+// (fixed UTC+9, no DST) -- generating mock streams against that fixed
+// anchor, then letting useWeeklySchedule/scheduleGrid re-localize them via
+// ordinary local Date math, is what actually exercises "does this stream
+// land on the correct LOCAL day/slot for the viewer's own timezone" rather
+// than always landing on the same visual slot no matter who's viewing.
+const JST_UTC_OFFSET_HOURS = 9
+// weekStart is generated from the viewer's own local calendar (see
+// useWeeklySchedule), so the same real JST instant can land a calendar day
+// earlier or later depending on the viewer's timezone. Seeding across
+// [-1, +7] JST calendar days (not just the visible 0-6) means a stream
+// that shifts across midnight into or out of the viewer's visible week
+// still gets generated -- scheduleGrid's own per-day slot filtering
+// discards whichever candidates don't actually land in a rendered slot.
+const CANDIDATE_DAY_OFFSETS = 9
+
+function jstWallClockToUtcMs(year: number, month: number, date: number, hour: number, minute: number): number {
+  return Date.UTC(year, month, date, hour - JST_UTC_OFFSET_HOURS, minute)
+}
 
 /** Stand-in for the real per-week Holodex schedule (not built yet -- see
  * mockCreatorStatuses.ts's own docstring for the same "swap this module"
  * note; useWeeklySchedule is the one place every consumer already reads
- * through). Deterministic per creator+week (keyed off `weekStart`'s own
- * timestamp) so paging Prev/Next week doesn't reshuffle an already-viewed
- * week's streams, while still varying week to week. */
+ * through). Deterministic per creator+week, keyed off `weekStart`'s own
+ * calendar date (not its absolute timestamp, which would vary by the
+ * viewer's own timezone for "the same" calendar week) so paging Prev/Next
+ * week doesn't reshuffle an already-viewed week's streams. */
 export function getMockWeeklySchedule(weekStart: Date): ScheduledStream[] {
   const streams: ScheduledStream[] = []
-  const weekKey = weekStart.getTime()
+  const weekKey = `${weekStart.getFullYear()}-${weekStart.getMonth()}-${weekStart.getDate()}`
 
   mockCreators.forEach((creator) => {
     const weekSalt = `${creator.channelId}:${weekKey}`
@@ -43,13 +63,17 @@ export function getMockWeeklySchedule(weekStart: Date): ScheduledStream[] {
     const streamCount = hashString(weekSalt) % 3
     for (let n = 0; n < streamCount; n++) {
       const slotHash = hashString(`${weekSalt}:${n}`)
-      const dayOffset = slotHash % 7
-      const hourOffset = Math.floor(slotHash / 7) % DAY_HOURS
-      const isHalfHour = Math.floor(slotHash / (7 * DAY_HOURS)) % 2 === 1
+      const dayOffset = (slotHash % CANDIDATE_DAY_OFFSETS) - 1
+      const hourOffset = Math.floor(slotHash / CANDIDATE_DAY_OFFSETS) % DAY_HOURS
+      const isHalfHour = Math.floor(slotHash / (CANDIDATE_DAY_OFFSETS * DAY_HOURS)) % 2 === 1
 
-      const start = new Date(weekStart)
-      start.setDate(start.getDate() + dayOffset)
-      start.setHours(TIME_START_HOUR + hourOffset, isHalfHour ? 30 : 0, 0, 0)
+      const scheduledStartMs = jstWallClockToUtcMs(
+        weekStart.getFullYear(),
+        weekStart.getMonth(),
+        weekStart.getDate() + dayOffset,
+        TIME_START_HOUR + hourOffset,
+        isHalfHour ? 30 : 0,
+      )
 
       const topic = pickTopic(creator.channelId, `stream-${n}`)
       streams.push({
@@ -59,7 +83,7 @@ export function getMockWeeklySchedule(weekStart: Date): ScheduledStream[] {
         title: topic,
         description: `${creator.channelName} -- ${topic}. Come hang out!`,
         status: "upcoming",
-        scheduledStartMs: start.getTime(),
+        scheduledStartMs,
         topics: [topic],
       })
     }

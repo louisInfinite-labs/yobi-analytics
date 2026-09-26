@@ -13,16 +13,16 @@ describe("LiveSchedulePage", () => {
     const { container } = render(<LiveSchedulePage />)
 
     expect(screen.getByText("Live Schedule")).toBeInTheDocument()
-    expect(screen.getByText("Time (JST)")).toBeInTheDocument()
+    expect(screen.getByText("Time")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Previous week" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Next week" })).toBeInTheDocument()
     expect(container.querySelectorAll(".day-column")).toHaveLength(7)
   })
 
-  it("renders the timezone and filter toolbar controls as disabled (not wired to real behavior yet)", () => {
+  it("renders the filter toolbar control as disabled (not wired to real behavior yet), with no manual timezone control", () => {
     render(<LiveSchedulePage />)
 
-    expect(screen.getByText("JST").closest("button")).toBeDisabled()
     expect(screen.getByText("Filter").closest("button")).toBeDisabled()
+    expect(screen.queryByText("JST")).not.toBeInTheDocument()
   })
 })
