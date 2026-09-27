@@ -57,6 +57,14 @@ def _creator_to_dict(creator: Creator) -> dict[str, Any]:
         "channelType": creator.channel_type,
         "themeColor": creator.theme_color,
         "lifecycleStage": creator.lifecycle_stage,
+        # Included because tracking.creator_master's canonical eligibility
+        # rules (is_creator_selectable/is_creator_live_roster_eligible, C4)
+        # depend on it alongside channelType/lifecycleStage above -- without
+        # it, a frontend consumer could not derive eligibility itself.
+        # discoveryEnabled is deliberately NOT exposed here: no eligibility
+        # rule depends on it, so it would only be a stable fact with no
+        # consumer, not schema a future frontend actually needs.
+        "active": creator.active,
         "youtubeChannelId": creator.youtube_channel_id,
     }
 

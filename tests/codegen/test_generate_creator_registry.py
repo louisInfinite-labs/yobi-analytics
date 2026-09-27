@@ -71,6 +71,39 @@ def test_avatar_url_null_is_preserved_for_every_current_creator(registry):
     assert all(creator["avatarUrl"] is None for creator in registry["creators"])
 
 
+def test_active_is_present_for_every_generated_creator(registry):
+    assert all("active" in creator for creator in registry["creators"])
+
+
+def test_active_exactly_matches_the_backend_creator_active_field(registry):
+    """C4's eligibility rules (is_creator_selectable/is_creator_live_roster_eligible)
+    depend on `active` alongside channelType/lifecycleStage -- this proves the
+    generated value is a faithful copy of Creator.active, not derived/guessed."""
+    active_by_id = {creator.creator_id: creator.active for creator in load_creators()}
+    for creator in registry["creators"]:
+        assert creator["active"] == active_by_id[creator["creatorId"]]
+
+
+def test_active_is_a_real_boolean_not_a_stringified_value(registry):
+    assert all(isinstance(creator["active"], bool) for creator in registry["creators"])
+
+
+def test_discovery_enabled_is_not_exposed_in_the_generated_artifact(registry):
+    """discoveryEnabled is not part of current-roster eligibility (C4) and must not
+    be added merely because Creator Master happens to carry it."""
+    assert all("discoveryEnabled" not in creator for creator in registry["creators"])
+
+
+def test_no_derived_eligibility_boolean_is_exposed(registry):
+    """The generated artifact exposes stable canonical facts only -- eligibility is a
+    business rule the frontend derives from active/channelType/lifecycleStage itself,
+    never a precomputed flag that would become a second copy of C4's own logic."""
+    forbidden = {"selectable", "eligible", "liveRosterEligible", "isEligible", "isSelectable"}
+    for creator in registry["creators"]:
+        leaked = forbidden & creator.keys()
+        assert not leaked, f"Derived eligibility field(s) {leaked} leaked into the generated registry for {creator['creatorId']!r}"
+
+
 def test_no_runtime_fields_are_included(registry):
     for creator in registry["creators"]:
         leaked = _RUNTIME_FIELD_NAMES & creator.keys()
