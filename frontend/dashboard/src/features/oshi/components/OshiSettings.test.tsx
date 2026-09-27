@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 import { OshiSettings } from "./OshiSettings"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
+import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
 
 // OshiSettings reads useMemberTheme() (for its own ConfigProvider
@@ -74,5 +75,21 @@ describe("OshiSettings (My Favorites roster)", () => {
     expect(screen.getAllByText("0 selected").length).toBeGreaterThan(0)
     await user.click(screen.getByRole("checkbox", { name: "Add 藍沢エマ to favorites" }))
     expect(screen.getAllByText("1 selected").length).toBeGreaterThan(0)
+  })
+
+  it("saves favorites and restores them, un-favoriting included, after a reload", async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderOshiSettings()
+    await user.click(screen.getByRole("checkbox", { name: "Add 藍沢エマ to favorites" }))
+    await user.click(screen.getByRole("checkbox", { name: "Add 兎田ぺこら to favorites" }))
+    expect(JSON.parse(localStorage.getItem("yobi.favoriteCreatorIds")!).sort()).toEqual(["ch_aizawa_ema", "ch_usada_pekora"])
+    unmount()
+
+    resetAllSharedStateForTests()
+    renderOshiSettings()
+    expect(screen.getByRole("checkbox", { name: "Remove 藍沢エマ from favorites" })).toBeChecked()
+
+    await user.click(screen.getByRole("checkbox", { name: "Remove 藍沢エマ from favorites" }))
+    expect(JSON.parse(localStorage.getItem("yobi.favoriteCreatorIds")!)).toEqual(["ch_usada_pekora"])
   })
 })
