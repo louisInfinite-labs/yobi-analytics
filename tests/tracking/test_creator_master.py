@@ -387,6 +387,48 @@ def test_extreme_theme_colors_are_accepted_unchanged():
     assert creators["arya_kuroha"].theme_color == "#000000"
 
 
+def test_avatar_url_defaults_to_none_when_absent(tmp_path):
+    """A record without 'avatarUrl' parses as avatar_url=None (sparse by
+    design, same as graduatedAt/themeColor), not a placeholder value."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record()]), encoding="utf-8")
+
+    creators = load_creators(path)
+
+    assert creators[0].avatar_url is None
+
+
+def test_avatar_url_is_parsed_when_present(tmp_path):
+    """A present 'avatarUrl' string is parsed onto the Creator as-is."""
+    path = tmp_path / "creators.json"
+    path.write_text(
+        json.dumps([_base_record(avatarUrl="https://yt3.googleusercontent.com/example=s800")]),
+        encoding="utf-8",
+    )
+
+    creators = load_creators(path)
+
+    assert creators[0].avatar_url == "https://yt3.googleusercontent.com/example=s800"
+
+
+def test_blank_avatar_url_is_rejected(tmp_path):
+    """An empty-string 'avatarUrl' is rejected rather than treated as a real value."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(avatarUrl="")]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
+def test_non_string_avatar_url_is_rejected(tmp_path):
+    """A non-string 'avatarUrl' (e.g. a number) is rejected."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(avatarUrl=12345)]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
 def test_production_roster_theme_color_coverage():
     """98 of the 118 production creators carry a verified themeColor
     (Justice/ReGLOSS/FLOWGLOW, every VSPO JP/EN member, and all four
@@ -401,6 +443,15 @@ def test_production_roster_theme_color_coverage():
 
     assert len(with_color) == 98
     assert len(without_color) == 20
+
+
+def test_production_roster_loads_without_avatar_url_yet():
+    """C1 adds the avatarUrl field/parsing but does not populate real data yet --
+    every one of the 118 real creators must still load successfully as avatar_url=None."""
+    creators = load_creators()
+
+    assert len(creators) == 118
+    assert all(c.avatar_url is None for c in creators)
 
 
 def test_production_roster_loads_with_unique_ids_and_the_verified_asobimawaritai_unit():

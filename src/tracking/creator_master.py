@@ -70,6 +70,20 @@ class Creator:
     # deterministic hashed palette is the fallback for None, not something
     # this field ever needs to account for.
     theme_color: str | None = None
+    # The creator's canonical avatar image URL, or None when it hasn't been
+    # synced yet (sparse by design, same as theme_color above — never
+    # guessed/generated). Canonical source: the YouTube Data API's
+    # channels.list(part="snippet") -> snippet.thumbnails, preferring the
+    # highest-quality thumbnail available — never a Holodex-provided photo,
+    # since Holodex is a supplementary, best-effort data source (Roadmap
+    # Phase 9) and must not become this field's source of truth. Populated
+    # only by dedicated maintenance/sync tooling (not implemented yet); an
+    # ordinary frontend/API request must never call YouTube on the fly to
+    # refresh this, and a failed sync must leave the existing value (or
+    # None) in place rather than making Creator Master itself unusable. The
+    # frontend falls back to a generated colored-initial avatar when this
+    # is None.
+    avatar_url: str | None = None
 
 
 def load_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
@@ -124,6 +138,7 @@ def _parse_creator(raw: dict) -> Creator:
             )
 
         theme_color = _optional_theme_color(raw, "themeColor", creator_id)
+        avatar_url = _optional_str(raw, "avatarUrl", creator_id)
 
         return Creator(
             creator_id=creator_id,
@@ -138,6 +153,7 @@ def _parse_creator(raw: dict) -> Creator:
             discovery_enabled=discovery_enabled,
             graduated_at=graduated_at,
             theme_color=theme_color,
+            avatar_url=avatar_url,
         )
     except (KeyError, TypeError) as exc:
         raise CreatorMasterError(f"Malformed Creator Master record, missing/invalid field: {exc}") from exc
@@ -179,6 +195,23 @@ def _optional_iso_date(raw: dict, field: str, creator_id: str) -> str | None:
     # convention for every other date field. Round-tripping through
     # isoformat() rejects anything that isn't already in that exact form.
     if parsed.isoformat() != value:
+        raise CreatorMasterError(f"Creator {creator_id!r} has invalid {field!r}: {value!r}")
+    return value
+
+
+def _optional_str(raw: dict, field: str, creator_id: str) -> str | None:
+    """Return raw[field] as a non-empty string if present, or None if the key is absent.
+
+    For an optional field with no further format of its own to validate,
+    unlike graduatedAt/themeColor below — but a present-and-wrong-type or
+    blank value is still rejected rather than silently dropped, matching
+    every other field's "no value" convention (an absent key, not a
+    placeholder like an empty string).
+    """
+    if field not in raw:
+        return None
+    value = raw[field]
+    if not isinstance(value, str) or not value:
         raise CreatorMasterError(f"Creator {creator_id!r} has invalid {field!r}: {value!r}")
     return value
 
