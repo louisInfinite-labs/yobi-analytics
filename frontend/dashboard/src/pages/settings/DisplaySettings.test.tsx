@@ -71,6 +71,22 @@ describe("DisplaySettings", () => {
     expect(localStorage.getItem(COUNTDOWN_LANGUAGE_KEY)).toBeNull()
   })
 
+  it("updates the Upcoming streams absolute-mode option label to match the global time format, without changing the stored mode", async () => {
+    const user = userEvent.setup()
+    render(<DisplaySettings />)
+
+    expect(selectedValue("Upcoming streams")).toBe("HH:mm")
+
+    await choose(user, "Time format", "12-hour (AM/PM)")
+
+    expect(selectedValue("Upcoming streams")).toBe("h:mm AM/PM")
+
+    await choose(user, "Time format", "24-hour (HH:mm)")
+
+    expect(selectedValue("Upcoming streams")).toBe("HH:mm")
+    expect(localStorage.getItem(MODE_KEY)).toBeNull()
+  })
+
   it("restores the saved time format and upcoming-display mode after a reload", async () => {
     const user = userEvent.setup()
     const { unmount } = render(<DisplaySettings />)

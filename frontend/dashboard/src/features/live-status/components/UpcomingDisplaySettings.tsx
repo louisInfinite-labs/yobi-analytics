@@ -1,5 +1,6 @@
 import { Select } from "antd"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
+import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { t } from "../../../shared/i18n/translations"
 import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
 
@@ -9,6 +10,13 @@ import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
 export function UpcomingDisplaySettings() {
   const [mode, setMode] = useUpcomingDisplayMode()
   const [locale] = useLocale()
+  const [timeFormat] = useTimeFormat()
+
+  // Absolute mode always renders through formatAbsoluteTime/formatClockTime,
+  // so this label must track the global timeFormat rather than stay
+  // hardcoded to "HH:mm" -- otherwise it misleadingly claims 24-hour clock
+  // times while a 12h user is actually shown "h:mm AM/PM".
+  const absoluteLabel = timeFormat === "12h" ? "h:mm AM/PM" : "HH:mm"
 
   return (
     <Select
@@ -18,7 +26,7 @@ export function UpcomingDisplaySettings() {
       onChange={(next) => setMode(next as typeof mode)}
       aria-label={t(locale, "displaySettings.upcomingLabel")}
       options={[
-        { value: "absolute", label: "HH:mm" },
+        { value: "absolute", label: absoluteLabel },
         { value: "countdown", label: t(locale, "displaySettings.upcomingCountdownOption") },
       ]}
     />
