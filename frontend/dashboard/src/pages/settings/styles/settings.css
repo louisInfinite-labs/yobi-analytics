@@ -1048,6 +1048,12 @@
   }
 
   .notification-settings-main {
+    /* flex: 1 1 auto is what actually makes this row consume the full
+       remaining height in .notification-settings-content's flex column --
+       without it, the grid just sizes to its own content and leaves any
+       leftover space as a blank gap below both panels instead of the
+       panels filling it. */
+    flex: 1 1 auto;
     min-height: 0;
     /* minmax(0, 1fr), not auto: an auto row sizes to its tallest item's
        max-content, which would let a long topic list grow the row (and
@@ -1064,15 +1070,15 @@
 
   .notification-detail-panel {
     min-height: 0;
-    /* overflow-y: auto, not hidden: measured at 1600x900/1440x900/1366x768
-       the detail editor's own content (header + all four sections + the
-       Save/Reset action) is genuinely taller than the space available
-       there -- only 1920x1080 fits it without scrolling. Clipping with
-       `hidden` would silently cut off the action button; this still keeps
-       the panel scrollbar-free whenever the content actually fits (see
-       measurements at 1920x1080). */
-    overflow-y: auto;
-    overflow-x: hidden;
+    /* No overflow-y: auto here: after compressing vertical spacing (panel
+       padding, section padding/margins, reminder-grid item height, member
+       preview size, override box, footer button height) and fixing
+       .notification-settings-main's missing flex-grow above, the detail
+       editor's content measures scrollHeight <= clientHeight at
+       1920x1080/1600x900/1440x900 -- confirmed by measurement, not
+       assumed. It stays clipped (not scrollable) at these normal desktop
+       widths, matching "only the left topic list may scroll". */
+    overflow: hidden;
   }
 
   .notification-topic-list-scroll {
@@ -1082,6 +1088,24 @@
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-gutter: stable;
+  }
+}
+
+/* Narrow desktop band (still side-by-side, not stacked) where the detail
+   editor's own content genuinely cannot fit even after the spacing
+   compression above: at 1366x768 it measures ~814px of content against
+   ~623px available (~132px of that gap is the shorter viewport height
+   alone, the rest is text wrapping in a narrower right column) -- neither
+   is closeable through further reasonable spacing changes without
+   shrinking text, hiding content, or restructuring the column widths, all
+   of which are out of scope here. Confirmed by the user: allow this one
+   panel to scroll internally only in this band; 1441px+ stays
+   scrollbar-free (per the rule above), and the left topic list remains
+   the only scroll owner everywhere else. */
+@media (min-width: 1361px) and (max-width: 1440px) {
+  .notification-detail-panel {
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 }
 
@@ -1300,7 +1324,7 @@
   border: 1px solid #3b3543;
   border-radius: 14px;
 
-  padding: 28px 28px 22px;
+  padding: 20px 24px 16px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1315,31 +1339,31 @@
 .notification-detail-header {
   display: flex;
   align-items: flex-start;
-  gap: 18px;
-  padding-bottom: 24px;
+  gap: 16px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--notification-divider);
 }
 
 .notification-detail-header__icon {
   flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
+  width: 44px;
+  height: 44px;
   color: #e488c2;
 }
 
 .notification-detail-header__title {
   margin: 0;
   color: #f8f3fb;
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1.15;
   font-weight: 700;
 }
 
 .notification-detail-header__description {
-  margin-top: 7px;
+  margin-top: 4px;
   color: var(--notification-text-secondary);
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 /* Draft mode: the topic picker takes the header's own slot. */
@@ -1353,7 +1377,7 @@
 }
 
 .notification-detail-section {
-  padding: 24px 0;
+  padding: 14px 0;
   border-bottom: 1px solid var(--notification-divider);
 }
 
@@ -1362,7 +1386,7 @@
 }
 
 .notification-detail-section__title {
-  margin: 0 0 5px;
+  margin: 0 0 4px;
   color: #f4eff7;
   font-size: 18px;
   line-height: 1.3;
@@ -1370,10 +1394,10 @@
 }
 
 .notification-detail-section__description {
-  margin: 0 0 16px;
+  margin: 0 0 10px;
   color: #9e96a7;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 /* ---- Live reminder time -- antd Segmented restyled to the spec's own
@@ -1391,8 +1415,8 @@
      widths once that's accounted for. This wraps to fewer, wider columns
      whenever the panel is narrower, and up to 6 across once it's wide
      enough, with no min/max-width media query to keep in sync. */
-  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 8px;
 }
 
 .notification-reminder-options .ant-segmented-group {
@@ -1400,7 +1424,7 @@
 }
 
 .notification-reminder-options .ant-segmented-item {
-  min-height: 48px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1433,7 +1457,7 @@
 /* ---- Notification type ---- */
 
 .notification-type-control.ant-segmented {
-  margin-top: 4px;
+  margin-top: 2px;
   max-width: 420px;
   background: #221e29;
 }
@@ -1458,7 +1482,7 @@
 
 .notification-members-manage.ant-btn {
   min-width: 138px;
-  height: 44px;
+  height: 40px;
   border-radius: 9px;
 
   background: #172237;
@@ -1475,20 +1499,20 @@
 .notification-member-preview {
   display: flex;
   align-items: flex-start;
-  gap: 18px;
+  gap: 14px;
   flex-wrap: wrap;
-  margin-top: 18px;
+  margin-top: 12px;
 }
 
 .notification-member-preview__item {
-  width: 76px;
-  min-width: 76px;
+  width: 68px;
+  min-width: 68px;
   text-align: center;
 }
 
 .notification-member-preview__avatar {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -1497,12 +1521,12 @@
   border: 2px solid #625c68;
   background: #292530;
   color: var(--notification-text-secondary);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
 }
 
 .notification-member-preview__name {
-  margin-top: 7px;
+  margin-top: 5px;
   color: #e0dae4;
   font-size: 12px;
   line-height: 1.3;
@@ -1513,8 +1537,8 @@
 }
 
 .notification-member-preview__more {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -1533,10 +1557,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
 
-  min-height: 86px;
-  padding: 18px 18px 18px 20px;
+  min-height: 56px;
+  padding: 10px 14px 10px 16px;
 
   background: #221e28;
   border: 1px solid var(--notification-border-soft);
@@ -1576,14 +1600,14 @@
   align-items: center;
   gap: 12px;
 
-  padding-top: 18px;
-  margin-top: 4px;
+  padding-top: 12px;
+  margin-top: 2px;
   border-top: 1px solid var(--notification-divider);
 }
 
 .notification-reset-button.ant-btn {
   min-width: 90px;
-  height: 46px;
+  height: 40px;
 
   border-radius: 9px;
   border: 1px solid #494250;
@@ -1599,7 +1623,7 @@
 
 .notification-save-button.ant-btn {
   min-width: 126px;
-  height: 46px;
+  height: 40px;
 
   border: 1px solid #e46cb4;
   border-radius: 9px;
