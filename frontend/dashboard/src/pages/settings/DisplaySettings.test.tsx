@@ -3,24 +3,23 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it } from "vitest"
 import { DisplaySettings } from "./DisplaySettings"
 import { resetAllSharedStateForTests } from "../../shared/state/sharedState"
-import { MemberThemeProvider } from "../../shared/theme/MemberThemeProvider"
 
+const TIME_FORMAT_KEY = "yobi.timeFormat"
 const MODE_KEY = "yobi.upcomingDisplayMode"
-const LANGUAGE_KEY = "yobi.countdownLanguage"
-
-/** Mounts the Display settings section under the theme provider it reads. */
-function renderDisplaySettings() {
-  return render(
-    <MemberThemeProvider>
-      <DisplaySettings />
-    </MemberThemeProvider>,
-  )
-}
+const COUNTDOWN_LANGUAGE_KEY = "yobi.countdownLanguage"
 
 /** Opens an antd Select by its accessible name and picks the option with the given text. */
 async function choose(user: ReturnType<typeof userEvent.setup>, selectName: string, optionText: string) {
   await user.click(screen.getByRole("combobox", { name: selectName }))
   await user.click(await screen.findByText(optionText, { selector: ".ant-select-item-option-content" }))
+}
+
+/** The displayed value of an antd Select found by its accessible name -- the
+ * combobox role sits on the hidden `<input>`, whose own text content is
+ * always empty, so the visible label is read from its `.ant-select-content`
+ * wrapper's `title` instead. */
+function selectedValue(selectName: string): string | null {
+  return screen.getByRole("combobox", { name: selectName }).closest(".ant-select-content")?.getAttribute("title") ?? null
 }
 
 beforeEach(() => {
@@ -29,74 +28,76 @@ beforeEach(() => {
 })
 
 describe("DisplaySettings", () => {
-  it("renders the page heading, description and both setting groups", () => {
-    renderDisplaySettings()
+  it("renders the page heading, description, and exactly the two time-related setting rows -- no Appearance/Theme row", () => {
+    render(<DisplaySettings />)
 
     expect(screen.getByRole("heading", { level: 1, name: "Display" })).toBeInTheDocument()
-    expect(screen.getByText("Choose how the app looks and how upcoming stream times are shown.")).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument()
+    expect(screen.getByText("Choose how time information is shown in the app.")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Time format" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "Upcoming streams" })).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Appearance" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("combobox", { name: "Dashboard theme" })).not.toBeInTheDocument()
+    expect(screen.getAllByRole("combobox")).toHaveLength(2)
   })
 
-  it("defaults to the Hololive theme and switches the active theme from the selector", async () => {
+  it("defaults to 24-hour time format and persists a 12-hour selection", async () => {
     const user = userEvent.setup()
-    const { container } = renderDisplaySettings()
-    const themeRoot = container.querySelector(".theme-root")!
-    expect(themeRoot).toHaveAttribute("data-theme-id", "hololive-jp")
+    render(<DisplaySettings />)
 
-    await choose(user, "Dashboard theme", "VSPO JP — Tactical")
+    expect(selectedValue("Time format")).toBe("24-hour (HH:mm)")
+    expect(localStorage.getItem(TIME_FORMAT_KEY)).toBeNull()
 
-    expect(themeRoot).toHaveAttribute("data-theme-id", "vspo-jp-tactical")
+    await choose(user, "Time format", "12-hour (AM/PM)")
+
+    expect(localStorage.getItem(TIME_FORMAT_KEY)).toBe("12h")
+    expect(selectedValue("Time format")).toBe("12-hour (AM/PM)")
   })
 
-  it("defaults to absolute (HH:mm) upcoming times and hides the countdown language control", () => {
-    renderDisplaySettings()
+  it("defaults to HH:mm upcoming display and persists a Countdown selection, with no separate countdown-language control ever rendered", async () => {
+    const user = userEvent.setup()
+    render(<DisplaySettings />)
 
-    expect(screen.getByRole("combobox", { name: "Upcoming stream time display" })).toBeInTheDocument()
-    expect(screen.queryByRole("combobox", { name: "Countdown label language" })).not.toBeInTheDocument()
+    expect(selectedValue("Upcoming streams")).toBe("HH:mm")
+    expect(localStorage.getItem(MODE_KEY)).toBeNull()
+    expect(screen.getAllByRole("combobox")).toHaveLength(2)
+
+    await choose(user, "Upcoming streams", "Countdown")
+
+    expect(localStorage.getItem(MODE_KEY)).toBe("countdown")
+    expect(selectedValue("Upcoming streams")).toBe("Countdown")
+    // Still exactly two controls -- selecting Countdown never reveals a third,
+    // language-specific selector (that independent setting was removed).
+    expect(screen.getAllByRole("combobox")).toHaveLength(2)
+    expect(localStorage.getItem(COUNTDOWN_LANGUAGE_KEY)).toBeNull()
+  })
+
+  it("updates the Upcoming streams absolute-mode option label to match the global time format, without changing the stored mode", async () => {
+    const user = userEvent.setup()
+    render(<DisplaySettings />)
+
+    expect(selectedValue("Upcoming streams")).toBe("HH:mm")
+
+    await choose(user, "Time format", "12-hour (AM/PM)")
+
+    expect(selectedValue("Upcoming streams")).toBe("h:mm AM/PM")
+
+    await choose(user, "Time format", "24-hour (HH:mm)")
+
+    expect(selectedValue("Upcoming streams")).toBe("HH:mm")
     expect(localStorage.getItem(MODE_KEY)).toBeNull()
   })
 
-  it("selecting Countdown persists the mode and reveals the countdown language control", async () => {
+  it("restores the saved time format and upcoming-display mode after a reload", async () => {
     const user = userEvent.setup()
-    renderDisplaySettings()
-
-    await choose(user, "Upcoming stream time display", "Countdown")
-
-    expect(localStorage.getItem(MODE_KEY)).toBe("countdown")
-    expect(screen.getByRole("combobox", { name: "Countdown label language" })).toBeInTheDocument()
-  })
-
-  it("persists the chosen countdown language", async () => {
-    const user = userEvent.setup()
-    renderDisplaySettings()
-    await choose(user, "Upcoming stream time display", "Countdown")
-
-    await choose(user, "Countdown label language", "日本語")
-
-    expect(localStorage.getItem(LANGUAGE_KEY)).toBe("ja")
-  })
-
-  it("switching back to HH:mm hides the countdown language control again", async () => {
-    const user = userEvent.setup()
-    renderDisplaySettings()
-    await choose(user, "Upcoming stream time display", "Countdown")
-
-    await choose(user, "Upcoming stream time display", "HH:mm")
-
-    expect(localStorage.getItem(MODE_KEY)).toBe("absolute")
-    expect(screen.queryByRole("combobox", { name: "Countdown label language" })).not.toBeInTheDocument()
-  })
-
-  it("restores the saved upcoming-time mode after a reload", async () => {
-    const user = userEvent.setup()
-    const { unmount } = renderDisplaySettings()
-    await choose(user, "Upcoming stream time display", "Countdown")
+    const { unmount } = render(<DisplaySettings />)
+    await choose(user, "Time format", "12-hour (AM/PM)")
+    await choose(user, "Upcoming streams", "Countdown")
     unmount()
 
     resetAllSharedStateForTests()
-    renderDisplaySettings()
+    render(<DisplaySettings />)
 
-    expect(screen.getByRole("combobox", { name: "Countdown label language" })).toBeInTheDocument()
+    expect(selectedValue("Time format")).toBe("12-hour (AM/PM)")
+    expect(selectedValue("Upcoming streams")).toBe("Countdown")
   })
 })

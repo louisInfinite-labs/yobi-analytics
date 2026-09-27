@@ -20,6 +20,36 @@
   min-width: 0;
   box-sizing: border-box;
   padding: var(--space-5) var(--space-6);
+  background: #17141d;
+}
+
+/* Shared Settings page header: every Settings page starts at the shell's own
+   content padding, so titles share one x/y position. */
+.settings-page-header {
+  margin: 0 0 28px;
+}
+
+.settings-page-header--with-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.settings-page-title {
+  margin: 0;
+  color: #f3eff5;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+}
+
+.settings-page-description {
+  margin: 10px 0 0;
+  color: #aaa3b2;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.6;
 }
 
 /* Ported directly from Mantine UI's own "Navbar with 2 sections" demo
@@ -268,7 +298,6 @@
 /* ============ Main Oshi Select: esports-style single creator selector ============ */
 
 .settings-page__content--main-oshi {
-  --main-oshi-bg: #17141d;
   --main-oshi-surface: #211d29;
   --main-oshi-surface-strong: #292432;
   --main-oshi-border: #393342;
@@ -276,9 +305,6 @@
   --main-oshi-text-secondary: #b9b1c5;
   --main-oshi-text-tertiary: #948b9f;
 
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--theme-primary) 12%, transparent), transparent 38%),
-    var(--main-oshi-bg);
   color: var(--main-oshi-text-primary);
 }
 
@@ -300,9 +326,6 @@
   --notif-accent: #c779a3;
   --notif-accent-muted: #684052;
 
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--notif-accent) 9%, transparent), transparent 38%),
-    var(--notif-page-bg);
   color: var(--notif-page-text-primary);
 }
 
@@ -312,29 +335,7 @@
 }
 
 .my-oshi-select__header {
-  display: flex;
   align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
-}
-
-.my-oshi-select__eyebrow {
-  margin: 0 0 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--theme-primary);
-}
-
-.my-oshi-select__title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--main-oshi-text-primary);
 }
 
 .my-oshi-select__search.ant-input-affix-wrapper {
@@ -1542,28 +1543,11 @@
   --roster-text-secondary: #b6aec2;
   --roster-text-tertiary: #948b9f;
 
-  background: var(--roster-bg);
   color: var(--roster-text-primary);
 }
 
 .favorites-roster__header {
-  display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-
-.favorites-roster__title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  /* No-op for CJK (no case distinction) -- stylizes the English/romaji
-     string per the spec's own "MY FAVORITES" example without hardcoding
-     caps into the translated string itself. */
-  text-transform: uppercase;
-  color: var(--roster-text-primary);
 }
 
 .favorites-roster__count {
@@ -1804,54 +1788,131 @@
     width: 100%;
   }
 }
-.settings-page__content--display {
-  max-width: 760px;
+.display-settings-page {
+  --display-text-primary: #f3eff5;
+  --display-text-secondary: #aaa3b2;
+  --display-text-muted: #96909e;
+  --display-accent: #c87ca4;
+  --display-divider: rgba(196, 184, 204, 0.14);
+  --display-control-bg: rgba(28, 24, 34, 0.72);
+  --display-control-border: rgba(181, 168, 190, 0.23);
+  --display-control-border-hover: rgba(204, 183, 212, 0.38);
+
+  width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  color: var(--display-text-primary);
 }
 
-.display-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
+.display-settings-content {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
 }
 
-.display-settings__group {
+.display-settings-header-divider {
+  width: 100%;
+  height: 1px;
+  background: rgba(196, 184, 204, 0.16);
+}
+
+.display-setting-row {
   display: grid;
-  grid-template-columns: minmax(150px, 0.45fr) minmax(240px, 1fr);
-  align-items: start;
-  gap: 20px;
-  padding: 20px 0;
-  border-top: 1px solid var(--surface-border);
+  grid-template-columns: minmax(0, 1fr) 360px;
+  align-items: center;
+  column-gap: 48px;
+  min-height: 144px;
+  border-bottom: 1px solid var(--display-divider);
 }
 
-.display-settings__group h2 {
+.display-setting-row:last-child {
+  border-bottom: 0;
+}
+
+.display-setting-label {
   margin: 0;
-  font-size: 14px;
-  color: var(--text-secondary);
+  color: #efebf1;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
-.display-settings__group > .preference-control,
-.display-settings__group > :not(h2) {
-  grid-column: 2;
+.display-setting-help {
+  margin: 7px 0 0;
+  color: var(--display-text-muted);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
-.preference-control {
+.display-setting-select {
+  width: 360px;
+}
+
+.display-settings-page .display-setting-select.ant-select {
+  height: 52px;
+  padding: 0 16px;
+  background: var(--display-control-bg);
+  border: 1px solid var(--display-control-border);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.display-settings-page .display-setting-select .ant-select-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 34px;
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
+  color: #b9b3c1;
+  font-size: 14px;
+  font-weight: 400;
 }
 
-@media (max-width: 720px) {
-  .display-settings__group {
+.display-settings-page .display-setting-select .ant-select-suffix {
+  color: #9a94a3;
+}
+
+.display-settings-page .display-setting-select.ant-select:not(.ant-select-disabled):hover {
+  border-color: var(--display-control-border-hover);
+}
+
+.display-settings-page .display-setting-select.ant-select-focused,
+.display-settings-page .display-setting-select.ant-select-open {
+  border-color: rgba(200, 124, 164, 0.52);
+  box-shadow: 0 0 0 1px rgba(200, 124, 164, 0.08);
+}
+
+.display-settings-select-dropdown.ant-select-dropdown {
+  padding: 6px;
+  background: #211c26;
+  border: 1px solid rgba(196, 184, 204, 0.16);
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+
+.display-settings-select-dropdown.ant-select-dropdown .ant-select-item {
+  min-height: 38px;
+  border-radius: 4px;
+  color: #b7b0bd;
+}
+
+.display-settings-select-dropdown.ant-select-dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.display-settings-select-dropdown.ant-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled),
+.display-settings-select-dropdown.ant-select-dropdown .ant-select-item-option-selected.ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  color: #f0eaf1;
+  background: rgba(200, 124, 164, 0.1);
+  font-weight: 500;
+}
+
+@media (max-width: 900px) {
+  .display-setting-row {
     grid-template-columns: 1fr;
+    min-height: auto;
+    padding: 28px 0;
+    row-gap: 18px;
   }
 
-  .display-settings__group > .preference-control,
-  .display-settings__group > :not(h2) {
-    grid-column: 1;
+  .display-setting-select {
+    width: 100%;
   }
 }

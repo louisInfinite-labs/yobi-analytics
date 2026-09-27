@@ -140,7 +140,7 @@ test.describe("Settings sections", () => {
     await expect(page.getByRole("heading", { name: "My Favorites" })).toBeVisible()
 
     await nav.getByRole("button", { name: "Oshi Settings" }).click()
-    await expect(page.getByRole("heading", { name: "MAIN OSHI SELECT" })).toBeVisible()
+    await expect(page.getByRole("heading", { level: 1, name: "Oshi Settings" })).toBeVisible()
 
     await nav.getByRole("button", { name: "Display" }).click()
     await expect(page.getByRole("heading", { level: 1, name: "Display" })).toBeVisible()
@@ -186,22 +186,26 @@ test.describe("Settings sections", () => {
     await expect(page.getByText("No creators found")).toBeVisible()
   })
 
-  test("Display: the theme changes immediately, and the upcoming-time mode persists across a reload", async ({ page }) => {
+  test("Display: no Theme selector is offered, and the time format and upcoming-time mode both persist across a reload", async ({ page }) => {
     await page.goto("/setting")
     await page.getByRole("button", { name: "Display" }).click()
-    const themeRoot = page.locator(".theme-root")
-    await expect(themeRoot).toHaveAttribute("data-theme-id", "hololive-jp")
 
-    await chooseOption(page, "Dashboard theme", "VSPO JP — Tactical")
-    await expect(themeRoot).toHaveAttribute("data-theme-id", "vspo-jp-tactical")
-
+    // Redesigned Display Settings dropped the Appearance/Theme row entirely
+    // -- confirm no leftover control for it, and no separate
+    // countdown-language selector either (that setting now follows the
+    // app's own global locale, so it was removed as its own control).
+    await expect(page.getByRole("heading", { name: "Appearance" })).toHaveCount(0)
+    await expect(page.getByRole("combobox", { name: "Dashboard theme" })).toHaveCount(0)
     await expect(page.getByRole("combobox", { name: "Countdown label language" })).toHaveCount(0)
-    await chooseOption(page, "Upcoming stream time display", "Countdown")
-    await expect(page.getByRole("combobox", { name: "Countdown label language" })).toBeVisible()
+
+    await chooseOption(page, "Time format", "12-hour (AM/PM)")
+    await chooseOption(page, "Upcoming streams", "Countdown")
+    await expect(page.getByRole("combobox", { name: "Countdown label language" })).toHaveCount(0)
 
     await page.reload()
     await page.getByRole("button", { name: "Display" }).click()
 
-    await expect(page.getByRole("combobox", { name: "Countdown label language" })).toBeVisible()
+    await expect(page.getByText("12-hour (AM/PM)")).toBeVisible()
+    await expect(page.getByText("Countdown", { exact: true })).toBeVisible()
   })
 })

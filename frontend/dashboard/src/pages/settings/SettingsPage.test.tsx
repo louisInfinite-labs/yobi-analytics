@@ -38,7 +38,9 @@ describe("SettingsPage navigation", () => {
     await user.click(screen.getByRole("button", { name: "Oshi Settings" }))
     expect(screen.getByRole("button", { name: "Oshi Settings" })).toHaveAttribute("aria-current", "page")
     expect(screen.getByRole("button", { name: "Favorites List" })).not.toHaveAttribute("aria-current")
-    expect(screen.getByRole("heading", { name: "MAIN OSHI SELECT" })).toBeInTheDocument()
+    // Page title now follows the shared Settings header i18n (spec: header
+    // renamed from "MAIN OSHI SELECT" to the localized nav label).
+    expect(screen.getByRole("heading", { level: 1, name: "Oshi Settings" })).toBeInTheDocument()
     expect(screen.queryByRole("heading", { name: "My Favorites" })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Display" }))

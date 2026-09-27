@@ -171,12 +171,15 @@ export function OshiSettings() {
       }}
     >
       <div className="favorites-roster">
-        <div className="favorites-roster__header">
-          <h1 className="favorites-roster__title">{t(locale, "oshiSettings.pageTitle")}</h1>
+        <header className="favorites-roster__header settings-page-header settings-page-header--with-meta">
+          <div className="settings-page-header-copy">
+            <h1 className="settings-page-title">{t(locale, "oshiSettings.pageTitle")}</h1>
+            <p className="settings-page-description">{t(locale, "oshiSettings.pageDescription")}</p>
+          </div>
           <span className="favorites-roster__count">
             {t(locale, "oshiSettings.selectedCountLabel", { count: String(favorites.size) })}
           </span>
-        </div>
+        </header>
 
         <div className="favorites-roster__controls">
           <Segmented

@@ -277,6 +277,7 @@ function AddTopicTile({ onClick }: { onClick: () => void }) {
  * component -- topic ordering, reminder values, member-selection logic,
  * Local Storage behavior, and the Drawer itself are all unchanged. */
 export function NotificationSettings() {
+  const [locale] = useLocale()
   const [managingTopicId, setManagingTopicId] = useState<TopicCatalogId | null>(null)
   const { savedTopicIds, addTopic, discardUnsavedTopic } = useTopicNotificationPreferences()
 
@@ -345,6 +346,10 @@ export function NotificationSettings() {
         },
       }}
     >
+      <header className="settings-page-header">
+        <h1 className="settings-page-title">{t(locale, "notificationSettings.pageTitle")}</h1>
+        <p className="settings-page-description">{t(locale, "notificationSettings.pageDescription")}</p>
+      </header>
       <div className="notification-settings">
         {savedTopicIds.map((topicId) => (
           <TopicCard key={topicId} topicId={topicId} onManage={() => setManagingTopicId(topicId)} />

@@ -36,7 +36,10 @@ describe("MyOshiSettings (default Oshi picker)", () => {
   it("shows the first roster creator as the current Main Oshi when nothing has been chosen", () => {
     renderMyOshiSettings()
 
-    expect(screen.getByRole("heading", { name: "MAIN OSHI SELECT" })).toBeInTheDocument()
+    // Page title now follows the shared Settings header i18n (spec: header
+    // renamed from "MAIN OSHI SELECT" to the localized nav label); the
+    // featured-card "MAIN OSHI" badge below is unrelated and unchanged.
+    expect(screen.getByRole("heading", { level: 1, name: "Oshi Settings" })).toBeInTheDocument()
     expect(screen.getByLabelText("Current Main Oshi: 藍沢エマ")).toBeInTheDocument()
     expect(screen.getByRole("radio", { name: /藍沢エマ/ })).toBeChecked()
   })

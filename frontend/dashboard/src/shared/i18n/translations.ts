@@ -79,6 +79,7 @@ export type TranslationKey =
   | "settingsSecondaryNavbar.displaySettings"
   | "myOshiSettings.selectAria"
   | "myOshiSettings.pageTitle"
+  | "myOshiSettings.pageDescription"
   | "myOshiSettings.statusMarker"
   | "myOshiSettings.presentationAria"
   | "myOshiSettings.rosterAria"
@@ -89,8 +90,11 @@ export type TranslationKey =
   | "oshiSettings.otherGroupLabel"
   | "oshiSettings.gamersGroupLabel"
   | "oshiSettings.pageTitle"
+  | "oshiSettings.pageDescription"
   | "oshiSettings.selectedCountLabel"
   | "oshiSettings.viewFilter.favoritesOnly"
+  | "notificationSettings.pageTitle"
+  | "notificationSettings.pageDescription"
   | "notificationSettings.liveColumnHeader"
   | "notificationSettings.newVideoColumnHeader"
   | "notificationSettings.liveSwitchAriaLabel"
@@ -141,8 +145,13 @@ export type TranslationKey =
   | "contributionBarChart.ariaLabel"
   | "displaySettings.title"
   | "displaySettings.description"
-  | "displaySettings.appearanceGroup"
-  | "displaySettings.upcomingStreamsGroup"
+  | "displaySettings.timeFormatLabel"
+  | "displaySettings.timeFormatHelp"
+  | "displaySettings.timeFormat24h"
+  | "displaySettings.timeFormat12h"
+  | "displaySettings.upcomingLabel"
+  | "displaySettings.upcomingHelp"
+  | "displaySettings.upcomingCountdownOption"
   | "liveSchedule.pageTitle"
   | "liveSchedule.pageSubtitle"
   | "liveSchedule.timeColumnHeader"
@@ -238,6 +247,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.otherGroupLabel": "其他",
     "oshiSettings.gamersGroupLabel": "Gamers",
     "oshiSettings.pageTitle": "我的收藏",
+    "notificationSettings.pageTitle": "推送通知",
+    "notificationSettings.pageDescription": "設定直播與新影片的通知方式、提醒時間及通知對象。",
+    "oshiSettings.pageDescription": "管理你收藏的成員，並用於直播狀態、通知設定等功能。",
     "oshiSettings.selectedCountLabel": "已選 {{count}} 人",
     "oshiSettings.viewFilter.favoritesOnly": "收藏",
     "notificationSettings.liveColumnHeader": "直播",
@@ -274,7 +286,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.topicSelectAriaLabel": "選擇通知主題",
     "notificationSettings.addTopicButtonAriaLabel": "新增主題",
     "myOshiSettings.selectAria": "將 {{name}} 設為我推",
-    "myOshiSettings.pageTitle": "MAIN OSHI SELECT",
+    "myOshiSettings.pageTitle": "我推設定",
+    "myOshiSettings.pageDescription": "選擇主畫面預設顯示的主推成員。",
     "myOshiSettings.statusMarker": "MAIN OSHI",
     "myOshiSettings.presentationAria": "目前主推: {{name}}",
     "myOshiSettings.rosterAria": "我推成員選擇列表",
@@ -293,10 +306,15 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "contributionBarChart.periodLabel.multiDay": "此期間的成長",
     "contributionBarChart.empty": "沒有正向成長可顯示。",
     "contributionBarChart.ariaLabel": "成員對{{period}}的貢獻",
-    "displaySettings.title": "顯示",
-    "displaySettings.description": "選擇應用程式的外觀，以及即將到來的直播時間顯示方式。",
-    "displaySettings.appearanceGroup": "外觀",
-    "displaySettings.upcomingStreamsGroup": "即將到來的直播",
+    "displaySettings.title": "顯示設定",
+    "displaySettings.description": "設定應用程式內時間資訊的顯示方式。",
+    "displaySettings.timeFormatLabel": "時間顯示格式",
+    "displaySettings.timeFormatHelp": "設定直播開始時間、預定時間等時間資訊的顯示方式。",
+    "displaySettings.timeFormat24h": "24 小時制（HH:mm）",
+    "displaySettings.timeFormat12h": "12 小時制（AM/PM）",
+    "displaySettings.upcomingLabel": "即將到來的直播",
+    "displaySettings.upcomingHelp": "設定即將到來的直播時間的顯示格式。",
+    "displaySettings.upcomingCountdownOption": "Countdown",
     "liveSchedule.pageTitle": "直播時間表",
     "liveSchedule.pageSubtitle": "你所選創作者的即將到來與直播中節目。",
     "liveSchedule.timeColumnHeader": "時間",
@@ -391,6 +409,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.otherGroupLabel": "Other",
     "oshiSettings.gamersGroupLabel": "Gamers",
     "oshiSettings.pageTitle": "My Favorites",
+    "notificationSettings.pageTitle": "Push Notifications",
+    "notificationSettings.pageDescription": "Configure notifications for live streams and new videos, including reminder timing and recipients.",
+    "oshiSettings.pageDescription": "Manage your favorite members for Live Status, notification settings, and other features.",
     "oshiSettings.selectedCountLabel": "{{count}} selected",
     "oshiSettings.viewFilter.favoritesOnly": "Favorites",
     "notificationSettings.liveColumnHeader": "Live",
@@ -427,7 +448,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.topicSelectAriaLabel": "Select notification topic",
     "notificationSettings.addTopicButtonAriaLabel": "Add topic",
     "myOshiSettings.selectAria": "Set {{name}} as my Oshi",
-    "myOshiSettings.pageTitle": "MAIN OSHI SELECT",
+    "myOshiSettings.pageTitle": "Oshi Settings",
+    "myOshiSettings.pageDescription": "Choose the Main Oshi shown by default on the Home screen.",
     "myOshiSettings.statusMarker": "MAIN OSHI",
     "myOshiSettings.presentationAria": "Current Main Oshi: {{name}}",
     "myOshiSettings.rosterAria": "Main Oshi creator selector",
@@ -447,9 +469,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "contributionBarChart.empty": "No positive growth to show.",
     "contributionBarChart.ariaLabel": "Member contribution to {{period}}",
     "displaySettings.title": "Display",
-    "displaySettings.description": "Choose how the app looks and how upcoming stream times are shown.",
-    "displaySettings.appearanceGroup": "Appearance",
-    "displaySettings.upcomingStreamsGroup": "Upcoming streams",
+    "displaySettings.description": "Choose how time information is shown in the app.",
+    "displaySettings.timeFormatLabel": "Time format",
+    "displaySettings.timeFormatHelp": "Choose how stream start times and scheduled times are shown.",
+    "displaySettings.timeFormat24h": "24-hour (HH:mm)",
+    "displaySettings.timeFormat12h": "12-hour (AM/PM)",
+    "displaySettings.upcomingLabel": "Upcoming streams",
+    "displaySettings.upcomingHelp": "Choose how upcoming stream times are shown.",
+    "displaySettings.upcomingCountdownOption": "Countdown",
     "liveSchedule.pageTitle": "Live Schedule",
     "liveSchedule.pageSubtitle": "Upcoming and live streams across your selected creators.",
     "liveSchedule.timeColumnHeader": "Time",
@@ -544,6 +571,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.otherGroupLabel": "その他",
     "oshiSettings.gamersGroupLabel": "ゲーマーズ",
     "oshiSettings.pageTitle": "マイお気に入り",
+    "notificationSettings.pageTitle": "プッシュ通知",
+    "notificationSettings.pageDescription": "配信や新着動画の通知方法、通知タイミング、対象メンバーを設定します。",
+    "oshiSettings.pageDescription": "お気に入りのメンバーを管理します。ライブ状況や通知設定などで確認できます。",
     "oshiSettings.selectedCountLabel": "{{count}} 人選択中",
     "oshiSettings.viewFilter.favoritesOnly": "お気に入り",
     "notificationSettings.liveColumnHeader": "配信",
@@ -580,7 +610,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.topicSelectAriaLabel": "通知トピックを選択",
     "notificationSettings.addTopicButtonAriaLabel": "トピックを追加",
     "myOshiSettings.selectAria": "{{name}} を推しに設定",
-    "myOshiSettings.pageTitle": "MAIN OSHI SELECT",
+    "myOshiSettings.pageTitle": "推し設定",
+    "myOshiSettings.pageDescription": "ホーム画面で初期表示するメイン推しを選択します。",
     "myOshiSettings.statusMarker": "MAIN OSHI",
     "myOshiSettings.presentationAria": "現在の推し: {{name}}",
     "myOshiSettings.rosterAria": "推しメンバー選択リスト",
@@ -599,10 +630,15 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "contributionBarChart.periodLabel.multiDay": "この期間の成長",
     "contributionBarChart.empty": "表示できるプラス成長がありません。",
     "contributionBarChart.ariaLabel": "{{period}}へのメンバー貢献",
-    "displaySettings.title": "表示",
-    "displaySettings.description": "アプリの見た目と、今後の配信時間の表示方法を選択します。",
-    "displaySettings.appearanceGroup": "外観",
-    "displaySettings.upcomingStreamsGroup": "今後の配信",
+    "displaySettings.title": "表示設定",
+    "displaySettings.description": "アプリ内の時間情報の表示方法を設定します。",
+    "displaySettings.timeFormatLabel": "時間表示形式",
+    "displaySettings.timeFormatHelp": "配信開始時間や予定時間などの表示方法を設定します。",
+    "displaySettings.timeFormat24h": "24 時間制（HH:mm）",
+    "displaySettings.timeFormat12h": "12 時間制（AM/PM）",
+    "displaySettings.upcomingLabel": "今後の配信",
+    "displaySettings.upcomingHelp": "今後の配信時間の表示形式を設定します。",
+    "displaySettings.upcomingCountdownOption": "カウントダウン",
     "liveSchedule.pageTitle": "配信スケジュール",
     "liveSchedule.pageSubtitle": "選択したクリエイターの今後の配信と配信中の番組。",
     "liveSchedule.timeColumnHeader": "時間",

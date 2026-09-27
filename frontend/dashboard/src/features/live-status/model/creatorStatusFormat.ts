@@ -1,14 +1,12 @@
 import type { CreatorStatus } from "./creatorStatus"
-import type { CountdownLanguage } from "../../../shared/i18n/model/countdownLanguage"
+import { formatClockTime, type TimeFormat } from "../../../shared/i18n/model/timeFormat"
+import type { Locale } from "../../../shared/i18n/translations"
 
 export type UpcomingDisplayMode = "absolute" | "countdown"
 
-/** Zero-padded 24-hour HH:mm in the viewer's own local time zone. */
-export function formatAbsoluteTime(iso: string): string {
-  const date = new Date(iso)
-  const hours = String(date.getHours()).padStart(2, "0")
-  const minutes = String(date.getMinutes()).padStart(2, "0")
-  return `${hours}:${minutes}`
+/** Clock time (24-hour HH:mm by default) in the viewer's own local time zone. */
+export function formatAbsoluteTime(iso: string, timeFormat: TimeFormat = "24h"): string {
+  return formatClockTime(new Date(iso), timeFormat)
 }
 
 /** Floors elapsed partial minutes, never negative (spec: "never shows a
@@ -16,12 +14,12 @@ export function formatAbsoluteTime(iso: string): string {
  * zero form (0 hours/0 minutes, localized per language, e.g. "In 0h:0m" for
  * English); callers reclassify status at that point rather than keep
  * showing a countdown (see isScheduledTimeReached). */
-export function formatCountdown(iso: string, now: Date = new Date(), language: CountdownLanguage = "ja"): string {
+export function formatCountdown(iso: string, now: Date = new Date(), locale: Locale = "ja"): string {
   const totalMinutes = Math.max(0, Math.floor((new Date(iso).getTime() - now.getTime()) / 60000))
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
-  if (language === "zh") return `${hours}小時${minutes}分後`
-  if (language === "en") return `In ${hours}h:${minutes}m`
+  if (locale === "zh-TW") return `${hours}小時${minutes}分後`
+  if (locale === "en") return `In ${hours}h:${minutes}m`
   return `${hours}時間${minutes}分後`
 }
 
@@ -40,13 +38,14 @@ export function formatCreatorStatus(
   status: CreatorStatus,
   mode: UpcomingDisplayMode,
   now: Date = new Date(),
-  language: CountdownLanguage = "ja",
+  locale: Locale = "ja",
+  timeFormat: TimeFormat = "24h",
 ): CreatorStatusDisplay {
   if (status.kind === "live") {
     return { label: "LIVE", dotColor: "red", clickable: true }
   }
   if (status.kind === "upcoming") {
-    const label = mode === "absolute" ? formatAbsoluteTime(status.scheduledStart) : formatCountdown(status.scheduledStart, now, language)
+    const label = mode === "absolute" ? formatAbsoluteTime(status.scheduledStart, timeFormat) : formatCountdown(status.scheduledStart, now, locale)
     return { label, dotColor: "red", clickable: true }
   }
   return { label: "OFFLINE", dotColor: "grey", clickable: false }

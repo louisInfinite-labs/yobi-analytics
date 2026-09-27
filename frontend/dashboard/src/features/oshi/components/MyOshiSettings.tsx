@@ -168,10 +168,10 @@ export function MyOshiSettings() {
       }}
     >
       <div className="my-oshi-select">
-        <div className="my-oshi-select__header">
-          <div>
-            <p className="my-oshi-select__eyebrow">{t(locale, "myOshiSettings.statusMarker")}</p>
-            <h1 className="my-oshi-select__title">{t(locale, "myOshiSettings.pageTitle")}</h1>
+        <header className="my-oshi-select__header settings-page-header settings-page-header--with-meta">
+          <div className="settings-page-header-copy">
+            <h1 className="settings-page-title">{t(locale, "myOshiSettings.pageTitle")}</h1>
+            <p className="settings-page-description">{t(locale, "myOshiSettings.pageDescription")}</p>
           </div>
           <Input
             className="my-oshi-select__search"
@@ -181,7 +181,7 @@ export function MyOshiSettings() {
             prefix={<Search size={15} aria-hidden="true" />}
             allowClear
           />
-        </div>
+        </header>
 
         <div className="my-oshi-select__layout">
           <div className="my-oshi-select__roster" aria-label={t(locale, "myOshiSettings.rosterAria")}>

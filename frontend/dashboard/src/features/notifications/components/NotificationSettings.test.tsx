@@ -29,11 +29,12 @@ function getDraftCard() {
 describe("NotificationSettings", () => {
   it("starts with the 5 permanent default cards, in order, plus an 'Add topic' tile -- confirmed with the user: 全部/SF6/VALO/APEX/Minecraft are never removed", () => {
     renderNotificationSettings()
-    const headings = screen.getAllByRole("heading").map((heading) => heading.textContent)
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)
     // "Apex", not "APEX" -- reuses recentVideos.tag.apex verbatim (Home's
     // own existing label for this game), same as every other default topic
     // here reusing an existing label rather than a fresh one.
     expect(headings).toEqual(["All", "SF6", "VALO", "Apex", "Minecraft"])
+    expect(screen.getByRole("heading", { level: 1, name: "Push Notifications" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add topic" })).toBeInTheDocument()
   })
 
