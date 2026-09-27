@@ -70,6 +70,20 @@ class Creator:
     # deterministic hashed palette is the fallback for None, not something
     # this field ever needs to account for.
     theme_color: str | None = None
+    # The creator's canonical avatar image URL, or None when it hasn't been
+    # synced yet (sparse by design, same as theme_color above — never
+    # guessed/generated). Canonical source: the YouTube Data API's
+    # channels.list(part="snippet") -> snippet.thumbnails, preferring the
+    # highest-quality thumbnail available — never a Holodex-provided photo,
+    # since Holodex is a supplementary, best-effort data source (Roadmap
+    # Phase 9) and must not become this field's source of truth. Populated
+    # only by dedicated maintenance/sync tooling (not implemented yet); an
+    # ordinary frontend/API request must never call YouTube on the fly to
+    # refresh this, and a failed sync must leave the existing value (or
+    # None) in place rather than making Creator Master itself unusable. The
+    # frontend falls back to a generated colored-initial avatar when this
+    # is None.
+    avatar_url: str | None = None
 
 
 def load_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
@@ -81,6 +95,176 @@ def load_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
 def get_active_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
     """Load creators and return only those marked active."""
     return [creator for creator in load_creators(path) if creator.active]
+
+
+# The frontend roster's legacy id form is "ch_" + creatorId (e.g.
+# "ch_aizawa_ema" for creatorId "aizawa_ema") -- see
+# frontend/dashboard/src/features/dashboard/comparison/data/
+# backendComparisonSource.ts and .../favorites/utils/creatorFavoriteBridge.ts,
+# which each independently document and rely on the same convention. Plain
+# stripping covers most ids, but a handful of legacy frontend ids predate or
+# diverge from that convention -- kept here, small and explicit, never
+# inferred from a name, exactly matching the frontend's own documented
+# special cases:
+#   "ch_iofi"                  -> a shorthand id, not a stripped form at all
+#   "ch_amelia_myth_graduated" -> carries a status suffix the canonical id doesn't
+#   "ch_vspo_group"            -> the frontend's own generic "group" naming,
+#                                 not the canonical roster's own id for it
+# Deliberately excludes "ch_hololive_staff": it is mock/legacy-only, with no
+# Creator Master counterpart at all -- adding it here would fabricate an
+# alias to a creator that doesn't exist, which resolve_creator_key() below
+# must never do.
+LEGACY_CREATOR_ID_ALIASES: dict[str, str] = {
+    "ch_iofi": "airani_iofifteen",
+    "ch_amelia_myth_graduated": "watson_amelia",
+    "ch_vspo_group": "vspo_official",
+}
+
+_LEGACY_ROSTER_ID_PREFIX = "ch_"
+
+
+def resolve_creator_key(key: str, path: Path = DEFAULT_CREATORS_PATH) -> Creator | None:
+    """Resolve a canonical creatorId, legacy "ch_"-prefixed frontend id, or known legacy
+    alias (LEGACY_CREATOR_ID_ALIASES) to its Creator Master record.
+
+    Identity resolution only -- this never decides whether the resolved
+    creator is *eligible* for a particular feature (My Oshi, Favorites,
+    etc.); that is a separate, later concern. Stripping "ch_" (or applying
+    an alias) only produces a *candidate* creatorId -- the actual lookup
+    against Creator Master is what decides success, so a mock/legacy-only
+    id with no real counterpart (e.g. "ch_hololive_staff" -> candidate
+    "hololive_staff") returns None rather than a fabricated record. Returns
+    None (not a raise) for anything that isn't a genuine creator identity:
+    blank/non-string input, an unrecognized canonical id, or an
+    unrecognized "ch_" id -- this is a lookup, not a validator of a
+    required field.
+    """
+    if not isinstance(key, str) or not key.strip():
+        return None
+
+    candidate = LEGACY_CREATOR_ID_ALIASES.get(key, key)
+    if key not in LEGACY_CREATOR_ID_ALIASES and candidate.startswith(_LEGACY_ROSTER_ID_PREFIX):
+        candidate = candidate[len(_LEGACY_ROSTER_ID_PREFIX) :]
+
+    for creator in load_creators(path):
+        if creator.creator_id == candidate:
+            return creator
+    return None
+
+
+def find_creator_by_youtube_channel_id(youtube_channel_id: str, path: Path = DEFAULT_CREATORS_PATH) -> Creator | None:
+    """Return the Creator Master record for a real YouTube/Holodex channel id, or None.
+
+    A distinct lookup from resolve_creator_key() above: youtube_channel_id
+    is YouTube's own external id, with no "ch_" legacy-frontend form or
+    alias table of its own to resolve -- kept as a separate function rather
+    than folded into resolve_creator_key() because it resolves a completely
+    different id space with none of that function's legacy-format concerns.
+    Added here (rather than a new module) because both are Creator Master
+    identity-lookup infrastructure, and this mapping is what the future
+    Holodex integration needs to turn a Holodex youtube_channel_id back
+    into a creator.
+
+    Raises CreatorMasterError, rather than silently returning one of them,
+    if the data itself is inconsistent (two records sharing the same
+    youtubeChannelId) -- the current production roster is already verified
+    unique (test_production_roster_loads_with_unique_ids_and_the_verified_
+    asobimawaritai_unit), so this should never fire against real data; it
+    exists to fail loudly rather than silently pick a creator if that
+    invariant is ever violated.
+    """
+    if not isinstance(youtube_channel_id, str) or not youtube_channel_id.strip():
+        return None
+
+    index: dict[str, Creator] = {}
+    for creator in load_creators(path):
+        if creator.youtube_channel_id in index:
+            raise CreatorMasterError(
+                f"Duplicate youtubeChannelId {creator.youtube_channel_id!r} in Creator Master: "
+                f"{index[creator.youtube_channel_id].creator_id!r} and {creator.creator_id!r}"
+            )
+        index[creator.youtube_channel_id] = creator
+    return index.get(youtube_channel_id)
+
+
+# ---------------------------------------------------------------------------
+# Eligibility (C4) -- deliberately separate from identity resolution above.
+#
+# resolve_creator_key()/find_creator_by_youtube_channel_id() answer "does this
+# key identify a real creator". The functions below answer a different
+# question entirely: "should this ALREADY-RESOLVED creator appear in a given
+# current-facing roster". A creator can resolve successfully and still be
+# ineligible for every roster (e.g. vspo_official: a real Creator Master
+# identity, channel_type "group", excluded from both rosters below) -- and
+# the reverse is never true, since eligibility is only ever checked on an
+# already-resolved Creator, not a raw key. Never call these from inside
+# resolve_creator_key()/find_creator_by_youtube_channel_id(), and never use
+# them as a general "does this creator exist" filter for historical/
+# analytics consumers (see the module note below).
+#
+# active vs. lifecycle_stage vs. discovery_enabled -- audited, not assumed
+# interchangeable:
+#   - `active` is documented above (see get_active_creators()) as the
+#     COLLECTION pipeline's own toggle: whether main.py still actively
+#     processes this creator at all. It is intentionally independent of
+#     real-world status (a pre-debut unit can be active=true; a graduated
+#     creator can also still be active=true, per discovery_enabled's own
+#     comment, purely so their already-known videos keep getting
+#     statistics/snapshots).
+#   - `lifecycle_stage` is the real-world status (active/pre_debut/graduated/
+#     retired) -- this is what actually answers "is this a current talent".
+#   - `discovery_enabled` only controls whether Discovery looks for NEW
+#     uploads; it says nothing about a creator's own current-ness and is not
+#     used below, since no product requirement for these two rosters depends
+#     on upload-discovery state.
+# Every one of the current 118 production creators has active=true, so
+# `active` never actually excludes anyone today -- it is still checked
+# explicitly below as a future-safe rule: a creator taken out of active
+# collection has no reliable ongoing data, so a roster meant to show
+# CURRENT status should not offer them either, even though nothing in
+# today's data exercises that branch yet.
+# ---------------------------------------------------------------------------
+
+_CURRENT_LIFECYCLE_STAGES = frozenset({"active", "pre_debut"})
+
+
+def _is_current_active_member(creator: Creator) -> bool:
+    """Shared rule behind both eligibility functions below: an individual talent
+    (channel_type "member") who is a current real-world talent (lifecycle_stage
+    "active" or "pre_debut") and still under active collection."""
+    return (
+        creator.active
+        and creator.channel_type == "member"
+        and creator.lifecycle_stage in _CURRENT_LIFECYCLE_STAGES
+    )
+
+
+def is_creator_selectable(creator: Creator) -> bool:
+    """Whether `creator` may be selected on a member-selection surface (My Oshi,
+    Favorites).
+
+    Currently identical to is_creator_live_roster_eligible() below -- kept as
+    a separate function because the two surfaces are conceptually distinct
+    (selecting a creator vs. showing them in a live/upcoming roster) and may
+    diverge later; callers should use the function matching their own
+    surface, not assume the two will always agree.
+    """
+    return _is_current_active_member(creator)
+
+
+def is_creator_live_roster_eligible(creator: Creator) -> bool:
+    """Whether `creator` may appear in a current live/upcoming roster (Live
+    Status, Live Schedule).
+
+    Currently identical to is_creator_selectable() above -- see that
+    function's docstring for why they are kept separate anyway. A graduated
+    creator's identity remains fully valid (resolve_creator_key() /
+    load_creators() still return it) -- this function only says it should
+    not appear in a CURRENT roster; historical/analytics consumers must
+    never call this as a general creator filter (see the module note above
+    this section).
+    """
+    return _is_current_active_member(creator)
 
 
 def _parse_creator(raw: dict) -> Creator:
@@ -124,6 +308,7 @@ def _parse_creator(raw: dict) -> Creator:
             )
 
         theme_color = _optional_theme_color(raw, "themeColor", creator_id)
+        avatar_url = _optional_str(raw, "avatarUrl", creator_id)
 
         return Creator(
             creator_id=creator_id,
@@ -138,6 +323,7 @@ def _parse_creator(raw: dict) -> Creator:
             discovery_enabled=discovery_enabled,
             graduated_at=graduated_at,
             theme_color=theme_color,
+            avatar_url=avatar_url,
         )
     except (KeyError, TypeError) as exc:
         raise CreatorMasterError(f"Malformed Creator Master record, missing/invalid field: {exc}") from exc
@@ -179,6 +365,23 @@ def _optional_iso_date(raw: dict, field: str, creator_id: str) -> str | None:
     # convention for every other date field. Round-tripping through
     # isoformat() rejects anything that isn't already in that exact form.
     if parsed.isoformat() != value:
+        raise CreatorMasterError(f"Creator {creator_id!r} has invalid {field!r}: {value!r}")
+    return value
+
+
+def _optional_str(raw: dict, field: str, creator_id: str) -> str | None:
+    """Return raw[field] as a non-empty string if present, or None if the key is absent.
+
+    For an optional field with no further format of its own to validate,
+    unlike graduatedAt/themeColor below — but a present-and-wrong-type or
+    blank value is still rejected rather than silently dropped, matching
+    every other field's "no value" convention (an absent key, not a
+    placeholder like an empty string).
+    """
+    if field not in raw:
+        return None
+    value = raw[field]
+    if not isinstance(value, str) or not value:
         raise CreatorMasterError(f"Creator {creator_id!r} has invalid {field!r}: {value!r}")
     return value
 

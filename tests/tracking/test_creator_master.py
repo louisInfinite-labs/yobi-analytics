@@ -3,7 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from tracking.creator_master import Creator, CreatorMasterError, get_active_creators, load_creators
+from tracking.creator_master import (
+    LEGACY_CREATOR_ID_ALIASES,
+    Creator,
+    CreatorMasterError,
+    find_creator_by_youtube_channel_id,
+    get_active_creators,
+    is_creator_live_roster_eligible,
+    is_creator_selectable,
+    load_creators,
+    resolve_creator_key,
+)
 
 FIXTURE_PATH = Path(__file__).parent.parent / "fixtures" / "creators.json"
 
@@ -387,6 +397,48 @@ def test_extreme_theme_colors_are_accepted_unchanged():
     assert creators["arya_kuroha"].theme_color == "#000000"
 
 
+def test_avatar_url_defaults_to_none_when_absent(tmp_path):
+    """A record without 'avatarUrl' parses as avatar_url=None (sparse by
+    design, same as graduatedAt/themeColor), not a placeholder value."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record()]), encoding="utf-8")
+
+    creators = load_creators(path)
+
+    assert creators[0].avatar_url is None
+
+
+def test_avatar_url_is_parsed_when_present(tmp_path):
+    """A present 'avatarUrl' string is parsed onto the Creator as-is."""
+    path = tmp_path / "creators.json"
+    path.write_text(
+        json.dumps([_base_record(avatarUrl="https://yt3.googleusercontent.com/example=s800")]),
+        encoding="utf-8",
+    )
+
+    creators = load_creators(path)
+
+    assert creators[0].avatar_url == "https://yt3.googleusercontent.com/example=s800"
+
+
+def test_blank_avatar_url_is_rejected(tmp_path):
+    """An empty-string 'avatarUrl' is rejected rather than treated as a real value."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(avatarUrl="")]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
+def test_non_string_avatar_url_is_rejected(tmp_path):
+    """A non-string 'avatarUrl' (e.g. a number) is rejected."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(avatarUrl=12345)]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
 def test_production_roster_theme_color_coverage():
     """98 of the 118 production creators carry a verified themeColor
     (Justice/ReGLOSS/FLOWGLOW, every VSPO JP/EN member, and all four
@@ -401,6 +453,15 @@ def test_production_roster_theme_color_coverage():
 
     assert len(with_color) == 98
     assert len(without_color) == 20
+
+
+def test_production_roster_loads_without_avatar_url_yet():
+    """C1 adds the avatarUrl field/parsing but does not populate real data yet --
+    every one of the 118 real creators must still load successfully as avatar_url=None."""
+    creators = load_creators()
+
+    assert len(creators) == 118
+    assert all(c.avatar_url is None for c in creators)
 
 
 def test_production_roster_loads_with_unique_ids_and_the_verified_asobimawaritai_unit():
@@ -419,3 +480,264 @@ def test_production_roster_loads_with_unique_ids_and_the_verified_asobimawaritai
         "sorashina_sopia": ("UCROQtXcp2loQEmvpe5rhJzQ", "member"),
     }
     assert all(c.organization == "hololive" and c.branch == "holo_jp" and c.lifecycle_stage == "pre_debut" for c in unit.values())
+
+
+def _write_roster(tmp_path, *records) -> Path:
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps(list(records)), encoding="utf-8")
+    return path
+
+
+class TestResolveCreatorKey:
+    """resolve_creator_key: identity resolution only, never eligibility -- a resolved
+    Creator (e.g. a "group" or "staff" channelType) says nothing about whether it's
+    selectable for a particular feature; that is a separate, later concern."""
+
+    def test_canonical_id_resolves(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        resolved = resolve_creator_key("aizawa_ema", path)
+
+        assert resolved is not None
+        assert resolved.creator_id == "aizawa_ema"
+
+    def test_ordinary_ch_prefixed_id_resolves(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        resolved = resolve_creator_key("ch_aizawa_ema", path)
+
+        assert resolved is not None
+        assert resolved.creator_id == "aizawa_ema"
+
+    def test_unknown_canonical_id_returns_none(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        assert resolve_creator_key("nonexistent_creator", path) is None
+
+    def test_unknown_ch_prefixed_id_returns_none(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        assert resolve_creator_key("ch_nonexistent_creator", path) is None
+
+    @pytest.mark.parametrize("value", ["", "   "])
+    def test_blank_input_returns_none(self, tmp_path, value):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        assert resolve_creator_key(value, path) is None
+
+    @pytest.mark.parametrize("value", [None, 42, ["ch_aizawa_ema"], {"id": "ch_aizawa_ema"}])
+    def test_malformed_non_string_input_returns_none(self, tmp_path, value):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        assert resolve_creator_key(value, path) is None
+
+    def test_does_not_mutate_creator_master(self, tmp_path):
+        """Resolution is read-only -- the backing file's bytes must be identical before and after."""
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+        before = path.read_bytes()
+
+        resolve_creator_key("ch_aizawa_ema", path)
+        resolve_creator_key("ch_nonexistent_creator", path)
+
+        assert path.read_bytes() == before
+
+    # -- Legacy alias table, verified against the real production roster,
+    # since the alias targets (airani_iofifteen, watson_amelia, vspo_official)
+    # are real Creator Master ids, not synthetic fixture data. --
+
+    def test_ch_iofi_alias_resolves_to_airani_iofifteen(self):
+        resolved = resolve_creator_key("ch_iofi")
+
+        assert resolved is not None
+        assert resolved.creator_id == "airani_iofifteen"
+
+    def test_ch_amelia_myth_graduated_alias_resolves_to_watson_amelia(self):
+        resolved = resolve_creator_key("ch_amelia_myth_graduated")
+
+        assert resolved is not None
+        assert resolved.creator_id == "watson_amelia"
+
+    def test_ch_vspo_group_alias_resolves_to_vspo_official(self):
+        """vspo_official resolves successfully as an identity -- whether a "group"
+        channelType is *eligible* for a feature like My Oshi is a separate concern
+        this resolver never decides."""
+        resolved = resolve_creator_key("ch_vspo_group")
+
+        assert resolved is not None
+        assert resolved.creator_id == "vspo_official"
+        assert resolved.channel_type == "group"
+
+    def test_ch_hololive_staff_is_mock_only_and_does_not_resolve(self):
+        """ch_hololive_staff has no Creator Master counterpart at all -- naive prefix
+        stripping would produce "hololive_staff", which must NOT be fabricated as a
+        synthetic record. It must resolve as unknown, exactly like any other id with
+        no real backing record."""
+        assert resolve_creator_key("ch_hololive_staff") is None
+
+    def test_naive_prefix_stripping_of_the_known_aliases_would_not_have_worked(self):
+        """Documents *why* the alias table exists: plain "ch_" stripping alone
+        produces ids that are not in the current Creator Master at all."""
+        creator_ids = {creator.creator_id for creator in load_creators()}
+        assert "iofi" not in creator_ids
+        assert "amelia_myth_graduated" not in creator_ids
+        assert "vspo_group" not in creator_ids
+
+    def test_all_legacy_alias_targets_exist_in_the_current_creator_master(self):
+        creator_ids = {creator.creator_id for creator in load_creators()}
+
+        for legacy_id, canonical_id in LEGACY_CREATOR_ID_ALIASES.items():
+            assert canonical_id in creator_ids, f"{legacy_id!r} aliases to {canonical_id!r}, which no longer exists"
+            assert resolve_creator_key(legacy_id) is not None
+
+
+class TestFindCreatorByYoutubeChannelId:
+    def test_valid_youtube_channel_id_resolves(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema", youtubeChannelId="UC_TEST_1"))
+
+        resolved = find_creator_by_youtube_channel_id("UC_TEST_1", path)
+
+        assert resolved is not None
+        assert resolved.creator_id == "aizawa_ema"
+
+    def test_unknown_youtube_channel_id_returns_none(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema", youtubeChannelId="UC_TEST_1"))
+
+        assert find_creator_by_youtube_channel_id("UC_DOES_NOT_EXIST", path) is None
+
+    @pytest.mark.parametrize("value", ["", "   ", None, 42])
+    def test_blank_or_malformed_input_returns_none(self, tmp_path, value):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema", youtubeChannelId="UC_TEST_1"))
+
+        assert find_creator_by_youtube_channel_id(value, path) is None
+
+    def test_duplicate_youtube_channel_id_raises_rather_than_silently_choosing_one(self, tmp_path):
+        path = _write_roster(
+            tmp_path,
+            _base_record(creatorId="aizawa_ema", youtubeChannelId="UC_DUPLICATE"),
+            _base_record(creatorId="another_creator", youtubeChannelId="UC_DUPLICATE"),
+        )
+
+        with pytest.raises(CreatorMasterError):
+            find_creator_by_youtube_channel_id("UC_DUPLICATE", path)
+
+    def test_production_roster_has_no_duplicate_youtube_channel_ids(self):
+        """Guards the invariant find_creator_by_youtube_channel_id relies on: every
+        real creator's youtubeChannelId is unique, so this lookup never has to choose."""
+        for creator in load_creators():
+            assert find_creator_by_youtube_channel_id(creator.youtube_channel_id) is not None
+
+
+def _creator(**overrides) -> Creator:
+    """A default active/member/current Creator, overridable per test -- eligibility
+    tests build Creator instances directly rather than round-tripping JSON, since
+    is_creator_selectable/is_creator_live_roster_eligible take a Creator, not a key."""
+    fields = {
+        "creator_id": "test_creator",
+        "display_name": "Test Creator",
+        "organization": "vspo",
+        "youtube_channel_id": "UC_TEST",
+        "active": True,
+        "branch": "vspo_jp",
+        "group_key": ["NO"],
+        "channel_type": "member",
+        "lifecycle_stage": "active",
+    }
+    fields.update(overrides)
+    return Creator(**fields)
+
+
+class TestEligibility:
+    """is_creator_selectable (My Oshi / Favorites) and is_creator_live_roster_eligible
+    (Live Status / Live Schedule) currently share one rule: an active-collection
+    individual member who is a current real-world talent (active or pre_debut).
+    Both functions are exercised identically below to prove they agree today,
+    without assuming they must always agree (see their own docstrings)."""
+
+    ELIGIBILITY_FUNCTIONS = [is_creator_selectable, is_creator_live_roster_eligible]
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_active_member_is_eligible(self, is_eligible):
+        assert is_eligible(_creator(lifecycle_stage="active")) is True
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_pre_debut_member_is_eligible(self, is_eligible):
+        """A pre-debut member is eligible even though no current stream exists yet --
+        eligibility is about identity/status, not about whether they've ever streamed."""
+        assert is_eligible(_creator(lifecycle_stage="pre_debut")) is True
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_graduated_member_is_excluded(self, is_eligible):
+        assert is_eligible(_creator(lifecycle_stage="graduated")) is False
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_retired_member_is_excluded(self, is_eligible):
+        assert is_eligible(_creator(lifecycle_stage="retired")) is False
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_active_group_is_excluded(self, is_eligible):
+        """channel_type alone excludes a group, regardless of lifecycle_stage --
+        never special-cased by creatorId (e.g. vspo_official) or branch."""
+        assert is_eligible(_creator(channel_type="group", lifecycle_stage="active")) is False
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_pre_debut_group_is_excluded(self, is_eligible):
+        """hololive_asobimawaritai's own real shape: channel_type "group" with
+        lifecycle_stage "pre_debut" -- group exclusion wins regardless of
+        lifecycle_stage, exactly per the accepted product rule."""
+        assert is_eligible(_creator(channel_type="group", lifecycle_stage="pre_debut")) is False
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_active_staff_is_excluded(self, is_eligible):
+        assert is_eligible(_creator(channel_type="staff", lifecycle_stage="active")) is False
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_active_false_member_is_excluded(self, is_eligible):
+        """Future-safe rule, not exercised by any real data today (every production
+        creator currently has active=true): a member taken out of active collection
+        has no reliable ongoing data, so a current-facing roster must not offer them
+        either, even though their real-world lifecycle_stage might still say "active"."""
+        assert is_eligible(_creator(active=False, lifecycle_stage="active")) is False
+
+    def test_vspo_official_resolves_but_is_ineligible_for_either_roster(self):
+        """vspo_official: a real Creator Master identity (channel_type "group") --
+        resolves successfully, but is ineligible for My Oshi and Live Status/Schedule."""
+        resolved = resolve_creator_key("ch_vspo_group")
+
+        assert resolved is not None
+        assert is_creator_selectable(resolved) is False
+        assert is_creator_live_roster_eligible(resolved) is False
+
+    def test_hololive_asobimawaritai_resolves_but_is_ineligible(self):
+        """hololive_asobimawaritai: channel_type "group", lifecycle_stage "pre_debut" --
+        resolves successfully, but group exclusion wins over pre_debut eligibility."""
+        resolved = resolve_creator_key("hololive_asobimawaritai")
+
+        assert resolved is not None
+        assert resolved.lifecycle_stage == "pre_debut"
+        assert resolved.channel_type == "group"
+        assert is_creator_selectable(resolved) is False
+        assert is_creator_live_roster_eligible(resolved) is False
+
+    def test_a_graduated_creator_remains_resolvable_by_canonical_id(self):
+        """Graduated identity is never deleted/rejected by identity resolution --
+        only excluded from the two CURRENT rosters by eligibility, a separate check."""
+        graduated = next(c for c in load_creators() if c.lifecycle_stage == "graduated")
+
+        resolved = resolve_creator_key(graduated.creator_id)
+
+        assert resolved is not None
+        assert resolved.creator_id == graduated.creator_id
+        assert is_creator_selectable(resolved) is False
+        assert is_creator_live_roster_eligible(resolved) is False
+
+    def test_historical_identity_lookup_is_unaffected_by_eligibility(self):
+        """load_creators()/get_active_creators() -- the functions historical/analytics
+        code actually uses -- must keep returning every creator regardless of
+        eligibility; eligibility is a presentation-surface concern, not a data-
+        access filter. This is a documentation test: it fails only if a future
+        change starts filtering load_creators() by eligibility, which must not happen."""
+        all_creators = load_creators()
+        graduated = [c for c in all_creators if c.lifecycle_stage == "graduated"]
+
+        assert len(graduated) > 0
+        assert all(c in all_creators for c in graduated)

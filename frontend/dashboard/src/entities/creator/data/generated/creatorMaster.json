@@ -1,0 +1,1781 @@
+{
+  "creators": [
+    {
+      "creatorId": "achichi_mela",
+      "displayName": "熱千めら",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "アソビ★まわり隊！"
+      ],
+      "channelType": "member",
+      "themeColor": "#1C97FF",
+      "lifecycleStage": "pre_debut",
+      "active": true,
+      "youtubeChannelId": "UC8eitCE9Z6EwUCs-VUi1blg"
+    },
+    {
+      "creatorId": "achrora",
+      "displayName": "ACHRORA - mekPark",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "mekpark"
+      ],
+      "channelType": "group",
+      "themeColor": null,
+      "lifecycleStage": "pre_debut",
+      "active": true,
+      "youtubeChannelId": "UChpRPsAeSZn5DistGacR3iA"
+    },
+    {
+      "creatorId": "airani_iofifteen",
+      "displayName": "Airani Iofifteen",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_id",
+      "groupKey": [
+        "1期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#7EDD0B",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCAoy6rzhSf4ydcYjJw3WoVg"
+    },
+    {
+      "creatorId": "aizawa_ema",
+      "displayName": "藍沢エマ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#B4F1F9",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCPkKpOHxEDcwmUAnRpIu-Ng"
+    },
+    {
+      "creatorId": "akai_haato",
+      "displayName": "赤井はあと",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "1期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#D90629",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC1CfXB_kRs3C-zaeTG3oGyg"
+    },
+    {
+      "creatorId": "aki_rosenthal",
+      "displayName": "アキ・ローゼンタール",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "1期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#D40680",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCFTLzh12_nrtzqBPsTCqenA"
+    },
+    {
+      "creatorId": "amane_kanata",
+      "displayName": "天音かなた",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "4期生"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCZlDXzGoo7d44bwdNObFacg"
+    },
+    {
+      "creatorId": "amayui_moka",
+      "displayName": "甘結もか",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#ECA0AA",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC8vKBjGY2HVfbW9GAmgikWw"
+    },
+    {
+      "creatorId": "anya_melfissa",
+      "displayName": "Anya Melfissa",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_id",
+      "groupKey": [
+        "2期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#E79F11",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC727SQYUvx5pDDGQpTICNWg"
+    },
+    {
+      "creatorId": "arya_kuroha",
+      "displayName": "黒刃アリヤ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_en",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#000000",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCLlJpxXt6L5d-XQ0cDdIyDQ"
+    },
+    {
+      "creatorId": "ayunda_risu",
+      "displayName": "Ayunda Risu",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_id",
+      "groupKey": [
+        "1期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#ED8282",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCOyYb1c43VlX9rc_lT6NKQw"
+    },
+    {
+      "creatorId": "azki",
+      "displayName": "AZKi",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "0期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#D11C76",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC0TXe_LYZ4scaW2XMyi5_kw"
+    },
+    {
+      "creatorId": "cecilia_immergreen",
+      "displayName": "Cecilia Immergreen",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Justice"
+      ],
+      "channelType": "member",
+      "themeColor": "#137A42",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCvN5h1ShZtc7nly3pezRayg"
+    },
+    {
+      "creatorId": "ceres_fauna",
+      "displayName": "Ceres Fauna",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Promise"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCO_aKKYxn4tvrqPjcTzZ6EQ"
+    },
+    {
+      "creatorId": "choya_hanabi",
+      "displayName": "蝶屋はなび",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#EA5506",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCL9hJsdk9eQa0IlWbFB2oRg"
+    },
+    {
+      "creatorId": "elizabeth_rose_bloodflame",
+      "displayName": "Elizabeth Rose Bloodflame",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Justice"
+      ],
+      "channelType": "member",
+      "themeColor": "#97303A",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCW5uhrG1eCBYditmhL0Ykjw"
+    },
+    {
+      "creatorId": "eris_suzukami",
+      "displayName": "涼上エリス",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_en",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#90B2F8",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCp_3ej2br9l9L1DSoHVDZGw"
+    },
+    {
+      "creatorId": "fuwamoco",
+      "displayName": "FUWAMOCO",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Advent",
+        "FUWAMOCO"
+      ],
+      "channelType": "group",
+      "themeColor": "#A66FEF",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCt9H_RpQzhxzlyBxFqrdHqA"
+    },
+    {
+      "creatorId": "gawr_gura",
+      "displayName": "Gawr Gura",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Myth"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCoSrY_IQQVpmIRZ9Xf-y93g"
+    },
+    {
+      "creatorId": "gigi_murin",
+      "displayName": "Gigi Murin",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Justice"
+      ],
+      "channelType": "member",
+      "themeColor": "#CD9328",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCDHABijvPBnJm7F-KlNME3w"
+    },
+    {
+      "creatorId": "ginjo_saine",
+      "displayName": "銀城サイネ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#58535E",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC2xXx1m1jeL0W84_0jTg-Yw"
+    },
+    {
+      "creatorId": "hakos_baelz",
+      "displayName": "Hakos Baelz",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Promise"
+      ],
+      "channelType": "member",
+      "themeColor": "#FB3D29",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCgmPnx-EEeOrZSg5Tiw7ZRQ"
+    },
+    {
+      "creatorId": "hakui_koyori",
+      "displayName": "博衣こより",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "6期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#FF68AD",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC6eWCld0KwmyHFbAqK3V-Rw"
+    },
+    {
+      "creatorId": "hanabusa_risa",
+      "displayName": "英リサ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#D1DE79",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCurEA8YoqFwimJcAuSHU0MQ"
+    },
+    {
+      "creatorId": "himemori_luna",
+      "displayName": "姫森ルーナ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "4期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#DE6DAE",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCa9Y57gfeY0Zro_noHRVrnw"
+    },
+    {
+      "creatorId": "hiodoshi_ao",
+      "displayName": "火威青",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "ReGLOSS"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCMGfV7TVTmHhEErVJg1oHBQ"
+    },
+    {
+      "creatorId": "holoan_room",
+      "displayName": "holoAN room(ホロアナ)",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "aNnounce"
+      ],
+      "channelType": "staff",
+      "themeColor": null,
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCozx5csNhCx1wsVq3SZVkBQ"
+    },
+    {
+      "creatorId": "hololive_asobimawaritai",
+      "displayName": "アソビ★まわり隊！",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "アソビ★まわり隊！"
+      ],
+      "channelType": "group",
+      "themeColor": null,
+      "lifecycleStage": "pre_debut",
+      "active": true,
+      "youtubeChannelId": "UCAHwWUotyS3l2qBetFDsjgQ"
+    },
+    {
+      "creatorId": "hololive_dev_is_flow_glow",
+      "displayName": "hololive FLOW GLOW",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "FLOWGLOW"
+      ],
+      "channelType": "group",
+      "themeColor": null,
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCu2n3qHuOuQIygREMnWeQWg"
+    },
+    {
+      "creatorId": "hololive_dev_is_regloss",
+      "displayName": "hololive ReGLOSS",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "ReGLOSS"
+      ],
+      "channelType": "group",
+      "themeColor": null,
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC10wVt6hoQiwySRhz7RdOUA"
+    },
+    {
+      "creatorId": "hoshimachi_suisei",
+      "displayName": "星街すいせい",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "0期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#6A98D0",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC5CwaMl1eIgY8h02uZw7u8A"
+    },
+    {
+      "creatorId": "houshou_marine",
+      "displayName": "宝鐘マリン",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "3期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#A82413",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCCzUftO8KOVkV4wQG1vkUvg"
+    },
+    {
+      "creatorId": "hyakuto_kyoko",
+      "displayName": "百灯キョーコ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "アソビ★まわり隊！"
+      ],
+      "channelType": "member",
+      "themeColor": "#F86701",
+      "lifecycleStage": "pre_debut",
+      "active": true,
+      "youtubeChannelId": "UCSjQDxud2HkAO2DVD3lwxmw"
+    },
+    {
+      "creatorId": "ichijou_ririka",
+      "displayName": "一条莉々華",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "ReGLOSS"
+      ],
+      "channelType": "member",
+      "themeColor": "#EE558B",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCtyWhCj3AqKh2dXctLkDtng"
+    },
+    {
+      "creatorId": "ichinose_uruha",
+      "displayName": "一ノ瀬うるは",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#4182FA",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC5LyYg6cCA4yHEYvtUsir3g"
+    },
+    {
+      "creatorId": "inugami_korone",
+      "displayName": "戌神ころね",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "ゲーマーズ"
+      ],
+      "channelType": "member",
+      "themeColor": "#DCB414",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UChAnqc_AY5_I3Px5dig3X1Q"
+    },
+    {
+      "creatorId": "irys",
+      "displayName": "IRyS",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Promise"
+      ],
+      "channelType": "member",
+      "themeColor": "#BC96B0",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC8rcEBzJSleTkf_-agPM20g"
+    },
+    {
+      "creatorId": "isaki_riona",
+      "displayName": "響咲リオナ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "FLOWGLOW"
+      ],
+      "channelType": "member",
+      "themeColor": "#C92655",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC9LSiN9hXI55svYEBrrK-tw"
+    },
+    {
+      "creatorId": "jira_jisaki",
+      "displayName": "地崎ジラ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_en",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#606D3D",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCeCWj-SiJG9SWN6wGORiLmw"
+    },
+    {
+      "creatorId": "juno_umezono",
+      "displayName": "梅園ジュノ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_en",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#923173",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCRJV_1aV4aZjFAEUn6o5arw"
+    },
+    {
+      "creatorId": "juufuutei_raden",
+      "displayName": "儒烏風亭らでん",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "ReGLOSS"
+      ],
+      "channelType": "member",
+      "themeColor": "#1C5E4F",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCdXAk5MpyLD8594lm_OvtGQ"
+    },
+    {
+      "creatorId": "kaela_kovalskia",
+      "displayName": "Kaela Kovalskia",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_id",
+      "groupKey": [
+        "3期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#DC2528",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCZLZ8Jjx_RN2CXloOmgTHVg"
+    },
+    {
+      "creatorId": "kaga_nazuna",
+      "displayName": "花芽なずな",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#FABEDC",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCiMG6VdScBabPhJ1ZtaVmbw"
+    },
+    {
+      "creatorId": "kaga_sumire",
+      "displayName": "花芽すみれ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#BECCFF",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCyLGcqYs7RsBb3L0SJfzGYA"
+    },
+    {
+      "creatorId": "kanari_kyupi",
+      "displayName": "神成きゅぴ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#FFD23C",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCMp55EbT_ZlqiMS3lCj01BQ"
+    },
+    {
+      "creatorId": "kazama_iroha",
+      "displayName": "風真いろは",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "6期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#45BFB6",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC_vMYWcDjmfdpH6r4TTn1MQ"
+    },
+    {
+      "creatorId": "kikirara_vivi",
+      "displayName": "綺々羅々ヴィヴィ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "FLOWGLOW"
+      ],
+      "channelType": "member",
+      "themeColor": "#E6499B",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCGzTVXqMQHa4AgJVJIVvtDQ"
+    },
+    {
+      "creatorId": "kiryu_coco",
+      "displayName": "桐生ココ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "4期生"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCS9uQI-jC3DE0L4IpXyvr6w"
+    },
+    {
+      "creatorId": "kisaragi_ren",
+      "displayName": "如月れん",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#BE2152",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCGWa1dMU_sDCaRQjdabsVgg"
+    },
+    {
+      "creatorId": "kobo_kanaeru",
+      "displayName": "Kobo Kanaeru",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_id",
+      "groupKey": [
+        "3期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#93BFE4",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCjLEmnpCNeisMxy134KPwWw"
+    },
+    {
+      "creatorId": "koganei_niko",
+      "displayName": "虎金妃笑虎",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "FLOWGLOW"
+      ],
+      "channelType": "member",
+      "themeColor": "#F25E11",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCuI_opAVX6qbxZY-a-AxFuQ"
+    },
+    {
+      "creatorId": "komori_meto",
+      "displayName": "小森めと",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#FBA03F",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCzUNASdzI4PV5SlqtYwAkKQ"
+    },
+    {
+      "creatorId": "koseki_bijou",
+      "displayName": "Koseki Bijou",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Advent"
+      ],
+      "channelType": "member",
+      "themeColor": "#4B44DE",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC9p_lqQ0FEDz327Vgf5JwqA"
+    },
+    {
+      "creatorId": "kosuzume_toto",
+      "displayName": "小雀とと",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#FFF33F",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCgTzsBI0DIRopMylJEDqnog"
+    },
+    {
+      "creatorId": "kureiji_ollie",
+      "displayName": "Kureiji Ollie",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_id",
+      "groupKey": [
+        "2期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#D90C52",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCYz_5n-uDuChHtLo7My1HnQ"
+    },
+    {
+      "creatorId": "kurumi_noa",
+      "displayName": "胡桃のあ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#B297D7",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCIcAj6WkJ8vZ7DeJVgmeqKw"
+    },
+    {
+      "creatorId": "laplus_darkness",
+      "displayName": "ラプラス・ダークネス",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "6期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#471497",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCENwRMx5Yh42zWpzURebzTw"
+    },
+    {
+      "creatorId": "mano_aloe",
+      "displayName": "魔乃アロエ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "5期生"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCgZuwn-O7Szh9cAgHqJ6vjw"
+    },
+    {
+      "creatorId": "minato_aqua",
+      "displayName": "湊あくあ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "2期生"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UC1opHUrw8rvnsadT-iGp7Cg"
+    },
+    {
+      "creatorId": "mizumiya_su",
+      "displayName": "水宮枢",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "FLOWGLOW"
+      ],
+      "channelType": "member",
+      "themeColor": "#64CCE4",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCjk2nKmHzgH5Xy-C5qYRd5A"
+    },
+    {
+      "creatorId": "momosuzu_nene",
+      "displayName": "桃鈴ねね",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "5期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#FF7810",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCAWSyEs_Io8MtpY3m-zqILA"
+    },
+    {
+      "creatorId": "moona_hoshinova",
+      "displayName": "Moona Hoshinova",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_id",
+      "groupKey": [
+        "1期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#794EBE",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCP0BspO_AMEe3aQqqpo89Dg"
+    },
+    {
+      "creatorId": "mori_calliope",
+      "displayName": "Mori Calliope",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Myth"
+      ],
+      "channelType": "member",
+      "themeColor": "#A1030D",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCL_qhgtOy0dy1Agp8vkySQg"
+    },
+    {
+      "creatorId": "murasaki_shion",
+      "displayName": "紫咲シオン",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "2期生"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCXTpFs_3PqI41qX2d9tL2Rw"
+    },
+    {
+      "creatorId": "nakiri_ayame",
+      "displayName": "百鬼あやめ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "2期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#CD233A",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC7fk0CB07ly8oSl0aqKkqFg"
+    },
+    {
+      "creatorId": "nanashi_mumei",
+      "displayName": "Nanashi Mumei",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Promise"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UC3n5uGu18FoCy23ggWWp8tA"
+    },
+    {
+      "creatorId": "narin_mikure",
+      "displayName": "美暮ナリン",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_en",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#F3A6EF",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCKSpM183c85d5V2cW5qaUjA"
+    },
+    {
+      "creatorId": "natsuiro_matsuri",
+      "displayName": "夏色まつり",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "1期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#FF5506",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCQ0UDLQCjY0rmuxCDE38FGg"
+    },
+    {
+      "creatorId": "nekomata_okayu",
+      "displayName": "猫又おかゆ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "ゲーマーズ"
+      ],
+      "channelType": "member",
+      "themeColor": "#BF66E8",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCvaTdHTWBGv3MKj3KVqJVCw"
+    },
+    {
+      "creatorId": "nekota_tsuna",
+      "displayName": "猫汰つな",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#FF3652",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCIjdfjcSaEgdjwbgjxC3ZWg"
+    },
+    {
+      "creatorId": "nerissa_ravencroft",
+      "displayName": "Nerissa Ravencroft",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Advent"
+      ],
+      "channelType": "member",
+      "themeColor": "#2D3799",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC_sFNM0z0MWm9A6WlKPuMMg"
+    },
+    {
+      "creatorId": "ninomae_inanis",
+      "displayName": "Ninomae Ina'nis",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Myth"
+      ],
+      "channelType": "member",
+      "themeColor": "#3F3F6A",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCMwGHR0BTZuLsmjY_NT5Pwg"
+    },
+    {
+      "creatorId": "omaru_polka",
+      "displayName": "尾丸ポルカ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "5期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#AA0909",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCK9V2B22uJYu3N7eR_BT9QA"
+    },
+    {
+      "creatorId": "ookami_mio",
+      "displayName": "大神ミオ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "ゲーマーズ"
+      ],
+      "channelType": "member",
+      "themeColor": "#4F5072",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCp-5t9SrOQwXMU7iIjQfARg"
+    },
+    {
+      "creatorId": "oozora_subaru",
+      "displayName": "大空スバル",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "2期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#BCE717",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCvzGlP9oQwU--Y0r9id_jnA"
+    },
+    {
+      "creatorId": "otonose_kanade",
+      "displayName": "音乃瀬奏",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "ReGLOSS"
+      ],
+      "channelType": "member",
+      "themeColor": "#F6C663",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCWQtYtq9EOB4-I5P-3fh8lA"
+    },
+    {
+      "creatorId": "ouro_kronii",
+      "displayName": "Ouro Kronii",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Promise"
+      ],
+      "channelType": "member",
+      "themeColor": "#1B189B",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCmbs8T6MWqUHP1tIQvSgKrg"
+    },
+    {
+      "creatorId": "pavolia_reine",
+      "displayName": "Pavolia Reine",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_id",
+      "groupKey": [
+        "2期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#040F7F",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UChgTyjG-pdNvxxhdsXfHQ5Q"
+    },
+    {
+      "creatorId": "raora_panthera",
+      "displayName": "Raora Panthera",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Justice"
+      ],
+      "channelType": "member",
+      "themeColor": "#E75786",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCl69AEx4MdqMZH7Jtsm7Tig"
+    },
+    {
+      "creatorId": "remia_aotsuki",
+      "displayName": "青月レミア",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_en",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#398FB2",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCCra1t-eIlO3ULyXQQMD9Xw"
+    },
+    {
+      "creatorId": "riko_solari",
+      "displayName": "ソラリリコ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_en",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#9373D7",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC7Xglp1fske9zmRe7Oj8YyA"
+    },
+    {
+      "creatorId": "rindo_chihaya",
+      "displayName": "輪堂千速",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "FLOWGLOW"
+      ],
+      "channelType": "member",
+      "themeColor": "#2C8C8B",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCKMWFR6lAstLa7Vbf5dH7ig"
+    },
+    {
+      "creatorId": "robocosan",
+      "displayName": "ロボ子さん",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "0期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#804F7F",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCDqI2jOz0weumE8s7paEk6g"
+    },
+    {
+      "creatorId": "sakamata_chloe",
+      "displayName": "沙花叉クロヱ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "6期生"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCIBY1ollUsauvVi4hW4cumw"
+    },
+    {
+      "creatorId": "sakura_miko",
+      "displayName": "さくらみこ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "0期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#FF4B74",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC-hM6YJuNYVAmUWxeIr9FeA"
+    },
+    {
+      "creatorId": "sendo_yuuhi",
+      "displayName": "千燈ゆうひ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#ED784A",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCuDY3ibSP2MFRgf7eo3cojg"
+    },
+    {
+      "creatorId": "shinomiya_runa",
+      "displayName": "紫宮るな",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#D6ADFF",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCD5W21JqNMv_tV9nfjvF9sw"
+    },
+    {
+      "creatorId": "shiori_novella",
+      "displayName": "Shiori Novella",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Advent"
+      ],
+      "channelType": "member",
+      "themeColor": "#8D81AE",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCgnfPPb9JI3e9A4cXHnWbyg"
+    },
+    {
+      "creatorId": "shirakami_fubuki",
+      "displayName": "白上フブキ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "1期生",
+        "ゲーマーズ"
+      ],
+      "channelType": "member",
+      "themeColor": "#2BCDFF",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCdn5BQ06XqgXoAxIhbqw5Rg"
+    },
+    {
+      "creatorId": "shiranami_ramune",
+      "displayName": "白波らむね",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#8ECED9",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC61OwuYOVuKkpKnid-43Twg"
+    },
+    {
+      "creatorId": "shiranui_flare",
+      "displayName": "不知火フレア",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "3期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#DB3A11",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCvInZx9h3jC2JzsIzoOebWg"
+    },
+    {
+      "creatorId": "shirogane_noel",
+      "displayName": "白銀ノエル",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "3期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#8A939E",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCdyqAaZDKHXg4Ahi7VENThQ"
+    },
+    {
+      "creatorId": "shishiro_botan",
+      "displayName": "獅白ぼたん",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "5期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#5FCFA7",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCUKD-uaobj9jiqB-VXt71mA"
+    },
+    {
+      "creatorId": "sorashina_sopia",
+      "displayName": "宙科そぴあ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "アソビ★まわり隊！"
+      ],
+      "channelType": "member",
+      "themeColor": "#7B7EFF",
+      "lifecycleStage": "pre_debut",
+      "active": true,
+      "youtubeChannelId": "UCROQtXcp2loQEmvpe5rhJzQ"
+    },
+    {
+      "creatorId": "sorasumi_sena",
+      "displayName": "空澄セナ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#FFFFFF",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCF_U2GCKHvDz52jWdizppIA"
+    },
+    {
+      "creatorId": "suzuna_tsuzuri",
+      "displayName": "鈴鳴つづり",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "アソビ★まわり隊！"
+      ],
+      "channelType": "member",
+      "themeColor": "#E2383B",
+      "lifecycleStage": "pre_debut",
+      "active": true,
+      "youtubeChannelId": "UCy9mgxB8pn2C4aNK_MPthDQ"
+    },
+    {
+      "creatorId": "tachibana_hinano",
+      "displayName": "橘ひなの",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#FA96C8",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCvUc0m317LWTTPZoBQV479A"
+    },
+    {
+      "creatorId": "takanashi_kiara",
+      "displayName": "Takanashi Kiara",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Myth"
+      ],
+      "channelType": "member",
+      "themeColor": "#FF511C",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCHsx4Hqa-1ORjQTh9TYDhww"
+    },
+    {
+      "creatorId": "takane_lui",
+      "displayName": "鷹嶺ルイ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "6期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#52363E",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCs9_O1tRPMQTHQ-N_L6FU2g"
+    },
+    {
+      "creatorId": "tatsumaki_chise",
+      "displayName": "龍巻ちせ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#BEFF77",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCoW8qQy80mKH0RJTKAK-nNA"
+    },
+    {
+      "creatorId": "todoroki_hajime",
+      "displayName": "轟はじめ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "ReGLOSS"
+      ],
+      "channelType": "member",
+      "themeColor": "#9293FE",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC1iA6_NT4mtAcIII6ygrvCw"
+    },
+    {
+      "creatorId": "tokino_sora",
+      "displayName": "ときのそら",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "0期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#0146E9",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCp6993wxpyDPHUpavwDFqgg"
+    },
+    {
+      "creatorId": "tokoyami_towa",
+      "displayName": "常闇トワ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "4期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#A9A2EB",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC1uv2Oq6kNxgATlCiez59hw"
+    },
+    {
+      "creatorId": "tsumugi_kokage",
+      "displayName": "紡木こかげ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#5195E1",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC-WX1CXssCtCtc2TNIRnJzg"
+    },
+    {
+      "creatorId": "tsunomaki_watame",
+      "displayName": "角巻わため",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "4期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#DBDB89",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCqm3BQLlJfvkTsX_hvm0UmA"
+    },
+    {
+      "creatorId": "unit_b_pre_debut",
+      "displayName": "UNIT B (Pre-Debut) - mekPark",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "mekpark"
+      ],
+      "channelType": "group",
+      "themeColor": null,
+      "lifecycleStage": "pre_debut",
+      "active": true,
+      "youtubeChannelId": "UC3OH5FKQ3qtl4uRme_vZTgA"
+    },
+    {
+      "creatorId": "uruha_rushia",
+      "displayName": "潤羽るしあ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "3期生"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCl_gCybOJRIgOXw6Qb4qJzQ"
+    },
+    {
+      "creatorId": "usada_pekora",
+      "displayName": "兎田ぺこら",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "3期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#65BBEB",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC1DCedRgGHBdm81E1llLhOQ"
+    },
+    {
+      "creatorId": "usaki_mimi",
+      "displayName": "兎咲ミミ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#C7B2D6",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCnvVG9RbOW3J6Ifqo-zKLiw"
+    },
+    {
+      "creatorId": "vestia_zeta",
+      "displayName": "Vestia Zeta",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_id",
+      "groupKey": [
+        "3期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#98A1AC",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCTvHWSfBZgtxE4sILOaurIQ"
+    },
+    {
+      "creatorId": "vspo_official",
+      "displayName": "ぶいすぽっ!【公式】",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "group",
+      "themeColor": null,
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCuI5XaO-6VkOEhHao6ij7JA"
+    },
+    {
+      "creatorId": "watson_amelia",
+      "displayName": "Watson Amelia",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_en",
+      "groupKey": [
+        "Myth"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCyl1z3jo3XHR1riLFKG5UAg"
+    },
+    {
+      "creatorId": "yakumo_beni",
+      "displayName": "八雲べに",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#85CAB3",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCjXBuHmWkieBApgBhDuJMMQ"
+    },
+    {
+      "creatorId": "yano_kuromu",
+      "displayName": "夜乃くろむ",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#909EC8",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCX4WL24YEOUYd7qDsFSLDOw"
+    },
+    {
+      "creatorId": "yozora_mel",
+      "displayName": "夜空メル",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "1期生"
+      ],
+      "channelType": "member",
+      "themeColor": null,
+      "lifecycleStage": "graduated",
+      "active": true,
+      "youtubeChannelId": "UCD8HOxPs4Xvsm8H0ZxXGiBw"
+    },
+    {
+      "creatorId": "yukihana_lamy",
+      "displayName": "雪花ラミィ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "5期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#47B4DF",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCFKOVgVbGmX65RxO3EtH3iw"
+    },
+    {
+      "creatorId": "yumeno_akari",
+      "displayName": "夢野あかり",
+      "avatarUrl": null,
+      "organization": "vspo",
+      "branch": "vspo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "member",
+      "themeColor": "#FF8684",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UCS5l_Y0oMVTjEos2LuyeSZQ"
+    },
+    {
+      "creatorId": "yuzuki_choco",
+      "displayName": "癒月ちょこ",
+      "avatarUrl": null,
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "2期生"
+      ],
+      "channelType": "member",
+      "themeColor": "#E9BB5D",
+      "lifecycleStage": "active",
+      "active": true,
+      "youtubeChannelId": "UC1suqwovbL1kzsoaZgFZLKg"
+    }
+  ],
+  "legacyAliases": {
+    "ch_iofi": "airani_iofifteen",
+    "ch_amelia_myth_graduated": "watson_amelia",
+    "ch_vspo_group": "vspo_official"
+  }
+}
