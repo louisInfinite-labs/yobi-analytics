@@ -1,4 +1,5 @@
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
+import { formatClockTime, type TimeFormat } from "../../../shared/i18n/model/timeFormat"
 
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -56,12 +57,12 @@ export function formatCompactCount(value: number): string {
   return String(value)
 }
 
-/** HH:mm for something published today, MM/DD otherwise. */
-export function formatActivityTime(iso: string, now: Date): string {
+/** Clock time for something published today, MM/DD otherwise. */
+export function formatActivityTime(iso: string, now: Date, timeFormat: TimeFormat = "24h"): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ""
   const sameDay =
     date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
-  if (sameDay) return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
+  if (sameDay) return formatClockTime(date, timeFormat)
   return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`
 }

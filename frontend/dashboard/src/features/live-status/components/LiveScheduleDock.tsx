@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react"
 import { Search } from "lucide-react"
 import { CreatorStatusList } from "./CreatorStatusList"
 import { useConfirmOshiSwitchPreference } from "../../oshi/hooks/useConfirmOshiSwitchPreference"
-import { useCountdownLanguage } from "../../../shared/i18n/hooks/useCountdownLanguage"
 import { useCreatorStatuses } from "../hooks/useCreatorStatuses"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
 import { setLiveDockExpanded } from "../hooks/useLiveDockExpanded"
@@ -11,9 +10,8 @@ import { usePrefersReducedMotion } from "../../../shared/hooks/usePrefersReduced
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
 import { creatorThemeStyle } from "../../../shared/theme/creatorThemeStyle"
-import { t } from "../../../shared/i18n/translations"
+import { t, type Locale } from "../../../shared/i18n/translations"
 import { formatCountdown } from "../model/creatorStatusFormat"
-import type { CountdownLanguage } from "../../../shared/i18n/model/countdownLanguage"
 import type { CreatorStatus } from "../model/creatorStatus"
 import { VideoPlayerModal } from "../../media-player/components/VideoPlayerModal"
 
@@ -36,7 +34,7 @@ type PanelSize = "full" | "compact"
 function summarize(
   statuses: Record<string, CreatorStatus>,
   now: Date,
-  language: CountdownLanguage,
+  locale: Locale,
 ): { text: string; dotColor: "red" | "grey" } {
   const values = Object.values(statuses)
   const liveCount = values.filter((s) => s.kind === "live").length
@@ -45,7 +43,7 @@ function summarize(
   const nextUpcoming = values
     .filter((s): s is Extract<CreatorStatus, { kind: "upcoming" }> => s.kind === "upcoming")
     .sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart))[0]
-  if (nextUpcoming) return { text: formatCountdown(nextUpcoming.scheduledStart, now, language), dotColor: "grey" }
+  if (nextUpcoming) return { text: formatCountdown(nextUpcoming.scheduledStart, now, locale), dotColor: "grey" }
 
   return { text: "OFFLINE", dotColor: "grey" }
 }
@@ -71,7 +69,6 @@ export function LiveScheduleDock() {
   const [query, setQuery] = useState("")
   const [embed, setEmbed] = useState<{ videoId: string; title: string } | null>(null)
   const [displayMode] = useUpcomingDisplayMode()
-  const [language] = useCountdownLanguage()
   const { statuses, now } = useCreatorStatuses()
   const { favorites, toggleFavorite } = useFavoriteCreators()
   const [selectedCreatorId, setSelectedCreatorId] = useSelectedCreator()
@@ -90,7 +87,7 @@ export function LiveScheduleDock() {
   const summaryStatuses = favoriteOnlyIds
     ? Object.fromEntries(Object.entries(statuses).filter(([id]) => favoriteOnlyIds.has(id)))
     : statuses
-  const summary = summarize(summaryStatuses, now, language)
+  const summary = summarize(summaryStatuses, now, locale)
 
   // Mirrors this component's own `expanded` state out to the module-level
   // useLiveDockExpanded store so Home can expose it to CSS as
@@ -231,7 +228,6 @@ export function LiveScheduleDock() {
                 statuses={statuses}
                 now={now}
                 displayMode={displayMode}
-                language={language}
                 query={query}
                 favoriteOnlyIds={favoriteOnlyIds}
                 favorites={favorites}

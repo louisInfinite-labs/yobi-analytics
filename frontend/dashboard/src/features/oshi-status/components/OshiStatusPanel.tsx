@@ -3,8 +3,8 @@ import { useMemo } from "react"
 import { BRANCH_LABELS } from "../../../entities/creator/model/domain"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
-import { useCountdownLanguage } from "../../../shared/i18n/hooks/useCountdownLanguage"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
+import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { t } from "../../../shared/i18n/translations"
 import { formatAbsoluteTime, formatCountdown } from "../../live-status/model/creatorStatusFormat"
 import { usePreviousVisit } from "../hooks/useLastVisit"
@@ -44,8 +44,8 @@ function Metric({ value, label }: { value: string; label: string }) {
  * Shows the scheduled clock time and the countdown side by side rather than
  * picking one — both slots exist, and neither is derived data. */
 function LiveOrNext({ status, now }: { status: CreatorStatus; now: Date }) {
-  const [language] = useCountdownLanguage()
   const [locale] = useLocale()
+  const [timeFormat] = useTimeFormat()
 
   if (status.kind === "offline") {
     return <div className="oshi-empty-state">{t(locale, "oshiStatus.noScheduledStream")}</div>
@@ -54,12 +54,12 @@ function LiveOrNext({ status, now }: { status: CreatorStatus; now: Date }) {
     <div className="oshi-status__next">
       <div className="oshi-status__next-main">
         <div className="oshi-status__next-time">
-          {status.kind === "live" ? t(locale, "oshiStatus.liveNow") : formatAbsoluteTime(status.scheduledStart)}
+          {status.kind === "live" ? t(locale, "oshiStatus.liveNow") : formatAbsoluteTime(status.scheduledStart, timeFormat)}
         </div>
         <div className="oshi-status__next-title">{status.title}</div>
       </div>
       {status.kind === "upcoming" && (
-        <div className="oshi-status__next-countdown">{formatCountdown(status.scheduledStart, now, language)}</div>
+        <div className="oshi-status__next-countdown">{formatCountdown(status.scheduledStart, now, locale)}</div>
       )}
     </div>
   )
@@ -74,6 +74,7 @@ export function OshiStatusPanel({ creatorId, status, now, uploads, streams, load
   const accent = getMemberAccent(creatorId)
   const previousVisit = usePreviousVisit()
   const [locale] = useLocale()
+  const [timeFormat] = useTimeFormat()
 
   const sinceLastVisit = useMemo(
     () => (previousVisit ? measureActivity(uploads, streams, previousVisit, now) : null),
@@ -150,7 +151,7 @@ export function OshiStatusPanel({ creatorId, status, now, uploads, streams, load
             <div className="oshi-status__recent-list">
               {recent.map((entry) => (
                 <div key={entry.videoId} className="oshi-status__recent-row">
-                  <span className="oshi-status__recent-time">{formatActivityTime(entry.publishedAt, now)}</span>
+                  <span className="oshi-status__recent-time">{formatActivityTime(entry.publishedAt, now, timeFormat)}</span>
                   <span className="oshi-status__recent-text">{entry.title}</span>
                 </div>
               ))}

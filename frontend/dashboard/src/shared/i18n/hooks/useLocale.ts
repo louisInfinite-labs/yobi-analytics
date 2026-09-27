@@ -3,8 +3,7 @@ import type { Locale } from "../translations"
 
 const STORAGE_KEY = "yobi.locale"
 
-/** navigator.language-based default — mirrors useCountdownLanguage's own
- * detection, mapped onto the three prepared locales. */
+/** navigator.language-based default, mapped onto the three prepared locales. */
 function detectDefaultLocale(): Locale {
   const lang = (typeof navigator !== "undefined" ? navigator.language : "en").toLowerCase()
   if (lang.startsWith("zh")) return "zh-TW"

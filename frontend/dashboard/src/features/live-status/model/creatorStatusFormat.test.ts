@@ -37,7 +37,7 @@ describe("formatCountdown", () => {
   it("renders Chinese using an hours-minutes-later pattern", () => {
     const now = new Date("2026-09-09T00:00:00.000Z")
     const target = new Date("2026-09-09T01:05:00.000Z").toISOString()
-    expect(formatCountdown(target, now, "zh")).toBe("1小時5分後")
+    expect(formatCountdown(target, now, "zh-TW")).toBe("1小時5分後")
   })
 
   it("renders English as In Xh:Xm", () => {

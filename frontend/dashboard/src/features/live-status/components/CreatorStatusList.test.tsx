@@ -19,7 +19,6 @@ function renderList(overrides: Partial<React.ComponentProps<typeof CreatorStatus
       statuses={allOffline}
       now={now}
       displayMode="absolute"
-      language="en"
       query=""
       favorites={new Set()}
       onToggleFavorite={onToggleFavorite}
@@ -246,7 +245,6 @@ describe("CreatorStatusList swipe-to-favorite", () => {
         statuses={allOffline}
         now={now}
         displayMode="absolute"
-        language="en"
         query=""
         favorites={new Set(["ch_aizawa_ema"])}
         onToggleFavorite={vi.fn()}
@@ -270,7 +268,6 @@ function TwoConsumers() {
     statuses: allOffline,
     now,
     displayMode: "absolute" as const,
-    language: "en" as const,
     query: "",
     favorites,
     onToggleFavorite: toggleFavorite,

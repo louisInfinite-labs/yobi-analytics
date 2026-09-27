@@ -6,7 +6,7 @@ import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import { useSwipeToFavorite } from "../../favorites/hooks/useSwipeToFavorite"
 import { creatorMatchesSearch, groupCreatorsForDockWithSubgroups } from "../../../entities/creator/utils/dockCreatorOrder"
 import { formatCreatorStatus, type UpcomingDisplayMode } from "../model/creatorStatusFormat"
-import type { CountdownLanguage } from "../../../shared/i18n/model/countdownLanguage"
+import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY } from "../../../entities/creator/utils/hololiveSubgrouping"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
 import { type BranchKey } from "../../../entities/creator/model/domain"
@@ -69,7 +69,6 @@ interface CreatorRowProps {
   creator: MockCreator
   status: CreatorStatus
   displayMode: UpcomingDisplayMode
-  language: CountdownLanguage
   now: Date
   isFavorite: boolean
   isActive: boolean
@@ -93,7 +92,6 @@ function CreatorRow({
   creator,
   status,
   displayMode,
-  language,
   now,
   isFavorite,
   isActive,
@@ -102,7 +100,8 @@ function CreatorRow({
   onSelectVideo,
   onToggleFavorite,
 }: CreatorRowProps) {
-  const display = formatCreatorStatus(status, displayMode, now, language)
+  const [timeFormat] = useTimeFormat()
+  const display = formatCreatorStatus(status, displayMode, now, locale, timeFormat)
   const swipe = useSwipeToFavorite(isFavorite, () => onToggleFavorite(creator.channelId))
   const topic = status.kind === "offline" ? null : status.title
 
@@ -160,7 +159,6 @@ export interface CreatorStatusListProps {
   statuses: Record<string, CreatorStatus>
   now: Date
   displayMode: UpcomingDisplayMode
-  language: CountdownLanguage
   /** Search text already typed by the caller — this component only filters/renders, the search input itself is the caller's own UI. */
   query: string
   onSelectVideo: (video: { videoId: string; title: string }) => void
@@ -202,7 +200,6 @@ export function CreatorStatusList({
   statuses,
   now,
   displayMode,
-  language,
   query,
   onSelectVideo,
   onSelectCreator,
@@ -267,7 +264,6 @@ export function CreatorStatusList({
                       creator={creator}
                       status={status}
                       displayMode={displayMode}
-                      language={language}
                       now={now}
                       isFavorite={isFavorite}
                       isActive={creator.channelId === activeOshiId}
