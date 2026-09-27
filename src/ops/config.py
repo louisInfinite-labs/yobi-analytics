@@ -24,6 +24,10 @@ class MissingAdminApiKeyError(RuntimeError):
     """Raised when YOBI_ADMIN_API_KEY is not set, or the Secrets Manager alternative can't be read."""
 
 
+class MissingHolodexApiKeyError(RuntimeError):
+    """Raised when HOLODEX_API_KEY is not set, or the Secrets Manager alternative can't be read."""
+
+
 @functools.cache
 def get_api_key() -> str:
     """Return the YouTube Data API key, preferring Secrets Manager over the plaintext env var fallback.
@@ -131,5 +135,42 @@ def get_admin_api_key() -> str:
     if not api_key:
         raise MissingAdminApiKeyError(
             "Neither YOBI_ADMIN_API_KEY_SECRET_NAME nor YOBI_ADMIN_API_KEY is set."
+        )
+    return api_key
+
+
+@functools.cache
+def get_holodex_api_key() -> str:
+    """Return the Holodex API key, preferring Secrets Manager over the plaintext env var fallback.
+
+    HOLODEX_SECRET_NAME (deployed Lambda) takes priority over HOLODEX_API_KEY
+    (local .env) so the key is never stored in plaintext Lambda
+    configuration, the same pattern as get_api_key() above. Named
+    HOLODEX_SECRET_NAME rather than HOLODEX_API_KEY_SECRET_NAME (unlike the
+    YOUTUBE_*/YOBI_ADMIN_* pairs) to deliberately avoid any resemblance to
+    the frontend's old VITE_HOLODEX_API_KEY, which this key replaces.
+    @functools.cache is safe here for the same reason as get_api_key(): this
+    key is only used to call Holodex outbound, never compared against
+    caller input, so memoizing a successful read across a warm container is
+    safe; a raised exception is never cached.
+    """
+    secret_name = os.getenv("HOLODEX_SECRET_NAME")
+    if secret_name:
+        try:
+            secret_value = boto3.client("secretsmanager").get_secret_value(SecretId=secret_name).get("SecretString")
+        except (ClientError, BotoCoreError) as exc:
+            raise MissingHolodexApiKeyError(f"Could not read secret {secret_name!r} from Secrets Manager: {exc}") from exc
+        if not secret_value:
+            raise MissingHolodexApiKeyError(
+                f"Secret {secret_name!r} has no SecretString value "
+                "(it was likely created as SecretBinary instead of plaintext)."
+            )
+        return secret_value
+
+    api_key = os.getenv("HOLODEX_API_KEY")
+    if not api_key:
+        raise MissingHolodexApiKeyError(
+            "Neither HOLODEX_SECRET_NAME nor HOLODEX_API_KEY is set. "
+            "Copy .env.example to .env and add your key for local development."
         )
     return api_key
