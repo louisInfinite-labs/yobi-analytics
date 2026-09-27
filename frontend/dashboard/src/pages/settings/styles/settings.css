@@ -1087,8 +1087,86 @@
     min-width: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    scrollbar-gutter: stable;
   }
+}
+
+/* ---- Scrollbar style, reused from Home's own video list scrollbar
+   (.oshi-videos__viewport in pages/home/styles/home.css) -- same
+   hidden-at-rest/thin-on-hover mechanism, the same 7px thickness, and the
+   same --oshi-surface-scrollbar-thumb / --oshi-surface-scrollbar-thumb-hover
+   / --oshi-bg tokens that block already defines at :root (so any future
+   change to Home's own scrollbar colors stays in sync here too), just
+   applied to vertical scroll (width, not height) instead of Home's own
+   horizontal one. No reserved gutter, same as Home -- overlay-style, not
+   layout-shifting. Scoped to these three Notification Settings scroll
+   regions only; Home's own rules and every other Settings page are
+   untouched. ---- */
+.notification-topic-list-scroll,
+.topic-creator-drawer .ant-drawer-body,
+.notification-detail-panel {
+  scrollbar-width: none;
+  scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
+}
+
+.notification-topic-list-scroll::-webkit-scrollbar,
+.notification-topic-list-scroll::-webkit-scrollbar-button,
+.topic-creator-drawer .ant-drawer-body::-webkit-scrollbar,
+.topic-creator-drawer .ant-drawer-body::-webkit-scrollbar-button,
+.notification-detail-panel::-webkit-scrollbar,
+.notification-detail-panel::-webkit-scrollbar-button {
+  width: 0;
+  display: none;
+  background: transparent;
+}
+
+.notification-topic-list-scroll:hover,
+.topic-creator-drawer .ant-drawer-body:hover,
+.notification-detail-panel:hover {
+  scrollbar-width: thin;
+}
+
+.notification-topic-list-scroll:hover::-webkit-scrollbar,
+.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar,
+.notification-detail-panel:hover::-webkit-scrollbar {
+  width: 7px;
+  background: var(--oshi-bg);
+}
+
+.notification-topic-list-scroll:hover::-webkit-scrollbar-button,
+.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar-button,
+.notification-detail-panel:hover::-webkit-scrollbar-button {
+  display: none;
+}
+
+.notification-topic-list-scroll:hover::-webkit-scrollbar-track,
+.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar-track,
+.notification-detail-panel:hover::-webkit-scrollbar-track {
+  background: var(--oshi-bg);
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.notification-topic-list-scroll:hover::-webkit-scrollbar-thumb,
+.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar-thumb,
+.notification-detail-panel:hover::-webkit-scrollbar-thumb {
+  background: var(--oshi-surface-scrollbar-thumb);
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  border-radius: 999px;
+}
+
+.notification-topic-list-scroll:hover::-webkit-scrollbar-thumb:hover,
+.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar-thumb:hover,
+.notification-detail-panel:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--oshi-surface-scrollbar-thumb-hover);
+}
+
+.notification-topic-list-scroll:hover::-webkit-scrollbar-corner,
+.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar-corner,
+.notification-detail-panel:hover::-webkit-scrollbar-corner {
+  background: var(--oshi-bg);
 }
 
 /* Narrow desktop band (still side-by-side, not stacked) where the detail
@@ -1702,6 +1780,13 @@
   flex-direction: column;
 }
 
+.topic-creator-drawer__notification-type-context {
+  margin: 0 0 var(--space-3);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--drawer-text-tertiary);
+}
+
 .topic-creator-drawer__search.ant-input-affix-wrapper {
   width: 100%;
   margin-bottom: var(--space-4);
@@ -1788,7 +1873,9 @@
 /* avatar / flexible name / Live / New Video / reminder -- same fixed-grid
    reasoning as the old .notification-settings__row this replaced (see git
    history): a plain flex row would let the switch/reminder columns drift
-   out of vertical alignment across rows of different name lengths. */
+   out of vertical alignment across rows of different name lengths. This is
+   the "both" default (all 5 columns) -- unmodified so every existing
+   both-type topic keeps its current layout exactly. */
 .topic-creator-drawer__row,
 .topic-creator-drawer__column-header {
   display: grid;
@@ -1798,6 +1885,25 @@
   grid-template-columns: 28px minmax(0, 1fr) 56px 56px 150px;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* A "直播"-only topic has no New Video column; a "新片"-only topic has
+   neither Live nor reminder-time (reminder is Live-specific, see
+   notificationTopics.ts) -- confirmed with the user: an excluded channel's
+   column is removed entirely, not just disabled, so the drawer never
+   visually implies a channel is still part of a topic that no longer sends
+   it. The extra class-name repetition (0-2-0 specificity) is what lets
+   these still win inside the narrow-viewport media query below, which
+   would otherwise override them back to the unmodified 5-column rule via
+   source order (same specificity, declared later). */
+.topic-creator-drawer__row.topic-creator-drawer__row--live-only,
+.topic-creator-drawer__column-header.topic-creator-drawer__column-header--live-only {
+  grid-template-columns: 28px minmax(0, 1fr) 56px 150px;
+}
+
+.topic-creator-drawer__row.topic-creator-drawer__row--newvideo-only,
+.topic-creator-drawer__column-header.topic-creator-drawer__column-header--newvideo-only {
+  grid-template-columns: 28px minmax(0, 1fr) 56px;
 }
 
 .topic-creator-drawer__column-header {
@@ -1924,6 +2030,16 @@
   .topic-creator-drawer__column-header {
     grid-template-columns: 28px minmax(92px, 1fr) 48px 48px minmax(112px, 136px);
     gap: var(--space-1);
+  }
+
+  .topic-creator-drawer__row.topic-creator-drawer__row--live-only,
+  .topic-creator-drawer__column-header.topic-creator-drawer__column-header--live-only {
+    grid-template-columns: 28px minmax(92px, 1fr) 48px minmax(112px, 136px);
+  }
+
+  .topic-creator-drawer__row.topic-creator-drawer__row--newvideo-only,
+  .topic-creator-drawer__column-header.topic-creator-drawer__column-header--newvideo-only {
+    grid-template-columns: 28px minmax(92px, 1fr) 48px;
   }
 }
 

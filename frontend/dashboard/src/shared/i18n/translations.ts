@@ -118,6 +118,7 @@ export type TranslationKey =
   | "notificationSettings.noSelectedMembers"
   | "notificationSettings.manageMembersButton"
   | "notificationSettings.managementDrawerTitle"
+  | "notificationSettings.managementDrawerNotificationType"
   | "notificationSettings.favoritesGroupLabel"
   | "notificationSettings.topic.all"
   | "notificationSettings.topicCatalog.gta"
@@ -294,6 +295,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.noSelectedMembers": "尚未選擇任何成員",
     "notificationSettings.manageMembersButton": "管理成員",
     "notificationSettings.managementDrawerTitle": "{{topic}} — 通知成員",
+    "notificationSettings.managementDrawerNotificationType": "通知類型：{{type}}",
     "notificationSettings.favoritesGroupLabel": "收藏",
     "notificationSettings.topic.all": "全部",
     "notificationSettings.topicCatalog.gta": "GTA",
@@ -475,6 +477,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.noSelectedMembers": "No members selected yet",
     "notificationSettings.manageMembersButton": "Manage Members",
     "notificationSettings.managementDrawerTitle": "{{topic}} — Notified Members",
+    "notificationSettings.managementDrawerNotificationType": "Notification type: {{type}}",
     "notificationSettings.favoritesGroupLabel": "Favorites",
     "notificationSettings.topic.all": "All",
     "notificationSettings.topicCatalog.gta": "GTA",
@@ -656,6 +659,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.noSelectedMembers": "まだメンバーが選択されていません",
     "notificationSettings.manageMembersButton": "メンバーを管理",
     "notificationSettings.managementDrawerTitle": "{{topic}} — 通知メンバー",
+    "notificationSettings.managementDrawerNotificationType": "通知タイプ：{{type}}",
     "notificationSettings.favoritesGroupLabel": "お気に入り",
     "notificationSettings.topic.all": "全部",
     "notificationSettings.topicCatalog.gta": "GTA",

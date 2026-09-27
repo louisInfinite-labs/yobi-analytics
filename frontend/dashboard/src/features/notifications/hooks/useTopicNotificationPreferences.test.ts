@@ -114,6 +114,38 @@ describe("useTopicNotificationPreferences", () => {
     expect(result.current.getMemberReminder("valo", "aizawa_ema")).toBe("10min")
   })
 
+  it("excludes a channel the topic's own notificationType no longer allows from getEnabledCreatorIds, without deleting the stored membership", () => {
+    const { result } = renderHook(() => useTopicNotificationPreferences())
+    act(() => result.current.setLiveEnabled("valo", "aizawa_ema", true))
+    act(() => result.current.setNewVideoEnabled("valo", "kaga_sumire", true))
+    expect([...result.current.getEnabledCreatorIds("valo")].sort()).toEqual(["aizawa_ema", "kaga_sumire"])
+
+    act(() => result.current.setNotificationType("valo", "newVideo"))
+    // Her stored Live membership is still there (isLiveEnabled unchanged)...
+    expect(result.current.isLiveEnabled("valo", "aizawa_ema")).toBe(true)
+    // ...but she does not count as effectively enabled while Live is excluded.
+    expect([...result.current.getEnabledCreatorIds("valo")]).toEqual(["kaga_sumire"])
+
+    // Switching back to "both" restores her without ever having touched her stored value.
+    act(() => result.current.setNotificationType("valo", "both"))
+    expect([...result.current.getEnabledCreatorIds("valo")].sort()).toEqual(["aizawa_ema", "kaga_sumire"])
+  })
+
+  it("reports 0 reminder overrides while the topic's notificationType excludes Live, without clearing the stored override", () => {
+    const { result } = renderHook(() => useTopicNotificationPreferences())
+    act(() => result.current.setLiveEnabled("valo", "aizawa_ema", true))
+    act(() => result.current.setMemberReminder("valo", "aizawa_ema", "1hour"))
+    expect(result.current.getOverrideCount("valo")).toBe(1)
+
+    act(() => result.current.setNotificationType("valo", "newVideo"))
+    expect(result.current.getOverrideCount("valo")).toBe(0)
+    // Still stored underneath -- not destructively cleared.
+    expect(result.current.getMemberReminder("valo", "aizawa_ema")).toBe("1hour")
+
+    act(() => result.current.setNotificationType("valo", "live"))
+    expect(result.current.getOverrideCount("valo")).toBe(1)
+  })
+
   it("persists across hook instances (localStorage-backed shared state)", () => {
     const first = renderHook(() => useTopicNotificationPreferences())
     act(() => first.result.current.setReminderMode("sf6", "member_choice"))

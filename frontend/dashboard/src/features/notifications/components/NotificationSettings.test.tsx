@@ -271,6 +271,91 @@ describe("NotificationSettings master-detail layout", () => {
   })
 })
 
+// The topic-level notificationType is the single source of truth for which
+// member-level channels the Manage Members drawer can ever show -- an
+// excluded channel's whole column (switch, and reminder-time since that's
+// Live-specific) is removed, not merely disabled, so the drawer never
+// visually implies a channel is still part of a topic that no longer sends
+// it (confirmed with the user, correcting an earlier version of this
+// feature where the drawer showed both switches unconditionally).
+describe("member drawer respects the topic's own notificationType", () => {
+  function seedAllTopicType(notificationType: "live" | "newVideo" | "both") {
+    window.localStorage.setItem(
+      "yobi.topicNotificationPreferences.v2",
+      JSON.stringify({
+        topicOrder: ["all", "sf6", "valo", "apex", "minecraft"],
+        topics: { all: { reminderMode: "10min", live: [], newVideo: [], reminderOverrides: {}, notificationType } },
+      }),
+    )
+    resetAllSharedStateForTests()
+  }
+
+  it("newVideo topic: hides Live and reminder-time entirely, keeps New Video available", async () => {
+    seedAllTopicType("newVideo")
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
+
+    expect(screen.getByText("Notification type: New Video")).toBeInTheDocument()
+    expect(screen.getAllByRole("switch", { name: /new video notifications/ }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole("switch", { name: /live notifications/ })).not.toBeInTheDocument()
+    expect(screen.queryByText("Reminder time")).not.toBeInTheDocument()
+  })
+
+  it("live topic: hides New Video, keeps Live and reminder-time available", async () => {
+    seedAllTopicType("live")
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
+
+    expect(screen.getByText("Notification type: Live")).toBeInTheDocument()
+    expect(screen.getAllByRole("switch", { name: /live notifications/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Reminder time").length).toBeGreaterThan(0)
+    expect(screen.queryByRole("switch", { name: /new video notifications/ })).not.toBeInTheDocument()
+  })
+
+  it("both topic (default): shows Live, New Video, and reminder-time together", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
+
+    expect(screen.getByText("Notification type: Both")).toBeInTheDocument()
+    expect(screen.getAllByRole("switch", { name: /live notifications/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole("switch", { name: /new video notifications/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Reminder time").length).toBeGreaterThan(0)
+  })
+
+  it("changing the topic's notification type updates the already-open drawer's columns immediately", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
+    expect(screen.getAllByRole("switch", { name: /live notifications/ }).length).toBeGreaterThan(0)
+
+    await user.click(within(getDetailPanel()).getByRole("radio", { name: "New Video" }))
+
+    expect(screen.queryByRole("switch", { name: /live notifications/ })).not.toBeInTheDocument()
+    expect(screen.getAllByRole("switch", { name: /new video notifications/ }).length).toBeGreaterThan(0)
+  })
+
+  it("a stale stored Live preference from before the topic excluded Live does not count as an effectively enabled member", async () => {
+    window.localStorage.setItem(
+      "yobi.topicNotificationPreferences.v2",
+      JSON.stringify({
+        topicOrder: ["all", "sf6", "valo", "apex", "minecraft"],
+        topics: { all: { reminderMode: "10min", live: ["aizawa_ema"], newVideo: [], reminderOverrides: {}, notificationType: "newVideo" } },
+      }),
+    )
+    resetAllSharedStateForTests()
+    renderNotificationSettings()
+
+    expect(within(getDetailPanel()).getByText("0 selected")).toBeInTheDocument()
+  })
+})
+
 describe("NotificationSettings localization", () => {
   it("shows the localized Save label (儲存/Save/保存, never セーフ)", async () => {
     const user = userEvent.setup()
