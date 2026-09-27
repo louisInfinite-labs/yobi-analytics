@@ -97,6 +97,96 @@ def get_active_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
     return [creator for creator in load_creators(path) if creator.active]
 
 
+# The frontend roster's legacy id form is "ch_" + creatorId (e.g.
+# "ch_aizawa_ema" for creatorId "aizawa_ema") -- see
+# frontend/dashboard/src/features/dashboard/comparison/data/
+# backendComparisonSource.ts and .../favorites/utils/creatorFavoriteBridge.ts,
+# which each independently document and rely on the same convention. Plain
+# stripping covers most ids, but a handful of legacy frontend ids predate or
+# diverge from that convention -- kept here, small and explicit, never
+# inferred from a name, exactly matching the frontend's own documented
+# special cases:
+#   "ch_iofi"                  -> a shorthand id, not a stripped form at all
+#   "ch_amelia_myth_graduated" -> carries a status suffix the canonical id doesn't
+#   "ch_vspo_group"            -> the frontend's own generic "group" naming,
+#                                 not the canonical roster's own id for it
+# Deliberately excludes "ch_hololive_staff": it is mock/legacy-only, with no
+# Creator Master counterpart at all -- adding it here would fabricate an
+# alias to a creator that doesn't exist, which resolve_creator_key() below
+# must never do.
+LEGACY_CREATOR_ID_ALIASES: dict[str, str] = {
+    "ch_iofi": "airani_iofifteen",
+    "ch_amelia_myth_graduated": "watson_amelia",
+    "ch_vspo_group": "vspo_official",
+}
+
+_LEGACY_ROSTER_ID_PREFIX = "ch_"
+
+
+def resolve_creator_key(key: str, path: Path = DEFAULT_CREATORS_PATH) -> Creator | None:
+    """Resolve a canonical creatorId, legacy "ch_"-prefixed frontend id, or known legacy
+    alias (LEGACY_CREATOR_ID_ALIASES) to its Creator Master record.
+
+    Identity resolution only -- this never decides whether the resolved
+    creator is *eligible* for a particular feature (My Oshi, Favorites,
+    etc.); that is a separate, later concern. Stripping "ch_" (or applying
+    an alias) only produces a *candidate* creatorId -- the actual lookup
+    against Creator Master is what decides success, so a mock/legacy-only
+    id with no real counterpart (e.g. "ch_hololive_staff" -> candidate
+    "hololive_staff") returns None rather than a fabricated record. Returns
+    None (not a raise) for anything that isn't a genuine creator identity:
+    blank/non-string input, an unrecognized canonical id, or an
+    unrecognized "ch_" id -- this is a lookup, not a validator of a
+    required field.
+    """
+    if not isinstance(key, str) or not key.strip():
+        return None
+
+    candidate = LEGACY_CREATOR_ID_ALIASES.get(key, key)
+    if key not in LEGACY_CREATOR_ID_ALIASES and candidate.startswith(_LEGACY_ROSTER_ID_PREFIX):
+        candidate = candidate[len(_LEGACY_ROSTER_ID_PREFIX) :]
+
+    for creator in load_creators(path):
+        if creator.creator_id == candidate:
+            return creator
+    return None
+
+
+def find_creator_by_youtube_channel_id(youtube_channel_id: str, path: Path = DEFAULT_CREATORS_PATH) -> Creator | None:
+    """Return the Creator Master record for a real YouTube/Holodex channel id, or None.
+
+    A distinct lookup from resolve_creator_key() above: youtube_channel_id
+    is YouTube's own external id, with no "ch_" legacy-frontend form or
+    alias table of its own to resolve -- kept as a separate function rather
+    than folded into resolve_creator_key() because it resolves a completely
+    different id space with none of that function's legacy-format concerns.
+    Added here (rather than a new module) because both are Creator Master
+    identity-lookup infrastructure, and this mapping is what the future
+    Holodex integration needs to turn a Holodex youtube_channel_id back
+    into a creator.
+
+    Raises CreatorMasterError, rather than silently returning one of them,
+    if the data itself is inconsistent (two records sharing the same
+    youtubeChannelId) -- the current production roster is already verified
+    unique (test_production_roster_loads_with_unique_ids_and_the_verified_
+    asobimawaritai_unit), so this should never fire against real data; it
+    exists to fail loudly rather than silently pick a creator if that
+    invariant is ever violated.
+    """
+    if not isinstance(youtube_channel_id, str) or not youtube_channel_id.strip():
+        return None
+
+    index: dict[str, Creator] = {}
+    for creator in load_creators(path):
+        if creator.youtube_channel_id in index:
+            raise CreatorMasterError(
+                f"Duplicate youtubeChannelId {creator.youtube_channel_id!r} in Creator Master: "
+                f"{index[creator.youtube_channel_id].creator_id!r} and {creator.creator_id!r}"
+            )
+        index[creator.youtube_channel_id] = creator
+    return index.get(youtube_channel_id)
+
+
 def _parse_creator(raw: dict) -> Creator:
     """Convert a raw Creator Master JSON record into a Creator instance."""
     try:

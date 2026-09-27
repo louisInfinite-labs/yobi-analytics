@@ -3,7 +3,15 @@ from pathlib import Path
 
 import pytest
 
-from tracking.creator_master import Creator, CreatorMasterError, get_active_creators, load_creators
+from tracking.creator_master import (
+    LEGACY_CREATOR_ID_ALIASES,
+    Creator,
+    CreatorMasterError,
+    find_creator_by_youtube_channel_id,
+    get_active_creators,
+    load_creators,
+    resolve_creator_key,
+)
 
 FIXTURE_PATH = Path(__file__).parent.parent / "fixtures" / "creators.json"
 
@@ -470,3 +478,148 @@ def test_production_roster_loads_with_unique_ids_and_the_verified_asobimawaritai
         "sorashina_sopia": ("UCROQtXcp2loQEmvpe5rhJzQ", "member"),
     }
     assert all(c.organization == "hololive" and c.branch == "holo_jp" and c.lifecycle_stage == "pre_debut" for c in unit.values())
+
+
+def _write_roster(tmp_path, *records) -> Path:
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps(list(records)), encoding="utf-8")
+    return path
+
+
+class TestResolveCreatorKey:
+    """resolve_creator_key: identity resolution only, never eligibility -- a resolved
+    Creator (e.g. a "group" or "staff" channelType) says nothing about whether it's
+    selectable for a particular feature; that is a separate, later concern."""
+
+    def test_canonical_id_resolves(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        resolved = resolve_creator_key("aizawa_ema", path)
+
+        assert resolved is not None
+        assert resolved.creator_id == "aizawa_ema"
+
+    def test_ordinary_ch_prefixed_id_resolves(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        resolved = resolve_creator_key("ch_aizawa_ema", path)
+
+        assert resolved is not None
+        assert resolved.creator_id == "aizawa_ema"
+
+    def test_unknown_canonical_id_returns_none(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        assert resolve_creator_key("nonexistent_creator", path) is None
+
+    def test_unknown_ch_prefixed_id_returns_none(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        assert resolve_creator_key("ch_nonexistent_creator", path) is None
+
+    @pytest.mark.parametrize("value", ["", "   "])
+    def test_blank_input_returns_none(self, tmp_path, value):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        assert resolve_creator_key(value, path) is None
+
+    @pytest.mark.parametrize("value", [None, 42, ["ch_aizawa_ema"], {"id": "ch_aizawa_ema"}])
+    def test_malformed_non_string_input_returns_none(self, tmp_path, value):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+
+        assert resolve_creator_key(value, path) is None
+
+    def test_does_not_mutate_creator_master(self, tmp_path):
+        """Resolution is read-only -- the backing file's bytes must be identical before and after."""
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema"))
+        before = path.read_bytes()
+
+        resolve_creator_key("ch_aizawa_ema", path)
+        resolve_creator_key("ch_nonexistent_creator", path)
+
+        assert path.read_bytes() == before
+
+    # -- Legacy alias table, verified against the real production roster,
+    # since the alias targets (airani_iofifteen, watson_amelia, vspo_official)
+    # are real Creator Master ids, not synthetic fixture data. --
+
+    def test_ch_iofi_alias_resolves_to_airani_iofifteen(self):
+        resolved = resolve_creator_key("ch_iofi")
+
+        assert resolved is not None
+        assert resolved.creator_id == "airani_iofifteen"
+
+    def test_ch_amelia_myth_graduated_alias_resolves_to_watson_amelia(self):
+        resolved = resolve_creator_key("ch_amelia_myth_graduated")
+
+        assert resolved is not None
+        assert resolved.creator_id == "watson_amelia"
+
+    def test_ch_vspo_group_alias_resolves_to_vspo_official(self):
+        """vspo_official resolves successfully as an identity -- whether a "group"
+        channelType is *eligible* for a feature like My Oshi is a separate concern
+        this resolver never decides."""
+        resolved = resolve_creator_key("ch_vspo_group")
+
+        assert resolved is not None
+        assert resolved.creator_id == "vspo_official"
+        assert resolved.channel_type == "group"
+
+    def test_ch_hololive_staff_is_mock_only_and_does_not_resolve(self):
+        """ch_hololive_staff has no Creator Master counterpart at all -- naive prefix
+        stripping would produce "hololive_staff", which must NOT be fabricated as a
+        synthetic record. It must resolve as unknown, exactly like any other id with
+        no real backing record."""
+        assert resolve_creator_key("ch_hololive_staff") is None
+
+    def test_naive_prefix_stripping_of_the_known_aliases_would_not_have_worked(self):
+        """Documents *why* the alias table exists: plain "ch_" stripping alone
+        produces ids that are not in the current Creator Master at all."""
+        creator_ids = {creator.creator_id for creator in load_creators()}
+        assert "iofi" not in creator_ids
+        assert "amelia_myth_graduated" not in creator_ids
+        assert "vspo_group" not in creator_ids
+
+    def test_all_legacy_alias_targets_exist_in_the_current_creator_master(self):
+        creator_ids = {creator.creator_id for creator in load_creators()}
+
+        for legacy_id, canonical_id in LEGACY_CREATOR_ID_ALIASES.items():
+            assert canonical_id in creator_ids, f"{legacy_id!r} aliases to {canonical_id!r}, which no longer exists"
+            assert resolve_creator_key(legacy_id) is not None
+
+
+class TestFindCreatorByYoutubeChannelId:
+    def test_valid_youtube_channel_id_resolves(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema", youtubeChannelId="UC_TEST_1"))
+
+        resolved = find_creator_by_youtube_channel_id("UC_TEST_1", path)
+
+        assert resolved is not None
+        assert resolved.creator_id == "aizawa_ema"
+
+    def test_unknown_youtube_channel_id_returns_none(self, tmp_path):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema", youtubeChannelId="UC_TEST_1"))
+
+        assert find_creator_by_youtube_channel_id("UC_DOES_NOT_EXIST", path) is None
+
+    @pytest.mark.parametrize("value", ["", "   ", None, 42])
+    def test_blank_or_malformed_input_returns_none(self, tmp_path, value):
+        path = _write_roster(tmp_path, _base_record(creatorId="aizawa_ema", youtubeChannelId="UC_TEST_1"))
+
+        assert find_creator_by_youtube_channel_id(value, path) is None
+
+    def test_duplicate_youtube_channel_id_raises_rather_than_silently_choosing_one(self, tmp_path):
+        path = _write_roster(
+            tmp_path,
+            _base_record(creatorId="aizawa_ema", youtubeChannelId="UC_DUPLICATE"),
+            _base_record(creatorId="another_creator", youtubeChannelId="UC_DUPLICATE"),
+        )
+
+        with pytest.raises(CreatorMasterError):
+            find_creator_by_youtube_channel_id("UC_DUPLICATE", path)
+
+    def test_production_roster_has_no_duplicate_youtube_channel_ids(self):
+        """Guards the invariant find_creator_by_youtube_channel_id relies on: every
+        real creator's youtubeChannelId is unique, so this lookup never has to choose."""
+        for creator in load_creators():
+            assert find_creator_by_youtube_channel_id(creator.youtube_channel_id) is not None
