@@ -25,10 +25,14 @@ describe("sortNotificationCreatorsLikeLiveStatus", () => {
     expect(sumireIndex).toBeLessThan(nazunaIndex)
   })
 
-  it("sorts a creator with no mockCreators counterpart at all (watson_amelia) after every bridged creator in their own branch", () => {
-    const holoEn = allCreators.filter((creator) => creator.branch === "holo_en")
-    const sorted = sortNotificationCreatorsLikeLiveStatus("holo_en", holoEn)
-    expect(sorted[sorted.length - 1]?.creatorId).toBe("watson_amelia")
+  it("sorts a creator with no mockCreators counterpart at all (airani_iofifteen) after every bridged creator in their own branch", () => {
+    // airani_iofifteen (holo_id) is the current eligible roster's own real
+    // unbridged case (no mockCreators/Favorites counterpart at all -- see
+    // creatorFavoriteBridge.ts) -- confirmed directly against the real
+    // canonical data, not hardcoded independent of it.
+    const holoId = allCreators.filter((creator) => creator.branch === "holo_id")
+    const sorted = sortNotificationCreatorsLikeLiveStatus("holo_id", holoId)
+    expect(sorted[sorted.length - 1]?.creatorId).toBe("airani_iofifteen")
   })
 })
 
