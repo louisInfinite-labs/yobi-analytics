@@ -39,7 +39,7 @@ type CreatorAccentStyle = CSSProperties & {
  * pages together over an implementation detail neither exposes on
  * purpose. */
 function creatorAccentStyle(creator: MockCreator): CreatorAccentStyle {
-  const accent = getMemberAccent(creator.channelId)
+  const accent = getMemberAccent(creator.channelId, creator.themeColor)
   return {
     "--creator-accent": accent.primary,
     "--creator-accent-soft": accent.soft,
@@ -73,7 +73,7 @@ function FavoriteTile({ creator }: { creator: MockCreator }) {
   // checkbox's own aria-label reads as one normal sentence, not literal
   // newlines.
   const spokenName = creator.channelName.replace(/\n/g, " ")
-  const accent = getMemberAccent(creator.channelId)
+  const accent = getMemberAccent(creator.channelId, creator.themeColor)
   // avatarUrl is never set on any mock creator today (no approved
   // creator-master/YouTube data source exposes it yet -- see
   // mockCreators.ts's own doc comment on the field) -- this stays ready

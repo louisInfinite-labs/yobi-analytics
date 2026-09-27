@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import { ConfigProvider, Segmented } from "antd"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { resolvePlaybackVideoId } from "../data/mockRecentVideos"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
@@ -17,7 +17,6 @@ import {
   type VideoSortOption,
 } from "../utils/recentVideosSelection"
 import { VIDEO_SECTION_TAGS, VIDEO_SECTION_TAG_LABEL_KEYS, type VideoSectionTag } from "../model/videoCategories"
-import { VideoPlayerModal } from "../../media-player/components/VideoPlayerModal"
 
 interface RecentVideosSectionProps {
   creatorId: string
@@ -25,6 +24,10 @@ interface RecentVideosSectionProps {
    * Oshi Status read the same fetch rather than each opening their own. */
   latestVideos: VideoPage
   streamVideos: VideoPage
+  /** The one shared Home selected-video path (see HomePage.tsx) -- a normal
+   * card click switches the central Oshi Stream player directly, never a
+   * modal/second player. Drag-to-scroll (see VideoTrack) never calls this. */
+  onSelectVideo: (video: { videoId: string; title: string }) => void
 }
 
 /** Once the user has scrolled to roughly the 14th-16th card, the next page
@@ -41,6 +44,10 @@ const VISIBLE_COUNT_STEP = 20
 /** Matches .oshi-videos__list's own `gap`, so a scroll step lands one card
  * boundary on rather than drifting by the gap each time. */
 const CARD_GAP = 10
+
+/** Pointer movement (px) before a mouse-down-and-move on the track counts as
+ * a drag rather than the start of an ordinary card click. */
+const DRAG_THRESHOLD = 5
 
 /** "{views} views · MM/DD", dropping either half that's missing data (no
  * viewCount, or an unparseable publishedAt) rather than showing a blank. */
@@ -90,23 +97,21 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
   )
 }
 
-/** The horizontally scrolling thumbnail track, with the YouTube-style
- * left/right chevrons flanking it — overlaid on the track rather than taking
- * their own layout slot, so the leftmost card still starts at the section's
- * own left edge. The left arrow hides while the track is scrolled fully left.
+/** The horizontally scrolling thumbnail track. Navigation is native
+ * scroll only -- wheel/trackpad, an on-hover scrollbar, and mouse
+ * left-button grab-to-scroll (below); there is no dedicated arrow-button
+ * affordance any more.
  *
  * `onNearEnd` fires once the leading visible card reaches `nextThresholdRef`
  * (starting at PREFETCH_AT_INDEX), which then advances by VISIBLE_COUNT_STEP
  * so the row keeps prefetching every ~20 cards as the user keeps scrolling
  * right, instead of firing once and never again. */
 function VideoTrack({
-  label,
   videos,
   emptyLabel,
   onOpen,
   onNearEnd,
 }: {
-  label: string
   videos: RecentVideo[]
   emptyLabel: string
   onOpen: (video: RecentVideo) => void
@@ -114,23 +119,18 @@ function VideoTrack({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const nextThresholdRef = useRef(PREFETCH_AT_INDEX)
-  // Starts hidden: the track starts scrolled fully left, so there is nothing
-  // to scroll back to yet.
-  const [canScrollLeft, setCanScrollLeft] = useState(false)
-
-  function scrollByOneCard(direction: 1 | -1) {
-    const viewport = viewportRef.current
-    if (!viewport) return
-    const card = viewport.querySelector<HTMLElement>(".oshi-video-card")
-    const step = card ? card.offsetWidth + CARD_GAP : viewport.clientWidth * 0.8
-    viewport.scrollBy({ left: direction * step, behavior: "smooth" })
-  }
+  // Mouse-only grab-to-scroll state. `didDragRef` is what actually
+  // suppresses the click a real drag would otherwise fire on whatever card
+  // ends up under the pointer at release -- `dragRef` itself is reset (and
+  // its stale pointerId can't match a later event) before that can happen,
+  // so a leftover flag can never survive into an unrelated later click.
+  const dragRef = useRef({ pointerId: null as number | null, startX: 0, startScrollLeft: 0, dragging: false })
+  const didDragRef = useRef(false)
+  const [isDragging, setIsDragging] = useState(false)
 
   function handleScroll() {
     const viewport = viewportRef.current
     if (!viewport) return
-    setCanScrollLeft(viewport.scrollLeft > 0)
-
     const card = viewport.querySelector<HTMLElement>(".oshi-video-card")
     if (!card) return
     const leadingIndex = Math.floor(viewport.scrollLeft / (card.offsetWidth + CARD_GAP))
@@ -140,35 +140,103 @@ function VideoTrack({
     }
   }
 
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    // Left mouse button only -- touch/pen pointers (and a non-primary mouse
+    // button) fall straight through to native scrolling behavior instead.
+    if (event.pointerType !== "mouse" || event.button !== 0) return
+    const viewport = viewportRef.current
+    if (!viewport) return
+    didDragRef.current = false
+    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startScrollLeft: viewport.scrollLeft, dragging: false }
+    // Pointer capture is NOT taken here -- while active, this browser
+    // retargets the eventual mouseup/click to the capturing element (this
+    // viewport) instead of hit-testing normally, so an ordinary, no-movement
+    // click would never reach the card button's own onClick at all. It's
+    // only taken once handlePointerMove below confirms this is actually a
+    // drag, which is also the only case click suppression needs to matter.
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const state = dragRef.current
+    const viewport = viewportRef.current
+    if (state.pointerId !== event.pointerId || !viewport) return
+
+    if ((event.buttons & 1) === 0) {
+      // The left button was released outside this viewport (no pointerup
+      // ever reached endDrag) -- reset here too, so this stale pointerId
+      // can't still read as an active drag on the next move once the
+      // pointer returns, which would otherwise auto-scroll on plain hover.
+      if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId)
+      if (state.dragging) setIsDragging(false)
+      dragRef.current = { pointerId: null, startX: 0, startScrollLeft: 0, dragging: false }
+      return
+    }
+
+    const deltaX = event.clientX - state.startX
+    if (!state.dragging) {
+      if (Math.abs(deltaX) < DRAG_THRESHOLD) return
+      state.dragging = true
+      didDragRef.current = true
+      setIsDragging(true)
+      viewport.setPointerCapture(event.pointerId)
+    }
+
+    viewport.scrollLeft = state.startScrollLeft - deltaX
+    event.preventDefault()
+  }
+
+  function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const viewport = viewportRef.current
+    const state = dragRef.current
+    if (state.pointerId === event.pointerId) {
+      if (viewport?.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId)
+      if (state.dragging) setIsDragging(false)
+      dragRef.current = { pointerId: null, startX: 0, startScrollLeft: 0, dragging: false }
+    }
+    // Safety net for handleOpen's own reset: the browser fires pointerup
+    // then click synchronously back-to-back, so a click landing on a card
+    // still sees didDragRef true and gets suppressed there first -- but a
+    // drag that RELEASES over empty space (not a card) never fires that
+    // click at all, which would otherwise leave the flag stuck true and
+    // silently swallow the next, unrelated, non-drag click forever. The
+    // timeout runs strictly after that synchronous click dispatch either way.
+    setTimeout(() => {
+      didDragRef.current = false
+    }, 0)
+  }
+
+  function handleOpen(video: RecentVideo) {
+    // The pointerup after a real drag still fires a click on whatever card
+    // is under the cursor -- this is what keeps that click from also
+    // opening the video, without touching keyboard activation (Enter/
+    // Space never sets didDragRef) or a normal, non-drag click.
+    if (didDragRef.current) {
+      didDragRef.current = false
+      return
+    }
+    onOpen(video)
+  }
+
   return (
     <div className="oshi-videos__row">
-      <button
-        type="button"
-        className={`oshi-videos__scroll oshi-videos__scroll--left${canScrollLeft ? "" : " oshi-videos__scroll--hidden"}`}
-        onClick={() => scrollByOneCard(-1)}
-        aria-label={`Scroll ${label} left`}
+      <div
+        ref={viewportRef}
+        className="oshi-videos__viewport"
+        data-dragging={isDragging ? "true" : undefined}
+        onScroll={handleScroll}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
-        <ChevronLeft size={16} aria-hidden="true" />
-      </button>
-
-      <div ref={viewportRef} className="oshi-videos__viewport" onScroll={handleScroll}>
         <div className="oshi-videos__list">
           {videos.length === 0 ? (
             <div className="oshi-empty-state">{emptyLabel}</div>
           ) : (
-            videos.map((video) => <VideoThumbCard key={video.videoId} video={video} onOpen={onOpen} />)
+            videos.map((video) => <VideoThumbCard key={video.videoId} video={video} onOpen={handleOpen} />)
           )}
         </div>
       </div>
-
-      <button
-        type="button"
-        className="oshi-videos__scroll oshi-videos__scroll--right"
-        onClick={() => scrollByOneCard(1)}
-        aria-label={`Scroll ${label} right`}
-      >
-        <ChevronRight size={16} aria-hidden="true" />
-      </button>
     </div>
   )
 }
@@ -267,17 +335,44 @@ function VideoSortDropdown({
   )
 }
 
+/** Sits at the header's far-right edge (margin-left: auto), OUTSIDE
+ * .oshi-videos__filters -- a sibling of it, not a child, so it stays fixed
+ * there regardless of how wide the Segmented/Sort cluster scrolls, and
+ * never disturbs their own existing 5px gap.
+ *
+ * TODO(product decision needed): this app has no dedicated "all videos for
+ * this creator" route/view to link to yet (checked -- only Home/Dashboard/
+ * Settings exist, see app/navigation/useCurrentPage.ts, and Dashboard is
+ * aggregate KPI/chart/ranking analytics, not a per-creator video list).
+ * Per this task's own instruction not to invent a new page/route without
+ * reporting that gap first, this reserves the label's position but stays
+ * `disabled` (native semantics -- unclickable, unfocusable, no hover state;
+ * see home.css's own :disabled rule) until that destination exists, rather
+ * than presenting an inert control as a working one. */
+function ViewAllButton({ locale }: { locale: Locale }) {
+  return (
+    <button type="button" className="oshi-videos__view-all" disabled>
+      {t(locale, "recentVideos.viewAll")}
+      <ChevronRight size={12} aria-hidden="true" />
+    </button>
+  )
+}
+
 /** Home's Oshi Videos strip: one compact filter row, then one horizontally
  * scrolling thumbnail row -- fixed height, so it can never grow the page
  * tall enough to introduce a vertical scrollbar. Each of the three view
  * "modes" (latest/live/all-or-category) keeps its own visibleCount and
  * prefetch threshold so switching tags never loses another mode's own
  * scroll position or re-triggers its loadMore(). */
-export function RecentVideosSection({ creatorId, latestVideos: latestPool, streamVideos: streamPool }: RecentVideosSectionProps) {
+export function RecentVideosSection({
+  creatorId,
+  latestVideos: latestPool,
+  streamVideos: streamPool,
+  onSelectVideo,
+}: RecentVideosSectionProps) {
   const [locale] = useLocale()
   const [selectedTag, setSelectedTag] = useState<VideoSectionTag>("latestVideos")
   const [sortOption, setSortOption] = useState<VideoSortOption>("newest")
-  const [embed, setEmbed] = useState<RecentVideo | null>(null)
   const [latestVisibleCount, setLatestVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
   const [streamVisibleCount, setStreamVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
   const [combinedVisibleCount, setCombinedVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
@@ -323,6 +418,7 @@ export function RecentVideosSection({ creatorId, latestVideos: latestPool, strea
           locale={locale}
           trailing={<VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showSortDropdown} />}
         />
+        <ViewAllButton locale={locale} />
       </header>
 
       {/* key includes creatorId, not just selectedTag: a fresh track per tag
@@ -332,14 +428,11 @@ export function RecentVideosSection({ creatorId, latestVideos: latestPool, strea
           new creator's own videos. */}
       <VideoTrack
         key={`${creatorId}:${selectedTag}`}
-        label={t(locale, VIDEO_SECTION_TAG_LABEL_KEYS[selectedTag])}
         videos={videos}
         emptyLabel={emptyLabel}
-        onOpen={setEmbed}
+        onOpen={(video) => onSelectVideo({ videoId: video.videoId, title: video.title })}
         onNearEnd={handleNearEnd}
       />
-
-      {embed && <VideoPlayerModal videoId={resolvePlaybackVideoId(embed.videoId)} title={embed.title} onClose={() => setEmbed(null)} />}
     </section>
   )
 }

@@ -81,7 +81,8 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
   // Portalled to <body>: this renders from inside the Live Status drawer,
   // which is transformed — and a transformed ancestor becomes the
   // containing block for position:fixed, so the backdrop would otherwise
-  // cover only the 360px drawer instead of the viewport.
+  // cover only the drawer's own width (var(--live-status-width)) instead of
+  // the viewport.
   return createPortal(
     <div className="oshi-switch-confirm__backdrop" onClick={onCancel} role="dialog" aria-modal="true" aria-label={message}>
       <div ref={panelRef} className="oshi-switch-confirm__panel" onClick={(event) => event.stopPropagation()}>

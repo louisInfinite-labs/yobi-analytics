@@ -35,6 +35,7 @@ export type TranslationKey =
   | "recentVideos.empty.latestVideos"
   | "recentVideos.empty.latestLive"
   | "recentVideos.empty.other"
+  | "recentVideos.viewAll"
   | "liveScheduleDock.title"
   | "liveScheduleDock.close"
   | "liveScheduleDock.panelAriaLabel"
@@ -53,6 +54,10 @@ export type TranslationKey =
   | "oshiStatus.thisWeek"
   | "oshiStatus.recent"
   | "oshiStatus.noRecentActivity"
+  | "oshiStatus.newBadge"
+  | "oshiStatus.subscribers"
+  | "oshiStatus.nowPlaying"
+  | "oshiStatus.devResetVisit"
   | "errorState.code"
   | "errorState.defaultMessage"
   | "errorState.retry"
@@ -65,6 +70,7 @@ export type TranslationKey =
   | "mainNavbar.dashboard"
   | "mainNavbar.home"
   | "mainNavbar.settings"
+  | "mainNavbar.schedule"
   | "settingsSecondaryNavbar.title"
   | "settingsSecondaryNavbar.navAriaLabel"
   | "settingsSecondaryNavbar.myOshiSettings"
@@ -146,6 +152,20 @@ export type TranslationKey =
   | "displaySettings.upcomingLabel"
   | "displaySettings.upcomingHelp"
   | "displaySettings.upcomingCountdownOption"
+  | "liveSchedule.pageTitle"
+  | "liveSchedule.pageSubtitle"
+  | "liveSchedule.timeColumnHeader"
+  | "liveSchedule.prevWeekAria"
+  | "liveSchedule.nextWeekAria"
+  | "liveSchedule.filterLabel"
+  | "liveSchedule.liveBadge"
+  | "liveSchedule.noThumbnail"
+  | "liveSchedule.moreStreamsAria"
+  | "liveSchedule.closeAria"
+  | "liveSchedule.setReminderButton"
+  | "liveSchedule.openStreamButton"
+  | "liveSchedule.startsInMinutes"
+  | "liveSchedule.startedMinutesAgo"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -178,6 +198,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "尚無最新影片",
     "recentVideos.empty.latestLive": "尚無最新直播",
     "recentVideos.empty.other": "沒有影片",
+    "recentVideos.viewAll": "查看全部",
     "liveScheduleDock.title": "直播狀態",
     "liveScheduleDock.close": "關閉",
     "liveScheduleDock.panelAriaLabel": "直播排程搜尋",
@@ -196,6 +217,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.thisWeek": "本週",
     "oshiStatus.recent": "最近動態",
     "oshiStatus.noRecentActivity": "尚無最近動態",
+    "oshiStatus.newBadge": "NEW",
+    "oshiStatus.subscribers": "訂閱者",
+    "oshiStatus.nowPlaying": "正在播放",
+    "oshiStatus.devResetVisit": "重置造訪",
     "errorState.code": "(代碼: {{code}})",
     "errorState.defaultMessage": "載入資料時發生錯誤。",
     "errorState.retry": "重試",
@@ -208,6 +233,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.dashboard": "影片數據",
     "mainNavbar.home": "首頁",
     "mainNavbar.settings": "設定",
+    "mainNavbar.schedule": "時間表",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
     "settingsSecondaryNavbar.myOshiSettings": "我推設定",
@@ -289,6 +315,20 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.upcomingLabel": "即將到來的直播",
     "displaySettings.upcomingHelp": "設定即將到來的直播時間的顯示格式。",
     "displaySettings.upcomingCountdownOption": "Countdown",
+    "liveSchedule.pageTitle": "直播時間表",
+    "liveSchedule.pageSubtitle": "你所選創作者的即將到來與直播中節目。",
+    "liveSchedule.timeColumnHeader": "時間",
+    "liveSchedule.prevWeekAria": "上一週",
+    "liveSchedule.nextWeekAria": "下一週",
+    "liveSchedule.filterLabel": "篩選",
+    "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.noThumbnail": "沒有縮圖",
+    "liveSchedule.moreStreamsAria": "還有 {{count}} 個直播",
+    "liveSchedule.closeAria": "關閉",
+    "liveSchedule.setReminderButton": "設定提醒",
+    "liveSchedule.openStreamButton": "開啟直播",
+    "liveSchedule.startsInMinutes": "{{minutes}} 分鐘後開始",
+    "liveSchedule.startedMinutesAgo": "{{minutes}} 分鐘前開始",
   },
   en: {
     "common.cancel": "Cancel",
@@ -320,6 +360,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "No recent videos",
     "recentVideos.empty.latestLive": "No recent streams",
     "recentVideos.empty.other": "No videos",
+    "recentVideos.viewAll": "View All",
     "liveScheduleDock.title": "LIVE STATUS",
     "liveScheduleDock.close": "Close",
     "liveScheduleDock.panelAriaLabel": "Live schedule search",
@@ -338,6 +379,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.thisWeek": "This week",
     "oshiStatus.recent": "Recent",
     "oshiStatus.noRecentActivity": "No recent activity",
+    "oshiStatus.newBadge": "NEW",
+    "oshiStatus.subscribers": "subscribers",
+    "oshiStatus.nowPlaying": "Now Playing",
+    "oshiStatus.devResetVisit": "Reset visit",
     "errorState.code": "(Code: {{code}})",
     "errorState.defaultMessage": "Something went wrong loading this data.",
     "errorState.retry": "Retry",
@@ -350,6 +395,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.dashboard": "Video Data",
     "mainNavbar.home": "Home",
     "mainNavbar.settings": "Settings",
+    "mainNavbar.schedule": "Schedule",
     "settingsSecondaryNavbar.title": "Settings",
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
     "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
@@ -431,6 +477,20 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.upcomingLabel": "Upcoming streams",
     "displaySettings.upcomingHelp": "Choose how upcoming stream times are shown.",
     "displaySettings.upcomingCountdownOption": "Countdown",
+    "liveSchedule.pageTitle": "Live Schedule",
+    "liveSchedule.pageSubtitle": "Upcoming and live streams across your selected creators.",
+    "liveSchedule.timeColumnHeader": "Time",
+    "liveSchedule.prevWeekAria": "Previous week",
+    "liveSchedule.nextWeekAria": "Next week",
+    "liveSchedule.filterLabel": "Filter",
+    "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.noThumbnail": "No thumbnail",
+    "liveSchedule.moreStreamsAria": "{{count}} more streams",
+    "liveSchedule.closeAria": "Close",
+    "liveSchedule.setReminderButton": "Set Reminder",
+    "liveSchedule.openStreamButton": "Open Stream",
+    "liveSchedule.startsInMinutes": "Starts in {{minutes}}m",
+    "liveSchedule.startedMinutesAgo": "Started {{minutes}}m ago",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -462,6 +522,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "最新動画はありません",
     "recentVideos.empty.latestLive": "最新配信はありません",
     "recentVideos.empty.other": "動画がありません",
+    "recentVideos.viewAll": "すべて見る",
     "liveScheduleDock.title": "配信ステータス",
     "liveScheduleDock.close": "閉じる",
     "liveScheduleDock.panelAriaLabel": "配信スケジュール検索",
@@ -480,6 +541,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.thisWeek": "今週",
     "oshiStatus.recent": "最近の動き",
     "oshiStatus.noRecentActivity": "最近の動きはありません",
+    "oshiStatus.newBadge": "NEW",
+    "oshiStatus.subscribers": "登録者数",
+    "oshiStatus.nowPlaying": "再生中",
+    "oshiStatus.devResetVisit": "訪問をリセット",
     "errorState.code": "(コード: {{code}})",
     "errorState.defaultMessage": "データの読み込み中にエラーが発生しました。",
     "errorState.retry": "再試行",
@@ -492,6 +557,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.dashboard": "動画データ",
     "mainNavbar.home": "ホーム",
     "mainNavbar.settings": "設定",
+    "mainNavbar.schedule": "スケジュール",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
     "settingsSecondaryNavbar.myOshiSettings": "推し設定",
@@ -573,6 +639,20 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.upcomingLabel": "今後の配信",
     "displaySettings.upcomingHelp": "今後の配信時間の表示形式を設定します。",
     "displaySettings.upcomingCountdownOption": "カウントダウン",
+    "liveSchedule.pageTitle": "配信スケジュール",
+    "liveSchedule.pageSubtitle": "選択したクリエイターの今後の配信と配信中の番組。",
+    "liveSchedule.timeColumnHeader": "時間",
+    "liveSchedule.prevWeekAria": "前の週",
+    "liveSchedule.nextWeekAria": "次の週",
+    "liveSchedule.filterLabel": "フィルター",
+    "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.noThumbnail": "サムネイルなし",
+    "liveSchedule.moreStreamsAria": "他に{{count}}件の配信",
+    "liveSchedule.closeAria": "閉じる",
+    "liveSchedule.setReminderButton": "リマインダーを設定",
+    "liveSchedule.openStreamButton": "配信を開く",
+    "liveSchedule.startsInMinutes": "{{minutes}}分後に開始",
+    "liveSchedule.startedMinutesAgo": "{{minutes}}分前に開始",
   },
 }
 

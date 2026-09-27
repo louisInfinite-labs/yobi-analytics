@@ -1072,6 +1072,18 @@ button.video-table__title-cell {
   gap: var(--space-3);
 }
 
+.video-player-modal__panel--player-only {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  outline: none;
+  background: #000;
+}
+
+.video-player-modal__panel--player-only .video-player-modal__frame {
+  border-radius: 0;
+}
+
 .video-player-modal__frame {
   position: relative;
   width: 100%;

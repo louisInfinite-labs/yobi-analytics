@@ -8,6 +8,11 @@ export interface MockCreator {
   groupKey: GroupKey[]
   channelType: ChannelType
   lifecycleStage: LifecycleStage
+  /** "#RRGGBB", mirroring Creator Master's own verified themeColor field
+   * (creator_master.py) — unset for a creator with no verified color yet.
+   * getMemberAccent(channelId, themeColor) is the only place this should be
+   * read; consumers must never build a second color source from it. */
+  themeColor?: string
   /** Real YouTube channel avatar thumbnail URL. No creator-master/YouTube
    * data source exposes this yet (see this task's completion report's data
    * dependency note), so every mock entry below leaves it unset and the UI
@@ -21,6 +26,12 @@ export interface MockCreator {
    * completion report's kana-coverage note); sorting falls back to stable
    * roster order for any creator missing it. */
   kana?: string
+  /** No creator-master/YouTube data source exposes a real subscriber count
+   * yet (see this task's completion report's data dependency note) -- set
+   * only on the primary Home dev/test creator so the player metadata strip
+   * has something real to demo, rather than fabricating a number for every
+   * other real creator in this roster. Left unset elsewhere on purpose. */
+  subscriberCount?: number
 }
 
 // Covers: hololive + VSPO, JP/EN/ID branches, active/graduated/pre-debut,
@@ -35,7 +46,9 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#B4F1F9",
     kana: "あいざわえま",
+    subscriberCount: 234_000,
   },
   {
     channelId: "ch_shirakami_fubuki",
@@ -45,6 +58,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生", "ゲーマーズ"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#2BCDFF",
     kana: "しらかみふぶき",
   },
   {
@@ -55,6 +69,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["3期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#65BBEB",
     kana: "うさだぺこら",
   },
   {
@@ -74,6 +89,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#7EDD0B",
   },
   {
     channelId: "ch_kiryu_coco",
@@ -134,6 +150,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#BECCFF",
   },
   {
     channelId: "ch_kaga_nazuna",
@@ -143,6 +160,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FABEDC",
   },
   {
     channelId: "ch_kosuzume_toto",
@@ -152,6 +170,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FFF33F",
   },
   {
     channelId: "ch_ichinose_uruha",
@@ -161,6 +180,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#4182FA",
   },
   {
     channelId: "ch_kurumi_noa",
@@ -170,6 +190,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#B297D7",
   },
   {
     channelId: "ch_usaki_mimi",
@@ -179,6 +200,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#C7B2D6",
   },
   {
     channelId: "ch_sorasumi_sena",
@@ -188,6 +210,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FFFFFF",
   },
   {
     channelId: "ch_tachibana_hinano",
@@ -197,6 +220,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FA96C8",
   },
   {
     channelId: "ch_hanabusa_risa",
@@ -206,6 +230,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#D1DE79",
   },
   {
     channelId: "ch_kisaragi_ren",
@@ -215,6 +240,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#BE2152",
   },
   {
     channelId: "ch_kanari_kyupi",
@@ -224,6 +250,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FFD23C",
   },
   {
     channelId: "ch_yakumo_beni",
@@ -233,6 +260,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#85CAB3",
   },
   {
     channelId: "ch_shinomiya_runa",
@@ -242,6 +270,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#D6ADFF",
   },
   {
     channelId: "ch_nekota_tsuna",
@@ -251,6 +280,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FF3652",
   },
   {
     channelId: "ch_shiranami_ramune",
@@ -260,6 +290,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#8ECED9",
   },
   {
     channelId: "ch_komori_meto",
@@ -269,6 +300,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FBA03F",
   },
   {
     channelId: "ch_yumeno_akari",
@@ -278,6 +310,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FF8684",
   },
   {
     channelId: "ch_yano_kuromu",
@@ -287,6 +320,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#909EC8",
   },
   {
     channelId: "ch_tsumugi_kokage",
@@ -296,6 +330,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#5195E1",
   },
   {
     channelId: "ch_sendo_yuuhi",
@@ -305,6 +340,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#ED784A",
   },
   {
     channelId: "ch_choya_hanabi",
@@ -314,6 +350,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#EA5506",
   },
   {
     channelId: "ch_amayui_moka",
@@ -323,6 +360,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#ECA0AA",
   },
   {
     channelId: "ch_ginjo_saine",
@@ -332,6 +370,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#58535E",
   },
   {
     channelId: "ch_tatsumaki_chise",
@@ -341,6 +380,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#BEFF77",
   },
   {
     channelId: "ch_tokino_sora",
@@ -350,6 +390,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["0期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#0146E9",
   },
   {
     channelId: "ch_robocosan",
@@ -359,6 +400,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["0期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#804F7F",
   },
   {
     channelId: "ch_azki",
@@ -368,6 +410,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["0期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#D11C76",
   },
   {
     channelId: "ch_sakura_miko",
@@ -377,6 +420,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["0期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FF4B74",
   },
   {
     channelId: "ch_hoshimachi_suisei",
@@ -386,6 +430,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["0期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#6A98D0",
   },
   {
     channelId: "ch_yozora_mel",
@@ -404,6 +449,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#D40680",
   },
   {
     channelId: "ch_akai_haato",
@@ -413,6 +459,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#D90629",
   },
   {
     channelId: "ch_natsuiro_matsuri",
@@ -422,6 +469,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FF5506",
   },
   {
     channelId: "ch_minato_aqua",
@@ -449,6 +497,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["2期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#CD233A",
   },
   {
     channelId: "ch_yuzuki_choco",
@@ -458,6 +507,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["2期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#E9BB5D",
   },
   {
     channelId: "ch_oozora_subaru",
@@ -467,6 +517,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["2期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#BCE717",
   },
   {
     channelId: "ch_ookami_mio",
@@ -476,6 +527,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["ゲーマーズ"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#4F5072",
   },
   {
     channelId: "ch_nekomata_okayu",
@@ -485,6 +537,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["ゲーマーズ"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#BF66E8",
   },
   {
     channelId: "ch_inugami_korone",
@@ -494,6 +547,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["ゲーマーズ"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#DCB414",
   },
   {
     channelId: "ch_uruha_rushia",
@@ -512,6 +566,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["3期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#DB3A11",
   },
   {
     channelId: "ch_shirogane_noel",
@@ -521,6 +576,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["3期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#8A939E",
   },
   {
     channelId: "ch_houshou_marine",
@@ -530,6 +586,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["3期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#A82413",
   },
   {
     channelId: "ch_amane_kanata",
@@ -548,6 +605,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["4期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#DBDB89",
   },
   {
     channelId: "ch_tokoyami_towa",
@@ -557,6 +615,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["4期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#A9A2EB",
   },
   {
     channelId: "ch_himemori_luna",
@@ -566,6 +625,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["4期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#DE6DAE",
   },
   {
     channelId: "ch_yukihana_lamy",
@@ -575,6 +635,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["5期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#47B4DF",
   },
   {
     channelId: "ch_momosuzu_nene",
@@ -584,6 +645,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["5期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FF7810",
   },
   {
     channelId: "ch_shishiro_botan",
@@ -593,6 +655,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["5期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#5FCFA7",
   },
   {
     channelId: "ch_omaru_polka",
@@ -602,6 +665,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["5期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#AA0909",
   },
   {
     channelId: "ch_mano_aloe",
@@ -620,6 +684,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["6期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#471497",
   },
   {
     channelId: "ch_takane_lui",
@@ -629,6 +694,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["6期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#52363E",
   },
   {
     channelId: "ch_hakui_koyori",
@@ -638,6 +704,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["6期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FF68AD",
   },
   {
     channelId: "ch_sakamata_chloe",
@@ -656,6 +723,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["6期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#45BFB6",
   },
   {
     channelId: "ch_hiodoshi_ao",
@@ -674,6 +742,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["ReGLOSS"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#F6C663",
   },
   {
     channelId: "ch_ichijou_ririka",
@@ -683,6 +752,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["ReGLOSS"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#EE558B",
   },
   {
     channelId: "ch_juufuutei_raden",
@@ -692,6 +762,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["ReGLOSS"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#1C5E4F",
   },
   {
     channelId: "ch_todoroki_hajime",
@@ -701,6 +772,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["ReGLOSS"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#9293FE",
   },
   {
     channelId: "ch_isaki_riona",
@@ -710,6 +782,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["FLOWGLOW"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#C92655",
   },
   {
     channelId: "ch_koganei_niko",
@@ -719,6 +792,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["FLOWGLOW"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#F25E11",
   },
   {
     channelId: "ch_mizumiya_su",
@@ -728,6 +802,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["FLOWGLOW"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#64CCE4",
   },
   {
     channelId: "ch_rindo_chihaya",
@@ -737,6 +812,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["FLOWGLOW"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#2C8C8B",
   },
   {
     channelId: "ch_kikirara_vivi",
@@ -746,6 +822,47 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["FLOWGLOW"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#E6499B",
+  },
+  {
+    channelId: "ch_hyakuto_kyoko",
+    channelName: "百灯キョーコ",
+    organization: "hololive",
+    branch: "holo_jp",
+    groupKey: ["アソビ★まわり隊！"],
+    channelType: "member",
+    lifecycleStage: "pre_debut",
+    themeColor: "#F86701",
+  },
+  {
+    channelId: "ch_achichi_mela",
+    channelName: "熱千めら",
+    organization: "hololive",
+    branch: "holo_jp",
+    groupKey: ["アソビ★まわり隊！"],
+    channelType: "member",
+    lifecycleStage: "pre_debut",
+    themeColor: "#1C97FF",
+  },
+  {
+    channelId: "ch_suzuna_tsuzuri",
+    channelName: "鈴鳴つづり",
+    organization: "hololive",
+    branch: "holo_jp",
+    groupKey: ["アソビ★まわり隊！"],
+    channelType: "member",
+    lifecycleStage: "pre_debut",
+    themeColor: "#E2383B",
+  },
+  {
+    channelId: "ch_sorashina_sopia",
+    channelName: "宙科そぴあ",
+    organization: "hololive",
+    branch: "holo_jp",
+    groupKey: ["アソビ★まわり隊！"],
+    channelType: "member",
+    lifecycleStage: "pre_debut",
+    themeColor: "#7B7EFF",
   },
   {
     channelId: "ch_unit_b_pre_debut",
@@ -793,6 +910,15 @@ export const mockCreators: MockCreator[] = [
     lifecycleStage: "active",
   },
   {
+    channelId: "ch_hololive_asobimawaritai",
+    channelName: "アソビ★まわり隊！",
+    organization: "hololive",
+    branch: "holo_jp",
+    groupKey: ["アソビ★まわり隊！"],
+    channelType: "group",
+    lifecycleStage: "pre_debut",
+  },
+  {
     channelId: "ch_mori_calliope",
     channelName: "Mori Calliope",
     organization: "hololive",
@@ -800,6 +926,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Myth"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#A1030D",
   },
   {
     channelId: "ch_takanashi_kiara",
@@ -809,6 +936,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Myth"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FF511C",
   },
   {
     channelId: "ch_ninomae_inanis",
@@ -818,6 +946,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Myth"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#3F3F6A",
   },
   {
     channelId: "ch_irys",
@@ -827,6 +956,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Promise"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#BC96B0",
   },
   {
     channelId: "ch_ceres_fauna",
@@ -845,6 +975,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Promise"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#1B189B",
   },
   {
     channelId: "ch_nanashi_mumei",
@@ -863,6 +994,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Promise"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#FB3D29",
   },
   {
     channelId: "ch_shiori_novella",
@@ -872,6 +1004,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Advent"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#8D81AE",
   },
   {
     channelId: "ch_koseki_bijou",
@@ -881,6 +1014,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Advent"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#4B44DE",
   },
   {
     channelId: "ch_nerissa_ravencroft",
@@ -890,6 +1024,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Advent"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#2D3799",
   },
   {
     channelId: "ch_fuwamoco",
@@ -899,6 +1034,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Advent", "FUWAMOCO"],
     channelType: "group",
     lifecycleStage: "active",
+    themeColor: "#A66FEF",
   },
   {
     channelId: "ch_elizabeth_rose_bloodflame",
@@ -908,6 +1044,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Justice"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#97303A",
   },
   {
     channelId: "ch_gigi_murin",
@@ -917,6 +1054,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Justice"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#CD9328",
   },
   {
     channelId: "ch_cecilia_immergreen",
@@ -926,6 +1064,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Justice"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#137A42",
   },
   {
     channelId: "ch_raora_panthera",
@@ -935,6 +1074,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["Justice"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#E75786",
   },
   {
     channelId: "ch_ayunda_risu",
@@ -944,6 +1084,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#ED8282",
   },
   {
     channelId: "ch_moona_hoshinova",
@@ -953,6 +1094,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["1期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#794EBE",
   },
   {
     channelId: "ch_kureiji_ollie",
@@ -962,6 +1104,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["2期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#D90C52",
   },
   {
     channelId: "ch_anya_melfissa",
@@ -971,6 +1114,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["2期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#E79F11",
   },
   {
     channelId: "ch_pavolia_reine",
@@ -980,6 +1124,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["2期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#040F7F",
   },
   {
     channelId: "ch_vestia_zeta",
@@ -989,6 +1134,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["3期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#98A1AC",
   },
   {
     channelId: "ch_kaela_kovalskia",
@@ -998,6 +1144,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["3期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#DC2528",
   },
   {
     channelId: "ch_kobo_kanaeru",
@@ -1007,6 +1154,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["3期生"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#93BFE4",
   },
   {
     channelId: "ch_jira_jisaki",
@@ -1016,6 +1164,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#606D3D",
   },
   {
     channelId: "ch_remia_aotsuki",
@@ -1025,6 +1174,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#398FB2",
   },
   {
     channelId: "ch_arya_kuroha",
@@ -1034,6 +1184,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#000000",
   },
   {
     channelId: "ch_narin_mikure",
@@ -1043,6 +1194,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#F3A6EF",
   },
   {
     channelId: "ch_riko_solari",
@@ -1052,6 +1204,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#9373D7",
   },
   {
     channelId: "ch_eris_suzukami",
@@ -1061,6 +1214,7 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#90B2F8",
   },
   {
     channelId: "ch_juno_umezono",
@@ -1070,5 +1224,6 @@ export const mockCreators: MockCreator[] = [
     groupKey: ["NO"],
     channelType: "member",
     lifecycleStage: "active",
+    themeColor: "#923173",
   },
 ]

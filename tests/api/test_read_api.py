@@ -171,11 +171,31 @@ def test_get_video_growth_returns_normalized_response(monkeypatch):
         "groupKey": ["1期生"],
         "channelType": "member",
         "lifecycleStage": "active",
+        "themeColor": None,
         "latestViewCount": 1240,
         "comparisonViewCount": 1000,
         "growth": 240,
         "growthPercent": pytest.approx(24.0),
     }
+
+
+def test_get_video_growth_carries_creator_theme_color_when_verified(monkeypatch):
+    """A creator with a verified backend themeColor has it carried through
+    the growth response unchanged, alongside the other classification fields."""
+    monkeypatch.setattr(read_api, "get_video", lambda video_id: _video(video_id=video_id))
+    monkeypatch.setattr(
+        read_api,
+        "get_snapshot",
+        lambda video_id, snapshot_date: {
+            "2026-09-01": _snapshot("2026-09-01", 1240),
+            "2026-08-25": _snapshot("2026-08-25", 1000),
+        }.get(snapshot_date.isoformat()),
+    )
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(theme_color="#B4F1F9")])
+
+    response = get_video_growth({"videoId": "v1", "reportDate": "2026-09-01", "timeZone": "Europe/London", "period": "7d"})
+
+    assert response["themeColor"] == "#B4F1F9"
 
 
 def test_get_video_growth_raises_for_unknown_video_id(monkeypatch):
@@ -627,6 +647,7 @@ def test_ranking_computation_returns_ranked_response(monkeypatch):
         "groupKey": ["1期生"],
         "channelType": "member",
         "lifecycleStage": "active",
+        "themeColor": None,
         "latestViewCount": 500,
         "lastUpdatedAt": "2026-09-01T18:00:05+09:00",
         "growth": 400,
@@ -634,6 +655,26 @@ def test_ranking_computation_returns_ranked_response(monkeypatch):
         "status": "ok",
     }
     assert response["results"][1]["rank"] == 2
+
+
+def test_ranking_computation_carries_creator_theme_color_when_verified(monkeypatch):
+    """Same themeColor pass-through as the growth response, for a trending row."""
+    videos = [_video(video_id="v1", creator_id="aizawa_ema")]
+    _ranking_fixture(
+        monkeypatch,
+        creators=[_creator(theme_color="#B4F1F9")],
+        videos=videos,
+        snapshots={
+            ("v1", "2026-09-01"): _snapshot("2026-09-01", 1240, video_id="v1"),
+            ("v1", "2026-08-25"): _snapshot("2026-08-25", 1000, video_id="v1"),
+        },
+    )
+
+    response = _compute_ranked_response(
+        videos, report_date=date(2026, 9, 1), period="7d", ranking_type="7d_trending", scope={"creatorId": "aizawa_ema"}
+    )
+
+    assert response["results"][0]["themeColor"] == "#B4F1F9"
 
 
 def test_ranking_computation_reports_the_oldest_result_as_last_updated_at(monkeypatch):

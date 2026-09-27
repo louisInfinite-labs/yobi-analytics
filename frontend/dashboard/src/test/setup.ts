@@ -2,6 +2,7 @@ import { cleanup } from "@testing-library/react"
 import { afterEach } from "vitest"
 import "@testing-library/jest-dom/vitest"
 import { resetLiveDockExpandedForTests } from "../features/live-status/hooks/useLiveDockExpanded"
+import { resetHomeSelectedVideoForTests } from "../features/home-room/hooks/useHomeSelectedVideo"
 import { resetAllSharedStateForTests } from "../shared/state/sharedState"
 
 // @testing-library/react's own auto-cleanup only self-registers when
@@ -23,6 +24,9 @@ afterEach(() => {
   // isn't one of lib/sharedState's localStorage-backed stores (it's
   // deliberately not persisted), so it needs its own reset here.
   resetLiveDockExpandedForTests()
+  // Same reasoning as useLiveDockExpanded above -- Home's selected-video
+  // singleton is deliberately not persisted either.
+  resetHomeSelectedVideoForTests()
 })
 
 // jsdom has no matchMedia implementation; components that read

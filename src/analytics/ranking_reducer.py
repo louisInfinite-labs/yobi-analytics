@@ -532,6 +532,7 @@ def _cache_row(entry: RankedGrowth, video: Any, creators: dict[str, Any]) -> dic
         "groupKey": creator.group_key if creator else None,
         "channelType": creator.channel_type if creator else None,
         "lifecycleStage": creator.lifecycle_stage if creator else None,
+        "themeColor": creator.theme_color if creator else None,
         "latestViewCount": entry.view_count,
         "lastUpdatedAt": entry.observed_at,
         "growth": entry.gain,

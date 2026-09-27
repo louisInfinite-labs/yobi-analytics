@@ -1,6 +1,7 @@
 import { AdminPanel } from "../pages/admin/AdminPanel"
 import { DashboardPage } from "../pages/dashboard/DashboardPage"
 import { HomePage } from "../pages/home/HomePage"
+import { LiveSchedulePage } from "../pages/schedule/LiveSchedulePage"
 import { LiveScheduleDock } from "../features/live-status/components/LiveScheduleDock"
 import { MainNavbar } from "./navigation/MainNavbar"
 import { SettingsPage } from "../pages/settings/SettingsPage"
@@ -36,7 +37,15 @@ function App() {
       <div className="app-shell">
         <MainNavbar />
         <div className="app-shell__content">
-          {page === "home" ? <HomePage /> : page === "settings" ? <SettingsPage /> : <DashboardPage />}
+          {page === "home" ? (
+            <HomePage />
+          ) : page === "settings" ? (
+            <SettingsPage />
+          ) : page === "schedule" ? (
+            <LiveSchedulePage />
+          ) : (
+            <DashboardPage />
+          )}
         </div>
       </div>
       <LiveScheduleDock />

@@ -13,7 +13,7 @@
    instead of Mantine's own logo) and the document <title> (index.html's
    own "OshiYobi") -- not anything rendered in this file. */
 :root {
-  --main-navbar-width: 60px;
+  --main-navbar-width: 160px;
 }
 
 /* .app-shell__content reserves the Main Navbar's width via margin-left
@@ -71,14 +71,21 @@
   border: none;
   background: transparent;
   color: var(--mantine-dark-0);
-  width: 44px;
+  width: 100%;
   height: 44px;
   flex: 0 0 44px;
   border-radius: 8px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding-inline: 16px;
+  box-sizing: border-box;
   cursor: pointer;
+}
+
+.main-navbar__link svg {
+  flex-shrink: 0;
 }
 
 .main-navbar__link:hover {
@@ -91,31 +98,21 @@
   color: var(--mantine-blue-light-color);
 }
 
-/* Mantine's own demo uses a Tooltip (position="right") on each icon
-   button instead of visible labels -- this reproduces that with plain
-   CSS (no tooltip library) rather than adding @mantine/core just for
-   this one component. */
-.main-navbar__tooltip {
-  position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
-  transform: translateY(-50%);
-  background: #1a1b1e;
-  color: #ffffff;
-  font-size: 12px;
-  line-height: 1;
-  white-space: nowrap;
-  padding: 6px 10px;
-  border-radius: 4px;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.1s ease;
-  pointer-events: none;
-  z-index: 20;
-}
+/* Same visible-nav-label typography as SettingsSecondaryNavbar's own
+   .settings-secondary-navbar__link (14px/500) -- the only other place this
+   app renders a permanent navigation label. Longest known label ("Video
+   Data"/"動画データ") measures ~72px at this size, comfortably inside the
+   160px rail alongside the 16/22/10/16 padding+icon+gap budget, so no
+   truncation is expected; overflow handling below is a safety net, not an
+   active constraint. */
+.main-navbar__label {
+  min-width: 0;
 
-.main-navbar__link:hover .main-navbar__tooltip,
-.main-navbar__link:focus-visible .main-navbar__tooltip {
-  opacity: 1;
-  visibility: visible;
+  overflow: hidden;
+
+  font-size: 14px;
+  font-weight: 500;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }

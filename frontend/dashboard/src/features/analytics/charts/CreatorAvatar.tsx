@@ -11,7 +11,7 @@ const creatorsById = new Map(mockCreators.map((creator) => [creator.channelId, c
 
 export function getCreatorAvatarVisual(channelId: string, channelName: string) {
   const creator = creatorsById.get(channelId)
-  const accent = getMemberAccent(channelId)
+  const accent = getMemberAccent(channelId, creator?.themeColor)
   return {
     avatarUrl: creator?.avatarUrl,
     initial: channelName.trim().charAt(0).toUpperCase() || "?",
