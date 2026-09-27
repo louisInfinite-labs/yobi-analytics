@@ -281,20 +281,6 @@
    TopicCreatorManagementDrawer's own .topic-creator-drawer__* rules,
    since the roster itself no longer renders on this page directly. ============ */
 
-.notification-settings {
-  max-width: 960px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-4);
-}
-
-@media (max-width: 640px) {
-  .notification-settings {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* ============ Main Oshi Select: esports-style single creator selector ============ */
 
 .settings-page__content--main-oshi {
@@ -967,259 +953,596 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 30%, transparent);
 }
 
-/* ============ Notification Settings: esports/control-panel redesign ======
-   Compact per-topic cards only -- the full ~122-creator roster never
-   renders on this page itself, only inside TopicCreatorManagementDrawer
-   (see below). UI/UX restyle only (confirmed with the user): topic
-   ordering, reminder values, member-selection logic, Local Storage
-   behavior and the Drawer itself are all unchanged -- only how a topic's
-   card LOOKS changes here.
+/* ============ Notification Settings: master-detail redesign ============
+   Left: a single vertical list of saved topics. Right: one large detail
+   editor for whichever topic is selected. Replaces the old per-topic card
+   grid entirely (confirmed with the user) -- topic ordering, reminder
+   values, member-selection logic, Local Storage behavior and the Drawer
+   itself are all unchanged; only how a topic is browsed and edited
+   changes here. Selected/hover states use one muted pink outline only --
+   no separate left-side accent strip on any surface (confirmed with the
+   user: the old .notification-settings__topic-card's `border-left: 3px
+   solid var(--notif-accent)` is explicitly removed, not carried over). */
 
-   Visual language reuses this app's own existing VSPO/esports vocabulary
-   instead of a new one-off design system: the --theme-primary accent bar
-   + uppercase tracked title echoes .section-header's own accent-bar
-   convention (dashboard.css). The page intentionally uses one muted pink
-   accent throughout instead of combining the active member theme with a
-   second warning color; shape presets still control corner geometry only.
-   ============ */
+.notification-settings-page {
+  --notification-page-bg: #17141d;
+  --notification-surface-1: #1b1821;
+  --notification-surface-2: #211d28;
+  --notification-surface-3: #27222d;
+  --notification-border: #393442;
+  --notification-border-soft: #34303d;
+  --notification-divider: #35303a;
+  --notification-text-primary: #f6f1f8;
+  --notification-text-secondary: #aaa2b3;
+  --notification-text-muted: #8f8798;
+  --notification-accent: #df6eb2;
+  --notification-accent-strong: #e36fb5;
+  --notification-accent-bg: #5f354f;
+  --notification-purple: #9f73f2;
+  --notification-blue: #2a7ed2;
+  --notification-blue-text: #75bced;
 
-.notification-settings__topic-card {
-  position: relative;
-  background: var(--notif-page-surface);
-  border: 1px solid var(--notif-page-border);
-  border-left: 3px solid var(--notif-accent);
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
-  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  background: var(--notification-page-bg);
 }
 
-/* A subtle themed glow instead of this app's light-calibrated
-   --shadow-sm/--shadow-md (barely visible against a dark surface) --
-   "subtle glow/focus treatment" per the redesign's own visual direction,
-   kept small (not a heavy HUD bloom). */
-.notification-settings__topic-card:hover {
-  border-color: color-mix(in srgb, var(--notif-accent) 68%, var(--notif-page-border));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--notif-accent) 18%, transparent);
-}
-
-/* Softer, fully rounded corners for Hololive JP's "soft idol" mode; a
-   tactical/momentum-style cut top-right corner for VSPO's two modes --
-   same shape system .soft-button/.soft-select already key off, applied
-   here instead of a bespoke card shape. */
-.shape-soft-angular .notification-settings__topic-card {
-  border-radius: var(--radius-lg);
-}
-
-.shape-sharp-angular .notification-settings__topic-card {
-  border-radius: 0;
-  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
-}
-
-/* The not-yet-saved draft card reads as "in progress" via a dashed accent
-   edge instead of the solid one saved cards get -- a purely visual cue
-   (no new activation-state business logic; the card's persisted/
-   not-persisted status is exactly what it already was). */
-.notification-settings__topic-card--draft {
-  border-left-style: dashed;
-}
-
-.notification-settings__topic-title {
+.notification-settings-content {
   display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* ---- Master-detail row ---- */
+
+.notification-settings-main {
+  display: grid;
+  /* minmax(320px, 1fr), not (0, 1fr): the detail panel holds a Reminder
+     time grid, a Notification type Segmented, and a min-width Manage
+     Members button -- letting it shrink toward 0 either truncates their
+     labels or overflows them, so it has its own floor. */
+  grid-template-columns: 440px minmax(320px, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+/* One cutover, not the two the settings shell's own fixed-width secondary
+   nav + page padding would otherwise leave a too-narrow band between --
+   at ~440px + the 320px detail floor + the gap, two columns need >=778px
+   of the SETTINGS CONTENT area, which is the outer viewport width minus
+   that shell chrome (~480px here); 1360px keeps a safety margin above
+   the ~1260px viewport that math implies, confirmed with the actual
+   Settings shell rather than assumed. */
+@media (max-width: 1360px) {
+  .notification-settings-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Left: topic list panel ---- */
+
+.notification-topic-panel {
+  min-width: 0;
+  background: var(--notification-surface-1);
+  border: 1px solid var(--notification-border-soft);
+  border-radius: 14px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.notification-topic-panel__header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: var(--space-2);
+  gap: 12px;
+  padding: 4px 4px 12px;
+}
+
+.notification-topic-panel__title {
+  margin: 0;
+  color: var(--notification-text-primary);
   font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--notif-page-text-primary);
-  margin: 0 0 var(--space-3);
 }
 
-.notification-settings__topic-title svg {
-  color: var(--notif-accent);
-  flex-shrink: 0;
+.notification-topic-sort.ant-select {
+  height: 38px;
+  min-width: 126px;
 }
 
-/* Reminder Time's own label+control group. Renamed from the old
-   .notification-settings__topic-row (label+control side by side) since
-   Segmented's own option row needs its label ABOVE it, not beside it, to
-   have room for every choice to stay visible without opening a menu. */
-.notification-settings__group {
-  padding: 6.4px 0;
+.notification-topic-sort.ant-select .ant-select-selector {
+  height: 38px !important;
+  border-radius: 9px !important;
+  align-items: center;
 }
 
-.notification-settings__group-label {
+.notification-topic-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Topic list item -- no pseudo-element accent bar of any kind. ---- */
+
+.notification-topic-item {
+  width: 100%;
+  min-height: 86px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--notif-page-text-tertiary);
-  margin-bottom: var(--space-2);
+  gap: 14px;
+  padding: 15px 16px;
+  margin-bottom: 10px;
+
+  background: var(--notification-surface-2);
+  border: 1px solid var(--notification-border);
+  border-radius: 12px;
+
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
-.notification-settings__group-label svg {
-  flex-shrink: 0;
-  color: var(--notif-page-text-tertiary);
+.notification-topic-item:hover {
+  background: #25212d;
+  border-color: #51495d;
 }
 
-/* All 5 reminder choices stay visible at once (confirmed requirement) --
-   wrap onto a second line rather than overflow/scroll when a locale's
-   labels ("10 minutes before", ...) don't fit one row at this card width.
-   Selected/hover colors come from this page's own ConfigProvider
-   (components.Segmented, see NotificationSettings.tsx) using the active
-   member theme, same as every other themed control in this app. */
-.notification-settings__reminder-segmented.ant-segmented {
-  width: 100%;
+.notification-topic-item.is-selected {
+  background: var(--notification-surface-3);
+  border-color: var(--notification-accent-strong);
+  box-shadow: 0 0 0 1px rgba(215, 96, 170, 0.16);
 }
 
-.notification-settings__reminder-segmented .ant-segmented-group {
+.notification-topic-item__icon {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  color: #e889c2;
+}
+
+.notification-topic-item__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.notification-topic-item__name {
+  color: var(--notification-text-primary);
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+
+.notification-topic-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   flex-wrap: wrap;
-  row-gap: 2px;
+  min-width: 0;
 }
 
-.notification-settings__reminder-segmented .ant-segmented-item {
+.notification-topic-item__meta-label {
+  color: var(--notification-text-secondary);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.notification-topic-item__time {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 8px;
+  border-radius: 6px;
+
+  background: #71435f;
+  color: #fceef8;
+
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.notification-topic-item__members {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #bbb3c1;
+  font-size: 13px;
+}
+
+.notification-topic-item__override {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--notification-text-secondary);
+  font-size: 13px;
+}
+
+.notification-topic-item__override.is-active {
+  color: var(--notification-purple);
+}
+
+.notification-topic-item__chevron {
+  flex: 0 0 auto;
+  color: #c9c2cf;
+  width: 18px;
+  height: 18px;
+}
+
+/* ---- Add topic ---- */
+
+.notification-add-topic.ant-btn {
+  width: 100%;
+  min-height: 74px;
+  margin-top: 4px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+
+  background: transparent;
+  border: 1px dashed #48414f;
+  border-radius: 12px;
+
+  color: #ddd4e1;
+}
+
+.notification-add-topic.ant-btn:hover {
+  border-color: #7d5871;
+  background: #201b25;
+  color: #ddd4e1;
+}
+
+.notification-add-topic__icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+
+  background: #5a334d;
+  color: #f4c5df;
+}
+
+/* ---- Right: detail panel -- one continuous settings surface, no left
+   accent line, no nested cards. ---- */
+
+.notification-detail-panel {
+  min-width: 0;
+  min-height: 100%;
+
+  background: var(--notification-surface-1);
+  border: 1px solid #3b3543;
+  border-radius: 14px;
+
+  padding: 28px 28px 22px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-detail-panel__empty {
+  margin: auto;
+  color: var(--notification-text-secondary);
+  font-size: 14px;
+}
+
+.notification-detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--notification-divider);
+}
+
+.notification-detail-header__icon {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  color: #e488c2;
+}
+
+.notification-detail-header__title {
+  margin: 0;
+  color: #f8f3fb;
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.notification-detail-header__description {
+  margin-top: 7px;
+  color: var(--notification-text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* Draft mode: the topic picker takes the header's own slot. */
+.notification-detail-header--draft {
+  align-items: center;
+}
+
+.notification-detail-topic-select.ant-select {
+  width: 100%;
+  max-width: 420px;
+}
+
+.notification-detail-section {
+  padding: 24px 0;
+  border-bottom: 1px solid var(--notification-divider);
+}
+
+.notification-detail-section:last-of-type {
+  border-bottom: 0;
+}
+
+.notification-detail-section__title {
+  margin: 0 0 5px;
+  color: #f4eff7;
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.notification-detail-section__description {
+  margin: 0 0 16px;
+  color: #9e96a7;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---- Live reminder time -- antd Segmented restyled to the spec's own
+   6-up option grid, keeping Segmented's own radiogroup/radio semantics. ---- */
+
+.notification-reminder-options.ant-segmented {
+  background: transparent;
+  padding: 0;
+  display: grid;
+  /* auto-fit/minmax instead of a fixed 6-up viewport breakpoint: the
+     master-detail layout's own left topic list already claims 360-440px,
+     so how much width the detail panel actually has left for this control
+     varies with the panel, not just the viewport -- a plain
+     repeat(6, minmax(0, 1fr)) truncates every label at normal desktop
+     widths once that's accounted for. This wraps to fewer, wider columns
+     whenever the panel is narrower, and up to 6 across once it's wide
+     enough, with no min/max-width media query to keep in sync. */
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 10px;
+}
+
+.notification-reminder-options .ant-segmented-group {
+  display: contents;
+}
+
+.notification-reminder-options .ant-segmented-item {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+
+  border: 1px solid var(--notification-border);
+  border-radius: 9px;
+  background: #221e29;
+
+  color: #ddd7e2;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.notification-reminder-options .ant-segmented-item:hover {
+  border-color: #765068;
+}
+
+.notification-reminder-options .ant-segmented-item-selected {
+  background: var(--notification-accent-bg);
+  border-color: #e36fb5;
+  color: #fff5fb;
+  box-shadow: 0 0 0 1px rgba(227, 111, 181, 0.16);
+}
+
+.notification-reminder-options .ant-segmented-thumb {
+  display: none;
+}
+
+/* ---- Notification type ---- */
+
+.notification-type-control.ant-segmented {
+  margin-top: 4px;
+  max-width: 420px;
+  background: #221e29;
+}
+
+.notification-type-control .ant-segmented-item {
+  color: #ddd7e2;
+}
+
+.notification-type-control .ant-segmented-item-selected {
+  background: var(--notification-accent-bg);
+  color: #fff5fb;
+}
+
+/* ---- Notification members ---- */
+
+.notification-members-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.notification-members-manage.ant-btn {
+  min-width: 138px;
+  height: 44px;
+  border-radius: 9px;
+
+  background: #172237;
+  border: 1px solid #1764b5;
+  color: var(--notification-blue-text);
+}
+
+.notification-members-manage.ant-btn:hover {
+  background: #192945;
+  border-color: var(--notification-blue);
+  color: var(--notification-blue-text);
+}
+
+.notification-member-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.notification-member-preview__item {
+  width: 76px;
+  min-width: 76px;
   text-align: center;
 }
 
-/* The Notification Members entry -- one full-width row that IS the "open
-   the member drawer" affordance (confirmed requirement: no separate
-   preview row plus separate button below it any more). Still a real antd
-   Button (type="text", block -- see MembersRow in NotificationSettings.tsx)
-   so focus/keyboard/wave interaction stay antd's own; only restyled to
-   read as a row, not a pill button. border-top makes the visual grouping
-   explicit: Reminder Time above the line, Notification Members below it. */
-.notification-settings__members-row.ant-btn {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: auto;
-  margin-top: var(--space-2);
-  padding: var(--space-2) 2px 2px;
-  border-top: 1px solid var(--notif-page-border);
-  border-radius: 0;
-  color: inherit;
-  text-align: left;
-}
+.notification-member-preview__avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
 
-.notification-settings__members-row.ant-btn:hover {
-  background: color-mix(in srgb, var(--notif-accent) 9%, transparent);
-}
-
-.notification-settings__members-row.ant-btn:hover .notification-settings__group-label,
-.notification-settings__members-row.ant-btn:hover .notification-settings__group-label svg {
-  color: var(--notif-accent);
-}
-
-.notification-settings__members-row .notification-settings__group-label {
-  margin-bottom: 0;
-}
-
-.notification-settings__members-row-value {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-/* The selected-member count uses the same muted accent as the rest of the
-   notification surface, avoiding a competing high-contrast warning color. */
-.notification-settings__member-count {
-  font-size: 13px;
+  border: 2px solid #625c68;
+  background: #292530;
+  color: var(--notification-text-secondary);
+  font-size: 18px;
   font-weight: 700;
-  color: var(--notif-accent);
 }
 
-.notification-settings__members-row-chevron {
-  color: var(--notif-page-text-tertiary);
-  transition: transform 150ms ease-out;
+.notification-member-preview__name {
+  margin-top: 7px;
+  color: #e0dae4;
+  font-size: 12px;
+  line-height: 1.3;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.notification-settings__members-row.ant-btn:hover .notification-settings__members-row-chevron {
-  transform: translateX(2px);
-  color: var(--notif-accent);
+.notification-member-preview__more {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+
+  background: #26222c;
+  border: 1px solid #423c48;
+  color: #c4bdc9;
+  font-size: 13px;
+  font-weight: 600;
 }
 
-/* DraftTopicCard's own bottom row, once a topic is picked -- Save only
-   (confirmed requirement: Notification Members is no longer a separate
-   button here, see .notification-settings__members-row above), pinned
-   bottom-right. */
-.notification-settings__topic-card-actions {
+/* ---- Per-creator override summary ---- */
+
+.notification-member-override-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+
+  min-height: 86px;
+  padding: 18px 18px 18px 20px;
+
+  background: #221e28;
+  border: 1px solid var(--notification-border-soft);
+  border-radius: 11px;
+}
+
+.notification-member-override-box__content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.notification-member-override-box__icon {
+  flex: 0 0 auto;
+  color: #2ca8ef;
+}
+
+.notification-member-override-box__title {
+  margin: 0;
+  color: var(--notification-blue-text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.notification-member-override-box__description {
+  margin-top: 4px;
+  color: #9e97a5;
+  font-size: 13px;
+}
+
+/* ---- Footer actions ---- */
+
+.notification-detail-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: var(--space-3);
-}
-
-/* The "+" tile -- extends .notification-settings__topic-card's own box
-   (border/radius/shape), restyled to read as an esports-style card action
-   (icon-in-a-ring + label) instead of a generic dashed admin box, while
-   staying a real antd Button (variant="dashed", confirmed requirement: no
-   new interaction system) so its click/focus/wave behavior is untouched.
-   The grid's own default align-items: stretch already matches its height
-   to a real card when they share a row; auto-height is fine when it
-   starts a row alone, since every card's own height is itself
-   content-driven, not fixed. */
-.notification-settings__add-topic-tile.ant-btn {
-  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  height: auto;
-  min-height: 96px;
-  background: transparent;
-  border-left: 3px dashed var(--notif-page-border);
-  color: var(--notif-page-text-secondary);
-  font-size: 14px;
-  font-weight: 600;
-  transition: border-color 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out;
+  gap: 12px;
+
+  padding-top: 18px;
+  margin-top: 4px;
+  border-top: 1px solid var(--notification-divider);
 }
 
-.notification-settings__add-topic-tile.ant-btn:hover {
-  border-color: var(--notif-accent);
-  background: color-mix(in srgb, var(--notif-accent) 8%, transparent);
-  color: var(--notif-page-text-primary);
+.notification-reset-button.ant-btn {
+  min-width: 90px;
+  height: 46px;
+
+  border-radius: 9px;
+  border: 1px solid #494250;
+  background: #29252e;
+  color: #e1dbe5;
 }
 
-.notification-settings__add-topic-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--notif-accent) 20%, var(--notif-page-surface-strong));
-  color: var(--notif-accent);
-  flex-shrink: 0;
+.notification-reset-button.ant-btn:hover {
+  border-color: #6a5f70;
+  background: #322c38;
+  color: #e1dbe5;
 }
 
-/* Sits where a saved card's own <h2> topic title sits -- same
-   margin-bottom the title had, so the rows underneath (once a topic is
-   picked) land in the same position as a saved card's own rows. Dark
-   overrides for antd's own (light-by-default) Select surface/border/text,
-   matching this page's --notif-page-* palette -- the popup itself is
-   themed via this page's own ConfigProvider (components.Select, see
-   NotificationSettings.tsx) since it's portaled outside this element's
-   DOM subtree, where a scoped CSS custom property can't reach it. */
-.notification-settings__topic-select {
-  width: 100%;
-  margin-bottom: var(--space-3);
+.notification-save-button.ant-btn {
+  min-width: 126px;
+  height: 46px;
+
+  border: 1px solid #e46cb4;
+  border-radius: 9px;
+
+  background: linear-gradient(180deg, #e36fb5 0%, #cc559f 100%);
+
+  color: #fff;
+  font-weight: 700;
 }
 
-.notification-settings__topic-select.ant-select .ant-select-selector {
-  background: var(--notif-page-surface-strong);
-  border-color: var(--notif-page-border);
-  color: var(--notif-page-text-primary);
+.notification-save-button.ant-btn:hover {
+  filter: brightness(1.05);
+  color: #fff;
 }
 
-.notification-settings__topic-select.ant-select .ant-select-selection-placeholder {
-  color: var(--notif-page-text-tertiary);
+.notification-settings-page :focus-visible {
+  outline: 2px solid #7ab8ff;
+  outline-offset: 2px;
 }
 
-.notification-settings__topic-select.ant-select .ant-select-arrow {
-  color: var(--notif-page-text-tertiary);
-}
 
 /* ============ Topic Creator Management Drawer: the full searchable
    roster, Favorites-first, opened per topic from a topic card's own

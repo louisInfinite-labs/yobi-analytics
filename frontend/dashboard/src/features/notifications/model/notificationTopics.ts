@@ -8,14 +8,16 @@ import type { TranslationKey } from "../../../shared/i18n/translations"
  * below is genuinely topic-agnostic and unaffected by that change.
  *
  * Reminder-time values a creator can be notified at -- confirmed directly
- * with the user (superseding this feature's original written spec, which
- * also listed "5 分鐘前"): 開播時/10 分鐘前/30 分鐘前/1 小時前 only. */
-export type ReminderTimeValue = "at_start" | "10min" | "30min" | "1hour"
+ * with the user: 開播時/1 分鐘前/10 分鐘前/30 分鐘前/1 小時前 (the Notification
+ * Settings master-detail redesign added "1 分鐘前" to this feature's
+ * original 4-value set). */
+export type ReminderTimeValue = "at_start" | "1min" | "10min" | "30min" | "1hour"
 
-export const REMINDER_TIME_VALUES: readonly ReminderTimeValue[] = ["at_start", "10min", "30min", "1hour"]
+export const REMINDER_TIME_VALUES: readonly ReminderTimeValue[] = ["at_start", "1min", "10min", "30min", "1hour"]
 
 export const REMINDER_TIME_LABEL_KEYS: Record<ReminderTimeValue, TranslationKey> = {
   at_start: "notificationSettings.reminder.atStart",
+  "1min": "notificationSettings.reminder.1min",
   "10min": "notificationSettings.reminder.10min",
   "30min": "notificationSettings.reminder.30min",
   "1hour": "notificationSettings.reminder.1hour",
@@ -52,3 +54,13 @@ export const INITIAL_TOPIC_REMINDER_MODE: TopicReminderMode = "10min"
  * INITIAL_TOPIC_REMINDER_MODE above, for consistency, since no other value
  * was specified for this case. */
 export const INITIAL_MEMBER_REMINDER: ReminderTimeValue = "10min"
+
+/** A topic-level preference for which kind(s) of notification it sends --
+ * "both" is the starting value for every topic (matches this feature's own
+ * pre-existing behavior, where a creator's Live and New Video enablement
+ * were always independent per-creator switches with no topic-wide filter
+ * on top; "both" preserves that default exactly for every existing topic).
+ * This sits alongside, not instead of, each creator's own Live/New Video
+ * switches in TopicCreatorManagementDrawer -- it does not gate them. */
+export type TopicNotificationType = "live" | "newVideo" | "both"
+export const INITIAL_TOPIC_NOTIFICATION_TYPE: TopicNotificationType = "both"

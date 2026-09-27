@@ -3,9 +3,11 @@ import { createSharedState, useSharedState } from "../../../shared/state/sharedS
 import { getAvailableTopics, type TopicCatalogId } from "../model/notificationTopicCatalog"
 import {
   INITIAL_MEMBER_REMINDER,
+  INITIAL_TOPIC_NOTIFICATION_TYPE,
   INITIAL_TOPIC_REMINDER_MODE,
   MEMBER_CHOICE_MODE,
   type ReminderTimeValue,
+  type TopicNotificationType,
   type TopicReminderMode,
 } from "../model/notificationTopics"
 
@@ -26,6 +28,7 @@ interface TopicPreferenceState {
   live: string[]
   newVideo: string[]
   reminderOverrides: Record<string, ReminderTimeValue>
+  notificationType: TopicNotificationType
 }
 
 /** The 5 permanent default cards the page starts with, in this exact order
@@ -51,7 +54,11 @@ interface TopicPreferencesState {
 }
 
 function emptyTopicState(): TopicPreferenceState {
-  return { reminderMode: INITIAL_TOPIC_REMINDER_MODE, live: [], newVideo: [], reminderOverrides: {} }
+  return { reminderMode: INITIAL_TOPIC_REMINDER_MODE, live: [], newVideo: [], reminderOverrides: {}, notificationType: INITIAL_TOPIC_NOTIFICATION_TYPE }
+}
+
+function isValidNotificationType(value: unknown): value is TopicNotificationType {
+  return value === "live" || value === "newVideo" || value === "both"
 }
 
 function initialState(): TopicPreferencesState {
@@ -84,6 +91,7 @@ function readState(): TopicPreferencesState {
         live: Array.isArray(saved.live) ? saved.live : [],
         newVideo: Array.isArray(saved.newVideo) ? saved.newVideo : [],
         reminderOverrides: typeof saved.reminderOverrides === "object" && saved.reminderOverrides ? saved.reminderOverrides : {},
+        notificationType: isValidNotificationType(saved.notificationType) ? saved.notificationType : INITIAL_TOPIC_NOTIFICATION_TYPE,
       }
     }
     return { topicOrder, topics }
@@ -224,6 +232,35 @@ export function useTopicNotificationPreferences() {
     return new Set([...topic.live, ...topic.newVideo])
   }, [topicState])
 
+  const getNotificationType = useCallback((topicId: TopicCatalogId) => topicState(topicId).notificationType, [topicState])
+
+  const setNotificationType = useCallback(
+    (topicId: TopicCatalogId, type: TopicNotificationType) => {
+      setTopicState(topicId, { ...topicState(topicId), notificationType: type })
+    },
+    [topicState, setTopicState],
+  )
+
+  /** How many creators currently have their OWN explicit reminder override
+   * set for this topic (setLiveEnabled already clears a creator's override
+   * the moment Live is turned off for them, so every remaining key here
+   * belongs to a still-Live-enabled creator) -- drives the Notification
+   * Settings detail panel's per-creator override summary. Read-only: it
+   * derives from reminderOverrides, never a separate stored value. */
+  const getOverrideCount = useCallback((topicId: TopicCatalogId) => Object.keys(topicState(topicId).reminderOverrides).length, [topicState])
+
+  /** Restores a topic's own reminder mode and notification type to their
+   * starting values -- deliberately leaves Live/New Video membership and
+   * every member's own reminder override untouched, since those represent
+   * who's enabled, not this topic's own defaults, and clearing them from a
+   * generic "reset" action would be a surprising, hard-to-undo data loss. */
+  const resetTopicDefaults = useCallback(
+    (topicId: TopicCatalogId) => {
+      setTopicState(topicId, { ...topicState(topicId), reminderMode: INITIAL_TOPIC_REMINDER_MODE, notificationType: INITIAL_TOPIC_NOTIFICATION_TYPE })
+    },
+    [topicState, setTopicState],
+  )
+
   return {
     savedTopicIds: state.topicOrder,
     addTopic,
@@ -239,5 +276,9 @@ export function useTopicNotificationPreferences() {
     setMemberReminder,
     getEffectiveReminder,
     getEnabledCreatorIds,
+    getNotificationType,
+    setNotificationType,
+    getOverrideCount,
+    resetTopicDefaults,
   }
 }
