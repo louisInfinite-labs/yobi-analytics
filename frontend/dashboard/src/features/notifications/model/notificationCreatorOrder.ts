@@ -1,5 +1,5 @@
 import type { MockCreator } from "../../../entities/creator/data/mockCreators"
-import { findMockCreatorForCreatorId } from "../../favorites/utils/creatorFavoriteBridge"
+import { findMockCreatorForCreatorId, mockCreatorDeclarationIndex } from "../../favorites/utils/creatorFavoriteBridge"
 import { DOCK_BRANCH_ORDER, pinNonMemberChannelsLast, sortWithinBranch } from "../../../entities/creator/utils/dockCreatorOrder"
 import type { NotificationCreator } from "./notificationCreatorGrouping"
 import type { BranchKey } from "../../../entities/creator/model/domain"
@@ -14,7 +14,7 @@ import type { BranchKey } from "../../../entities/creator/model/domain"
  * undefined array order, which doesn't match Live Status at all -- this
  * makes the two consistent.
  *
- * A creatorId with no mockCreators counterpart at all (watson_amelia,
+ * A creatorId with no mockCreators counterpart at all (currently just
  * airani_iofifteen -- see creatorFavoriteBridge.ts) has no ordering
  * information to borrow, so it sorts after every bridged creator, in its
  * own creators.json declared order -- EXCEPT for vspo_jp, where a
@@ -31,9 +31,16 @@ export function sortNotificationCreatorsLikeLiveStatus(branch: BranchKey, creato
   }
 
   const creatorByChannelId = new Map(bridged.map((entry) => [entry.mock.channelId, entry.creator]))
+  // sortWithinBranch's own no-kana/equal-rank tie-break is Array.sort
+  // stability over whatever order it's handed -- Live Status itself hands it
+  // mockCreators' own declared order, so `bridged` is sorted to match that
+  // same order first (rather than the canonical registry's creatorId-sorted
+  // order `creators` above arrives in) to keep that tie-break identical here.
   const sortedBridged = sortWithinBranch(
     branch,
-    bridged.map((entry) => entry.mock),
+    [...bridged]
+      .sort((a, b) => mockCreatorDeclarationIndex(a.creator.creatorId)! - mockCreatorDeclarationIndex(b.creator.creatorId)!)
+      .map((entry) => entry.mock),
   ).map((mock) => creatorByChannelId.get(mock.channelId)!)
 
   const ordered = [...sortedBridged, ...unbridged]
