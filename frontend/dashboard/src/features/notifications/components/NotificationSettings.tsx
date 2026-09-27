@@ -438,24 +438,26 @@ export function NotificationSettings() {
                   popupMatchSelectWidth={false}
                 />
               </div>
-              <div className="notification-topic-list">
-                {orderedTopicIds.map((topicId) => (
-                  <TopicListItem
-                    key={topicId}
-                    topicId={topicId}
-                    isSelected={!draft.active && selectedTopicId === topicId}
-                    onSelect={() => selectTopic(topicId)}
-                  />
-                ))}
+              <div className="notification-topic-list-scroll">
+                <div className="notification-topic-list">
+                  {orderedTopicIds.map((topicId) => (
+                    <TopicListItem
+                      key={topicId}
+                      topicId={topicId}
+                      isSelected={!draft.active && selectedTopicId === topicId}
+                      onSelect={() => selectTopic(topicId)}
+                    />
+                  ))}
+                </div>
+                {draft.active ? null : selectableTopics.length > 0 ? (
+                  <Button variant="dashed" block className="notification-add-topic" onClick={startDraft}>
+                    <span className="notification-add-topic__icon" aria-hidden="true">
+                      <Plus size={16} />
+                    </span>
+                    {t(locale, "notificationSettings.addTopicButtonAriaLabel")}
+                  </Button>
+                ) : null}
               </div>
-              {draft.active ? null : selectableTopics.length > 0 ? (
-                <Button variant="dashed" block className="notification-add-topic" onClick={startDraft}>
-                  <span className="notification-add-topic__icon" aria-hidden="true">
-                    <Plus size={16} />
-                  </span>
-                  {t(locale, "notificationSettings.addTopicButtonAriaLabel")}
-                </Button>
-              ) : null}
             </div>
 
             <DetailPanel

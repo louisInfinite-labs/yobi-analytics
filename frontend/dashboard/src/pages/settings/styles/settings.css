@@ -984,7 +984,7 @@
 
   box-sizing: border-box;
   width: 100%;
-  min-height: 100%;
+  min-height: 0;
   background: var(--notification-page-bg);
 }
 
@@ -1011,6 +1011,80 @@
   min-width: 0;
 }
 
+/* ---- Desktop viewport-bound scroll ownership ----
+   Scoped to .settings-page__content--notification only (applied solely
+   when Notification Settings is the active Settings section, see
+   SettingsPage.tsx) -- every other Settings page keeps the shared
+   .settings-page__content's own document-scroll model untouched (see the
+   comment at the top of this file). 1361px mirrors the 1360px stacking
+   breakpoint below: below it the master-detail columns already stack, so
+   normal page scrolling takes over and no independent topic-list scroll
+   region is created (avoids nested scrollbars). At and above it, this
+   page owns its own bounded height so only .notification-topic-list-scroll
+   -- never the page itself -- scrolls when topic count exceeds the
+   available height. */
+@media (min-width: 1361px) {
+  .settings-page__content--notification {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    box-sizing: border-box;
+  }
+
+  .settings-page__content--notification > .settings-page-header {
+    flex: 0 0 auto;
+  }
+
+  .settings-page__content--notification > .notification-settings-page {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .notification-settings-content {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .notification-settings-main {
+    min-height: 0;
+    /* minmax(0, 1fr), not auto: an auto row sizes to its tallest item's
+       max-content, which would let a long topic list grow the row (and
+       so the whole page) instead of being capped to the space actually
+       available -- minmax(0, 1fr) caps the row itself to that space,
+       letting align-items: stretch fit both columns to it. */
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .notification-topic-panel {
+    min-height: 0;
+  }
+
+  .notification-detail-panel {
+    min-height: 0;
+    /* overflow-y: auto, not hidden: measured at 1600x900/1440x900/1366x768
+       the detail editor's own content (header + all four sections + the
+       Save/Reset action) is genuinely taller than the space available
+       there -- only 1920x1080 fits it without scrolling. Clipping with
+       `hidden` would silently cut off the action button; this still keeps
+       the panel scrollbar-free whenever the content actually fits (see
+       measurements at 1920x1080). */
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .notification-topic-list-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+  }
+}
+
 /* One cutover, not the two the settings shell's own fixed-width secondary
    nav + page padding would otherwise leave a too-narrow band between --
    at ~440px + the 320px detail floor + the gap, two columns need >=778px
@@ -1028,6 +1102,8 @@
 
 .notification-topic-panel {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--notification-surface-1);
   border: 1px solid var(--notification-border-soft);
   border-radius: 14px;
@@ -1036,6 +1112,7 @@
 }
 
 .notification-topic-panel__header {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1217,7 +1294,7 @@
 
 .notification-detail-panel {
   min-width: 0;
-  min-height: 100%;
+  min-height: 0;
 
   background: var(--notification-surface-1);
   border: 1px solid #3b3543;
