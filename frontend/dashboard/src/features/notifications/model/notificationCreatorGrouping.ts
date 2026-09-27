@@ -1,14 +1,24 @@
-import rawCreators from "../data/creators.json"
+import { getCreators, isCurrentMemberEligible } from "../../../entities/creator/data/creatorRegistry"
 import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY, subgroupsForBranch } from "../../../entities/creator/utils/hololiveSubgrouping"
 import { sortNotificationCreatorsLikeLiveStatus } from "./notificationCreatorOrder"
 import type { BranchKey } from "../../../entities/creator/model/domain"
+import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 
 export { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY }
 
-/** The real Creator Master roster (backend's src/creators.json, copied
- * here as this app's only source for "every creator" -- 112 entries as of
- * this copy, not the small ~13-entry frontend mockCreators.ts used
- * elsewhere for Home/Dock demos). */
+/** The canonical Creator Registry (entities/creator/data/creatorRegistry,
+ * generated from backend Creator Master -- C5A/C5B), not the small ~13-entry
+ * frontend mockCreators.ts used elsewhere for Home/Dock demos. Previously
+ * this feature kept its own bundled static copy of the real roster
+ * (features/notifications/data/creators.json), which silently drifted from
+ * the live backend (discovered stale at 112 entries vs. the real 118) --
+ * that file is gone; this type/roster is sourced live from the shared
+ * registry instead, so it can never drift the same way again.
+ *
+ * A creator only appears in ALL_CREATORS below if isCurrentMemberEligible
+ * (C4's canonical rule) says so -- a graduated/retired member, a group, or
+ * a staff channel is deliberately excluded now, which is an intentional
+ * behavior change from the old roster's "show literally everyone" default. */
 export interface NotificationCreator {
   creatorId: string
   displayName: string
@@ -21,6 +31,26 @@ export interface NotificationCreator {
   groupKey: string[]
   discoveryEnabled?: boolean
   graduatedAt?: string | null
+}
+
+/** The smallest mapping from the canonical registry's shape onto this
+ * feature's own existing NotificationCreator shape -- discoveryEnabled/
+ * graduatedAt are left unset (the generated registry doesn't carry them,
+ * and nothing in this feature ever reads either field; see C5B's own
+ * investigation). No field here is derived/invented -- every value is a
+ * direct canonical fact. */
+function toNotificationCreator(creator: CanonicalCreator): NotificationCreator {
+  return {
+    creatorId: creator.creatorId,
+    displayName: creator.displayName,
+    organization: creator.organization,
+    youtubeChannelId: creator.youtubeChannelId,
+    active: creator.active,
+    branch: creator.branch,
+    channelType: creator.channelType,
+    lifecycleStage: creator.lifecycleStage,
+    groupKey: creator.groupKey,
+  }
 }
 
 /** Display-only correction, never touching creators.json itself, applied
@@ -63,7 +93,15 @@ function withDisplayNameOverride(creator: NotificationCreator): NotificationCrea
   return override ? { ...creator, displayName: override } : creator
 }
 
-const ALL_CREATORS = (rawCreators as NotificationCreator[]).map(withDisplayNameOverride)
+// Eligibility (C4/isCurrentMemberEligible) is applied before the display-name
+// override and before anything downstream ever sees these records -- a
+// graduated/retired member, a group, or a staff channel simply never enters
+// ALL_CREATORS, the same way every consumer of it (grouping, search,
+// Favorites) already expects a flat "the roster" list to behave.
+const ALL_CREATORS = getCreators()
+  .filter(isCurrentMemberEligible)
+  .map(toNotificationCreator)
+  .map(withDisplayNameOverride)
 
 /** The same real Creator Master roster ALL_CREATORS above already loads,
  * exposed flat (not grouped) -- for consumers that need to resolve a
