@@ -71,10 +71,19 @@ describe("TopicCreatorManagementDrawer filtering/grouping logic", () => {
     expect(isFavoriteCreatorId("aizawa_ema", new Set())).toBe(false)
   })
 
-  it("confirms the real canonical registry entries this bridge can never mark favorited (documented in creatorFavoriteBridge.ts)", () => {
+  // watson_amelia used to be this bridge's other documented gap alongside
+  // airani_iofifteen, but the canonical Creator Registry now carries her as
+  // lifecycleStage "graduated" -- isCurrentMemberEligible
+  // (notificationCreatorGrouping.ts) excludes her from the live roster
+  // entirely on that basis alone, the same as any other graduated member, so
+  // she is no longer in allCreators to be a bridge gap at all. airani_iofifteen
+  // remains eligible and remains unbridged.
+  it("confirms the one real canonical registry entry this bridge can never mark favorited (documented in creatorFavoriteBridge.ts)", () => {
     const mockChannelIds = new Set(mockCreators.map((creator) => creator.channelId))
-    expect(mockChannelIds.has("ch_watson_amelia")).toBe(false)
     expect(mockChannelIds.has("ch_airani_iofifteen")).toBe(false)
+    // Confirms she really is in the live roster this feature manages — this
+    // is a real gap, not a typo'd creatorId.
+    expect(allCreators.some((creator) => creator.creatorId === "airani_iofifteen")).toBe(true)
   })
 
   it("airani_iofifteen (eligible, no Favorites bridge) still appears in the live roster — availability is driven by canonical eligibility, not by mockCreators presence", () => {

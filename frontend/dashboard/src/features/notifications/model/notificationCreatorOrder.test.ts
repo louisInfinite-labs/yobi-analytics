@@ -25,11 +25,14 @@ describe("sortNotificationCreatorsLikeLiveStatus", () => {
     expect(sumireIndex).toBeLessThan(nazunaIndex)
   })
 
+  // watson_amelia (formerly holo_en's own no-counterpart example here) has
+  // since graduated in the canonical Creator Registry (lifecycleStage
+  // "graduated") -- isCurrentMemberEligible (notificationCreatorGrouping.ts)
+  // now excludes her from ALL_CREATORS entirely, bridged or not, the same as
+  // any other graduated member. airani_iofifteen (holo_id) is the roster's
+  // only remaining eligible creator with no mockCreators counterpart at all
+  // (see creatorFavoriteBridge.ts), so she is this case's fixture now.
   it("sorts a creator with no mockCreators counterpart at all (airani_iofifteen) after every bridged creator in their own branch", () => {
-    // airani_iofifteen (holo_id) is the current eligible roster's own real
-    // unbridged case (no mockCreators/Favorites counterpart at all -- see
-    // creatorFavoriteBridge.ts) -- confirmed directly against the real
-    // canonical data, not hardcoded independent of it.
     const holoId = allCreators.filter((creator) => creator.branch === "holo_id")
     const sorted = sortNotificationCreatorsLikeLiveStatus("holo_id", holoId)
     expect(sorted[sorted.length - 1]?.creatorId).toBe("airani_iofifteen")
