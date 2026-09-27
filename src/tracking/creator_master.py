@@ -187,6 +187,86 @@ def find_creator_by_youtube_channel_id(youtube_channel_id: str, path: Path = DEF
     return index.get(youtube_channel_id)
 
 
+# ---------------------------------------------------------------------------
+# Eligibility (C4) -- deliberately separate from identity resolution above.
+#
+# resolve_creator_key()/find_creator_by_youtube_channel_id() answer "does this
+# key identify a real creator". The functions below answer a different
+# question entirely: "should this ALREADY-RESOLVED creator appear in a given
+# current-facing roster". A creator can resolve successfully and still be
+# ineligible for every roster (e.g. vspo_official: a real Creator Master
+# identity, channel_type "group", excluded from both rosters below) -- and
+# the reverse is never true, since eligibility is only ever checked on an
+# already-resolved Creator, not a raw key. Never call these from inside
+# resolve_creator_key()/find_creator_by_youtube_channel_id(), and never use
+# them as a general "does this creator exist" filter for historical/
+# analytics consumers (see the module note below).
+#
+# active vs. lifecycle_stage vs. discovery_enabled -- audited, not assumed
+# interchangeable:
+#   - `active` is documented above (see get_active_creators()) as the
+#     COLLECTION pipeline's own toggle: whether main.py still actively
+#     processes this creator at all. It is intentionally independent of
+#     real-world status (a pre-debut unit can be active=true; a graduated
+#     creator can also still be active=true, per discovery_enabled's own
+#     comment, purely so their already-known videos keep getting
+#     statistics/snapshots).
+#   - `lifecycle_stage` is the real-world status (active/pre_debut/graduated/
+#     retired) -- this is what actually answers "is this a current talent".
+#   - `discovery_enabled` only controls whether Discovery looks for NEW
+#     uploads; it says nothing about a creator's own current-ness and is not
+#     used below, since no product requirement for these two rosters depends
+#     on upload-discovery state.
+# Every one of the current 118 production creators has active=true, so
+# `active` never actually excludes anyone today -- it is still checked
+# explicitly below as a future-safe rule: a creator taken out of active
+# collection has no reliable ongoing data, so a roster meant to show
+# CURRENT status should not offer them either, even though nothing in
+# today's data exercises that branch yet.
+# ---------------------------------------------------------------------------
+
+_CURRENT_LIFECYCLE_STAGES = frozenset({"active", "pre_debut"})
+
+
+def _is_current_active_member(creator: Creator) -> bool:
+    """Shared rule behind both eligibility functions below: an individual talent
+    (channel_type "member") who is a current real-world talent (lifecycle_stage
+    "active" or "pre_debut") and still under active collection."""
+    return (
+        creator.active
+        and creator.channel_type == "member"
+        and creator.lifecycle_stage in _CURRENT_LIFECYCLE_STAGES
+    )
+
+
+def is_creator_selectable(creator: Creator) -> bool:
+    """Whether `creator` may be selected on a member-selection surface (My Oshi,
+    Favorites).
+
+    Currently identical to is_creator_live_roster_eligible() below -- kept as
+    a separate function because the two surfaces are conceptually distinct
+    (selecting a creator vs. showing them in a live/upcoming roster) and may
+    diverge later; callers should use the function matching their own
+    surface, not assume the two will always agree.
+    """
+    return _is_current_active_member(creator)
+
+
+def is_creator_live_roster_eligible(creator: Creator) -> bool:
+    """Whether `creator` may appear in a current live/upcoming roster (Live
+    Status, Live Schedule).
+
+    Currently identical to is_creator_selectable() above -- see that
+    function's docstring for why they are kept separate anyway. A graduated
+    creator's identity remains fully valid (resolve_creator_key() /
+    load_creators() still return it) -- this function only says it should
+    not appear in a CURRENT roster; historical/analytics consumers must
+    never call this as a general creator filter (see the module note above
+    this section).
+    """
+    return _is_current_active_member(creator)
+
+
 def _parse_creator(raw: dict) -> Creator:
     """Convert a raw Creator Master JSON record into a Creator instance."""
     try:

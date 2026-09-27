@@ -9,6 +9,8 @@ from tracking.creator_master import (
     CreatorMasterError,
     find_creator_by_youtube_channel_id,
     get_active_creators,
+    is_creator_live_roster_eligible,
+    is_creator_selectable,
     load_creators,
     resolve_creator_key,
 )
@@ -623,3 +625,119 @@ class TestFindCreatorByYoutubeChannelId:
         real creator's youtubeChannelId is unique, so this lookup never has to choose."""
         for creator in load_creators():
             assert find_creator_by_youtube_channel_id(creator.youtube_channel_id) is not None
+
+
+def _creator(**overrides) -> Creator:
+    """A default active/member/current Creator, overridable per test -- eligibility
+    tests build Creator instances directly rather than round-tripping JSON, since
+    is_creator_selectable/is_creator_live_roster_eligible take a Creator, not a key."""
+    fields = {
+        "creator_id": "test_creator",
+        "display_name": "Test Creator",
+        "organization": "vspo",
+        "youtube_channel_id": "UC_TEST",
+        "active": True,
+        "branch": "vspo_jp",
+        "group_key": ["NO"],
+        "channel_type": "member",
+        "lifecycle_stage": "active",
+    }
+    fields.update(overrides)
+    return Creator(**fields)
+
+
+class TestEligibility:
+    """is_creator_selectable (My Oshi / Favorites) and is_creator_live_roster_eligible
+    (Live Status / Live Schedule) currently share one rule: an active-collection
+    individual member who is a current real-world talent (active or pre_debut).
+    Both functions are exercised identically below to prove they agree today,
+    without assuming they must always agree (see their own docstrings)."""
+
+    ELIGIBILITY_FUNCTIONS = [is_creator_selectable, is_creator_live_roster_eligible]
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_active_member_is_eligible(self, is_eligible):
+        assert is_eligible(_creator(lifecycle_stage="active")) is True
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_pre_debut_member_is_eligible(self, is_eligible):
+        """A pre-debut member is eligible even though no current stream exists yet --
+        eligibility is about identity/status, not about whether they've ever streamed."""
+        assert is_eligible(_creator(lifecycle_stage="pre_debut")) is True
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_graduated_member_is_excluded(self, is_eligible):
+        assert is_eligible(_creator(lifecycle_stage="graduated")) is False
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_retired_member_is_excluded(self, is_eligible):
+        assert is_eligible(_creator(lifecycle_stage="retired")) is False
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_active_group_is_excluded(self, is_eligible):
+        """channel_type alone excludes a group, regardless of lifecycle_stage --
+        never special-cased by creatorId (e.g. vspo_official) or branch."""
+        assert is_eligible(_creator(channel_type="group", lifecycle_stage="active")) is False
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_pre_debut_group_is_excluded(self, is_eligible):
+        """hololive_asobimawaritai's own real shape: channel_type "group" with
+        lifecycle_stage "pre_debut" -- group exclusion wins regardless of
+        lifecycle_stage, exactly per the accepted product rule."""
+        assert is_eligible(_creator(channel_type="group", lifecycle_stage="pre_debut")) is False
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_active_staff_is_excluded(self, is_eligible):
+        assert is_eligible(_creator(channel_type="staff", lifecycle_stage="active")) is False
+
+    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
+    def test_active_false_member_is_excluded(self, is_eligible):
+        """Future-safe rule, not exercised by any real data today (every production
+        creator currently has active=true): a member taken out of active collection
+        has no reliable ongoing data, so a current-facing roster must not offer them
+        either, even though their real-world lifecycle_stage might still say "active"."""
+        assert is_eligible(_creator(active=False, lifecycle_stage="active")) is False
+
+    def test_vspo_official_resolves_but_is_ineligible_for_either_roster(self):
+        """vspo_official: a real Creator Master identity (channel_type "group") --
+        resolves successfully, but is ineligible for My Oshi and Live Status/Schedule."""
+        resolved = resolve_creator_key("ch_vspo_group")
+
+        assert resolved is not None
+        assert is_creator_selectable(resolved) is False
+        assert is_creator_live_roster_eligible(resolved) is False
+
+    def test_hololive_asobimawaritai_resolves_but_is_ineligible(self):
+        """hololive_asobimawaritai: channel_type "group", lifecycle_stage "pre_debut" --
+        resolves successfully, but group exclusion wins over pre_debut eligibility."""
+        resolved = resolve_creator_key("hololive_asobimawaritai")
+
+        assert resolved is not None
+        assert resolved.lifecycle_stage == "pre_debut"
+        assert resolved.channel_type == "group"
+        assert is_creator_selectable(resolved) is False
+        assert is_creator_live_roster_eligible(resolved) is False
+
+    def test_a_graduated_creator_remains_resolvable_by_canonical_id(self):
+        """Graduated identity is never deleted/rejected by identity resolution --
+        only excluded from the two CURRENT rosters by eligibility, a separate check."""
+        graduated = next(c for c in load_creators() if c.lifecycle_stage == "graduated")
+
+        resolved = resolve_creator_key(graduated.creator_id)
+
+        assert resolved is not None
+        assert resolved.creator_id == graduated.creator_id
+        assert is_creator_selectable(resolved) is False
+        assert is_creator_live_roster_eligible(resolved) is False
+
+    def test_historical_identity_lookup_is_unaffected_by_eligibility(self):
+        """load_creators()/get_active_creators() -- the functions historical/analytics
+        code actually uses -- must keep returning every creator regardless of
+        eligibility; eligibility is a presentation-surface concern, not a data-
+        access filter. This is a documentation test: it fails only if a future
+        change starts filtering load_creators() by eligibility, which must not happen."""
+        all_creators = load_creators()
+        graduated = [c for c in all_creators if c.lifecycle_stage == "graduated"]
+
+        assert len(graduated) > 0
+        assert all(c in all_creators for c in graduated)
