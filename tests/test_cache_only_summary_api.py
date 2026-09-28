@@ -38,6 +38,7 @@ def _creator(creator_id, organization="vspo", branch="vspo_jp"):
         group_key=["1期生"],
         channel_type="member",
         lifecycle_stage="active",
+        display_order=0,
     )
 
 

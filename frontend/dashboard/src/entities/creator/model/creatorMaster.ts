@@ -17,6 +17,10 @@ export interface CanonicalCreator {
   channelType: ChannelType
   themeColor: string | null
   lifecycleStage: LifecycleStage
+  /** Canonical stable display order for member-selection/roster UIs (C8A0)
+   * -- an ascending int, unique across the roster. Sort by this rather than
+   * creatorId/displayName when a curated (not alphabetical) order matters. */
+  displayOrder: number
   active: boolean
   youtubeChannelId: string
 }

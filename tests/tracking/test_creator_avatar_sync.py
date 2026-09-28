@@ -17,6 +17,7 @@ def _creator(**overrides) -> Creator:
         "group_key": ["NO"],
         "channel_type": "member",
         "lifecycle_stage": "active",
+        "display_order": 0,
     }
     fields.update(overrides)
     return Creator(**fields)
@@ -114,6 +115,7 @@ def _base_record(**overrides):
         "groupKey": ["NO"],
         "channelType": "member",
         "lifecycleStage": "active",
+        "displayOrder": 0,
         "themeColor": "#AABBCC",
     }
     record.update(overrides)

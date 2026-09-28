@@ -57,6 +57,7 @@ def _creator_to_dict(creator: Creator) -> dict[str, Any]:
         "channelType": creator.channel_type,
         "themeColor": creator.theme_color,
         "lifecycleStage": creator.lifecycle_stage,
+        "displayOrder": creator.display_order,
         # Included because tracking.creator_master's canonical eligibility
         # rules (is_creator_selectable/is_creator_live_roster_eligible, C4)
         # depend on it alongside channelType/lifecycleStage above -- without

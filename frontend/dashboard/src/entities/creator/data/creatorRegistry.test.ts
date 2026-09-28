@@ -23,6 +23,7 @@ function creator(overrides: Partial<CanonicalCreator> = {}): CanonicalCreator {
     channelType: "member",
     themeColor: null,
     lifecycleStage: "active",
+    displayOrder: 0,
     active: true,
     youtubeChannelId: "UC_TEST",
     ...overrides,
