@@ -98,7 +98,30 @@ class Creator:
 def load_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
     """Load all creators from the Creator Master JSON file."""
     raw_creators = load_json_list(path, store_name="Creator Master", error_class=CreatorMasterError)
-    return [_parse_creator(raw) for raw in raw_creators]
+    creators = [_parse_creator(raw) for raw in raw_creators]
+    _require_unique_display_order(creators)
+    return creators
+
+
+def _require_unique_display_order(creators: list[Creator]) -> None:
+    """Raise CreatorMasterError if two creators share the same displayOrder.
+
+    _require_int (inside _parse_creator) only validates one record's
+    displayOrder in isolation; displayOrder's whole purpose is to be each
+    creator's unique position in the canonical UI ordering (see
+    Creator.display_order's own docstring: "an ascending int, unique across
+    the roster"), so a collision is a Creator Master data-integrity bug that
+    must fail loudly rather than leave two creators silently tied for the
+    same slot.
+    """
+    seen: dict[int, str] = {}
+    for creator in creators:
+        if creator.display_order in seen:
+            raise CreatorMasterError(
+                f"Duplicate displayOrder {creator.display_order!r} in Creator Master: "
+                f"{seen[creator.display_order]!r} and {creator.creator_id!r}"
+            )
+        seen[creator.display_order] = creator.creator_id
 
 
 def get_active_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:

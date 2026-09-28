@@ -154,6 +154,25 @@ def test_boolean_display_order_is_rejected(tmp_path):
         load_creators(path)
 
 
+def test_duplicate_display_order_across_roster_is_rejected(tmp_path):
+    """Two creators sharing the same 'displayOrder' fail to load -- each record's
+    displayOrder is individually well-typed, but displayOrder must also be unique
+    across the whole roster (see Creator.display_order's own docstring)."""
+    path = tmp_path / "creators.json"
+    path.write_text(
+        json.dumps(
+            [
+                _base_record(creatorId="creator_a", youtubeChannelId="UC_A", displayOrder=5),
+                _base_record(creatorId="creator_b", youtubeChannelId="UC_B", displayOrder=5),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
 @pytest.mark.parametrize("field", ["creatorId", "displayName", "organization", "youtubeChannelId"])
 def test_non_string_required_field_is_rejected(tmp_path, field):
     """A non-string (e.g. null or a number) required field is rejected, not silently accepted."""
