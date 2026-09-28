@@ -1,18 +1,16 @@
 import { describe, expect, it } from "vitest"
 import { groupCreatorsForOshiSettings } from "./oshiSettingsGrouping"
 
-// Confirms VSPO! Official (mockCreators' own vspo_jp "group" channel) is
-// pinned to the very bottom of VSPO JP's list here too -- Oshi Settings
-// previously used mockCreators' own raw declared array order (where it
-// sits in position 2, right after 藍沢エマ), unlike Live Status and
-// Notification Settings, which already got this fix. Confirmed with the
-// user: all three should be consistent.
+// Confirms VSPO! Official (the canonical vspo_jp "group" channel,
+// vspo_official) is pinned to the very bottom of VSPO JP's list -- same
+// rule Live Status and Notification Settings both apply. Confirmed with
+// the user: all three should be consistent.
 describe("groupCreatorsForOshiSettings", () => {
   it("pins VSPO! Official to the very end of VSPO JP's own creator list", () => {
     const agencies = groupCreatorsForOshiSettings("")
     const vspoJpRegion = agencies.flatMap((agency) => agency.regions).find((region) => region.branch === "vspo_jp")!
     const vspoJpCreators = vspoJpRegion.subgroups.flatMap((subgroup) => subgroup.creators)
-    const officialIndex = vspoJpCreators.findIndex((creator) => creator.channelId === "ch_vspo_group")
+    const officialIndex = vspoJpCreators.findIndex((creator) => creator.creatorId === "vspo_official")
     expect(officialIndex).toBe(vspoJpCreators.length - 1)
   })
 

@@ -1,7 +1,8 @@
 import { useState, type CSSProperties } from "react"
 import { Checkbox, ConfigProvider, Segmented } from "antd"
 import { Heart } from "lucide-react"
-import type { MockCreator } from "../../../entities/creator/data/mockCreators"
+import { toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
+import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t, type Locale } from "../../../shared/i18n/translations"
@@ -37,9 +38,14 @@ type CreatorAccentStyle = CSSProperties & {
  * copy rather than importing from a sibling page component (that page's
  * own internal helper, not a shared module) to avoid coupling the two
  * pages together over an implementation detail neither exposes on
- * purpose. */
-function creatorAccentStyle(creator: MockCreator): CreatorAccentStyle {
-  const accent = getMemberAccent(creator.channelId, creator.themeColor)
+ * purpose.
+ *
+ * Seeded with the legacy "ch_"-form id (toLegacyRosterId), not creatorId, so
+ * a creator's hashed-palette fallback accent (no verified themeColor) stays
+ * pixel-identical to before this migration (C8B) -- same hash input as when
+ * this page read MockCreator.channelId directly. */
+function creatorAccentStyle(creator: CanonicalCreator): CreatorAccentStyle {
+  const accent = getMemberAccent(toLegacyRosterId(creator), creator.themeColor)
   return {
     "--creator-accent": accent.primary,
     "--creator-accent-soft": accent.soft,
@@ -64,22 +70,26 @@ function creatorAccentStyle(creator: MockCreator): CreatorAccentStyle {
  * Native <label> behavior alone makes clicking anywhere in the tile toggle
  * the real input -- no extra click handler needed, and Tab/Enter/Space
  * keep working exactly like any other checkbox. */
-function FavoriteTile({ creator }: { creator: MockCreator }) {
+function FavoriteTile({ creator }: { creator: CanonicalCreator }) {
   const [locale] = useLocale()
   const { favorites, toggleFavorite } = useFavoriteCreators()
-  const isFavorite = favorites.has(creator.channelId)
+  // Favorites' own persisted key space is the legacy "ch_"-prefixed roster
+  // id (mockCreators.channelId), unchanged by C8B -- toLegacyRosterId
+  // bridges this page's now-canonical creator objects back to that exact
+  // pre-existing format (not byte-equal to creatorId for every creator,
+  // e.g. airani_iofifteen -> ch_iofi, not ch_airani_iofifteen).
+  const legacyFavoriteId = toLegacyRosterId(creator)
+  const isFavorite = favorites.has(legacyFavoriteId)
   // A handful of names carry explicit "\n" line breaks for their on-screen
   // display (see mockCreators.ts) -- collapsed back to spaces here so the
   // checkbox's own aria-label reads as one normal sentence, not literal
   // newlines.
-  const spokenName = creator.channelName.replace(/\n/g, " ")
-  const accent = getMemberAccent(creator.channelId, creator.themeColor)
-  // avatarUrl is never set on any mock creator today (no approved
-  // creator-master/YouTube data source exposes it yet -- see
-  // mockCreators.ts's own doc comment on the field) -- this stays ready
-  // for a real URL the moment one exists, exactly mirroring
-  // CreatorStatusList.tsx's own CreatorAvatar fallback pattern, rather
-  // than inventing a scraping mechanism or hardcoded image URLs here.
+  const spokenName = creator.displayName.replace(/\n/g, " ")
+  const accent = getMemberAccent(legacyFavoriteId, creator.themeColor)
+  // C7B populated the current production registry with real YouTube avatar
+  // thumbnails, but the schema stays nullable (a creator can still lack one)
+  // -- this fallback mirrors CreatorStatusList.tsx's own CreatorAvatar
+  // pattern rather than assuming avatarUrl is now permanently non-null.
   const [imageFailed, setImageFailed] = useState(false)
   const showImage = Boolean(creator.avatarUrl) && !imageFailed
 
@@ -88,7 +98,7 @@ function FavoriteTile({ creator }: { creator: MockCreator }) {
       className={`favorites-roster__tile${isFavorite ? " favorites-roster__tile--selected" : ""}`}
       style={creatorAccentStyle(creator)}
       checked={isFavorite}
-      onChange={() => toggleFavorite(creator.channelId)}
+      onChange={() => toggleFavorite(legacyFavoriteId)}
       aria-label={t(locale, isFavorite ? "oshiSettings.removeFavoriteAria" : "oshiSettings.addFavoriteAria", {
         name: spokenName,
       })}
@@ -102,17 +112,17 @@ function FavoriteTile({ creator }: { creator: MockCreator }) {
           {showImage ? (
             <img
               className="favorites-roster__avatar-image"
-              src={creator.avatarUrl}
+              src={creator.avatarUrl ?? undefined}
               alt=""
               onError={() => setImageFailed(true)}
             />
           ) : (
-            creator.channelName.charAt(0)
+            creator.displayName.charAt(0)
           )}
         </span>
         {isFavorite && <Heart className="favorites-roster__favorite-icon" aria-hidden="true" fill="currentColor" />}
       </span>
-      <span className="favorites-roster__name">{creator.channelName}</span>
+      <span className="favorites-roster__name">{creator.displayName}</span>
     </Checkbox>
   )
 }
@@ -126,12 +136,18 @@ function FavoriteTile({ creator }: { creator: MockCreator }) {
  * MyOshiSettings.tsx (still using .oshi-settings__* verbatim) is completely
  * unaffected by anything below.
  *
- * Reuses Live Status's own roster (mockCreators, via
- * groupCreatorsForOshiSettings -- same creators/IDs/order Live Status
- * itself already groups by) and its own existing search
- * (creatorMatchesSearch). This page is purely about WHICH creators are
- * favorited -- it has no bearing on which creators Live Status displays at
- * all (a separate, unrelated rule this page never touches). */
+ * Reads the shared canonical Creator Registry (C8B: getCreators(), via
+ * groupCreatorsForOshiSettings -- migrated off mockCreators) and its own
+ * existing search (creatorMatchesSearch). This page is purely about WHICH
+ * creators are favorited -- it has no bearing on which creators Live Status
+ * displays at all (a separate, unrelated rule this page never touches).
+ * Applies NO eligibility filter of its own (unlike My Oshi's
+ * isCurrentMemberEligible) -- every canonical creator, including group/staff
+ * channels, remains favoritable, same as before this migration. The one
+ * exception: ch_hololive_staff was always mock-only (no Creator Master
+ * counterpart) and is therefore no longer renderable here -- an existing
+ * persisted favorite for it is left as an orphaned legacy value, never
+ * crashed on or silently deleted. */
 export function OshiSettings() {
   const [locale] = useLocale()
   const { theme } = useMemberTheme()
@@ -140,12 +156,12 @@ export function OshiSettings() {
   const [viewMode, setViewMode] = useState<ViewMode>("all")
 
   // The page-level All/Favorites filter reuses groupCreatorsForOshiSettings'
-  // own existing optional filterCreator param (already there for
-  // MyOshiSettings.tsx's own eligibility filter) -- no new data plumbing,
-  // and no change to oshiSettingsGrouping.ts itself. This is a client-side
-  // VIEW filter only; it never touches favorite state (confirmed with the
-  // user: search/filter must never mutate favorites).
-  const agencyGroups = groupCreatorsForOshiSettings(searchQuery, viewMode === "favorites" ? (creator) => favorites.has(creator.channelId) : undefined)
+  // own existing optional filterCreator param. This is a client-side VIEW
+  // filter only; it never touches favorite state (confirmed with the user:
+  // search/filter must never mutate favorites). toLegacyRosterId bridges
+  // each canonical creator back to the pre-existing persisted favorite key
+  // space (see FavoriteTile's own comment on legacyFavoriteId).
+  const agencyGroups = groupCreatorsForOshiSettings(searchQuery, viewMode === "favorites" ? (creator) => favorites.has(toLegacyRosterId(creator)) : undefined)
   const hasResults = agencyGroups.length > 0
 
   return (
@@ -206,7 +222,7 @@ export function OshiSettings() {
           <section key={agency.agencyLabel} className="favorites-roster__agency">
             {agency.regions.map((region) => {
               const regionCreators = region.subgroups.flatMap((subgroup) => subgroup.creators)
-              const regionSelectedCount = regionCreators.filter((creator) => favorites.has(creator.channelId)).length
+              const regionSelectedCount = regionCreators.filter((creator) => favorites.has(toLegacyRosterId(creator))).length
               return (
                 <div key={region.branch} className="favorites-roster__region">
                   <div className="favorites-roster__region-header">
@@ -228,7 +244,7 @@ export function OshiSettings() {
                       )}
                       <div className="favorites-roster__grid">
                         {subgroup.creators.map((creator) => (
-                          <FavoriteTile key={creator.channelId} creator={creator} />
+                          <FavoriteTile key={creator.creatorId} creator={creator} />
                         ))}
                       </div>
                     </div>
