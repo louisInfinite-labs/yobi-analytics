@@ -1009,8 +1009,19 @@
   /* minmax(320px, 1fr), not (0, 1fr): the detail panel holds a Reminder
      time grid, a Notification type Segmented, and a min-width Manage
      Members button -- letting it shrink toward 0 either truncates their
-     labels or overflows them, so it has its own floor. */
-  grid-template-columns: 440px minmax(320px, 1fr);
+     labels or overflows them, so it has its own floor.
+
+     440px + 16px (confirmed with the user, correcting an earlier version
+     of the scrollbar fix that carved the gap+scrollbar reservation OUT of
+     this column's original 440px, shrinking every topic card by the same
+     amount): the reservation must come from NEW width added to this
+     column, never from the card's own locked width, so this column is
+     widened by exactly the 9px gap + 7px scrollbar reservation used below
+     (.notification-topic-list-content/-scroll) -- the topic-card column
+     itself is unaffected, it just has 16px more total room next to it
+     that it never uses. The 1fr detail panel absorbs the 16px; its own
+     320px floor makes that imperceptible in practice. */
+  grid-template-columns: 456px minmax(320px, 1fr);
   gap: 18px;
   align-items: stretch;
   width: 100%;
@@ -1087,22 +1098,31 @@
     overflow: hidden;
   }
 
+  /* Topic-card column and scrollbar must never share one width (confirmed
+     with the user, correcting two earlier versions of this fix: one relied
+     on scrollbar-gutter alone, the other reserved space for the scrollbar
+     by shrinking the same box the cards were sized against -- both still
+     took the reservation OUT of the card's own width instead of adding it
+     outside). -scroll is the OUTER scroller: overflow-y:auto, plain, no
+     gutter/padding tricks, sized to its full slot (which
+     .notification-settings-main's own 456px column -- 16px wider than the
+     440px this column used to be -- now makes 16px bigger than the card
+     column needs, on purpose). -content is the INNER column the cards
+     actually live in, at a width FIXED to exactly what the card column
+     measured before any of this scrollbar work existed: it cannot be
+     affected by the scroller's own overflow state, so the leftover 16px
+     of the scroller's own box is where the (up to 7px) scrollbar renders,
+     with room to spare, never touching a card. */
   .notification-topic-list-scroll {
     flex: 1 1 auto;
     min-height: 0;
     min-width: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    /* Plain `stable`, not `both-edges` (confirmed with the user, correcting
-       an earlier version of this fix): `stable` alone already reserves the
-       right-side gutter UNCONDITIONALLY -- whether or not the list
-       actually overflows -- which is what stops the shift; `both-edges`
-       was solving a problem this single-sided reservation already solves,
-       while also taking matching space away from the left edge, making
-       the topic-card column narrower than necessary. Topic-card content
-       width is therefore fixed from first paint, never dependent on
-       whether the scrollbar is currently shown. */
-    scrollbar-gutter: stable;
+  }
+
+  .notification-topic-list-content {
+    width: 414px;
   }
 }
 
@@ -1205,7 +1225,7 @@
 
 /* One cutover, not the two the settings shell's own fixed-width secondary
    nav + page padding would otherwise leave a too-narrow band between --
-   at ~440px + the 320px detail floor + the gap, two columns need >=778px
+   at ~456px + the 320px detail floor + the gap, two columns need >=794px
    of the SETTINGS CONTENT area, which is the outer viewport width minus
    that shell chrome (~480px here); 1360px keeps a safety margin above
    the ~1260px viewport that math implies, confirmed with the actual
@@ -1322,6 +1342,31 @@
   line-height: 1.3;
 }
 
+/* Fixed-width slot (confirmed with the user, correcting an earlier version
+   of this row that let the reminder badge's own variable width push the
+   member-count/override badges after it left/right): flex-basis is set
+   per-locale via the --notification-time-slot-width custom property
+   (TopicListItem), so member-count always starts at the same X regardless
+   of which reminder label is shown -- or none at all for a newVideo-only
+   topic, where this slot renders empty but still holds its width. flex:
+   0 0 <width>, not width alone, so it can't grow or shrink like the
+   member-count/override siblings still do. */
+.notification-topic-item__time-slot {
+  flex: 0 0 var(--notification-time-slot-width, 88px);
+  /* min-height matches .notification-topic-item__time's own min-height
+     (measured, not guessed): without it, an empty slot (newVideo-only,
+     no pill rendered inside) collapses toward 0px, shrinking
+     .notification-topic-item__meta's own height by 6px -- and because
+     .notification-topic-item is display:flex; align-items:center, that
+     shorter body block re-centers within the card's fixed 86px height,
+     shifting BOTH the title and the metadata row down by 3px. Confirmed
+     with the user: this single min-height is the fix, not a redesign of
+     the card's vertical geometry. */
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+}
+
 .notification-topic-item__time {
   display: inline-flex;
   align-items: center;
@@ -1357,13 +1402,6 @@
 
 .notification-topic-item__override.is-active {
   color: var(--notification-text-primary);
-}
-
-.notification-topic-item__chevron {
-  flex: 0 0 auto;
-  color: #c9c2cf;
-  width: 18px;
-  height: 18px;
 }
 
 /* ---- Add topic ---- */
@@ -1563,40 +1601,28 @@
   }
 }
 
-.notification-reminder-options .ant-segmented-item:not(.ant-segmented-item-selected):hover {
-  color: #f1edf3;
-}
-
-/* Locally-scoped override: the selected reminder-time option needs one
-   extra level of emphasis above the selected topic card so it reads as
-   obviously selected -- kept local to this control instead of changing
-   the shared Segmented theme tokens (ConfigProvider below), which the
-   notification-type control also uses. */
+/* 1:1 with .notification-type-control below (confirmed with the user,
+   removing an earlier version of this control's own hover color, selected
+   background/box-shadow-ring, and transparent-thumb override -- reminder
+   time must use the exact same Ant Design Segmented moving-thumb
+   mechanism as notification type, not a lookalike built from a hidden
+   thumb plus a hand-painted "selected" box). No .ant-segmented-thumb rule
+   here at all, same as notification-type: both now render antd's real,
+   visible thumb, driven by the same shared ConfigProvider Segmented theme
+   tokens (itemSelectedBg/itemHoverColor/etc., see the ConfigProvider in
+   NotificationSettings.tsx). The one display:none pitfall from earlier
+   in this control's history doesn't apply here: we are not setting
+   display:none on anything, so the thumb's own transitionend still fires
+   normally and thumbShow still resets correctly, exactly as it always has
+   for notification-type. */
 .notification-reminder-options .ant-segmented-item-selected {
-  background: #37303d;
-  color: #f5f1f6;
-  box-shadow: 0 0 0 1px rgba(107, 98, 111, 0.32);
-}
-
-.notification-reminder-options .ant-segmented-item-selected:hover {
-  background: #3b3441;
-}
-
-/* NOT display:none: rc-component/segmented gates its own
-   `ant-segmented-item-selected` class on the thumb's motion having
-   finished (`!thumbShow`, reset by the thumb element's transitionend).
-   display:none stops that transition from ever firing, so thumbShow gets
-   stuck true after the first click and no item shows as selected again.
-   Keeping the thumb real but visually inert (no paint) lets its
-   transform/width transition complete normally while nothing renders. */
-.notification-reminder-options .ant-segmented-thumb {
-  background: transparent;
-  box-shadow: none;
+  background: var(--notification-selected-bg-hover);
+  color: var(--notification-text-primary);
 }
 
 /* Disabled (newVideo-only topic): the control stays visible rather than
    the whole section disappearing, dimmed via opacity so its existing
-   neutral colors (including the selected item's own background/ring)
+   neutral colors (including the selected item's own background)
    read as "unavailable" without introducing a separate disabled palette
    -- scoped to the control itself, not .notification-detail-section, so
    the section's own title/helper text next to it stays fully readable. */

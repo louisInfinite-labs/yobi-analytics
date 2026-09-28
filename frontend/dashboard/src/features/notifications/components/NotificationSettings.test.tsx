@@ -398,6 +398,36 @@ describe("member drawer respects the topic's own notificationType", () => {
     expect(within(topicCard).queryByText("10 minutes before")).not.toBeInTheDocument()
   })
 
+  it("preserves the reminder mode across a newVideo -> live round trip", async () => {
+    window.localStorage.setItem(
+      "yobi.topicNotificationPreferences.v2",
+      JSON.stringify({
+        topicOrder: ["all", "sf6", "valo", "apex", "minecraft"],
+        topics: {
+          all: { reminderMode: "1hour", live: [], newVideo: [], reminderOverrides: {}, notificationType: "live" },
+        },
+      }),
+    )
+    resetAllSharedStateForTests()
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    const detail = within(getDetailPanel())
+    expect(detail.getByRole("radio", { name: "1 hour before" })).toBeChecked()
+
+    await user.click(detail.getByRole("radio", { name: "New Video" }))
+    let stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
+    expect(stored.topics.all.reminderMode).toBe("1hour")
+    expect(detail.getByRole("radio", { name: "1 hour before" })).toBeChecked()
+    expect(detail.getByRole("radio", { name: "1 hour before" })).toBeDisabled()
+
+    await user.click(detail.getByRole("radio", { name: "Live" }))
+    stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
+    expect(stored.topics.all.reminderMode).toBe("1hour")
+    expect(detail.getByRole("radio", { name: "1 hour before" })).toBeChecked()
+    expect(detail.getByRole("radio", { name: "1 hour before" })).not.toBeDisabled()
+  })
+
   it("live topic: hides New Video, keeps Live and reminder-time available", async () => {
     seedAllTopicType("live")
     const user = userEvent.setup({ pointerEventsCheck: 0 })

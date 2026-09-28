@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Button, ConfigProvider, Segmented, Select } from "antd"
-import { Plus, SlidersHorizontal, Users } from "lucide-react"
+import { Users } from "lucide-react"
+// Topic-card-only pass (confirmed with the user): the left topic-list's own
+// meta icons and Add Topic icon move to Phosphor for a closer iOS/SF-
+// Symbols visual match; the Manage Members button's icon (detail panel,
+// out of this pass's scope) stays on lucide-react's Users, hence both
+// libraries' icon imports coexisting in this file for now.
+import { PlusIcon, SlidersHorizontalIcon, UsersThreeIcon } from "@phosphor-icons/react"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
 import { getAllNotificationCreators, type NotificationCreator } from "../model/notificationCreatorGrouping"
@@ -26,6 +32,22 @@ function reminderModeOptions(locale: Locale) {
     ...REMINDER_TIME_VALUES.map((value) => ({ value, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) })),
     { value: MEMBER_CHOICE_MODE, label: t(locale, "notificationSettings.topicReminderMode.memberChoice") },
   ]
+}
+
+/** Fixed width for the topic-card reminder-time slot (TopicListItem) --
+ * confirmed with the user: a longer/shorter reminder label (開播時 vs 10
+ * 分鐘前 vs the newVideo-only empty case) must never shift the member-count/
+ * override badges after it, so the slot itself needs a width that's
+ * constant regardless of which of the 6 possible labels is showing. Each
+ * value below is the browser-measured widest of those 6 labels in that
+ * locale (English runs far longer than zh-TW/ja -- "10 minutes before" is
+ * roughly double "各成員為準"), plus a few px of breathing room; a single
+ * shared constant would either look oddly padded in CJK or clip in
+ * English, so this is intentionally per-locale rather than one number. */
+const REMINDER_TIME_SLOT_WIDTH: Record<Locale, number> = {
+  "zh-TW": 88,
+  en: 148,
+  ja: 124,
 }
 
 function topicLabelFor(locale: Locale, topicId: TopicCatalogId): string {
@@ -206,13 +228,18 @@ function TopicListItem({
       <span className="notification-topic-item__body">
         <span className="notification-topic-item__name">{topicLabel}</span>
         <span className="notification-topic-item__meta">
-          {showReminderBadge && <span className="notification-topic-item__time">{reminderLabel}</span>}
+          <span
+            className="notification-topic-item__time-slot"
+            style={{ "--notification-time-slot-width": `${REMINDER_TIME_SLOT_WIDTH[locale]}px` } as CSSProperties}
+          >
+            {showReminderBadge && <span className="notification-topic-item__time">{reminderLabel}</span>}
+          </span>
           <span className="notification-topic-item__meta-label notification-topic-item__members">
-            <Users size={14} aria-hidden="true" />
+            <UsersThreeIcon size={14} weight="regular" aria-hidden="true" />
             {t(locale, "notificationSettings.selectedCountLabel", { count: String(memberCount) })}
           </span>
           <span className={`notification-topic-item__override${overrideCount > 0 ? " is-active" : ""}`}>
-            <SlidersHorizontal size={14} aria-hidden="true" />
+            <SlidersHorizontalIcon size={14} weight="regular" aria-hidden="true" />
             {overrideCount > 0 ? t(locale, "notificationSettings.overrideBadgeCount", { count: String(overrideCount) }) : t(locale, "notificationSettings.overrideSectionTitle")}
           </span>
         </span>
@@ -423,25 +450,37 @@ export function NotificationSettings() {
                   popupMatchSelectWidth={false}
                 />
               </div>
+              {/* .notification-topic-list-scroll is the OUTER scroller (its total
+                  width = the locked card width + gap + scrollbar reservation,
+                  via .notification-settings-main's own widened fixed column --
+                  see settings.css). .notification-topic-list-content is the
+                  INNER, genuinely fixed-width column the cards actually live
+                  in: it never changes size, so the scrollbar (which belongs to
+                  the outer scroller, rendering in whatever trailing space the
+                  inner content doesn't fill) can appear or disappear without
+                  ever touching a single card's width (confirmed with the
+                  user). */}
               <div className="notification-topic-list-scroll">
-                <div className="notification-topic-list">
-                  {orderedTopicIds.map((topicId) => (
-                    <TopicListItem
-                      key={topicId}
-                      topicId={topicId}
-                      isSelected={!draft.active && selectedTopicId === topicId}
-                      onSelect={() => selectTopic(topicId)}
-                    />
-                  ))}
+                <div className="notification-topic-list-content">
+                  <div className="notification-topic-list">
+                    {orderedTopicIds.map((topicId) => (
+                      <TopicListItem
+                        key={topicId}
+                        topicId={topicId}
+                        isSelected={!draft.active && selectedTopicId === topicId}
+                        onSelect={() => selectTopic(topicId)}
+                      />
+                    ))}
+                  </div>
+                  {draft.active ? null : selectableTopics.length > 0 ? (
+                    <Button variant="dashed" block className="notification-add-topic" onClick={startDraft}>
+                      <span className="notification-add-topic__icon" aria-hidden="true">
+                        <PlusIcon size={16} weight="regular" />
+                      </span>
+                      {t(locale, "notificationSettings.addTopicButtonAriaLabel")}
+                    </Button>
+                  ) : null}
                 </div>
-                {draft.active ? null : selectableTopics.length > 0 ? (
-                  <Button variant="dashed" block className="notification-add-topic" onClick={startDraft}>
-                    <span className="notification-add-topic__icon" aria-hidden="true">
-                      <Plus size={16} />
-                    </span>
-                    {t(locale, "notificationSettings.addTopicButtonAriaLabel")}
-                  </Button>
-                ) : null}
               </div>
             </div>
 
