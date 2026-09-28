@@ -1,24 +1,46 @@
-import { mockCreators } from "../../../entities/creator/data/mockCreators"
+import { getCreators, isCurrentMemberEligible, resolveCreatorKey, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
+import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 import { createSharedState, useSharedState } from "../../../shared/state/sharedState"
-import { isEligibleForMyOshi } from "../utils/myOshiEligibility"
 
 const STORAGE_KEY = "yobi.defaultOshiCreatorId"
 
-function isKnownEligibleCreator(channelId: string): boolean {
-  return mockCreators.some((creator) => creator.channelId === channelId && isEligibleForMyOshi(creator))
+/** The canonical selectable roster, ascending by displayOrder (C8A0) -- never
+ * getCreators()'s own raw array order, which stays alphabetical-by-creatorId
+ * for deterministic codegen and is not a display order. */
+function selectableCreatorsByDisplayOrder(): CanonicalCreator[] {
+  return getCreators()
+    .filter(isCurrentMemberEligible)
+    .slice()
+    .sort((a, b) => a.displayOrder - b.displayOrder)
+}
+
+/** The first creator in the normally ordered selectable roster -- not a
+ * hardcoded id. Production data currently makes this aizawa_ema because she
+ * is first by canonical displayOrder, not because she is special-cased. */
+function fallbackCreatorId(): string {
+  const [first] = selectableCreatorsByDisplayOrder()
+  return toLegacyRosterId(first)
 }
 
 /** Exported (not just used internally) so useSelectedCreator.ts can seed its
  * own in-session value from this same persisted pick at its own module
- * load -- see that file's own comment. */
+ * load -- see that file's own comment. Returns the legacy "ch_"-prefixed
+ * roster id (never a bare canonical creatorId) so this value stays readable
+ * by not-yet-migrated consumers still comparing against mockCreators.channelId
+ * (e.g. CreatorStatusList's own MAIN badge) -- the persisted format itself is
+ * unchanged by this migration, only where the identity/eligibility data
+ * comes from. */
 export function readDefaultOshiCreatorId(): string {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (raw && isKnownEligibleCreator(raw)) return raw
+    if (raw) {
+      const resolved = resolveCreatorKey(raw)
+      if (resolved && isCurrentMemberEligible(resolved)) return toLegacyRosterId(resolved)
+    }
   } catch {
     // Fall through to the default below.
   }
-  return mockCreators[0].channelId
+  return fallbackCreatorId()
 }
 
 // Module-scoped singleton (see lib/sharedState.ts).

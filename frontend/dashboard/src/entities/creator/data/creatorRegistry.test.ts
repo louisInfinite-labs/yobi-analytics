@@ -6,6 +6,7 @@ import {
   getCreators,
   isCurrentMemberEligible,
   resolveCreatorKey,
+  toLegacyRosterId,
 } from "./creatorRegistry"
 import type { CanonicalCreator } from "../model/creatorMaster"
 
@@ -88,6 +89,42 @@ describe("resolveCreatorKey", () => {
     expect(resolveCreatorKey("   ")).toBeUndefined()
     expect(resolveCreatorKey(undefined as unknown as string)).toBeUndefined()
     expect(resolveCreatorKey(null as unknown as string)).toBeUndefined()
+  })
+})
+
+describe("toLegacyRosterId", () => {
+  it("produces the ordinary ch_-prefixed form for a creator with no special alias", () => {
+    const kagaSumire = getCreatorById("kaga_sumire")!
+    expect(toLegacyRosterId(kagaSumire)).toBe("ch_kaga_sumire")
+  })
+
+  it("airani_iofifteen: NOT the naive ch_airani_iofifteen -- must reverse-derive the real legacy id ch_iofi", () => {
+    const iofi = getCreatorById("airani_iofifteen")!
+    expect(toLegacyRosterId(iofi)).toBe("ch_iofi")
+    expect(toLegacyRosterId(iofi)).not.toBe("ch_airani_iofifteen")
+  })
+
+  it("watson_amelia reverse-derives ch_amelia_myth_graduated, not ch_watson_amelia", () => {
+    const amelia = getCreatorById("watson_amelia")!
+    expect(toLegacyRosterId(amelia)).toBe("ch_amelia_myth_graduated")
+  })
+
+  it("vspo_official reverse-derives ch_vspo_group, not ch_vspo_official", () => {
+    const vspoOfficial = getCreatorById("vspo_official")!
+    expect(toLegacyRosterId(vspoOfficial)).toBe("ch_vspo_group")
+  })
+
+  it("round-trips every legacyAliases entry back to its exact original legacy id: legacy -> resolveCreatorKey -> canonical -> toLegacyRosterId -> the SAME legacy id", () => {
+    for (const [legacyId] of Object.entries(creatorMasterFile.legacyAliases)) {
+      const resolved = resolveCreatorKey(legacyId)
+      expect(resolved).toBeDefined()
+      expect(toLegacyRosterId(resolved!)).toBe(legacyId)
+    }
+  })
+
+  it("is derived from the single generated legacyAliases table, not a second hand-maintained mapping -- every alias target is reverse-mapped by exactly one legacy key", () => {
+    const targets = Object.values(creatorMasterFile.legacyAliases)
+    expect(new Set(targets).size).toBe(targets.length)
   })
 })
 

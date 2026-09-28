@@ -71,6 +71,19 @@ export function resolveCreatorKey(key: string): CanonicalCreator | undefined {
   return creatorsById.get(candidate)
 }
 
+/** The legacy "ch_"-prefixed frontend id for a canonical creator -- the exact
+ * inverse of resolveCreatorKey's own alias/prefix logic (registry.legacyAliases
+ * reversed, else "ch_" + creatorId). Needed only by code that still writes
+ * into a storage format or comparison shared with a not-yet-migrated
+ * consumer still reading mockCreators.channelId directly (e.g. My Oshi's
+ * persisted pick, also read by Live Status's CreatorStatusList and Home's
+ * useSelectedCreator) -- an ordinary canonical-registry consumer should
+ * never need this. */
+export function toLegacyRosterId(creator: CanonicalCreator): string {
+  const aliasEntry = Object.entries(registry.legacyAliases).find(([, canonicalId]) => canonicalId === creator.creatorId)
+  return aliasEntry ? aliasEntry[0] : `${LEGACY_ROSTER_ID_PREFIX}${creator.creatorId}`
+}
+
 /** Look up a creator by its real YouTube/Holodex channel id -- distinct from
  * resolveCreatorKey above, which resolves this app's own legacy id forms.
  * Uses the same generated canonical registry as every other lookup here,

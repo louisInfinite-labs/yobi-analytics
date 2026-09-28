@@ -35,10 +35,16 @@ describe("useSelectedCreator", () => {
   })
 
   it("seeds its initial value from Settings > 我推設定's own persisted default (defaultOshi), on a fresh load", () => {
-    window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_gawr_gura")
+    // ch_usada_pekora, not ch_gawr_gura, here: this seeds through
+    // readDefaultOshiCreatorId (C8A), which now validates canonical
+    // eligibility -- gawr_gura is graduated in the real canonical roster
+    // (unlike mockCreators' own fictional "active" value for her), so she
+    // would be rejected and this test would observe the fallback creator
+    // instead of the id it just wrote.
+    window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_usada_pekora")
     resetAllSharedStateForTests()
     const { result } = renderHook(() => useSelectedCreator())
-    expect(result.current[0]).toBe("ch_gawr_gura")
+    expect(result.current[0]).toBe("ch_usada_pekora")
   })
 
   it("ignores its own previously-persisted selection on a fresh load -- currentOshi is session-only, re-seeded from defaultOshi every time, not resumed from a prior session", () => {
