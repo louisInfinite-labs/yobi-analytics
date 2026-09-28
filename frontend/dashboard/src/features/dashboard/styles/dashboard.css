@@ -1308,27 +1308,67 @@ button.video-table__title-cell {
   margin: 8px 0 0;
   padding: 0 4px 0 0;
   overflow-y: auto;
-  scrollbar-color: #69646f #19171e;
-  scrollbar-width: thin;
   list-style: none;
 }
 
+/* Scrollbar style matches the Notification Settings topic-list reference
+   (hidden at rest, thin pill thumb on hover, shared --oshi-* tokens --
+   see settings.css's own comment on .notification-topic-list-scroll for
+   the tokens' origin), replacing this list's old always-visible 8px
+   gray scrollbar.
+
+   Geometry: this list's bar rows are percentage-width (each track's
+   filled span is `width: ${percent}%` of its row, see
+   ContributionBarChart.tsx), so unlike a fixed-width card, any change to
+   the list's own available width would visibly rescale every bar and its
+   row label -- there is no natural slack a fixed-width inner wrapper
+   could absorb the shared pattern's 0px-to-7px hover growth into.
+   Reserving the track at a CONSTANT 7px instead (only the colors toggle
+   between rest/hover) keeps every bar and label pixel-stable while still
+   looking identical to the shared hidden-at-rest/thin-on-hover style. */
+.contribution-bars__list {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.contribution-bars__list:hover {
+  scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
+}
+
 .contribution-bars__list::-webkit-scrollbar {
-  width: 8px;
+  width: 7px;
+  background: transparent;
 }
 
 .contribution-bars__list::-webkit-scrollbar-track {
-  background: #19171e;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
 }
 
 .contribution-bars__list::-webkit-scrollbar-thumb {
-  border: 2px solid #19171e;
-  border-radius: 4px;
-  background: #69646f;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  border-radius: 999px;
 }
 
-.contribution-bars__list::-webkit-scrollbar-thumb:hover {
-  background: #85808b;
+.contribution-bars__list:hover::-webkit-scrollbar-track {
+  background: var(--oshi-bg);
+}
+
+.contribution-bars__list:hover::-webkit-scrollbar-thumb {
+  background: var(--oshi-surface-scrollbar-thumb);
+}
+
+.contribution-bars__list:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--oshi-surface-scrollbar-thumb-hover);
+}
+
+.contribution-bars__list:hover::-webkit-scrollbar-corner {
+  background: var(--oshi-bg);
 }
 
 .contribution-bars__row {

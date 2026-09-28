@@ -1222,6 +1222,49 @@
     overflow-y: auto;
     overflow-x: hidden;
   }
+
+  /* Geometry-only fix: this panel's own column is fluid (minmax(320px,
+     1fr) in .notification-settings-main), unlike the topic list's fixed
+     414px card width -- there is no natural slack an inner content
+     wrapper could sit inside to absorb the shared hidden-at-rest/thin-
+     on-hover scrollbar's 0px-to-7px WIDTH growth the way
+     .notification-topic-list-scroll/-content does (that pattern needs a
+     content box reliably narrower than the scroller even at the
+     scrollbar's max width, which a fluid column can't promise). Reserve
+     the scrollbar's own track at a CONSTANT 7px instead, only in this
+     band where the panel is confirmed to actually scroll, and switch
+     just its colors between rest (transparent, so it still reads as "no
+     scrollbar") and hover (the shared --oshi-* tokens) -- same visual
+     result as the shared rule above, but width never changes on hover,
+     so detail content and titles never shift. */
+  .notification-detail-panel {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .notification-detail-panel:hover {
+    scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
+  }
+
+  .notification-detail-panel::-webkit-scrollbar {
+    width: 7px;
+    background: transparent;
+  }
+
+  .notification-detail-panel::-webkit-scrollbar-track {
+    background: transparent;
+    border: 0;
+    outline: 0;
+    box-shadow: none;
+  }
+
+  .notification-detail-panel::-webkit-scrollbar-thumb {
+    background: transparent;
+    border: 0;
+    outline: 0;
+    box-shadow: none;
+    border-radius: 999px;
+  }
 }
 
 /* One cutover, not the two the settings shell's own fixed-width secondary

@@ -168,49 +168,65 @@
    see its own comment), since html/body/#root are shared across every page
    and Settings/Dashboard already rely on the browser's *unstyled* document
    scrollbar -- styling html::-webkit-scrollbar unscoped would silently
-   restyle their scrollbar too. Same hidden-at-rest/thin-on-hover rule as
-   Home's Oshi Videos row and Notification Settings' topic list (reusing the
-   shared --oshi-* tokens directly rather than duplicating their hex
-   values), applied to the real document scrollbar instead of an inner
-   scroll container -- confirmed with the user: Schedule must use normal
-   page scrolling, not an inner Notification-Settings-style scroll lane. */
-html.schedule-page-scroll {
-  scrollbar-width: none;
-  scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
-}
+   restyle their scrollbar too. Same visual look (hidden-at-rest/thin-on-
+   hover) as Home's Oshi Videos row and Notification Settings' topic list
+   (reusing the shared --oshi-* tokens directly rather than duplicating
+   their hex values), applied to the real document scrollbar instead of an
+   inner scroll container -- confirmed with the user: Schedule must use
+   normal page scrolling, not an inner Notification-Settings-style scroll
+   lane.
 
-html.schedule-page-scroll::-webkit-scrollbar,
-html.schedule-page-scroll::-webkit-scrollbar-button {
-  width: 0;
-  display: none;
+   Geometry: unlike the topic list (a fixed-width card column with slack to
+   spare), this scrollbar sits on <html> itself, so ANY change to its own
+   width reflows every descendant's available width, including
+   .schedule-grid's `repeat(7, minmax(0, 1fr))` day columns -- if the
+   track's width toggled between 0 (rest) and 7px (hover) the way the
+   shared pattern normally does, all 7 columns would narrow by a hair the
+   moment the page is hovered. The day grid virtually always needs to
+   scroll (24h x 44px/slot is taller than the available height at every
+   supported viewport), so reserving the track at a CONSTANT 7px avoids
+   that reflow with no practical loss of "no-scroll" space to preserve --
+   only the colors switch between rest (transparent, reads as "no
+   scrollbar") and hover (the shared --oshi-* tokens), never the width. */
+html.schedule-page-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
 
 html.schedule-page-scroll:hover {
-  scrollbar-width: thin;
+  scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
 }
 
-html.schedule-page-scroll:hover::-webkit-scrollbar {
+html.schedule-page-scroll::-webkit-scrollbar {
   width: 7px;
-  background: var(--oshi-bg);
+  background: transparent;
 }
 
-html.schedule-page-scroll:hover::-webkit-scrollbar-button {
+html.schedule-page-scroll::-webkit-scrollbar-button {
   display: none;
 }
 
-html.schedule-page-scroll:hover::-webkit-scrollbar-track {
-  background: var(--oshi-bg);
+html.schedule-page-scroll::-webkit-scrollbar-track {
+  background: transparent;
   border: 0;
   outline: 0;
   box-shadow: none;
 }
 
-html.schedule-page-scroll:hover::-webkit-scrollbar-thumb {
-  background: var(--oshi-surface-scrollbar-thumb);
+html.schedule-page-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
   border: 0;
   outline: 0;
   box-shadow: none;
   border-radius: 999px;
+}
+
+html.schedule-page-scroll:hover::-webkit-scrollbar-track {
+  background: var(--oshi-bg);
+}
+
+html.schedule-page-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--oshi-surface-scrollbar-thumb);
 }
 
 html.schedule-page-scroll:hover::-webkit-scrollbar-thumb:hover {
