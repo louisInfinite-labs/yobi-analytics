@@ -455,13 +455,16 @@ def test_production_roster_theme_color_coverage():
     assert len(without_color) == 20
 
 
-def test_production_roster_loads_without_avatar_url_yet():
-    """C1 adds the avatarUrl field/parsing but does not populate real data yet --
-    every one of the 118 real creators must still load successfully as avatar_url=None."""
+def test_production_roster_has_avatar_url_populated_for_every_creator():
+    """C7 completed the real YouTube avatar sync -- every canonical creator in
+    the current production roster now carries a populated avatar_url. (The
+    schema itself still tolerates a missing avatarUrl -- see
+    test_avatar_url_defaults_to_none_when_absent above -- this test is about
+    the current state of the real roster, not the schema.)"""
     creators = load_creators()
 
-    assert len(creators) == 118
-    assert all(c.avatar_url is None for c in creators)
+    assert creators
+    assert all(c.avatar_url for c in creators)
 
 
 def test_production_roster_loads_with_unique_ids_and_the_verified_asobimawaritai_unit():

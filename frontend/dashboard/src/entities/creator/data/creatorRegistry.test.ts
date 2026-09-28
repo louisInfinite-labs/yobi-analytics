@@ -117,8 +117,9 @@ describe("getCreatorByYoutubeChannelId", () => {
 })
 
 describe("generated field preservation", () => {
-  it("preserves avatarUrl: null for every current creator", () => {
-    expect(getCreators().every((c) => c.avatarUrl === null)).toBe(true)
+  it("preserves avatarUrl exactly as generated for every current creator", () => {
+    const avatarUrlById = new Map(creatorMasterFile.creators.map((c) => [c.creatorId, c.avatarUrl]))
+    expect(getCreators().every((c) => c.avatarUrl === avatarUrlById.get(c.creatorId))).toBe(true)
   })
 
   it("preserves active as a real boolean on every creator", () => {
