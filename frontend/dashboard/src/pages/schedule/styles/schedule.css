@@ -24,19 +24,21 @@
 /* Page renders inside the existing app-shell's content area (next to
    MainNavbar), not as its own full-viewport shell -- width:100% (not
    100vw) and no sidebar-width margin, since MainNavbar/app-shell already
-   reserve that space (see main-navbar.css's .app-shell__content). Same
-   no-page-scroll-on-the-page-root contract as .oshi-home. */
+   reserve that space (see main-navbar.css's .app-shell__content). Uses the
+   document's own scrollbar, same as Settings (.settings-page): min-height
+   keeps the page at least as tall as the viewport so its own background
+   always fills it, then lets it grow with its content -- a full day's grid
+   (24h x 44px/slot) is taller than most viewports, and the whole document
+   scrolls for that rather than a scrollbar living inside the grid itself
+   (confirmed with the user: no inner Schedule scroll container). */
 .schedule-page {
   color-scheme: dark;
 
   width: 100%;
-  height: 100vh;
-  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
 
   min-width: 0;
-  min-height: 0;
-
-  overflow: hidden;
 
   display: flex;
   flex-direction: column;
@@ -149,12 +151,9 @@
 
 .schedule-grid-shell {
   flex: 1 1 auto;
-  min-height: 0;
 
   border: 1px solid #28405d;
   border-radius: 9px;
-
-  overflow: hidden;
 
   background: rgba(23, 20, 29, 0.78);
 }
@@ -162,61 +161,51 @@
 .schedule-grid {
   display: grid;
   grid-template-columns: var(--schedule-time-column-width) repeat(7, minmax(0, 1fr));
-
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  container-type: size;
 }
 
-/* Trailing space so even the last rows can be scrolled up under the sticky
-   headers -- without it the browser clamps the scroll at the bottom, and the
-   initial "earliest live row at the top" scroll (ScheduleGrid.tsx) could not
-   land on a late-evening row. Sized so the final 23:30 row can reach the top. */
-.schedule-grid::after {
-  content: "";
-  grid-column: 1 / -1;
-  height: calc(100cqh - var(--schedule-day-header-height) - var(--schedule-time-slot-height));
-}
-
-/* Same hidden-at-rest/thin-on-hover scrollbar as Home's Oshi Videos row
-   (home.css's .oshi-videos__viewport) -- reusing its own --oshi-* tokens
-   directly rather than duplicating their hex values, so the two stay in
-   sync if Home's palette ever changes. This is a vertical scrollbar where
-   Oshi Videos' is horizontal, so width/height are swapped from its rules. */
-.schedule-grid {
+/* Page/document scrollbar for Schedule -- scoped to <html> only while this
+   page is mounted (LiveSchedulePage's own mount effect toggles this class;
+   see its own comment), since html/body/#root are shared across every page
+   and Settings/Dashboard already rely on the browser's *unstyled* document
+   scrollbar -- styling html::-webkit-scrollbar unscoped would silently
+   restyle their scrollbar too. Same hidden-at-rest/thin-on-hover rule as
+   Home's Oshi Videos row and Notification Settings' topic list (reusing the
+   shared --oshi-* tokens directly rather than duplicating their hex
+   values), applied to the real document scrollbar instead of an inner
+   scroll container -- confirmed with the user: Schedule must use normal
+   page scrolling, not an inner Notification-Settings-style scroll lane. */
+html.schedule-page-scroll {
   scrollbar-width: none;
   scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
 }
 
-.schedule-grid::-webkit-scrollbar,
-.schedule-grid::-webkit-scrollbar-button {
+html.schedule-page-scroll::-webkit-scrollbar,
+html.schedule-page-scroll::-webkit-scrollbar-button {
   width: 0;
-  height: 0;
   display: none;
 }
 
-.schedule-grid:hover {
+html.schedule-page-scroll:hover {
   scrollbar-width: thin;
 }
 
-.schedule-grid:hover::-webkit-scrollbar {
+html.schedule-page-scroll:hover::-webkit-scrollbar {
   width: 7px;
   background: var(--oshi-bg);
 }
 
-.schedule-grid:hover::-webkit-scrollbar-button {
+html.schedule-page-scroll:hover::-webkit-scrollbar-button {
   display: none;
 }
 
-.schedule-grid:hover::-webkit-scrollbar-track {
+html.schedule-page-scroll:hover::-webkit-scrollbar-track {
   background: var(--oshi-bg);
   border: 0;
   outline: 0;
   box-shadow: none;
 }
 
-.schedule-grid:hover::-webkit-scrollbar-thumb {
+html.schedule-page-scroll:hover::-webkit-scrollbar-thumb {
   background: var(--oshi-surface-scrollbar-thumb);
   border: 0;
   outline: 0;
@@ -224,11 +213,11 @@
   border-radius: 999px;
 }
 
-.schedule-grid:hover::-webkit-scrollbar-thumb:hover {
+html.schedule-page-scroll:hover::-webkit-scrollbar-thumb:hover {
   background: var(--oshi-surface-scrollbar-thumb-hover);
 }
 
-.schedule-grid:hover::-webkit-scrollbar-corner {
+html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   background: var(--oshi-bg);
 }
 
