@@ -74,10 +74,10 @@ export function resolveCreatorKey(key: string): CanonicalCreator | undefined {
 /** Look up a creator by its real YouTube/Holodex channel id -- distinct from
  * resolveCreatorKey above, which resolves this app's own legacy id forms.
  * Uses the same generated canonical registry as every other lookup here,
- * never a separate hand-maintained table (e.g. integrations/holodex/
- * holodexChannelIds.ts's small hand-picked map is NOT this function's
- * source and is unaffected by it). This is what future Holodex work (H4/H7)
- * needs to map a Holodex youtube_channel_id back to a creator. */
+ * never a separate hand-maintained table (the frontend Holodex integration's
+ * own former hand-picked creatorId->channelId map was retired in C6 in favor
+ * of this registry). This is what future Holodex work (H4/H7) needs to map a
+ * Holodex youtube_channel_id back to a creator. */
 export function getCreatorByYoutubeChannelId(youtubeChannelId: string): CanonicalCreator | undefined {
   if (typeof youtubeChannelId !== "string" || !youtubeChannelId.trim()) return undefined
   return creatorsByYoutubeChannelId.get(youtubeChannelId)

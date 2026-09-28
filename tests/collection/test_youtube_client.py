@@ -4,24 +4,29 @@ from unittest.mock import MagicMock
 import pytest
 
 from collection.youtube_client import (
+    MAX_IDS_PER_REQUEST,
     MAX_RETRIES,
     QuotaExhaustedError,
     YouTubeAPIError,
     _fetch_batch,
     call_youtube_api,
+    get_channel_avatar_thumbnails,
     get_video_statistics,
+    select_channel_avatar_url,
 )
 
 
-def _http_error(status: int, reason: str | None = None):
-    """Build an HttpError with the given HTTP status and optional YouTube error reason code."""
+def _http_error(status: int, reason: str | None = None, *, uri: str | None = None):
+    """Build an HttpError with the given HTTP status, optional YouTube error reason
+    code, and optional request URI (as googleapiclient itself attaches -- includes
+    the live API key as `?key=...` for a real request)."""
     from googleapiclient.errors import HttpError
 
     response = MagicMock(status=status, reason="error")
     if reason is None:
-        return HttpError(response, b"not json")
+        return HttpError(response, b"not json", uri=uri)
     content = json.dumps({"error": {"errors": [{"reason": reason, "message": "boom"}], "message": "boom"}})
-    return HttpError(response, content.encode("utf-8"))
+    return HttpError(response, content.encode("utf-8"), uri=uri)
 
 
 def _make_youtube_client(response):
@@ -133,6 +138,49 @@ def test_call_youtube_api_raises_quota_exhausted_for_daily_limit_exceeded(monkey
         call_youtube_api(executor)
 
     assert executor.call_count == 1
+
+
+def test_call_youtube_api_retry_exhaustion_never_exposes_the_credential_bearing_uri(monkeypatch):
+    """The final retry-exhaustion message must never echo the raw HttpError's own
+    str()/repr() -- googleapiclient embeds the full request URI there, and the
+    discovery client puts the API key into that URI as a `?key=...` query param
+    (see youtube_client._safe_error_context's docstring). Safe context (HTTP status,
+    reason code, human-readable message) must still come through."""
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
+    secret_uri = "https://www.googleapis.com/youtube/v3/channels?part=snippet&key=TEST_SECRET_KEY"
+    error = _http_error(503, "backendError", uri=secret_uri)
+    assert "TEST_SECRET_KEY" in repr(error)  # sanity check: the raw exception really would leak it
+    executor = MagicMock(side_effect=error)
+
+    with pytest.raises(YouTubeAPIError) as exc_info:
+        call_youtube_api(executor)
+
+    message = str(exc_info.value)
+    assert "TEST_SECRET_KEY" not in message
+    assert "?key=" not in message
+    assert secret_uri not in message
+    assert "503" in message
+    assert "backendError" in message
+
+
+def test_call_youtube_api_retry_exhaustion_never_exposes_a_url_from_a_non_http_error(monkeypatch):
+    """A non-HttpError transport failure (e.g. a connection-pool/proxy error) whose
+    own message happens to embed the failed request's full URL -- key included --
+    must not have that text echoed into the final YouTubeAPIError either. Only
+    HttpError's structured .status_code/.reason are trusted; every other exception
+    type is reduced to just its class name."""
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
+    secret_url = "https://www.googleapis.com/youtube/v3/channels?part=snippet&key=TEST_SECRET_KEY"
+    executor = MagicMock(side_effect=ConnectionError(f"connection failed for {secret_url}"))
+
+    with pytest.raises(YouTubeAPIError) as exc_info:
+        call_youtube_api(executor)
+
+    message = str(exc_info.value)
+    assert "TEST_SECRET_KEY" not in message
+    assert "?key=" not in message
+    assert secret_url not in message
+    assert "ConnectionError" in message
 
 
 def test_returns_structured_data_for_valid_video():
@@ -359,3 +407,226 @@ def test_requests_are_batched_at_fifty_ids():
     assert len(calls) == 2
     assert calls[0].kwargs["id"] == ",".join(f"id{i}" for i in range(0, 50))
     assert calls[1].kwargs["id"] == ",".join(f"id{i}" for i in range(50, 60))
+
+
+# --- select_channel_avatar_url / get_channel_avatar_thumbnails (C7A) -------
+
+
+def _make_channels_client(response):
+    """Build a mock YouTube client whose channels().list().execute() returns the given response."""
+    youtube = MagicMock()
+    youtube.channels.return_value.list.return_value.execute.return_value = response
+    return youtube
+
+
+def test_select_channel_avatar_url_prefers_high():
+    thumbnails = {
+        "default": {"url": "https://example.com/default.jpg"},
+        "medium": {"url": "https://example.com/medium.jpg"},
+        "high": {"url": "https://example.com/high.jpg"},
+    }
+    assert select_channel_avatar_url(thumbnails) == "https://example.com/high.jpg"
+
+
+def test_select_channel_avatar_url_falls_back_to_medium_when_high_missing():
+    thumbnails = {
+        "default": {"url": "https://example.com/default.jpg"},
+        "medium": {"url": "https://example.com/medium.jpg"},
+    }
+    assert select_channel_avatar_url(thumbnails) == "https://example.com/medium.jpg"
+
+
+def test_select_channel_avatar_url_falls_back_to_default_when_high_and_medium_missing():
+    thumbnails = {"default": {"url": "https://example.com/default.jpg"}}
+    assert select_channel_avatar_url(thumbnails) == "https://example.com/default.jpg"
+
+
+@pytest.mark.parametrize("thumbnails", [{}, None, "not-a-dict", {"high": {}}, {"high": {"url": ""}}])
+def test_select_channel_avatar_url_returns_none_when_no_usable_thumbnail(thumbnails):
+    assert select_channel_avatar_url(thumbnails) is None
+
+
+def test_get_channel_avatar_thumbnails_returns_selected_url_for_valid_channel():
+    response = {
+        "items": [
+            {
+                "id": "UC_valid",
+                "snippet": {"thumbnails": {"high": {"url": "https://example.com/high.jpg"}}},
+            }
+        ]
+    }
+    youtube = _make_channels_client(response)
+
+    avatars, skip_reasons = get_channel_avatar_thumbnails(youtube, ["UC_valid"])
+
+    assert avatars == {"UC_valid": "https://example.com/high.jpg"}
+    assert skip_reasons == {}
+
+
+def test_get_channel_avatar_thumbnails_no_thumbnail_produces_no_update():
+    """A channel that returns a snippet with no usable thumbnail is recorded
+    as a skip, never with an empty/None avatar url."""
+    response = {"items": [{"id": "UC_no_thumb", "snippet": {"thumbnails": {}}}]}
+    youtube = _make_channels_client(response)
+
+    avatars, skip_reasons = get_channel_avatar_thumbnails(youtube, ["UC_no_thumb"])
+
+    assert avatars == {}
+    assert "UC_no_thumb" in skip_reasons
+
+
+def test_get_channel_avatar_thumbnails_missing_channel_in_response(capsys):
+    """A requested channel id absent from the response's 'items' is reported
+    as a skip with a reason, not silently dropped."""
+    youtube = _make_channels_client({"items": []})
+
+    avatars, skip_reasons = get_channel_avatar_thumbnails(youtube, ["UC_missing"])
+
+    assert avatars == {}
+    assert "UC_missing" in skip_reasons
+    assert "UC_missing" in capsys.readouterr().out
+
+
+def test_get_channel_avatar_thumbnails_one_bad_item_does_not_discard_siblings(capsys):
+    """A malformed item (missing snippet) in the same response as a valid
+    item does not prevent the valid item's avatar from being returned."""
+    response = {
+        "items": [
+            {"id": "UC_bad"},  # no snippet at all
+            {"id": "UC_good", "snippet": {"thumbnails": {"high": {"url": "https://example.com/good.jpg"}}}},
+        ]
+    }
+    youtube = _make_channels_client(response)
+
+    avatars, skip_reasons = get_channel_avatar_thumbnails(youtube, ["UC_bad", "UC_good"])
+
+    assert avatars == {"UC_good": "https://example.com/good.jpg"}
+    assert "UC_bad" in skip_reasons
+
+
+def test_get_channel_avatar_thumbnails_duplicate_id_in_response_keeps_first(capsys):
+    """A duplicate channel id within one response is handled safely (first
+    occurrence kept) instead of raising or silently overwriting unpredictably."""
+    response = {
+        "items": [
+            {"id": "UC_dup", "snippet": {"thumbnails": {"high": {"url": "https://example.com/first.jpg"}}}},
+            {"id": "UC_dup", "snippet": {"thumbnails": {"high": {"url": "https://example.com/second.jpg"}}}},
+        ]
+    }
+    youtube = _make_channels_client(response)
+
+    avatars, _ = get_channel_avatar_thumbnails(youtube, ["UC_dup"])
+
+    assert avatars == {"UC_dup": "https://example.com/first.jpg"}
+    assert "duplicate" in capsys.readouterr().out.lower()
+
+
+def test_get_channel_avatar_thumbnails_unexpected_id_in_response_is_ignored():
+    """A channel id in the response that was never requested in this batch
+    is safely ignored rather than attributed to any creator."""
+    response = {
+        "items": [
+            {"id": "UC_unrequested", "snippet": {"thumbnails": {"high": {"url": "https://example.com/x.jpg"}}}},
+        ]
+    }
+    youtube = _make_channels_client(response)
+
+    avatars, skip_reasons = get_channel_avatar_thumbnails(youtube, ["UC_requested"])
+
+    assert avatars == {}
+    assert "UC_requested" in skip_reasons
+
+
+def test_get_channel_avatar_thumbnails_deduplicates_input_ids():
+    """The same channel id requested twice (e.g. shared by two creators) is
+    only fetched once."""
+    response = {
+        "items": [{"id": "UC_shared", "snippet": {"thumbnails": {"high": {"url": "https://example.com/x.jpg"}}}}]
+    }
+    youtube = _make_channels_client(response)
+
+    get_channel_avatar_thumbnails(youtube, ["UC_shared", "UC_shared"])
+
+    assert youtube.channels.return_value.list.call_args.kwargs["id"] == "UC_shared"
+
+
+def test_get_channel_avatar_thumbnails_batches_multiple_channels_in_one_request():
+    """Multiple creators' channel IDs (within MAX_IDS_PER_REQUEST) are fetched
+    in a single batched request, never one request per creator."""
+    response = {
+        "items": [
+            {"id": f"UC_{i}", "snippet": {"thumbnails": {"high": {"url": f"https://example.com/{i}.jpg"}}}}
+            for i in range(5)
+        ]
+    }
+    youtube = _make_channels_client(response)
+    channel_ids = [f"UC_{i}" for i in range(5)]
+
+    avatars, _ = get_channel_avatar_thumbnails(youtube, channel_ids)
+
+    assert len(avatars) == 5
+    assert youtube.channels.return_value.list.call_count == 1
+
+
+def test_get_channel_avatar_thumbnails_splits_into_batches_of_max_ids_per_request():
+    """More than MAX_IDS_PER_REQUEST channel IDs are split across multiple
+    batched calls, matching get_video_statistics's own batching."""
+    response_batch = {
+        "items": [
+            {"id": f"UC_{i}", "snippet": {"thumbnails": {"high": {"url": f"https://example.com/{i}.jpg"}}}}
+            for i in range(MAX_IDS_PER_REQUEST)
+        ]
+    }
+    youtube = _make_channels_client(response_batch)
+    channel_ids = [f"UC_{i}" for i in range(MAX_IDS_PER_REQUEST + 10)]
+
+    get_channel_avatar_thumbnails(youtube, channel_ids)
+
+    calls = youtube.channels.return_value.list.call_args_list
+    assert len(calls) == 2
+
+
+def test_get_channel_avatar_thumbnails_empty_input_makes_no_api_call():
+    youtube = MagicMock()
+
+    avatars, skip_reasons = get_channel_avatar_thumbnails(youtube, [])
+
+    assert avatars == {}
+    assert skip_reasons == {}
+    youtube.channels.assert_not_called()
+
+
+def test_get_channel_avatar_thumbnails_one_failing_batch_does_not_abort_others(monkeypatch, capsys):
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
+    youtube = MagicMock()
+    good_response = {
+        "items": [
+            {"id": f"UC_{50 + i}", "snippet": {"thumbnails": {"high": {"url": f"https://example.com/{i}.jpg"}}}}
+            for i in range(10)
+        ]
+    }
+    youtube.channels.return_value.list.return_value.execute.side_effect = [
+        ConnectionError("network blip"),
+        ConnectionError("network blip"),
+        ConnectionError("network blip"),
+        good_response,
+    ]
+    channel_ids = [f"UC_{i}" for i in range(60)]
+
+    avatars, skip_reasons = get_channel_avatar_thumbnails(youtube, channel_ids)
+
+    assert len(avatars) == 10
+    assert "network blip" in capsys.readouterr().out
+    assert len(skip_reasons) == 50
+
+
+def test_get_channel_avatar_thumbnails_stops_immediately_on_quota_exhaustion(monkeypatch):
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
+    youtube = MagicMock()
+    youtube.channels.return_value.list.return_value.execute.side_effect = _http_error(403, "quotaExceeded")
+    channel_ids = [f"UC_{i}" for i in range(150)]
+
+    with pytest.raises(QuotaExhaustedError):
+        get_channel_avatar_thumbnails(youtube, channel_ids)
+
+    assert youtube.channels.return_value.list.return_value.execute.call_count == 1

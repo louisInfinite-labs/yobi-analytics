@@ -63,12 +63,17 @@ def test_generated_aliases_exactly_match_the_canonical_alias_table(registry):
     assert registry["legacyAliases"] == LEGACY_CREATOR_ID_ALIASES
 
 
-def test_avatar_url_null_is_preserved_for_every_current_creator(registry):
-    """C1 added the avatarUrl schema, but no real data is synced yet (C7) --
-    every generated creator must carry avatarUrl: null explicitly, never an
-    omitted key or an empty string standing in for "no value"."""
+def test_avatar_url_matches_the_backend_creator_master(registry):
+    """C7 completed the real YouTube avatar sync -- every generated creator's
+    avatarUrl must be a faithful, unmodified copy of the corresponding backend
+    Creator.avatar_url (not re-derived or transformed), and every current
+    canonical creator now has one populated."""
+    avatar_url_by_id = {creator.creator_id: creator.avatar_url for creator in load_creators()}
+
     assert all("avatarUrl" in creator for creator in registry["creators"])
-    assert all(creator["avatarUrl"] is None for creator in registry["creators"])
+    assert all(creator["avatarUrl"] for creator in registry["creators"])
+    for creator in registry["creators"]:
+        assert creator["avatarUrl"] == avatar_url_by_id[creator["creatorId"]]
 
 
 def test_active_is_present_for_every_generated_creator(registry):

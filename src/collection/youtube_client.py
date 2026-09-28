@@ -112,7 +112,9 @@ def call_youtube_api(request_executor: Callable[[], T]) -> T:
                 print(f"Warning: network error on attempt {attempt}/{MAX_RETRIES}, retrying: {exc}")
                 time.sleep(_backoff_seconds(attempt))
 
-    raise YouTubeAPIError(f"YouTube API call failed after {MAX_RETRIES} attempts: {last_exc}") from last_exc
+    raise YouTubeAPIError(
+        f"YouTube API call failed after {MAX_RETRIES} attempts ({_safe_error_context(last_exc)})"
+    ) from last_exc
 
 
 def _extract_error_reason(exc: HttpError) -> str | None:
@@ -125,6 +127,30 @@ def _extract_error_reason(exc: HttpError) -> str | None:
         if isinstance(reason, str):
             return reason
     return None
+
+
+def _safe_error_context(exc: Exception | None) -> str:
+    """Describe the last retry failure using only status/reason, never the raw
+    exception's own str()/repr().
+
+    HttpError's str()/repr() embeds the full request URI (see
+    googleapiclient.errors.HttpError.__repr__), and the discovery client puts
+    the API key into that URI as a `?key=...` query parameter -- so passing an
+    HttpError itself into an f-string, as opposed to its already-parsed
+    .status_code/.reason attributes, would leak the live key into any log or
+    console that prints the resulting error.
+
+    Non-HttpError exceptions (transport/network failures) are reduced to just
+    their class name rather than their own message text: nothing guarantees a
+    future transport exception's __str__ couldn't itself embed the same
+    credential-bearing request URL (e.g. a proxy or connection-pool error that
+    echoes the failed URL), so their text is never trusted either.
+    """
+    if isinstance(exc, HttpError):
+        return f"status {exc.status_code}, reason {_extract_error_reason(exc)!r}: {exc.reason}"
+    if exc is None:
+        return "unknown error"
+    return type(exc).__name__
 
 
 def _backoff_seconds(attempt: int) -> float:
@@ -207,6 +233,123 @@ def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[
             print(f"Warning: skipping video {video_id}, could not read statistics: {exc}")
             skip_reasons[video_id] = str(exc)
     return parsed_items, skip_reasons
+
+
+# channels.list snippet.thumbnails only ever carries these three standard
+# variants (unlike a video's thumbnails, which also has "standard"/"maxres")
+# -- preferred order per Creator Master's avatarUrl field (C7A): the
+# highest-quality one actually present, never more than one stored.
+_AVATAR_THUMBNAIL_PREFERENCE = ("high", "medium", "default")
+
+
+def select_channel_avatar_url(thumbnails: object) -> str | None:
+    """Pick one canonical avatar URL from a channels.list snippet.thumbnails
+    value, preferring high -> medium -> default. Returns None (never raises)
+    if `thumbnails` isn't a dict, or none of the three variants carry a
+    usable url -- a channel with no matching thumbnail simply has no fresh
+    avatar to offer, which callers must treat as "no update", never as "set
+    avatarUrl to null" (see tracking.creator_avatar_sync)."""
+    if not isinstance(thumbnails, dict):
+        return None
+    for size in _AVATAR_THUMBNAIL_PREFERENCE:
+        variant = thumbnails.get(size)
+        if isinstance(variant, dict):
+            url = variant.get("url")
+            if isinstance(url, str) and url:
+                return url
+    return None
+
+
+def get_channel_avatar_thumbnails(youtube: Resource, channel_ids: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Fetch each channel's canonical avatar thumbnail URL via
+    channels.list(part="snippet"), batched up to MAX_IDS_PER_REQUEST ids per
+    call (Creator Master's C7A avatar sync -- never used by an ordinary
+    frontend/API request, only maintenance tooling).
+
+    Mirrors get_video_statistics's own batching/error-handling shape: a
+    batch that fails outright is skipped (with a warning) rather than
+    aborting the whole sync, except QuotaExhaustedError, which still
+    propagates immediately since every remaining batch would fail the same
+    way. Unlike get_video_statistics, this does not enrich QuotaExhaustedError
+    with partial progress -- this is a one-shot manual maintenance sync
+    (re-run later), not a production pipeline with per-run persistence to
+    protect.
+
+    Returns (avatar_url_by_channel_id, skip_reasons) -- skip_reasons maps
+    every channel id that could not be resolved to why (missing from the
+    response, no snippet, no usable thumbnail, or a batch-level API/network
+    error), so a caller can report more than a bare count of what went
+    unmatched. Duplicate input channel ids are deduplicated (first-seen
+    order) before batching, so a channel shared by two creators is never
+    fetched twice.
+    """
+    deduped_ids = list(dict.fromkeys(channel_ids))
+    if not deduped_ids:
+        return {}, {}
+
+    avatars: dict[str, str] = {}
+    skip_reasons: dict[str, str] = {}
+    for start in range(0, len(deduped_ids), MAX_IDS_PER_REQUEST):
+        batch = deduped_ids[start : start + MAX_IDS_PER_REQUEST]
+        try:
+            batch_avatars, batch_skip_reasons = _fetch_channel_avatar_batch(youtube, batch)
+            avatars.update(batch_avatars)
+            skip_reasons.update(batch_skip_reasons)
+        except QuotaExhaustedError:
+            raise
+        except YouTubeAPIError as exc:
+            print(f"Warning: skipping a batch of {len(batch)} channel ID(s) due to an API error: {exc}")
+            for channel_id in batch:
+                skip_reasons[channel_id] = f"YouTube API error: {exc}"
+    return avatars, skip_reasons
+
+
+def _fetch_channel_avatar_batch(youtube: Resource, batch: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Fetch and parse one channels.list batch, skipping missing/malformed/
+    unexpected items with a reason instead of letting one bad item discard
+    the whole batch's valid siblings."""
+    response = call_youtube_api(lambda: youtube.channels().list(part="snippet", id=",".join(batch)).execute())
+
+    items = response.get("items")
+    if items is None:
+        raise YouTubeAPIError("Malformed response from YouTube API: missing 'items'")
+    if not all(isinstance(item, dict) for item in items):
+        raise YouTubeAPIError("Malformed response from YouTube API: 'items' contains a non-object entry")
+
+    avatars: dict[str, str] = {}
+    skip_reasons: dict[str, str] = {}
+    seen_ids: set[str] = set()
+
+    for item in items:
+        channel_id = item.get("id")
+        if not isinstance(channel_id, str) or not channel_id:
+            print("Warning: skipping a channels.list item with no usable 'id'")
+            continue
+        if channel_id not in batch:
+            print(f"Warning: ignoring unrequested channel id in response: {channel_id}")
+            continue
+        if channel_id in seen_ids:
+            print(f"Warning: duplicate channel id in response, keeping the first occurrence: {channel_id}")
+            continue
+        seen_ids.add(channel_id)
+
+        snippet = item.get("snippet")
+        if not isinstance(snippet, dict):
+            skip_reasons[channel_id] = "Malformed response: missing 'snippet'"
+            continue
+        avatar_url = select_channel_avatar_url(snippet.get("thumbnails"))
+        if avatar_url is None:
+            skip_reasons[channel_id] = "No usable thumbnail (high/medium/default) in channel snippet"
+            continue
+        avatars[channel_id] = avatar_url
+
+    missing_ids = [channel_id for channel_id in batch if channel_id not in seen_ids]
+    if missing_ids:
+        print(f"Warning: no data returned for channel ID(s): {', '.join(missing_ids)}")
+        for channel_id in missing_ids:
+            skip_reasons[channel_id] = "No data returned by YouTube API (channel may be deleted/private/invalid id)"
+
+    return avatars, skip_reasons
 
 
 def _parse_video_item(item: dict) -> dict:

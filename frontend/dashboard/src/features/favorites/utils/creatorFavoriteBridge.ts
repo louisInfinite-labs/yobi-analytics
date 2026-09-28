@@ -19,6 +19,20 @@ import { mockCreators, type MockCreator } from "../../../entities/creator/data/m
  * applied, so a future rename only needs updating here. */
 const MOCK_CREATOR_BY_CREATOR_ID = new Map<string, MockCreator>(mockCreators.map((creator) => [creator.channelId.replace(/^ch_/, ""), creator]))
 
+/** mockCreators' own declared array position for a bridged creatorId -- the
+ * same "declared roster order" Live Status itself iterates in (it reads
+ * mockCreators directly), used by notificationCreatorOrder.ts as the base
+ * order fed into sortWithinBranch so that two creators with no kana/name
+ * ranking to compare (a stable-sort tie) fall back to mockCreators' own
+ * order rather than whatever order the caller happened to pass in -- the
+ * canonical Creator Registry (creatorRegistry.ts) returns its own creators
+ * creatorId-sorted, which is a different order. */
+const MOCK_DECLARATION_INDEX = new Map<string, number>(mockCreators.map((creator, index) => [creator.channelId.replace(/^ch_/, ""), index]))
+
+export function mockCreatorDeclarationIndex(creatorId: string): number | undefined {
+  return MOCK_DECLARATION_INDEX.get(creatorId)
+}
+
 export function isFavoriteCreatorId(creatorId: string, favoriteChannelIds: ReadonlySet<string>): boolean {
   return favoriteChannelIds.has(`ch_${creatorId}`)
 }

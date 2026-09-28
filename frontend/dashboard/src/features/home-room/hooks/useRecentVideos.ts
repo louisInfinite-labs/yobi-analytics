@@ -1,8 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { getRecentVideosForCreator } from "../data/mockRecentVideos"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
-import { holodexChannelIdByCreatorId } from "../../../integrations/holodex/holodexChannelIds"
+import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { fetchArchivedStreamsFromHolodex, fetchUploadedVideosFromHolodex, type HolodexPage } from "../../../integrations/holodex/holodexClient"
+
+/** C6's real-fetch scope is intentionally still just gawr_gura -- the
+ * original hand-picked local-testing case (this session's own request to
+ * try the real Holodex API for a quick effect check). Broadening this to
+ * every registry-resolvable creator belongs to the later Holodex
+ * backend/frontend integration work, not this identity-source migration.
+ * Gated on the canonical creatorId itself (never a duplicated YouTube
+ * channel ID, and never a second hand-picked id->channel table) so the
+ * actual channel id still comes entirely from the shared registry below. */
+const REAL_FETCH_ENABLED_CREATOR_IDS = new Set<string>(["gawr_gura"])
+
+/** Resolves a legacy ("ch_"-prefixed), aliased, or canonical creatorId to its
+ * real YouTube/Holodex channel id via the shared canonical Creator Registry
+ * (C5A) -- undefined for a creatorId with no canonical counterpart (e.g.
+ * "ch_hololive_staff", a mock/legacy-only entry) or one not in this
+ * session's still-narrow real-fetch scope (REAL_FETCH_ENABLED_CREATOR_IDS
+ * above), either of which usePaginatedVideos below already treats as "stay
+ * on mock data" (see its own `!holodexChannelId` branch). No manually
+ * maintained Holodex channel-id table exists anymore
+ * (integrations/holodex/holodexChannelIds.ts, retired in C6). */
+export function resolveHolodexChannelId(creatorId: string): string | undefined {
+  const canonical = resolveCreatorKey(creatorId)
+  if (!canonical || !REAL_FETCH_ENABLED_CREATOR_IDS.has(canonical.creatorId)) return undefined
+  return canonical.youtubeChannelId
+}
 
 export interface VideoPage {
   videos: RecentVideo[]
@@ -117,11 +142,11 @@ interface UseRecentVideosResult {
 }
 
 /** Mock data by default; real, independently-paginated Holodex data for the
- * small hand-picked subset of creators in holodexChannelIds.ts (this
- * session's own request to try the real Holodex API for a quick effect
- * check — local testing only, see holodexClient.ts's own docstring on why
- * the API key here must not ship as-is). Falls back to mock on fetch
- * failure so each row still renders something rather than going empty.
+ * small hand-picked subset of creators in REAL_FETCH_ENABLED_CREATOR_IDS
+ * above (resolveHolodexChannelId — local testing only, see holodexClient.ts's
+ * own docstring on why the API key here must not ship as-is). Falls back to
+ * mock on fetch failure so each row still renders something rather than
+ * going empty.
  *
  * Each pool starts with one page (this session's own "20+20" target — up
  * to HOLODEX_MAX_LIMIT=50 per row's own dedicated, correctly-typed
@@ -130,7 +155,7 @@ interface UseRecentVideosResult {
  * own requirement: prefetch the next ~20 videos once the user scrolls to
  * around the 14th-16th video). */
 export function useRecentVideos(creatorId: string): UseRecentVideosResult {
-  const holodexChannelId = holodexChannelIdByCreatorId[creatorId]
+  const holodexChannelId = resolveHolodexChannelId(creatorId)
   const latestVideos = usePaginatedVideos(creatorId, holodexChannelId, fetchUploadedVideosFromHolodex)
   const streamVideos = usePaginatedVideos(creatorId, holodexChannelId, fetchArchivedStreamsFromHolodex)
   return { latestVideos, streamVideos }
