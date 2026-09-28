@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { ConfigProvider, Segmented } from "antd"
 import { Search } from "lucide-react"
 import { CreatorStatusList } from "./CreatorStatusList"
-import { mockCreators } from "../../../entities/creator/data/mockCreators"
+import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { useCurrentPage } from "../../../app/navigation/useCurrentPage"
 import { useConfirmOshiSwitchPreference } from "../../oshi/hooks/useConfirmOshiSwitchPreference"
 import { useCreatorStatuses } from "../hooks/useCreatorStatuses"
@@ -82,11 +82,13 @@ export function LiveScheduleDock() {
   const { statuses, now } = useCreatorStatuses()
   const { favorites, toggleFavorite } = useFavoriteCreators()
   const [selectedCreatorId, setSelectedCreatorId] = useSelectedCreator()
-  // The one lookup into this dock's current mock creator source needed to
-  // bind its own theme wrapper below -- see creatorThemeStyle's own
-  // docstring for why it takes the resolved themeColor instead of doing
-  // this same lookup itself.
-  const selectedCreator = mockCreators.find((entry) => entry.channelId === selectedCreatorId)
+  // The one lookup into the canonical Creator Registry needed to bind this
+  // dock's own theme wrapper below -- see creatorThemeStyle's own docstring
+  // for why it takes the resolved themeColor instead of doing this same
+  // lookup itself. resolveCreatorKey handles selectedCreatorId's legacy
+  // "ch_"-form (or alias) transparently -- C8C is not a storage-ID
+  // migration, selectedCreatorId itself stays in that format.
+  const selectedCreator = resolveCreatorKey(selectedCreatorId)
   const [locale] = useLocale()
   const [confirmOshiSwitch, setConfirmOshiSwitch] = useConfirmOshiSwitchPreference()
   const reducedMotion = usePrefersReducedMotion()

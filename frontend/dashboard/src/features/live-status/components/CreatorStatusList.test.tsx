@@ -3,8 +3,11 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { CreatorStatusList, countLiveAndOffline } from "./CreatorStatusList"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
+import { getCreators, isCurrentMemberEligible, resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
+import { useDefaultOshiCreator } from "../../oshi/hooks/useDefaultOshiCreator"
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
+import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import type { CreatorStatus } from "../model/creatorStatus"
 
 const now = new Date("2026-09-09T12:00:00.000Z")
@@ -447,5 +450,146 @@ describe("countLiveAndOffline", () => {
 
   it("counts only within favoriteOnlyIds when set", () => {
     expect(countLiveAndOffline(statuses, new Set(["ch_b"]))).toEqual({ live: 0, offline: 1 })
+  })
+})
+
+describe("CreatorStatusList canonical registry migration (C8C)", () => {
+  it("roster comes from the canonical Creator Registry, filtered by isCurrentMemberEligible -- not a hardcoded count", () => {
+    renderList()
+    const eligible = getCreators().filter(isCurrentMemberEligible)
+    // A dual-tagged Gamers member (Shirakami Fubuki) intentionally renders
+    // twice (once per subgroup) -- count distinct rendered names instead of
+    // raw row count.
+    const distinctNames = new Set(eligible.map((c) => c.displayName))
+    for (const name of distinctNames) {
+      expect(screen.getAllByText(name).length).toBeGreaterThan(0)
+    }
+  })
+
+  it("vspo_official (canonical group channel) resolves but is not visible -- only individual members are", () => {
+    renderList()
+    const vspoOfficial = getCreators().find((c) => c.creatorId === "vspo_official")!
+    expect(resolveCreatorKey("ch_vspo_group")?.creatorId).toBe("vspo_official") // identity still resolves
+    expect(screen.queryByText(vspoOfficial.displayName)).not.toBeInTheDocument()
+  })
+
+  it("holoan_room (canonical staff channel) is not visible", () => {
+    renderList()
+    const holoanRoom = getCreators().find((c) => c.creatorId === "holoan_room")!
+    expect(screen.queryByText(holoanRoom.displayName)).not.toBeInTheDocument()
+  })
+
+  it("ch_hololive_staff (mock-only, no canonical record) is absent -- never synthesized", () => {
+    renderList()
+    expect(screen.queryByText("hololive Production Staff")).not.toBeInTheDocument()
+    expect(resolveCreatorKey("ch_hololive_staff")).toBeUndefined()
+  })
+
+  it("hololive_asobimawaritai: the group channel is excluded, but its 4 members render under their own subgroup, none falling into Other", () => {
+    renderList()
+    expect(screen.queryByRole("button", { name: "Switch Oshi to アソビ★まわり隊！" })).not.toBeInTheDocument()
+    expect(screen.getByText("アソビ★まわり隊！", { selector: ".live-status-group__subheading" })).toBeInTheDocument()
+    for (const name of ["百灯キョーコ", "熱千めら", "鈴鳴つづり", "宙科そぴあ"]) {
+      expect(screen.getByRole("button", { name: new RegExp(name) })).toBeInTheDocument()
+    }
+  })
+
+  it("VSPO JP's own visible order follows canonical displayOrder ascending, not alphabetical creatorId order", () => {
+    const { container } = renderList()
+    const expectedOrder = getCreators()
+      .filter((c) => c.branch === "vspo_jp" && isCurrentMemberEligible(c))
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+      .map((c) => c.displayName)
+    const rows = [...container.querySelectorAll(".live-status-member__name")].map((el) => el.textContent)
+    const renderedVspoJpOrder = rows.filter((name) => expectedOrder.includes(name ?? ""))
+    expect(renderedVspoJpOrder).toEqual(expectedOrder)
+  })
+
+  it("search operates on the canonical roster and never surfaces an excluded creator", () => {
+    renderList({ query: "アソビ" })
+    // Matches only the group channel's own displayName -- which is
+    // ineligible, so the query legitimately yields nothing, proving search
+    // filtering happens on top of (not instead of) eligibility.
+    expect(screen.queryByRole("button", { name: /アソビ/ })).not.toBeInTheDocument()
+  })
+
+  it("search finds an eligible creator by canonical displayName", () => {
+    renderList({ query: "百灯キョーコ" })
+    expect(screen.getByText("百灯キョーコ")).toBeInTheDocument()
+    expect(screen.queryByText("藍沢エマ")).not.toBeInTheDocument()
+  })
+
+  it("the row's secondary line is the stream topic/title, never the creator's own name", () => {
+    renderList({
+      statuses: { ...allOffline, ch_aizawa_ema: { kind: "live", videoId: "v1", title: "VALORANT ranked" } },
+    })
+    const row = [...document.querySelectorAll(".live-status-member")].find((r) => r.textContent?.includes("藍沢エマ"))!
+    const topic = row.querySelector(".live-status-member__topic")
+    expect(topic).toHaveTextContent("VALORANT ranked")
+    expect(topic?.textContent).not.toBe("藍沢エマ")
+  })
+})
+
+describe("CreatorStatusList Favorites section: Iofi compatibility (C8C)", () => {
+  it("Airani Iofifteen renders a favorite indicator when favorited via the pre-existing ch_iofi key -- not ch_airani_iofifteen", () => {
+    const { container } = renderList({ favorites: new Set(["ch_iofi"]) })
+    const rows = container.querySelectorAll(".live-status-member")
+    const iofiRow = [...rows].find((row) => row.textContent?.includes("Airani Iofifteen"))
+    expect(iofiRow?.querySelector(".live-status-member__favorite-indicator")).toBeInTheDocument()
+  })
+
+  it("Favorites-only view (favoriteOnlyIds=ch_iofi) surfaces Airani Iofifteen correctly", () => {
+    renderList({ favoriteOnlyIds: new Set(["ch_iofi"]) })
+    expect(screen.getByText("Airani Iofifteen")).toBeInTheDocument()
+    expect(screen.queryByText("藍沢エマ")).not.toBeInTheDocument()
+  })
+
+  it("swiping to favorite Iofi calls onToggleFavorite with ch_iofi, not ch_airani_iofifteen", () => {
+    const { container, onToggleFavorite } = renderList()
+    const row = findRow(container, "Airani Iofifteen")
+    dragRow(row, 80)
+    fireEvent.click(row.querySelector(".live-status-member__creator-button")!)
+    expect(onToggleFavorite).toHaveBeenCalledWith("ch_iofi")
+  })
+})
+
+describe("CreatorStatusList MAIN/current-Oshi: Iofi compatibility (C8C)", () => {
+  it("Iofi selection round-trips: clicking her sets the legacy-compatible ch_iofi id, and MAIN/current comparisons recognize it", async () => {
+    window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_iofi")
+    resetAllSharedStateForTests()
+
+    function RealIds() {
+      const [currentId, setCurrentId] = useSelectedCreator()
+      const [defaultId] = useDefaultOshiCreator()
+      return (
+        <>
+          <div data-testid="current-id">{currentId}</div>
+          <div data-testid="default-id">{defaultId}</div>
+          <CreatorStatusList
+            statuses={allOffline}
+            now={now}
+            displayMode="absolute"
+            query=""
+            favorites={new Set()}
+            onToggleFavorite={vi.fn()}
+            onSelectCreator={setCurrentId}
+            onSelectVideo={vi.fn()}
+            locale="en"
+            confirmOshiSwitch={false}
+            onConfirmOshiSwitchChange={vi.fn()}
+          />
+        </>
+      )
+    }
+
+    const { getByTestId } = render(<RealIds />)
+    expect(getByTestId("default-id")).toHaveTextContent("ch_iofi")
+    const iofiRow = findRow(document.body, "Airani Iofifteen")
+    expect(iofiRow.querySelector(".live-status-member__main-badge")).toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Switch Oshi to Airani Iofifteen" }))
+    expect(getByTestId("current-id")).toHaveTextContent("ch_iofi")
+    expect(findRow(document.body, "Airani Iofifteen").getAttribute("data-current-oshi")).toBe("true")
   })
 })
