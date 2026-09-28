@@ -70,8 +70,8 @@ def main(argv: list[str] | None = None) -> int:
         f"Batch size: {MAX_IDS_PER_REQUEST}  Expected YouTube API requests: {expected_requests}\n"
     )
 
-    youtube = build_youtube_client(api_key)
     try:
+        youtube = build_youtube_client(api_key)
         avatars, skip_reasons = get_channel_avatar_thumbnails(youtube, channel_ids)
     except YouTubeAPIError as exc:
         print(f"Error: avatar fetch failed: {exc}")

@@ -112,7 +112,9 @@ def call_youtube_api(request_executor: Callable[[], T]) -> T:
                 print(f"Warning: network error on attempt {attempt}/{MAX_RETRIES}, retrying: {exc}")
                 time.sleep(_backoff_seconds(attempt))
 
-    raise YouTubeAPIError(f"YouTube API call failed after {MAX_RETRIES} attempts: {last_exc}") from last_exc
+    raise YouTubeAPIError(
+        f"YouTube API call failed after {MAX_RETRIES} attempts ({_safe_error_context(last_exc)})"
+    ) from last_exc
 
 
 def _extract_error_reason(exc: HttpError) -> str | None:
@@ -125,6 +127,30 @@ def _extract_error_reason(exc: HttpError) -> str | None:
         if isinstance(reason, str):
             return reason
     return None
+
+
+def _safe_error_context(exc: Exception | None) -> str:
+    """Describe the last retry failure using only status/reason, never the raw
+    exception's own str()/repr().
+
+    HttpError's str()/repr() embeds the full request URI (see
+    googleapiclient.errors.HttpError.__repr__), and the discovery client puts
+    the API key into that URI as a `?key=...` query parameter -- so passing an
+    HttpError itself into an f-string, as opposed to its already-parsed
+    .status_code/.reason attributes, would leak the live key into any log or
+    console that prints the resulting error.
+
+    Non-HttpError exceptions (transport/network failures) are reduced to just
+    their class name rather than their own message text: nothing guarantees a
+    future transport exception's __str__ couldn't itself embed the same
+    credential-bearing request URL (e.g. a proxy or connection-pool error that
+    echoes the failed URL), so their text is never trusted either.
+    """
+    if isinstance(exc, HttpError):
+        return f"status {exc.status_code}, reason {_extract_error_reason(exc)!r}: {exc.reason}"
+    if exc is None:
+        return "unknown error"
+    return type(exc).__name__
 
 
 def _backoff_seconds(attempt: int) -> float:

@@ -16,15 +16,17 @@ from collection.youtube_client import (
 )
 
 
-def _http_error(status: int, reason: str | None = None):
-    """Build an HttpError with the given HTTP status and optional YouTube error reason code."""
+def _http_error(status: int, reason: str | None = None, *, uri: str | None = None):
+    """Build an HttpError with the given HTTP status, optional YouTube error reason
+    code, and optional request URI (as googleapiclient itself attaches -- includes
+    the live API key as `?key=...` for a real request)."""
     from googleapiclient.errors import HttpError
 
     response = MagicMock(status=status, reason="error")
     if reason is None:
-        return HttpError(response, b"not json")
+        return HttpError(response, b"not json", uri=uri)
     content = json.dumps({"error": {"errors": [{"reason": reason, "message": "boom"}], "message": "boom"}})
-    return HttpError(response, content.encode("utf-8"))
+    return HttpError(response, content.encode("utf-8"), uri=uri)
 
 
 def _make_youtube_client(response):
@@ -136,6 +138,49 @@ def test_call_youtube_api_raises_quota_exhausted_for_daily_limit_exceeded(monkey
         call_youtube_api(executor)
 
     assert executor.call_count == 1
+
+
+def test_call_youtube_api_retry_exhaustion_never_exposes_the_credential_bearing_uri(monkeypatch):
+    """The final retry-exhaustion message must never echo the raw HttpError's own
+    str()/repr() -- googleapiclient embeds the full request URI there, and the
+    discovery client puts the API key into that URI as a `?key=...` query param
+    (see youtube_client._safe_error_context's docstring). Safe context (HTTP status,
+    reason code, human-readable message) must still come through."""
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
+    secret_uri = "https://www.googleapis.com/youtube/v3/channels?part=snippet&key=TEST_SECRET_KEY"
+    error = _http_error(503, "backendError", uri=secret_uri)
+    assert "TEST_SECRET_KEY" in repr(error)  # sanity check: the raw exception really would leak it
+    executor = MagicMock(side_effect=error)
+
+    with pytest.raises(YouTubeAPIError) as exc_info:
+        call_youtube_api(executor)
+
+    message = str(exc_info.value)
+    assert "TEST_SECRET_KEY" not in message
+    assert "?key=" not in message
+    assert secret_uri not in message
+    assert "503" in message
+    assert "backendError" in message
+
+
+def test_call_youtube_api_retry_exhaustion_never_exposes_a_url_from_a_non_http_error(monkeypatch):
+    """A non-HttpError transport failure (e.g. a connection-pool/proxy error) whose
+    own message happens to embed the failed request's full URL -- key included --
+    must not have that text echoed into the final YouTubeAPIError either. Only
+    HttpError's structured .status_code/.reason are trusted; every other exception
+    type is reduced to just its class name."""
+    monkeypatch.setattr("collection.youtube_client.time.sleep", lambda _seconds: None)
+    secret_url = "https://www.googleapis.com/youtube/v3/channels?part=snippet&key=TEST_SECRET_KEY"
+    executor = MagicMock(side_effect=ConnectionError(f"connection failed for {secret_url}"))
+
+    with pytest.raises(YouTubeAPIError) as exc_info:
+        call_youtube_api(executor)
+
+    message = str(exc_info.value)
+    assert "TEST_SECRET_KEY" not in message
+    assert "?key=" not in message
+    assert secret_url not in message
+    assert "ConnectionError" in message
 
 
 def test_returns_structured_data_for_valid_video():
