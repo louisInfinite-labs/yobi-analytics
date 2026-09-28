@@ -622,69 +622,6 @@
      compact-sections/Recent-absorbs-remaining-space layout is unchanged. */
   overflow-y: auto;
   overflow-x: hidden;
-
-  /* The scrollbar gets its own permanently reserved 7px on the right
-     (box-sizing left at its content-box default, so this widens the box
-     rather than shrinking .oshi-status__recent-row's available width by
-     anything the scrollbar itself does) -- each row's own fixed
-     58px/48px time-column/thumbnail and fluid 1fr title
-     (.oshi-status__recent-row's grid-template-columns) size against this
-     SAME reserved-content width whether or not a scrollbar is actually
-     drawn in that space, so the scrollbar appearing, disappearing, or
-     growing on hover never moves a single column. */
-  padding-right: 7px;
-
-  /* Hidden at rest, thin on hover -- same mechanism, tokens, and 7px
-     thickness as .oshi-videos__viewport just above (see its own comment)
-     and the Notification Settings topic-list scrollbar it was itself
-     reused from. Safe to let this one's width genuinely toggle 0px/7px
-     (unlike those two) because the padding-right above already reserves
-     the full 7px permanently, so the toggle never reaches the row grid. */
-  scrollbar-width: none;
-  scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
-}
-
-.oshi-status__recent-list::-webkit-scrollbar,
-.oshi-status__recent-list::-webkit-scrollbar-button {
-  width: 0;
-  display: none;
-  background: transparent;
-}
-
-.oshi-status__recent-list:hover {
-  scrollbar-width: thin;
-}
-
-.oshi-status__recent-list:hover::-webkit-scrollbar {
-  width: 7px;
-  background: var(--oshi-bg);
-}
-
-.oshi-status__recent-list:hover::-webkit-scrollbar-button {
-  display: none;
-}
-
-.oshi-status__recent-list:hover::-webkit-scrollbar-track {
-  background: var(--oshi-bg);
-  border: 0;
-  outline: 0;
-  box-shadow: none;
-}
-
-.oshi-status__recent-list:hover::-webkit-scrollbar-thumb {
-  background: var(--oshi-surface-scrollbar-thumb);
-  border: 0;
-  outline: 0;
-  box-shadow: none;
-  border-radius: 999px;
-}
-
-.oshi-status__recent-list:hover::-webkit-scrollbar-thumb:hover {
-  background: var(--oshi-surface-scrollbar-thumb-hover);
-}
-
-.oshi-status__recent-list:hover::-webkit-scrollbar-corner {
-  background: var(--oshi-bg);
 }
 
 /* Exactly 3 columns, always: time+NEW / title / thumbnail. NEW lives INSIDE
