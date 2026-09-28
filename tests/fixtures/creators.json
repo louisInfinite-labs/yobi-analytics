@@ -8,7 +8,8 @@
     "branch": "vspo_jp",
     "groupKey": ["NO"],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "displayOrder": 0
   },
   {
     "creatorId": "inactive_example",
@@ -19,6 +20,7 @@
     "branch": "holo_jp",
     "groupKey": ["2期生"],
     "channelType": "member",
-    "lifecycleStage": "active"
+    "lifecycleStage": "active",
+    "displayOrder": 1
   }
 ]

@@ -1,17 +1,17 @@
 import { useState, type CSSProperties } from "react"
 import { Avatar, ConfigProvider, Input, Segmented } from "antd"
 import { Crosshair, Search } from "lucide-react"
-import type { MockCreator } from "../../../entities/creator/data/mockCreators"
+import { resolveCreatorKey, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
+import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 import { useDefaultOshiCreator } from "../hooks/useDefaultOshiCreator"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t, type Locale } from "../../../shared/i18n/translations"
-import { isEligibleForMyOshi } from "../utils/myOshiEligibility"
 import {
   GAMERS_GROUP_LABEL_KEY,
-  groupCreatorsForOshiSettings,
+  groupSelectableCreatorsForMyOshi,
   OTHER_GROUP_LABEL_KEY,
-  type OshiSettingsAgencyGroup,
-} from "../utils/oshiSettingsGrouping"
+  type MyOshiAgencyGroup,
+} from "../utils/myOshiCanonicalRoster"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
 import { useMemberTheme } from "../../../shared/theme/ThemeContext"
 
@@ -22,23 +22,28 @@ type CreatorAccentStyle = CSSProperties & {
 }
 
 interface SelectedCreatorPlacement {
-  creator: MockCreator
+  creator: CanonicalCreator
   agencyLabel: string
   regionLabel: string
   subgroupLabel?: string
 }
 
 /** Same sentinel-label swap as OshiSettings.tsx's own subgroupTitle --
- * these two pages share the exact same grouping/labels (see
- * groupCreatorsForOshiSettings), so the same two sentinel keys apply. */
+ * both pages group via the same shared subgroupsForBranch algorithm (this
+ * page through myOshiCanonicalRoster.ts, OshiSettings.tsx still through
+ * oshiSettingsGrouping.ts), so the same two sentinel keys apply. */
 function subgroupTitle(locale: Locale, label: string): string {
   if (label === OTHER_GROUP_LABEL_KEY) return t(locale, "oshiSettings.otherGroupLabel")
   if (label === GAMERS_GROUP_LABEL_KEY) return t(locale, "oshiSettings.gamersGroupLabel")
   return label
 }
 
-function creatorAccentStyle(creator: MockCreator): CreatorAccentStyle {
-  const accent = getMemberAccent(creator.channelId, creator.themeColor)
+/** Seeded with the legacy "ch_"-form id (not creatorId) so a creator's
+ * hashed-palette fallback accent (no verified themeColor) stays pixel-
+ * identical to before this migration -- same hash input as when this page
+ * read MockCreator.channelId directly. */
+function creatorAccentStyle(creator: CanonicalCreator): CreatorAccentStyle {
+  const accent = getMemberAccent(toLegacyRosterId(creator), creator.themeColor)
   return {
     "--creator-accent": accent.primary,
     "--creator-accent-soft": accent.soft,
@@ -52,13 +57,14 @@ function formatRegionHeading(agencyLabel: string, regionLabel: string): string {
 }
 
 function findSelectedCreatorPlacement(
-  agencyGroups: OshiSettingsAgencyGroup[],
-  creatorId: string,
+  agencyGroups: MyOshiAgencyGroup[],
+  creatorId: string | undefined,
 ): SelectedCreatorPlacement | null {
+  if (!creatorId) return null
   for (const agency of agencyGroups) {
     for (const region of agency.regions) {
       for (const subgroup of region.subgroups) {
-        const creator = subgroup.creators.find((candidate) => candidate.channelId === creatorId)
+        const creator = subgroup.creators.find((candidate) => candidate.creatorId === creatorId)
         if (creator) {
           return {
             creator,
@@ -73,27 +79,27 @@ function findSelectedCreatorPlacement(
   return null
 }
 
-function CreatorAvatar({ creator, variant }: { creator: MockCreator; variant: "slot" | "hero" }) {
-  const spokenName = creator.channelName.replace(/\n/g, " ")
+function CreatorAvatar({ creator, variant }: { creator: CanonicalCreator; variant: "slot" | "hero" }) {
+  const spokenName = creator.displayName.replace(/\n/g, " ")
 
   return (
     <Avatar
       className={`my-oshi-select__avatar my-oshi-select__avatar--${variant}`}
-      src={creator.avatarUrl}
+      src={creator.avatarUrl ?? undefined}
       alt={creator.avatarUrl ? spokenName : undefined}
     >
-      {creator.channelName.charAt(0)}
+      {creator.displayName.charAt(0)}
     </Avatar>
   )
 }
 
-function CreatorSegmentLabel({ creator }: { creator: MockCreator }) {
+function CreatorSegmentLabel({ creator }: { creator: CanonicalCreator }) {
   return (
     <span className="my-oshi-select__slot" style={creatorAccentStyle(creator)}>
       <span className="my-oshi-select__slot-avatar-frame">
         <CreatorAvatar creator={creator} variant="slot" />
       </span>
-      <span className="my-oshi-select__slot-name">{creator.channelName}</span>
+      <span className="my-oshi-select__slot-name">{creator.displayName}</span>
     </span>
   )
 }
@@ -105,7 +111,7 @@ function SelectedCreatorPanel({ placement, locale }: { placement: SelectedCreato
     <aside
       className="my-oshi-select__presentation"
       style={creatorAccentStyle(placement.creator)}
-      aria-label={t(locale, "myOshiSettings.presentationAria", { name: placement.creator.channelName.replace(/\n/g, " ") })}
+      aria-label={t(locale, "myOshiSettings.presentationAria", { name: placement.creator.displayName.replace(/\n/g, " ") })}
     >
       <div className="my-oshi-select__presentation-grid" aria-hidden="true" />
       <div className="my-oshi-select__status-marker">
@@ -116,7 +122,7 @@ function SelectedCreatorPanel({ placement, locale }: { placement: SelectedCreato
         <CreatorAvatar creator={placement.creator} variant="hero" />
       </div>
       <div className="my-oshi-select__identity">
-        <h2 className="my-oshi-select__selected-name">{placement.creator.channelName}</h2>
+        <h2 className="my-oshi-select__selected-name">{placement.creator.displayName}</h2>
         <p className="my-oshi-select__selected-meta">
           {formatRegionHeading(placement.agencyLabel, placement.regionLabel)}
           {groupLabel ? ` / ${groupLabel}` : ""}
@@ -136,9 +142,10 @@ export function MyOshiSettings() {
   const [defaultOshiId, setDefaultOshiId] = useDefaultOshiCreator()
   const [searchQuery, setSearchQuery] = useState("")
 
-  const allAgencyGroups = groupCreatorsForOshiSettings("", isEligibleForMyOshi)
-  const agencyGroups = groupCreatorsForOshiSettings(searchQuery, isEligibleForMyOshi)
-  const selectedPlacement = findSelectedCreatorPlacement(allAgencyGroups, defaultOshiId)
+  const allAgencyGroups = groupSelectableCreatorsForMyOshi("")
+  const agencyGroups = groupSelectableCreatorsForMyOshi(searchQuery)
+  const selectedCanonicalId = resolveCreatorKey(defaultOshiId)?.creatorId
+  const selectedPlacement = findSelectedCreatorPlacement(allAgencyGroups, selectedCanonicalId)
   const fallbackPlacement = allAgencyGroups[0]?.regions[0]?.subgroups[0]?.creators[0]
     ? {
         creator: allAgencyGroups[0].regions[0].subgroups[0].creators[0],
@@ -209,7 +216,7 @@ export function MyOshiSettings() {
                         value={defaultOshiId}
                         onChange={setDefaultOshiId}
                         options={subgroup.creators.map((creator) => ({
-                          value: creator.channelId,
+                          value: toLegacyRosterId(creator),
                           label: <CreatorSegmentLabel creator={creator} />,
                         }))}
                       />

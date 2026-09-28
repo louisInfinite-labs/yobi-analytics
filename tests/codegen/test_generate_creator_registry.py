@@ -80,6 +80,21 @@ def test_active_is_present_for_every_generated_creator(registry):
     assert all("active" in creator for creator in registry["creators"])
 
 
+def test_display_order_matches_the_backend_creator_master(registry):
+    """C8A0: the generated displayOrder must be a faithful, unmodified copy of
+    the corresponding backend Creator.display_order -- the one canonical
+    stable order My Oshi/Oshi Settings sort by, never a second copy of it."""
+    display_order_by_id = {creator.creator_id: creator.display_order for creator in load_creators()}
+    assert all("displayOrder" in creator for creator in registry["creators"])
+    for creator in registry["creators"]:
+        assert creator["displayOrder"] == display_order_by_id[creator["creatorId"]]
+
+
+def test_display_order_values_are_unique_in_the_generated_artifact(registry):
+    orders = [creator["displayOrder"] for creator in registry["creators"]]
+    assert len(orders) == len(set(orders))
+
+
 def test_active_exactly_matches_the_backend_creator_active_field(registry):
     """C4's eligibility rules (is_creator_selectable/is_creator_live_roster_eligible)
     depend on `active` alongside channelType/lifecycleStage -- this proves the

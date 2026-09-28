@@ -12,6 +12,7 @@
       "channelType": "member",
       "themeColor": "#1C97FF",
       "lifecycleStage": "pre_debut",
+      "displayOrder": 78,
       "active": true,
       "youtubeChannelId": "UC8eitCE9Z6EwUCs-VUi1blg"
     },
@@ -27,6 +28,7 @@
       "channelType": "group",
       "themeColor": null,
       "lifecycleStage": "pre_debut",
+      "displayOrder": 82,
       "active": true,
       "youtubeChannelId": "UChpRPsAeSZn5DistGacR3iA"
     },
@@ -42,6 +44,7 @@
       "channelType": "member",
       "themeColor": "#7EDD0B",
       "lifecycleStage": "active",
+      "displayOrder": 4,
       "active": true,
       "youtubeChannelId": "UCAoy6rzhSf4ydcYjJw3WoVg"
     },
@@ -57,6 +60,7 @@
       "channelType": "member",
       "themeColor": "#B4F1F9",
       "lifecycleStage": "active",
+      "displayOrder": 0,
       "active": true,
       "youtubeChannelId": "UCPkKpOHxEDcwmUAnRpIu-Ng"
     },
@@ -72,6 +76,7 @@
       "channelType": "member",
       "themeColor": "#D90629",
       "lifecycleStage": "active",
+      "displayOrder": 39,
       "active": true,
       "youtubeChannelId": "UC1CfXB_kRs3C-zaeTG3oGyg"
     },
@@ -87,6 +92,7 @@
       "channelType": "member",
       "themeColor": "#D40680",
       "lifecycleStage": "active",
+      "displayOrder": 38,
       "active": true,
       "youtubeChannelId": "UCFTLzh12_nrtzqBPsTCqenA"
     },
@@ -102,6 +108,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 53,
       "active": true,
       "youtubeChannelId": "UCZlDXzGoo7d44bwdNObFacg"
     },
@@ -117,6 +124,7 @@
       "channelType": "member",
       "themeColor": "#ECA0AA",
       "lifecycleStage": "active",
+      "displayOrder": 29,
       "active": true,
       "youtubeChannelId": "UC8vKBjGY2HVfbW9GAmgikWw"
     },
@@ -132,6 +140,7 @@
       "channelType": "member",
       "themeColor": "#E79F11",
       "lifecycleStage": "active",
+      "displayOrder": 106,
       "active": true,
       "youtubeChannelId": "UC727SQYUvx5pDDGQpTICNWg"
     },
@@ -147,6 +156,7 @@
       "channelType": "member",
       "themeColor": "#000000",
       "lifecycleStage": "active",
+      "displayOrder": 113,
       "active": true,
       "youtubeChannelId": "UCLlJpxXt6L5d-XQ0cDdIyDQ"
     },
@@ -162,6 +172,7 @@
       "channelType": "member",
       "themeColor": "#ED8282",
       "lifecycleStage": "active",
+      "displayOrder": 103,
       "active": true,
       "youtubeChannelId": "UCOyYb1c43VlX9rc_lT6NKQw"
     },
@@ -177,6 +188,7 @@
       "channelType": "member",
       "themeColor": "#D11C76",
       "lifecycleStage": "active",
+      "displayOrder": 34,
       "active": true,
       "youtubeChannelId": "UC0TXe_LYZ4scaW2XMyi5_kw"
     },
@@ -192,6 +204,7 @@
       "channelType": "member",
       "themeColor": "#137A42",
       "lifecycleStage": "active",
+      "displayOrder": 101,
       "active": true,
       "youtubeChannelId": "UCvN5h1ShZtc7nly3pezRayg"
     },
@@ -207,6 +220,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 91,
       "active": true,
       "youtubeChannelId": "UCO_aKKYxn4tvrqPjcTzZ6EQ"
     },
@@ -222,6 +236,7 @@
       "channelType": "member",
       "themeColor": "#EA5506",
       "lifecycleStage": "active",
+      "displayOrder": 28,
       "active": true,
       "youtubeChannelId": "UCL9hJsdk9eQa0IlWbFB2oRg"
     },
@@ -237,6 +252,7 @@
       "channelType": "member",
       "themeColor": "#97303A",
       "lifecycleStage": "active",
+      "displayOrder": 99,
       "active": true,
       "youtubeChannelId": "UCW5uhrG1eCBYditmhL0Ykjw"
     },
@@ -252,6 +268,7 @@
       "channelType": "member",
       "themeColor": "#90B2F8",
       "lifecycleStage": "active",
+      "displayOrder": 116,
       "active": true,
       "youtubeChannelId": "UCp_3ej2br9l9L1DSoHVDZGw"
     },
@@ -268,6 +285,7 @@
       "channelType": "group",
       "themeColor": "#A66FEF",
       "lifecycleStage": "active",
+      "displayOrder": 98,
       "active": true,
       "youtubeChannelId": "UCt9H_RpQzhxzlyBxFqrdHqA"
     },
@@ -283,6 +301,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 3,
       "active": true,
       "youtubeChannelId": "UCoSrY_IQQVpmIRZ9Xf-y93g"
     },
@@ -298,6 +317,7 @@
       "channelType": "member",
       "themeColor": "#CD9328",
       "lifecycleStage": "active",
+      "displayOrder": 100,
       "active": true,
       "youtubeChannelId": "UCDHABijvPBnJm7F-KlNME3w"
     },
@@ -313,6 +333,7 @@
       "channelType": "member",
       "themeColor": "#58535E",
       "lifecycleStage": "active",
+      "displayOrder": 30,
       "active": true,
       "youtubeChannelId": "UC2xXx1m1jeL0W84_0jTg-Yw"
     },
@@ -328,6 +349,7 @@
       "channelType": "member",
       "themeColor": "#FB3D29",
       "lifecycleStage": "active",
+      "displayOrder": 94,
       "active": true,
       "youtubeChannelId": "UCgmPnx-EEeOrZSg5Tiw7ZRQ"
     },
@@ -343,6 +365,7 @@
       "channelType": "member",
       "themeColor": "#FF68AD",
       "lifecycleStage": "active",
+      "displayOrder": 64,
       "active": true,
       "youtubeChannelId": "UC6eWCld0KwmyHFbAqK3V-Rw"
     },
@@ -358,6 +381,7 @@
       "channelType": "member",
       "themeColor": "#D1DE79",
       "lifecycleStage": "active",
+      "displayOrder": 16,
       "active": true,
       "youtubeChannelId": "UCurEA8YoqFwimJcAuSHU0MQ"
     },
@@ -373,6 +397,7 @@
       "channelType": "member",
       "themeColor": "#DE6DAE",
       "lifecycleStage": "active",
+      "displayOrder": 56,
       "active": true,
       "youtubeChannelId": "UCa9Y57gfeY0Zro_noHRVrnw"
     },
@@ -388,6 +413,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 67,
       "active": true,
       "youtubeChannelId": "UCMGfV7TVTmHhEErVJg1oHBQ"
     },
@@ -403,6 +429,7 @@
       "channelType": "staff",
       "themeColor": null,
       "lifecycleStage": "active",
+      "displayOrder": 83,
       "active": true,
       "youtubeChannelId": "UCozx5csNhCx1wsVq3SZVkBQ"
     },
@@ -418,6 +445,7 @@
       "channelType": "group",
       "themeColor": null,
       "lifecycleStage": "pre_debut",
+      "displayOrder": 86,
       "active": true,
       "youtubeChannelId": "UCAHwWUotyS3l2qBetFDsjgQ"
     },
@@ -433,6 +461,7 @@
       "channelType": "group",
       "themeColor": null,
       "lifecycleStage": "active",
+      "displayOrder": 85,
       "active": true,
       "youtubeChannelId": "UCu2n3qHuOuQIygREMnWeQWg"
     },
@@ -448,6 +477,7 @@
       "channelType": "group",
       "themeColor": null,
       "lifecycleStage": "active",
+      "displayOrder": 84,
       "active": true,
       "youtubeChannelId": "UC10wVt6hoQiwySRhz7RdOUA"
     },
@@ -463,6 +493,7 @@
       "channelType": "member",
       "themeColor": "#6A98D0",
       "lifecycleStage": "active",
+      "displayOrder": 36,
       "active": true,
       "youtubeChannelId": "UC5CwaMl1eIgY8h02uZw7u8A"
     },
@@ -478,6 +509,7 @@
       "channelType": "member",
       "themeColor": "#A82413",
       "lifecycleStage": "active",
+      "displayOrder": 52,
       "active": true,
       "youtubeChannelId": "UCCzUftO8KOVkV4wQG1vkUvg"
     },
@@ -493,6 +525,7 @@
       "channelType": "member",
       "themeColor": "#F86701",
       "lifecycleStage": "pre_debut",
+      "displayOrder": 77,
       "active": true,
       "youtubeChannelId": "UCSjQDxud2HkAO2DVD3lwxmw"
     },
@@ -508,6 +541,7 @@
       "channelType": "member",
       "themeColor": "#EE558B",
       "lifecycleStage": "active",
+      "displayOrder": 69,
       "active": true,
       "youtubeChannelId": "UCtyWhCj3AqKh2dXctLkDtng"
     },
@@ -523,6 +557,7 @@
       "channelType": "member",
       "themeColor": "#4182FA",
       "lifecycleStage": "active",
+      "displayOrder": 11,
       "active": true,
       "youtubeChannelId": "UC5LyYg6cCA4yHEYvtUsir3g"
     },
@@ -538,6 +573,7 @@
       "channelType": "member",
       "themeColor": "#DCB414",
       "lifecycleStage": "active",
+      "displayOrder": 48,
       "active": true,
       "youtubeChannelId": "UChAnqc_AY5_I3Px5dig3X1Q"
     },
@@ -553,6 +589,7 @@
       "channelType": "member",
       "themeColor": "#BC96B0",
       "lifecycleStage": "active",
+      "displayOrder": 90,
       "active": true,
       "youtubeChannelId": "UC8rcEBzJSleTkf_-agPM20g"
     },
@@ -568,6 +605,7 @@
       "channelType": "member",
       "themeColor": "#C92655",
       "lifecycleStage": "active",
+      "displayOrder": 72,
       "active": true,
       "youtubeChannelId": "UC9LSiN9hXI55svYEBrrK-tw"
     },
@@ -583,6 +621,7 @@
       "channelType": "member",
       "themeColor": "#606D3D",
       "lifecycleStage": "active",
+      "displayOrder": 111,
       "active": true,
       "youtubeChannelId": "UCeCWj-SiJG9SWN6wGORiLmw"
     },
@@ -598,6 +637,7 @@
       "channelType": "member",
       "themeColor": "#923173",
       "lifecycleStage": "active",
+      "displayOrder": 117,
       "active": true,
       "youtubeChannelId": "UCRJV_1aV4aZjFAEUn6o5arw"
     },
@@ -613,6 +653,7 @@
       "channelType": "member",
       "themeColor": "#1C5E4F",
       "lifecycleStage": "active",
+      "displayOrder": 70,
       "active": true,
       "youtubeChannelId": "UCdXAk5MpyLD8594lm_OvtGQ"
     },
@@ -628,6 +669,7 @@
       "channelType": "member",
       "themeColor": "#DC2528",
       "lifecycleStage": "active",
+      "displayOrder": 109,
       "active": true,
       "youtubeChannelId": "UCZLZ8Jjx_RN2CXloOmgTHVg"
     },
@@ -643,6 +685,7 @@
       "channelType": "member",
       "themeColor": "#FABEDC",
       "lifecycleStage": "active",
+      "displayOrder": 9,
       "active": true,
       "youtubeChannelId": "UCiMG6VdScBabPhJ1ZtaVmbw"
     },
@@ -658,6 +701,7 @@
       "channelType": "member",
       "themeColor": "#BECCFF",
       "lifecycleStage": "active",
+      "displayOrder": 8,
       "active": true,
       "youtubeChannelId": "UCyLGcqYs7RsBb3L0SJfzGYA"
     },
@@ -673,6 +717,7 @@
       "channelType": "member",
       "themeColor": "#FFD23C",
       "lifecycleStage": "active",
+      "displayOrder": 18,
       "active": true,
       "youtubeChannelId": "UCMp55EbT_ZlqiMS3lCj01BQ"
     },
@@ -688,6 +733,7 @@
       "channelType": "member",
       "themeColor": "#45BFB6",
       "lifecycleStage": "active",
+      "displayOrder": 66,
       "active": true,
       "youtubeChannelId": "UC_vMYWcDjmfdpH6r4TTn1MQ"
     },
@@ -703,6 +749,7 @@
       "channelType": "member",
       "themeColor": "#E6499B",
       "lifecycleStage": "active",
+      "displayOrder": 76,
       "active": true,
       "youtubeChannelId": "UCGzTVXqMQHa4AgJVJIVvtDQ"
     },
@@ -718,6 +765,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 5,
       "active": true,
       "youtubeChannelId": "UCS9uQI-jC3DE0L4IpXyvr6w"
     },
@@ -733,6 +781,7 @@
       "channelType": "member",
       "themeColor": "#BE2152",
       "lifecycleStage": "active",
+      "displayOrder": 17,
       "active": true,
       "youtubeChannelId": "UCGWa1dMU_sDCaRQjdabsVgg"
     },
@@ -748,6 +797,7 @@
       "channelType": "member",
       "themeColor": "#93BFE4",
       "lifecycleStage": "active",
+      "displayOrder": 110,
       "active": true,
       "youtubeChannelId": "UCjLEmnpCNeisMxy134KPwWw"
     },
@@ -763,6 +813,7 @@
       "channelType": "member",
       "themeColor": "#F25E11",
       "lifecycleStage": "active",
+      "displayOrder": 73,
       "active": true,
       "youtubeChannelId": "UCuI_opAVX6qbxZY-a-AxFuQ"
     },
@@ -778,6 +829,7 @@
       "channelType": "member",
       "themeColor": "#FBA03F",
       "lifecycleStage": "active",
+      "displayOrder": 23,
       "active": true,
       "youtubeChannelId": "UCzUNASdzI4PV5SlqtYwAkKQ"
     },
@@ -793,6 +845,7 @@
       "channelType": "member",
       "themeColor": "#4B44DE",
       "lifecycleStage": "active",
+      "displayOrder": 96,
       "active": true,
       "youtubeChannelId": "UC9p_lqQ0FEDz327Vgf5JwqA"
     },
@@ -808,6 +861,7 @@
       "channelType": "member",
       "themeColor": "#FFF33F",
       "lifecycleStage": "active",
+      "displayOrder": 10,
       "active": true,
       "youtubeChannelId": "UCgTzsBI0DIRopMylJEDqnog"
     },
@@ -823,6 +877,7 @@
       "channelType": "member",
       "themeColor": "#D90C52",
       "lifecycleStage": "active",
+      "displayOrder": 105,
       "active": true,
       "youtubeChannelId": "UCYz_5n-uDuChHtLo7My1HnQ"
     },
@@ -838,6 +893,7 @@
       "channelType": "member",
       "themeColor": "#B297D7",
       "lifecycleStage": "active",
+      "displayOrder": 12,
       "active": true,
       "youtubeChannelId": "UCIcAj6WkJ8vZ7DeJVgmeqKw"
     },
@@ -853,6 +909,7 @@
       "channelType": "member",
       "themeColor": "#471497",
       "lifecycleStage": "active",
+      "displayOrder": 62,
       "active": true,
       "youtubeChannelId": "UCENwRMx5Yh42zWpzURebzTw"
     },
@@ -868,6 +925,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 61,
       "active": true,
       "youtubeChannelId": "UCgZuwn-O7Szh9cAgHqJ6vjw"
     },
@@ -883,6 +941,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 41,
       "active": true,
       "youtubeChannelId": "UC1opHUrw8rvnsadT-iGp7Cg"
     },
@@ -898,6 +957,7 @@
       "channelType": "member",
       "themeColor": "#64CCE4",
       "lifecycleStage": "active",
+      "displayOrder": 74,
       "active": true,
       "youtubeChannelId": "UCjk2nKmHzgH5Xy-C5qYRd5A"
     },
@@ -913,6 +973,7 @@
       "channelType": "member",
       "themeColor": "#FF7810",
       "lifecycleStage": "active",
+      "displayOrder": 58,
       "active": true,
       "youtubeChannelId": "UCAWSyEs_Io8MtpY3m-zqILA"
     },
@@ -928,6 +989,7 @@
       "channelType": "member",
       "themeColor": "#794EBE",
       "lifecycleStage": "active",
+      "displayOrder": 104,
       "active": true,
       "youtubeChannelId": "UCP0BspO_AMEe3aQqqpo89Dg"
     },
@@ -943,6 +1005,7 @@
       "channelType": "member",
       "themeColor": "#A1030D",
       "lifecycleStage": "active",
+      "displayOrder": 87,
       "active": true,
       "youtubeChannelId": "UCL_qhgtOy0dy1Agp8vkySQg"
     },
@@ -958,6 +1021,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 42,
       "active": true,
       "youtubeChannelId": "UCXTpFs_3PqI41qX2d9tL2Rw"
     },
@@ -973,6 +1037,7 @@
       "channelType": "member",
       "themeColor": "#CD233A",
       "lifecycleStage": "active",
+      "displayOrder": 43,
       "active": true,
       "youtubeChannelId": "UC7fk0CB07ly8oSl0aqKkqFg"
     },
@@ -988,6 +1053,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 93,
       "active": true,
       "youtubeChannelId": "UC3n5uGu18FoCy23ggWWp8tA"
     },
@@ -1003,6 +1069,7 @@
       "channelType": "member",
       "themeColor": "#F3A6EF",
       "lifecycleStage": "active",
+      "displayOrder": 114,
       "active": true,
       "youtubeChannelId": "UCKSpM183c85d5V2cW5qaUjA"
     },
@@ -1018,6 +1085,7 @@
       "channelType": "member",
       "themeColor": "#FF5506",
       "lifecycleStage": "active",
+      "displayOrder": 40,
       "active": true,
       "youtubeChannelId": "UCQ0UDLQCjY0rmuxCDE38FGg"
     },
@@ -1033,6 +1101,7 @@
       "channelType": "member",
       "themeColor": "#BF66E8",
       "lifecycleStage": "active",
+      "displayOrder": 47,
       "active": true,
       "youtubeChannelId": "UCvaTdHTWBGv3MKj3KVqJVCw"
     },
@@ -1048,6 +1117,7 @@
       "channelType": "member",
       "themeColor": "#FF3652",
       "lifecycleStage": "active",
+      "displayOrder": 21,
       "active": true,
       "youtubeChannelId": "UCIjdfjcSaEgdjwbgjxC3ZWg"
     },
@@ -1063,6 +1133,7 @@
       "channelType": "member",
       "themeColor": "#2D3799",
       "lifecycleStage": "active",
+      "displayOrder": 97,
       "active": true,
       "youtubeChannelId": "UC_sFNM0z0MWm9A6WlKPuMMg"
     },
@@ -1078,6 +1149,7 @@
       "channelType": "member",
       "themeColor": "#3F3F6A",
       "lifecycleStage": "active",
+      "displayOrder": 89,
       "active": true,
       "youtubeChannelId": "UCMwGHR0BTZuLsmjY_NT5Pwg"
     },
@@ -1093,6 +1165,7 @@
       "channelType": "member",
       "themeColor": "#AA0909",
       "lifecycleStage": "active",
+      "displayOrder": 60,
       "active": true,
       "youtubeChannelId": "UCK9V2B22uJYu3N7eR_BT9QA"
     },
@@ -1108,6 +1181,7 @@
       "channelType": "member",
       "themeColor": "#4F5072",
       "lifecycleStage": "active",
+      "displayOrder": 46,
       "active": true,
       "youtubeChannelId": "UCp-5t9SrOQwXMU7iIjQfARg"
     },
@@ -1123,6 +1197,7 @@
       "channelType": "member",
       "themeColor": "#BCE717",
       "lifecycleStage": "active",
+      "displayOrder": 45,
       "active": true,
       "youtubeChannelId": "UCvzGlP9oQwU--Y0r9id_jnA"
     },
@@ -1138,6 +1213,7 @@
       "channelType": "member",
       "themeColor": "#F6C663",
       "lifecycleStage": "active",
+      "displayOrder": 68,
       "active": true,
       "youtubeChannelId": "UCWQtYtq9EOB4-I5P-3fh8lA"
     },
@@ -1153,6 +1229,7 @@
       "channelType": "member",
       "themeColor": "#1B189B",
       "lifecycleStage": "active",
+      "displayOrder": 92,
       "active": true,
       "youtubeChannelId": "UCmbs8T6MWqUHP1tIQvSgKrg"
     },
@@ -1168,6 +1245,7 @@
       "channelType": "member",
       "themeColor": "#040F7F",
       "lifecycleStage": "active",
+      "displayOrder": 107,
       "active": true,
       "youtubeChannelId": "UChgTyjG-pdNvxxhdsXfHQ5Q"
     },
@@ -1183,6 +1261,7 @@
       "channelType": "member",
       "themeColor": "#E75786",
       "lifecycleStage": "active",
+      "displayOrder": 102,
       "active": true,
       "youtubeChannelId": "UCl69AEx4MdqMZH7Jtsm7Tig"
     },
@@ -1198,6 +1277,7 @@
       "channelType": "member",
       "themeColor": "#398FB2",
       "lifecycleStage": "active",
+      "displayOrder": 112,
       "active": true,
       "youtubeChannelId": "UCCra1t-eIlO3ULyXQQMD9Xw"
     },
@@ -1213,6 +1293,7 @@
       "channelType": "member",
       "themeColor": "#9373D7",
       "lifecycleStage": "active",
+      "displayOrder": 115,
       "active": true,
       "youtubeChannelId": "UC7Xglp1fske9zmRe7Oj8YyA"
     },
@@ -1228,6 +1309,7 @@
       "channelType": "member",
       "themeColor": "#2C8C8B",
       "lifecycleStage": "active",
+      "displayOrder": 75,
       "active": true,
       "youtubeChannelId": "UCKMWFR6lAstLa7Vbf5dH7ig"
     },
@@ -1243,6 +1325,7 @@
       "channelType": "member",
       "themeColor": "#804F7F",
       "lifecycleStage": "active",
+      "displayOrder": 33,
       "active": true,
       "youtubeChannelId": "UCDqI2jOz0weumE8s7paEk6g"
     },
@@ -1258,6 +1341,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 65,
       "active": true,
       "youtubeChannelId": "UCIBY1ollUsauvVi4hW4cumw"
     },
@@ -1273,6 +1357,7 @@
       "channelType": "member",
       "themeColor": "#FF4B74",
       "lifecycleStage": "active",
+      "displayOrder": 35,
       "active": true,
       "youtubeChannelId": "UC-hM6YJuNYVAmUWxeIr9FeA"
     },
@@ -1288,6 +1373,7 @@
       "channelType": "member",
       "themeColor": "#ED784A",
       "lifecycleStage": "active",
+      "displayOrder": 27,
       "active": true,
       "youtubeChannelId": "UCuDY3ibSP2MFRgf7eo3cojg"
     },
@@ -1303,6 +1389,7 @@
       "channelType": "member",
       "themeColor": "#D6ADFF",
       "lifecycleStage": "active",
+      "displayOrder": 20,
       "active": true,
       "youtubeChannelId": "UCD5W21JqNMv_tV9nfjvF9sw"
     },
@@ -1318,6 +1405,7 @@
       "channelType": "member",
       "themeColor": "#8D81AE",
       "lifecycleStage": "active",
+      "displayOrder": 95,
       "active": true,
       "youtubeChannelId": "UCgnfPPb9JI3e9A4cXHnWbyg"
     },
@@ -1334,6 +1422,7 @@
       "channelType": "member",
       "themeColor": "#2BCDFF",
       "lifecycleStage": "active",
+      "displayOrder": 1,
       "active": true,
       "youtubeChannelId": "UCdn5BQ06XqgXoAxIhbqw5Rg"
     },
@@ -1349,6 +1438,7 @@
       "channelType": "member",
       "themeColor": "#8ECED9",
       "lifecycleStage": "active",
+      "displayOrder": 22,
       "active": true,
       "youtubeChannelId": "UC61OwuYOVuKkpKnid-43Twg"
     },
@@ -1364,6 +1454,7 @@
       "channelType": "member",
       "themeColor": "#DB3A11",
       "lifecycleStage": "active",
+      "displayOrder": 50,
       "active": true,
       "youtubeChannelId": "UCvInZx9h3jC2JzsIzoOebWg"
     },
@@ -1379,6 +1470,7 @@
       "channelType": "member",
       "themeColor": "#8A939E",
       "lifecycleStage": "active",
+      "displayOrder": 51,
       "active": true,
       "youtubeChannelId": "UCdyqAaZDKHXg4Ahi7VENThQ"
     },
@@ -1394,6 +1486,7 @@
       "channelType": "member",
       "themeColor": "#5FCFA7",
       "lifecycleStage": "active",
+      "displayOrder": 59,
       "active": true,
       "youtubeChannelId": "UCUKD-uaobj9jiqB-VXt71mA"
     },
@@ -1409,6 +1502,7 @@
       "channelType": "member",
       "themeColor": "#7B7EFF",
       "lifecycleStage": "pre_debut",
+      "displayOrder": 80,
       "active": true,
       "youtubeChannelId": "UCROQtXcp2loQEmvpe5rhJzQ"
     },
@@ -1424,6 +1518,7 @@
       "channelType": "member",
       "themeColor": "#FFFFFF",
       "lifecycleStage": "active",
+      "displayOrder": 14,
       "active": true,
       "youtubeChannelId": "UCF_U2GCKHvDz52jWdizppIA"
     },
@@ -1439,6 +1534,7 @@
       "channelType": "member",
       "themeColor": "#E2383B",
       "lifecycleStage": "pre_debut",
+      "displayOrder": 79,
       "active": true,
       "youtubeChannelId": "UCy9mgxB8pn2C4aNK_MPthDQ"
     },
@@ -1454,6 +1550,7 @@
       "channelType": "member",
       "themeColor": "#FA96C8",
       "lifecycleStage": "active",
+      "displayOrder": 15,
       "active": true,
       "youtubeChannelId": "UCvUc0m317LWTTPZoBQV479A"
     },
@@ -1469,6 +1566,7 @@
       "channelType": "member",
       "themeColor": "#FF511C",
       "lifecycleStage": "active",
+      "displayOrder": 88,
       "active": true,
       "youtubeChannelId": "UCHsx4Hqa-1ORjQTh9TYDhww"
     },
@@ -1484,6 +1582,7 @@
       "channelType": "member",
       "themeColor": "#52363E",
       "lifecycleStage": "active",
+      "displayOrder": 63,
       "active": true,
       "youtubeChannelId": "UCs9_O1tRPMQTHQ-N_L6FU2g"
     },
@@ -1499,6 +1598,7 @@
       "channelType": "member",
       "themeColor": "#BEFF77",
       "lifecycleStage": "active",
+      "displayOrder": 31,
       "active": true,
       "youtubeChannelId": "UCoW8qQy80mKH0RJTKAK-nNA"
     },
@@ -1514,6 +1614,7 @@
       "channelType": "member",
       "themeColor": "#9293FE",
       "lifecycleStage": "active",
+      "displayOrder": 71,
       "active": true,
       "youtubeChannelId": "UC1iA6_NT4mtAcIII6ygrvCw"
     },
@@ -1529,6 +1630,7 @@
       "channelType": "member",
       "themeColor": "#0146E9",
       "lifecycleStage": "active",
+      "displayOrder": 32,
       "active": true,
       "youtubeChannelId": "UCp6993wxpyDPHUpavwDFqgg"
     },
@@ -1544,6 +1646,7 @@
       "channelType": "member",
       "themeColor": "#A9A2EB",
       "lifecycleStage": "active",
+      "displayOrder": 55,
       "active": true,
       "youtubeChannelId": "UC1uv2Oq6kNxgATlCiez59hw"
     },
@@ -1559,6 +1662,7 @@
       "channelType": "member",
       "themeColor": "#5195E1",
       "lifecycleStage": "active",
+      "displayOrder": 26,
       "active": true,
       "youtubeChannelId": "UC-WX1CXssCtCtc2TNIRnJzg"
     },
@@ -1574,6 +1678,7 @@
       "channelType": "member",
       "themeColor": "#DBDB89",
       "lifecycleStage": "active",
+      "displayOrder": 54,
       "active": true,
       "youtubeChannelId": "UCqm3BQLlJfvkTsX_hvm0UmA"
     },
@@ -1589,6 +1694,7 @@
       "channelType": "group",
       "themeColor": null,
       "lifecycleStage": "pre_debut",
+      "displayOrder": 81,
       "active": true,
       "youtubeChannelId": "UC3OH5FKQ3qtl4uRme_vZTgA"
     },
@@ -1604,6 +1710,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 49,
       "active": true,
       "youtubeChannelId": "UCl_gCybOJRIgOXw6Qb4qJzQ"
     },
@@ -1619,6 +1726,7 @@
       "channelType": "member",
       "themeColor": "#65BBEB",
       "lifecycleStage": "active",
+      "displayOrder": 2,
       "active": true,
       "youtubeChannelId": "UC1DCedRgGHBdm81E1llLhOQ"
     },
@@ -1634,6 +1742,7 @@
       "channelType": "member",
       "themeColor": "#C7B2D6",
       "lifecycleStage": "active",
+      "displayOrder": 13,
       "active": true,
       "youtubeChannelId": "UCnvVG9RbOW3J6Ifqo-zKLiw"
     },
@@ -1649,6 +1758,7 @@
       "channelType": "member",
       "themeColor": "#98A1AC",
       "lifecycleStage": "active",
+      "displayOrder": 108,
       "active": true,
       "youtubeChannelId": "UCTvHWSfBZgtxE4sILOaurIQ"
     },
@@ -1664,6 +1774,7 @@
       "channelType": "group",
       "themeColor": null,
       "lifecycleStage": "active",
+      "displayOrder": 7,
       "active": true,
       "youtubeChannelId": "UCuI5XaO-6VkOEhHao6ij7JA"
     },
@@ -1679,6 +1790,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 6,
       "active": true,
       "youtubeChannelId": "UCyl1z3jo3XHR1riLFKG5UAg"
     },
@@ -1694,6 +1806,7 @@
       "channelType": "member",
       "themeColor": "#85CAB3",
       "lifecycleStage": "active",
+      "displayOrder": 19,
       "active": true,
       "youtubeChannelId": "UCjXBuHmWkieBApgBhDuJMMQ"
     },
@@ -1709,6 +1822,7 @@
       "channelType": "member",
       "themeColor": "#909EC8",
       "lifecycleStage": "active",
+      "displayOrder": 25,
       "active": true,
       "youtubeChannelId": "UCX4WL24YEOUYd7qDsFSLDOw"
     },
@@ -1724,6 +1838,7 @@
       "channelType": "member",
       "themeColor": null,
       "lifecycleStage": "graduated",
+      "displayOrder": 37,
       "active": true,
       "youtubeChannelId": "UCD8HOxPs4Xvsm8H0ZxXGiBw"
     },
@@ -1739,6 +1854,7 @@
       "channelType": "member",
       "themeColor": "#47B4DF",
       "lifecycleStage": "active",
+      "displayOrder": 57,
       "active": true,
       "youtubeChannelId": "UCFKOVgVbGmX65RxO3EtH3iw"
     },
@@ -1754,6 +1870,7 @@
       "channelType": "member",
       "themeColor": "#FF8684",
       "lifecycleStage": "active",
+      "displayOrder": 24,
       "active": true,
       "youtubeChannelId": "UCS5l_Y0oMVTjEos2LuyeSZQ"
     },
@@ -1769,6 +1886,7 @@
       "channelType": "member",
       "themeColor": "#E9BB5D",
       "lifecycleStage": "active",
+      "displayOrder": 44,
       "active": true,
       "youtubeChannelId": "UC1suqwovbL1kzsoaZgFZLKg"
     }

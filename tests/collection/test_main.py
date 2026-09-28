@@ -32,6 +32,7 @@ def _creator(**overrides) -> Creator:
         "group_key": ["1期生"],
         "channel_type": "member",
         "lifecycle_stage": "active",
+        "display_order": 0,
     }
     fields.update(overrides)
     return Creator(**fields)
@@ -413,6 +414,7 @@ def test_discovery_classifies_the_topic_of_each_new_video(monkeypatch):
         group_key=["NO"],
         channel_type="member",
         lifecycle_stage="active",
+        display_order=0,
     )
     monkeypatch.setattr(main_module, "get_uploads_playlist_id", lambda youtube, channel_id: "UU1")
     monkeypatch.setattr(

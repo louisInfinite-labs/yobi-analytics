@@ -28,6 +28,7 @@ def _creator(creator_id: str) -> Creator:
         group_key=["NO"],
         channel_type="member",
         lifecycle_stage="active",
+        display_order=0,
     )
 
 

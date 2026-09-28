@@ -98,25 +98,26 @@ function groupChannelFirst<T extends GroupableCreator>(creators: T[]): T[] {
   return [...creators].sort((a, b) => (a.channelType === "group" ? -1 : 0) - (b.channelType === "group" ? -1 : 0))
 }
 
-/** hololive JP's own real groupKey values include "ReGLOSS" and "FLOWGLOW"
- * (no literal "Dev_IS" tag exists in the real roster) -- two separate named
- * sections (FLOW GLOW, then ReGLOSS), each its own unit channel first
- * followed by its members, not one combined "Dev_IS" section. Gamers
- * membership is checked against a creator's FULL groupKey array, not just
- * their primary tag -- a creator whose primary tag is a numbered generation
- * (e.g. Shirakami Fubuki, primary "1期生") but who also carries the Gamers
- * tag second still shows under both her own generation AND Gamers, rather
- * than Gamers requiring a creator's primary tag to be Gamers. Anything else
- * unrecognized (e.g. a staff channel's own tag) falls into a catch-all
- * "Other" bucket (OTHER_GROUP_LABEL_KEY) rather than being silently
- * dropped. `getSortName` picks each creator's own display text, used only
- * to sort the "Other" bucket alphabetically. */
+/** hololive JP's own real groupKey values include "ReGLOSS", "FLOWGLOW", and
+ * "アソビ★まわり隊！" (no literal "Dev_IS" tag exists in the real roster) --
+ * three separate named sections (FLOW GLOW, ReGLOSS, アソビ★まわり隊！), each
+ * its own unit channel first followed by its members, not one combined
+ * section. Gamers membership is checked against a creator's FULL groupKey
+ * array, not just their primary tag -- a creator whose primary tag is a
+ * numbered generation (e.g. Shirakami Fubuki, primary "1期生") but who also
+ * carries the Gamers tag second still shows under both her own generation
+ * AND Gamers, rather than Gamers requiring a creator's primary tag to be
+ * Gamers. Anything else unrecognized (e.g. a staff channel's own tag) falls
+ * into a catch-all "Other" bucket (OTHER_GROUP_LABEL_KEY) rather than being
+ * silently dropped. `getSortName` picks each creator's own display text,
+ * used only to sort the "Other" bucket alphabetically. */
 export function groupHololiveJp<T extends GroupableCreator>(creators: T[], getSortName: (creator: T) => string): Subgroup<T>[] {
   const numbered = new Map<number, T[]>()
   const gamers: T[] = []
   const flowGlow: T[] = []
   const reGloss: T[] = []
   const holoX: T[] = []
+  const asobimawaritai: T[] = []
   const other: T[] = []
 
   for (const creator of creators) {
@@ -133,6 +134,8 @@ export function groupHololiveJp<T extends GroupableCreator>(creators: T[], getSo
       flowGlow.push(creator)
     } else if (key === "ReGLOSS") {
       reGloss.push(creator)
+    } else if (key === "アソビ★まわり隊！") {
+      asobimawaritai.push(creator)
     } else if (key !== "ゲーマーズ") {
       other.push(creator)
     }
@@ -161,6 +164,11 @@ export function groupHololiveJp<T extends GroupableCreator>(creators: T[], getSo
   for (const [gen, members] of remainingGenerations) subgroups.push({ label: `${gen}期生`, creators: members })
   if (reGloss.length > 0) subgroups.push({ label: "ReGLOSS", creators: groupChannelFirst(reGloss) })
   if (flowGlow.length > 0) subgroups.push({ label: "FLOW GLOW", creators: groupChannelFirst(flowGlow) })
+  // Same group-channel-first convention as ReGLOSS/FLOW GLOW above -- the
+  // canonical roster carries hololive_asobimawaritai as its own
+  // channelType "group" record (groupKey ["アソビ★まわり隊！"]), same shape as
+  // hololive_dev_is_regloss/hololive_dev_is_flow_glow.
+  if (asobimawaritai.length > 0) subgroups.push({ label: "アソビ★まわり隊！", creators: groupChannelFirst(asobimawaritai) })
   if (other.length > 0) {
     const sortedOther = [...other].sort((a, b) => getSortName(a).toLowerCase().localeCompare(getSortName(b).toLowerCase()))
     subgroups.push({ label: OTHER_GROUP_LABEL_KEY, creators: sortedOther })

@@ -1,11 +1,12 @@
 import { Avatar } from "antd"
 import { Heart } from "lucide-react"
 import { Fragment, useState, type CSSProperties } from "react"
-import { mockCreators, type MockCreator } from "../../../entities/creator/data/mockCreators"
+import { toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
+import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 import { useDefaultOshiCreator } from "../../oshi/hooks/useDefaultOshiCreator"
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import { useSwipeToFavorite } from "../../favorites/hooks/useSwipeToFavorite"
-import { creatorMatchesSearch, groupCreatorsForDockWithSubgroups } from "../../../entities/creator/utils/dockCreatorOrder"
+import { groupEligibleCreatorsForLiveStatus } from "../utils/liveStatusCanonicalRoster"
 import { formatCreatorStatus, type UpcomingDisplayMode } from "../model/creatorStatusFormat"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY } from "../../../entities/creator/utils/hololiveSubgrouping"
@@ -39,35 +40,39 @@ function formatBranchHeading(branch: BranchKey): string {
 /** Avatar + favorite indicator. antd's own Avatar already falls back to its
  * `children` whenever `src` is unset or fails to load (see antd's Avatar.js
  * -- isImgExist state, no onError needed for that), so this needs no
- * separate image-load-failure state of its own any more -- confirmed real
- * YouTube avatar URLs are NOT currently exposed anywhere in this app's data
- * (mockCreators.ts's own avatarUrl field is left unset on every entry, per
- * its own doc comment); this stays avatar-ready for the moment a real URL
- * source exists, without inventing one. */
+ * separate image-load-failure state of its own. C7B populated the current
+ * production Creator Registry with real YouTube avatar thumbnails, but the
+ * schema stays nullable (a creator can still lack one), which is exactly
+ * what this fallback handles. */
 type CreatorNameAccentStyle = CSSProperties & { "--member-theme-color": string }
 
 /** Per-row hover/focus accent for the creator's OWN name -- independent of
  * currentOshi (creatorThemeStyle's --creator-main), which stays bound to
  * whichever creator is actually selected, not whichever row the pointer
- * happens to be over. */
-function creatorNameAccentStyle(creator: MockCreator): CreatorNameAccentStyle {
-  return { "--member-theme-color": getMemberAccent(creator.channelId, creator.themeColor).primary }
+ * happens to be over.
+ *
+ * Seeded with the legacy "ch_"-form id (toLegacyRosterId), not creatorId, so
+ * a creator's hashed-palette fallback accent (no verified themeColor) stays
+ * pixel-identical to before this migration (C8C) -- same hash input as when
+ * this list read MockCreator.channelId directly. */
+function creatorNameAccentStyle(creator: CanonicalCreator): CreatorNameAccentStyle {
+  return { "--member-theme-color": getMemberAccent(toLegacyRosterId(creator), creator.themeColor).primary }
 }
 
-function CreatorAvatar({ creator, isFavorite }: { creator: MockCreator; isFavorite: boolean }) {
-  const accent = getMemberAccent(creator.channelId, creator.themeColor)
-  const spokenName = creator.channelName.replace(/\n/g, " ")
+function CreatorAvatar({ creator, isFavorite }: { creator: CanonicalCreator; isFavorite: boolean }) {
+  const accent = getMemberAccent(toLegacyRosterId(creator), creator.themeColor)
+  const spokenName = creator.displayName.replace(/\n/g, " ")
 
   return (
     <span className="live-status-member__avatar-wrap">
       <Avatar
         size={36}
-        src={creator.avatarUrl}
+        src={creator.avatarUrl ?? undefined}
         alt={spokenName}
         className="live-status-member__avatar"
         style={creator.avatarUrl ? undefined : { background: accent.primary, color: accent.textAccent }}
       >
-        {creator.channelName.charAt(0)}
+        {creator.displayName.charAt(0)}
       </Avatar>
       {isFavorite && (
         <Heart className="live-status-member__favorite-indicator" aria-hidden="true" fill="currentColor" />
@@ -77,7 +82,7 @@ function CreatorAvatar({ creator, isFavorite }: { creator: MockCreator; isFavori
 }
 
 interface CreatorRowProps {
-  creator: MockCreator
+  creator: CanonicalCreator
   status: CreatorStatus
   displayMode: UpcomingDisplayMode
   now: Date
@@ -89,7 +94,7 @@ interface CreatorRowProps {
    * the row's own selected accent rail, independent of MAIN. */
   isCurrentOshi: boolean
   locale: Locale
-  onCreatorButtonClick: (creator: MockCreator) => void
+  onCreatorButtonClick: (creator: CanonicalCreator) => void
   onSelectVideo: (video: { videoId: string; title: string }) => void
   onToggleFavorite: (channelId: string) => void
 }
@@ -119,7 +124,8 @@ function CreatorRow({
 }: CreatorRowProps) {
   const [timeFormat] = useTimeFormat()
   const display = formatCreatorStatus(status, displayMode, now, locale, timeFormat)
-  const swipe = useSwipeToFavorite(isFavorite, () => onToggleFavorite(creator.channelId))
+  const legacyId = toLegacyRosterId(creator)
+  const swipe = useSwipeToFavorite(isFavorite, () => onToggleFavorite(legacyId))
   const topic = status.kind === "offline" ? null : status.title
 
   return (
@@ -144,12 +150,12 @@ function CreatorRow({
           className="live-status-member__creator-button"
           style={creatorNameAccentStyle(creator)}
           onClick={swipe.guardClick(() => onCreatorButtonClick(creator))}
-          aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.channelName })}
+          aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.displayName })}
         >
           <CreatorAvatar creator={creator} isFavorite={isFavorite} />
           <span className="live-status-member__main">
             <span className="live-status-member__name-row">
-              <span className="live-status-member__name">{creator.channelName}</span>
+              <span className="live-status-member__name">{creator.displayName}</span>
               {isMainOshi && <span className="live-status-member__main-badge">{t(locale, "creatorStatusList.mainBadge")}</span>}
             </span>
             {topic && <span className="live-status-member__topic">{topic}</span>}
@@ -231,9 +237,7 @@ export function CreatorStatusList({
   confirmOshiSwitch,
   onConfirmOshiSwitchChange,
 }: CreatorStatusListProps) {
-  const groups = groupCreatorsForDockWithSubgroups(
-    mockCreators.filter((creator) => matchesFavoriteFilter(creator.channelId, favoriteOnlyIds) && creatorMatchesSearch(creator, query)),
-  )
+  const groups = groupEligibleCreatorsForLiveStatus(query, (creator) => matchesFavoriteFilter(toLegacyRosterId(creator), favoriteOnlyIds))
   // `video` is only set when the switch was triggered by a video click (not
   // a plain name/avatar click) -- see handleVideoSelect below -- so the
   // confirm dialog's own onConfirm knows whether to also select a video
@@ -251,11 +255,12 @@ export function CreatorStatusList({
   const [currentOshiId] = useSelectedCreator()
   const [defaultOshiId] = useDefaultOshiCreator()
 
-  function handleCreatorClick(creator: MockCreator) {
+  function handleCreatorClick(creator: CanonicalCreator) {
+    const legacyId = toLegacyRosterId(creator)
     if (confirmOshiSwitch) {
-      setPendingSwitch({ channelId: creator.channelId, channelName: creator.channelName })
+      setPendingSwitch({ channelId: legacyId, channelName: creator.displayName })
     } else {
-      onSelectCreator(creator.channelId)
+      onSelectCreator(legacyId)
     }
   }
 
@@ -266,16 +271,17 @@ export function CreatorStatusList({
    * handleCreatorClick above already uses) so Home's central player never
    * ends up showing one creator's video under another creator's identity/
    * theme. */
-  function handleVideoSelect(creator: MockCreator, video: { videoId: string; title: string }) {
-    if (creator.channelId === currentOshiId) {
-      onSelectVideo(video, creator.channelId)
+  function handleVideoSelect(creator: CanonicalCreator, video: { videoId: string; title: string }) {
+    const legacyId = toLegacyRosterId(creator)
+    if (legacyId === currentOshiId) {
+      onSelectVideo(video, legacyId)
       return
     }
     if (confirmOshiSwitch) {
-      setPendingSwitch({ channelId: creator.channelId, channelName: creator.channelName, video })
+      setPendingSwitch({ channelId: legacyId, channelName: creator.displayName, video })
     } else {
-      onSelectCreator(creator.channelId)
-      onSelectVideo(video, creator.channelId)
+      onSelectCreator(legacyId)
+      onSelectVideo(video, legacyId)
     }
   }
 
@@ -287,7 +293,7 @@ export function CreatorStatusList({
         // count per group may be shown only if it is trivially derived
         // from already available state").
         const liveChannelIds = new Set(
-          group.subgroups.flatMap((subgroup) => subgroup.creators.map((creator) => creator.channelId)),
+          group.subgroups.flatMap((subgroup) => subgroup.creators.map((creator) => toLegacyRosterId(creator))),
         )
         const liveCount = [...liveChannelIds].filter((channelId) => statuses[channelId]?.kind === "live").length
         return (
@@ -307,18 +313,19 @@ export function CreatorStatusList({
                   <div className="live-status-group__subheading">{subgroupTitle(locale, subgroup.label)}</div>
                 )}
                 {subgroup.creators.map((creator) => {
-                  const status = statuses[creator.channelId] ?? { kind: "offline" as const }
-                  const isFavorite = favorites.has(creator.channelId)
+                  const legacyId = toLegacyRosterId(creator)
+                  const status = statuses[legacyId] ?? { kind: "offline" as const }
+                  const isFavorite = favorites.has(legacyId)
                   return (
                     <CreatorRow
-                      key={creator.channelId}
+                      key={creator.creatorId}
                       creator={creator}
                       status={status}
                       displayMode={displayMode}
                       now={now}
                       isFavorite={isFavorite}
-                      isMainOshi={creator.channelId === defaultOshiId}
-                      isCurrentOshi={creator.channelId === currentOshiId}
+                      isMainOshi={legacyId === defaultOshiId}
+                      isCurrentOshi={legacyId === currentOshiId}
                       locale={locale}
                       onCreatorButtonClick={handleCreatorClick}
                       onSelectVideo={(video) => handleVideoSelect(creator, video)}

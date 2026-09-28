@@ -56,6 +56,15 @@ class Creator:
     # Real-world status, independent of the collection toggle `active` — a
     # pre-debut unit can be lifecycle_stage="pre_debut" while active=true.
     lifecycle_stage: str
+    # The single canonical stable display order for member-selection/roster
+    # UIs (My Oshi, Oshi Settings, and any future consumer that needs a
+    # curated rather than alphabetical order) — an ascending int, unique
+    # across the roster. This is the ONE authoritative order; a consumer
+    # sorts by this field rather than maintaining its own copy of it (C8A0).
+    # Seeded once from the frontend's former hand-maintained mockCreators.ts
+    # array order at migration time — mockCreators.ts is NOT the ongoing
+    # authority for it going forward, this field is.
+    display_order: int
     # False for a creator whose upload history is known to be closed (e.g. a
     # graduated talent). Their already-known videos still get statistics/
     # snapshots via active; Discovery just stops looking for new uploads.
@@ -89,7 +98,30 @@ class Creator:
 def load_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
     """Load all creators from the Creator Master JSON file."""
     raw_creators = load_json_list(path, store_name="Creator Master", error_class=CreatorMasterError)
-    return [_parse_creator(raw) for raw in raw_creators]
+    creators = [_parse_creator(raw) for raw in raw_creators]
+    _require_unique_display_order(creators)
+    return creators
+
+
+def _require_unique_display_order(creators: list[Creator]) -> None:
+    """Raise CreatorMasterError if two creators share the same displayOrder.
+
+    _require_int (inside _parse_creator) only validates one record's
+    displayOrder in isolation; displayOrder's whole purpose is to be each
+    creator's unique position in the canonical UI ordering (see
+    Creator.display_order's own docstring: "an ascending int, unique across
+    the roster"), so a collision is a Creator Master data-integrity bug that
+    must fail loudly rather than leave two creators silently tied for the
+    same slot.
+    """
+    seen: dict[int, str] = {}
+    for creator in creators:
+        if creator.display_order in seen:
+            raise CreatorMasterError(
+                f"Duplicate displayOrder {creator.display_order!r} in Creator Master: "
+                f"{seen[creator.display_order]!r} and {creator.creator_id!r}"
+            )
+        seen[creator.display_order] = creator.creator_id
 
 
 def get_active_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
@@ -293,6 +325,8 @@ def _parse_creator(raw: dict) -> Creator:
         if lifecycle_stage not in VALID_LIFECYCLE_STAGES:
             raise CreatorMasterError(f"Creator {creator_id!r} has invalid 'lifecycleStage': {lifecycle_stage!r}")
 
+        display_order = _require_int(raw, "displayOrder", creator_id)
+
         discovery_enabled = raw.get("discoveryEnabled", True)
         if not isinstance(discovery_enabled, bool):
             raise CreatorMasterError(
@@ -320,6 +354,7 @@ def _parse_creator(raw: dict) -> Creator:
             group_key=group_key,
             channel_type=channel_type,
             lifecycle_stage=lifecycle_stage,
+            display_order=display_order,
             discovery_enabled=discovery_enabled,
             graduated_at=graduated_at,
             theme_color=theme_color,
@@ -334,6 +369,18 @@ def _require_str(raw: dict, field: str) -> str:
     value = raw.get(field)
     if not isinstance(value, str) or not value:
         raise CreatorMasterError(f"Creator {raw.get('creatorId')!r} has invalid {field!r}: {value!r}")
+    return value
+
+
+def _require_int(raw: dict, field: str, creator_id: str) -> int:
+    """Return raw[field] as an int, or raise CreatorMasterError.
+
+    bool is deliberately rejected even though Python's bool is an int
+    subclass -- a stray `true`/`false` here would silently parse as 1/0.
+    """
+    value = raw.get(field)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CreatorMasterError(f"Creator {creator_id!r} has invalid {field!r}: {value!r}")
     return value
 
 

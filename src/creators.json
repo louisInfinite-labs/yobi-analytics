@@ -8,6 +8,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 8,
     "groupKey": [
       "NO"
     ],
@@ -23,6 +24,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 9,
     "groupKey": [
       "NO"
     ],
@@ -38,6 +40,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 10,
     "groupKey": [
       "NO"
     ],
@@ -53,6 +56,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 11,
     "groupKey": [
       "NO"
     ],
@@ -68,6 +72,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 12,
     "groupKey": [
       "NO"
     ],
@@ -83,6 +88,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 13,
     "groupKey": [
       "NO"
     ],
@@ -98,6 +104,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 14,
     "groupKey": [
       "NO"
     ],
@@ -113,6 +120,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 15,
     "groupKey": [
       "NO"
     ],
@@ -128,6 +136,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 16,
     "groupKey": [
       "NO"
     ],
@@ -143,6 +152,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 17,
     "groupKey": [
       "NO"
     ],
@@ -158,6 +168,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 18,
     "groupKey": [
       "NO"
     ],
@@ -173,6 +184,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 19,
     "groupKey": [
       "NO"
     ],
@@ -188,6 +200,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 0,
     "groupKey": [
       "NO"
     ],
@@ -203,6 +216,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 20,
     "groupKey": [
       "NO"
     ],
@@ -218,6 +232,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 21,
     "groupKey": [
       "NO"
     ],
@@ -233,6 +248,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 22,
     "groupKey": [
       "NO"
     ],
@@ -248,6 +264,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 23,
     "groupKey": [
       "NO"
     ],
@@ -263,6 +280,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 24,
     "groupKey": [
       "NO"
     ],
@@ -278,6 +296,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 25,
     "groupKey": [
       "NO"
     ],
@@ -293,6 +312,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 26,
     "groupKey": [
       "NO"
     ],
@@ -308,6 +328,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 27,
     "groupKey": [
       "NO"
     ],
@@ -323,6 +344,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 28,
     "groupKey": [
       "NO"
     ],
@@ -338,6 +360,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 29,
     "groupKey": [
       "NO"
     ],
@@ -353,6 +376,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 30,
     "groupKey": [
       "NO"
     ],
@@ -368,6 +392,7 @@
     "branch": "vspo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 31,
     "groupKey": [
       "NO"
     ],
@@ -383,6 +408,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 32,
     "groupKey": [
       "0期生"
     ],
@@ -398,6 +424,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 33,
     "groupKey": [
       "0期生"
     ],
@@ -413,6 +440,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 34,
     "groupKey": [
       "0期生"
     ],
@@ -428,6 +456,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 35,
     "groupKey": [
       "0期生"
     ],
@@ -443,6 +472,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 36,
     "groupKey": [
       "0期生"
     ],
@@ -459,6 +489,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 37,
     "graduatedAt": "2024-01-16",
     "groupKey": [
       "1期生"
@@ -474,6 +505,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 38,
     "groupKey": [
       "1期生"
     ],
@@ -489,6 +521,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 39,
     "groupKey": [
       "1期生"
     ],
@@ -504,6 +537,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 1,
     "groupKey": [
       "1期生",
       "ゲーマーズ"
@@ -520,6 +554,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 40,
     "groupKey": [
       "1期生"
     ],
@@ -536,6 +571,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 41,
     "graduatedAt": "2024-08-28",
     "groupKey": [
       "2期生"
@@ -552,6 +588,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 42,
     "graduatedAt": "2025-04-26",
     "groupKey": [
       "2期生"
@@ -567,6 +604,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 43,
     "groupKey": [
       "2期生"
     ],
@@ -582,6 +620,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 44,
     "groupKey": [
       "2期生"
     ],
@@ -597,6 +636,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 45,
     "groupKey": [
       "2期生"
     ],
@@ -612,6 +652,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 46,
     "groupKey": [
       "ゲーマーズ"
     ],
@@ -627,6 +668,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 47,
     "groupKey": [
       "ゲーマーズ"
     ],
@@ -642,6 +684,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 48,
     "groupKey": [
       "ゲーマーズ"
     ],
@@ -657,6 +700,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 2,
     "groupKey": [
       "3期生"
     ],
@@ -673,6 +717,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 49,
     "graduatedAt": "2022-02-24",
     "groupKey": [
       "3期生"
@@ -688,6 +733,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 50,
     "groupKey": [
       "3期生"
     ],
@@ -703,6 +749,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 51,
     "groupKey": [
       "3期生"
     ],
@@ -718,6 +765,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 52,
     "groupKey": [
       "3期生"
     ],
@@ -734,6 +782,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 53,
     "graduatedAt": "2025-12-27",
     "groupKey": [
       "4期生"
@@ -750,6 +799,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 5,
     "graduatedAt": "2021-07-01",
     "groupKey": [
       "4期生"
@@ -765,6 +815,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 54,
     "groupKey": [
       "4期生"
     ],
@@ -780,6 +831,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 55,
     "groupKey": [
       "4期生"
     ],
@@ -795,6 +847,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 56,
     "groupKey": [
       "4期生"
     ],
@@ -810,6 +863,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 57,
     "groupKey": [
       "5期生"
     ],
@@ -825,6 +879,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 58,
     "groupKey": [
       "5期生"
     ],
@@ -840,6 +895,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 59,
     "groupKey": [
       "5期生"
     ],
@@ -855,6 +911,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 60,
     "groupKey": [
       "5期生"
     ],
@@ -871,6 +928,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 61,
     "graduatedAt": "2020-08-31",
     "groupKey": [
       "5期生"
@@ -886,6 +944,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 62,
     "groupKey": [
       "6期生"
     ],
@@ -901,6 +960,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 63,
     "groupKey": [
       "6期生"
     ],
@@ -916,6 +976,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 64,
     "groupKey": [
       "6期生"
     ],
@@ -931,6 +992,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 65,
     "discoveryEnabled": false,
     "graduatedAt": "2025-01-26",
     "groupKey": [
@@ -947,6 +1009,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 66,
     "groupKey": [
       "6期生"
     ],
@@ -963,6 +1026,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 67,
     "graduatedAt": "2025-09-08",
     "groupKey": [
       "ReGLOSS"
@@ -978,6 +1042,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 68,
     "groupKey": [
       "ReGLOSS"
     ],
@@ -993,6 +1058,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 69,
     "groupKey": [
       "ReGLOSS"
     ],
@@ -1008,6 +1074,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 70,
     "groupKey": [
       "ReGLOSS"
     ],
@@ -1023,6 +1090,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 71,
     "groupKey": [
       "ReGLOSS"
     ],
@@ -1038,6 +1106,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 72,
     "groupKey": [
       "FLOWGLOW"
     ],
@@ -1053,6 +1122,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 73,
     "groupKey": [
       "FLOWGLOW"
     ],
@@ -1068,6 +1138,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 74,
     "groupKey": [
       "FLOWGLOW"
     ],
@@ -1083,6 +1154,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 75,
     "groupKey": [
       "FLOWGLOW"
     ],
@@ -1098,6 +1170,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 76,
     "groupKey": [
       "FLOWGLOW"
     ],
@@ -1113,6 +1186,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "pre_debut",
+    "displayOrder": 77,
     "groupKey": [
       "アソビ★まわり隊！"
     ],
@@ -1128,6 +1202,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "pre_debut",
+    "displayOrder": 78,
     "groupKey": [
       "アソビ★まわり隊！"
     ],
@@ -1143,6 +1218,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "pre_debut",
+    "displayOrder": 79,
     "groupKey": [
       "アソビ★まわり隊！"
     ],
@@ -1158,6 +1234,7 @@
     "branch": "holo_jp",
     "channelType": "member",
     "lifecycleStage": "pre_debut",
+    "displayOrder": 80,
     "groupKey": [
       "アソビ★まわり隊！"
     ],
@@ -1173,6 +1250,7 @@
     "branch": "holo_jp",
     "channelType": "group",
     "lifecycleStage": "pre_debut",
+    "displayOrder": 81,
     "groupKey": [
       "mekpark"
     ],
@@ -1187,6 +1265,7 @@
     "branch": "holo_jp",
     "channelType": "group",
     "lifecycleStage": "pre_debut",
+    "displayOrder": 82,
     "groupKey": [
       "mekpark"
     ],
@@ -1201,6 +1280,7 @@
     "branch": "holo_jp",
     "channelType": "staff",
     "lifecycleStage": "active",
+    "displayOrder": 83,
     "groupKey": [
       "aNnounce"
     ],
@@ -1215,6 +1295,7 @@
     "branch": "holo_jp",
     "channelType": "group",
     "lifecycleStage": "active",
+    "displayOrder": 84,
     "groupKey": [
       "ReGLOSS"
     ],
@@ -1229,6 +1310,7 @@
     "branch": "holo_jp",
     "channelType": "group",
     "lifecycleStage": "active",
+    "displayOrder": 85,
     "groupKey": [
       "FLOWGLOW"
     ],
@@ -1243,6 +1325,7 @@
     "branch": "holo_jp",
     "channelType": "group",
     "lifecycleStage": "pre_debut",
+    "displayOrder": 86,
     "groupKey": [
       "アソビ★まわり隊！"
     ],
@@ -1257,6 +1340,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 87,
     "groupKey": [
       "Myth"
     ],
@@ -1272,6 +1356,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 88,
     "groupKey": [
       "Myth"
     ],
@@ -1287,6 +1372,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 89,
     "groupKey": [
       "Myth"
     ],
@@ -1302,6 +1388,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 3,
     "discoveryEnabled": false,
     "graduatedAt": "2025-05-01",
     "groupKey": [
@@ -1318,6 +1405,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 6,
     "discoveryEnabled": false,
     "graduatedAt": "2024-10-25",
     "groupKey": [
@@ -1334,6 +1422,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 90,
     "groupKey": [
       "Promise"
     ],
@@ -1349,6 +1438,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 91,
     "discoveryEnabled": false,
     "graduatedAt": "2025-01-03",
     "groupKey": [
@@ -1365,6 +1455,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 92,
     "groupKey": [
       "Promise"
     ],
@@ -1380,6 +1471,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "graduated",
+    "displayOrder": 93,
     "discoveryEnabled": false,
     "graduatedAt": "2025-04-28",
     "groupKey": [
@@ -1396,6 +1488,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 94,
     "groupKey": [
       "Promise"
     ],
@@ -1411,6 +1504,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 95,
     "groupKey": [
       "Advent"
     ],
@@ -1426,6 +1520,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 96,
     "groupKey": [
       "Advent"
     ],
@@ -1441,6 +1536,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 97,
     "groupKey": [
       "Advent"
     ],
@@ -1456,6 +1552,7 @@
     "branch": "holo_en",
     "channelType": "group",
     "lifecycleStage": "active",
+    "displayOrder": 98,
     "groupKey": [
       "Advent",
       "FUWAMOCO"
@@ -1472,6 +1569,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 99,
     "groupKey": [
       "Justice"
     ],
@@ -1487,6 +1585,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 100,
     "groupKey": [
       "Justice"
     ],
@@ -1502,6 +1601,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 101,
     "groupKey": [
       "Justice"
     ],
@@ -1517,6 +1617,7 @@
     "branch": "holo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 102,
     "groupKey": [
       "Justice"
     ],
@@ -1532,6 +1633,7 @@
     "branch": "holo_id",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 103,
     "groupKey": [
       "1期生"
     ],
@@ -1547,6 +1649,7 @@
     "branch": "holo_id",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 104,
     "groupKey": [
       "1期生"
     ],
@@ -1562,6 +1665,7 @@
     "branch": "holo_id",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 4,
     "groupKey": [
       "1期生"
     ],
@@ -1577,6 +1681,7 @@
     "branch": "holo_id",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 105,
     "groupKey": [
       "2期生"
     ],
@@ -1592,6 +1697,7 @@
     "branch": "holo_id",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 106,
     "groupKey": [
       "2期生"
     ],
@@ -1607,6 +1713,7 @@
     "branch": "holo_id",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 107,
     "groupKey": [
       "2期生"
     ],
@@ -1622,6 +1729,7 @@
     "branch": "holo_id",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 108,
     "groupKey": [
       "3期生"
     ],
@@ -1637,6 +1745,7 @@
     "branch": "holo_id",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 109,
     "groupKey": [
       "3期生"
     ],
@@ -1652,6 +1761,7 @@
     "branch": "holo_id",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 110,
     "groupKey": [
       "3期生"
     ],
@@ -1667,6 +1777,7 @@
     "branch": "vspo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 111,
     "groupKey": [
       "NO"
     ],
@@ -1682,6 +1793,7 @@
     "branch": "vspo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 112,
     "groupKey": [
       "NO"
     ],
@@ -1697,6 +1809,7 @@
     "branch": "vspo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 113,
     "groupKey": [
       "NO"
     ],
@@ -1712,6 +1825,7 @@
     "branch": "vspo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 114,
     "groupKey": [
       "NO"
     ],
@@ -1727,6 +1841,7 @@
     "branch": "vspo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 115,
     "groupKey": [
       "NO"
     ],
@@ -1742,6 +1857,7 @@
     "branch": "vspo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 116,
     "groupKey": [
       "NO"
     ],
@@ -1757,6 +1873,7 @@
     "branch": "vspo_en",
     "channelType": "member",
     "lifecycleStage": "active",
+    "displayOrder": 117,
     "groupKey": [
       "NO"
     ],
@@ -1772,6 +1889,7 @@
     "branch": "vspo_jp",
     "channelType": "group",
     "lifecycleStage": "active",
+    "displayOrder": 7,
     "groupKey": [
       "NO"
     ],

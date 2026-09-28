@@ -29,6 +29,7 @@ def _base_record(**overrides):
         "groupKey": ["NO"],
         "channelType": "member",
         "lifecycleStage": "active",
+        "displayOrder": 0,
     }
     record.update(overrides)
     return record
@@ -49,6 +50,7 @@ def test_load_creators_parses_all_fields():
             group_key=["NO"],
             channel_type="member",
             lifecycle_stage="active",
+            display_order=0,
         ),
         Creator(
             creator_id="inactive_example",
@@ -60,6 +62,7 @@ def test_load_creators_parses_all_fields():
             group_key=["2期生"],
             channel_type="member",
             lifecycle_stage="active",
+            display_order=1,
         ),
     ]
 
@@ -105,6 +108,66 @@ def test_string_discovery_enabled_value_is_rejected(tmp_path):
     """A non-boolean 'discoveryEnabled' is rejected instead of being treated as truthy."""
     path = tmp_path / "creators.json"
     path.write_text(json.dumps([_base_record(discoveryEnabled="false")]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
+def test_display_order_is_parsed_when_present(tmp_path):
+    """A valid int 'displayOrder' is parsed onto the Creator as-is."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(displayOrder=42)]), encoding="utf-8")
+
+    creators = load_creators(path)
+
+    assert creators[0].display_order == 42
+
+
+def test_missing_display_order_is_rejected(tmp_path):
+    """'displayOrder' is required -- a record without it fails to load rather
+    than silently defaulting to an arbitrary order."""
+    record = _base_record()
+    del record["displayOrder"]
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([record]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
+def test_string_display_order_is_rejected(tmp_path):
+    """A non-int 'displayOrder' (e.g. a string) is rejected."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(displayOrder="0")]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
+def test_boolean_display_order_is_rejected(tmp_path):
+    """A boolean 'displayOrder' is rejected -- Python's bool is an int subclass,
+    so this must be checked explicitly rather than accepted as 0/1."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps([_base_record(displayOrder=True)]), encoding="utf-8")
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
+def test_duplicate_display_order_across_roster_is_rejected(tmp_path):
+    """Two creators sharing the same 'displayOrder' fail to load -- each record's
+    displayOrder is individually well-typed, but displayOrder must also be unique
+    across the whole roster (see Creator.display_order's own docstring)."""
+    path = tmp_path / "creators.json"
+    path.write_text(
+        json.dumps(
+            [
+                _base_record(creatorId="creator_a", youtubeChannelId="UC_A", displayOrder=5),
+                _base_record(creatorId="creator_b", youtubeChannelId="UC_B", displayOrder=5),
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     with pytest.raises(CreatorMasterError):
         load_creators(path)
@@ -467,6 +530,17 @@ def test_production_roster_has_avatar_url_populated_for_every_creator():
     assert all(c.avatar_url for c in creators)
 
 
+def test_production_roster_display_order_values_are_unique_ints():
+    """C8A0: every current production creator carries a display_order, each a
+    plain int and unique across the roster -- the one canonical stable order
+    consumers should sort member-selection/roster UIs by."""
+    creators = load_creators()
+
+    assert creators
+    assert all(type(c.display_order) is int for c in creators)  # noqa: E721 -- bool is an int subclass, reject it explicitly
+    assert len({c.display_order for c in creators}) == len(creators)
+
+
 def test_production_roster_loads_with_unique_ids_and_the_verified_asobimawaritai_unit():
     creators = load_creators()
 
@@ -644,6 +718,7 @@ def _creator(**overrides) -> Creator:
         "group_key": ["NO"],
         "channel_type": "member",
         "lifecycle_stage": "active",
+        "display_order": 0,
     }
     fields.update(overrides)
     return Creator(**fields)
