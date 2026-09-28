@@ -118,6 +118,7 @@ export type TranslationKey =
   | "notificationSettings.noSelectedMembers"
   | "notificationSettings.manageMembersButton"
   | "notificationSettings.managementDrawerTitle"
+  | "notificationSettings.managementDrawerNotificationType"
   | "notificationSettings.favoritesGroupLabel"
   | "notificationSettings.topic.all"
   | "notificationSettings.topicCatalog.gta"
@@ -128,6 +129,24 @@ export type TranslationKey =
   | "notificationSettings.topicSelectPlaceholder"
   | "notificationSettings.topicSelectAriaLabel"
   | "notificationSettings.addTopicButtonAriaLabel"
+  | "notificationSettings.reminder.1min"
+  | "notificationSettings.notificationTypeLabel"
+  | "notificationSettings.notificationTypeBoth"
+  | "notificationSettings.notificationTypeCombinedLabel"
+  | "notificationSettings.notificationTypeSectionHelp"
+  | "notificationSettings.topicListPanelTitle"
+  | "notificationSettings.topicSortAriaLabel"
+  | "notificationSettings.topicSortSaved"
+  | "notificationSettings.topicSortAlphabetical"
+  | "notificationSettings.detailDescription"
+  | "notificationSettings.reminderSectionHelp"
+  | "notificationSettings.reminderSectionHelpDisabledNewVideo"
+  | "notificationSettings.overrideSectionTitle"
+  | "notificationSettings.overrideBadgeCount"
+  | "notificationSettings.resetButton"
+  | "notificationSettings.resetButtonAriaLabel"
+  | "notificationSettings.memberPreviewMoreLabel"
+  | "notificationSettings.emptySelection"
   | "languageSettings.picker.zhTW"
   | "languageSettings.picker.en"
   | "languageSettings.picker.ja"
@@ -260,7 +279,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.gamersGroupLabel": "Gamers",
     "notificationSettings.searchPlaceholder": "搜尋成員",
     "notificationSettings.noResults": "找不到符合的成員",
-    "notificationSettings.defaultReminderLabel": "提醒時間",
+    "notificationSettings.defaultReminderLabel": "直播提醒時間",
     "notificationSettings.reminder.atStart": "開播時",
     "notificationSettings.reminder.10min": "10 分鐘前",
     "notificationSettings.reminder.30min": "30 分鐘前",
@@ -273,8 +292,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.selectedCountLabel": "已選 {{count}} 人",
     "notificationSettings.namePreviewSeparator": "、",
     "notificationSettings.noSelectedMembers": "尚未選擇任何成員",
-    "notificationSettings.manageMembersButton": "成員名單",
+    "notificationSettings.manageMembersButton": "管理成員",
     "notificationSettings.managementDrawerTitle": "{{topic}} — 通知成員",
+    "notificationSettings.managementDrawerNotificationType": "通知類型：{{type}}",
     "notificationSettings.favoritesGroupLabel": "收藏",
     "notificationSettings.topic.all": "全部",
     "notificationSettings.topicCatalog.gta": "GTA",
@@ -285,6 +305,24 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.topicSelectPlaceholder": "選擇主題",
     "notificationSettings.topicSelectAriaLabel": "選擇通知主題",
     "notificationSettings.addTopicButtonAriaLabel": "新增主題",
+    "notificationSettings.reminder.1min": "1 分鐘前",
+    "notificationSettings.notificationTypeLabel": "通知類型",
+    "notificationSettings.notificationTypeBoth": "兩者",
+    "notificationSettings.notificationTypeCombinedLabel": "直播+新片",
+    "notificationSettings.notificationTypeSectionHelp": "選擇這個主題要通知直播、新片，或兩者。",
+    "notificationSettings.topicListPanelTitle": "通知主題",
+    "notificationSettings.topicSortAriaLabel": "主題排序方式",
+    "notificationSettings.topicSortSaved": "預設順序",
+    "notificationSettings.topicSortAlphabetical": "依名稱排序",
+    "notificationSettings.detailDescription": "設定「{{topic}}」的提醒時間、通知類型與成員。",
+    "notificationSettings.reminderSectionHelp": "開播時一定會通知一次。若選擇提前時間，會在直播開始前額外再通知一次。",
+    "notificationSettings.reminderSectionHelpDisabledNewVideo": "目前只接收新片通知，直播提醒時間無法設定。",
+    "notificationSettings.overrideSectionTitle": "個別成員設定（選用）",
+    "notificationSettings.overrideBadgeCount": "{{count}} 個別設定",
+    "notificationSettings.resetButton": "重設",
+    "notificationSettings.resetButtonAriaLabel": "重設「{{topic}}」的預設設定",
+    "notificationSettings.memberPreviewMoreLabel": "+{{count}}",
+    "notificationSettings.emptySelection": "請從左側選擇一個主題",
     "myOshiSettings.selectAria": "將 {{name}} 設為我推",
     "myOshiSettings.pageTitle": "我推設定",
     "myOshiSettings.pageDescription": "選擇主畫面預設顯示的主推成員。",
@@ -422,7 +460,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.gamersGroupLabel": "Gamers",
     "notificationSettings.searchPlaceholder": "Search creators",
     "notificationSettings.noResults": "No creators found",
-    "notificationSettings.defaultReminderLabel": "Reminder time",
+    "notificationSettings.defaultReminderLabel": "Live reminder time",
     "notificationSettings.reminder.atStart": "At start",
     "notificationSettings.reminder.10min": "10 minutes before",
     "notificationSettings.reminder.30min": "30 minutes before",
@@ -435,8 +473,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.selectedCountLabel": "{{count}} selected",
     "notificationSettings.namePreviewSeparator": ", ",
     "notificationSettings.noSelectedMembers": "No members selected yet",
-    "notificationSettings.manageMembersButton": "Members list",
+    "notificationSettings.manageMembersButton": "Manage Members",
     "notificationSettings.managementDrawerTitle": "{{topic}} — Notified Members",
+    "notificationSettings.managementDrawerNotificationType": "Notification type: {{type}}",
     "notificationSettings.favoritesGroupLabel": "Favorites",
     "notificationSettings.topic.all": "All",
     "notificationSettings.topicCatalog.gta": "GTA",
@@ -447,6 +486,24 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.topicSelectPlaceholder": "Select a topic",
     "notificationSettings.topicSelectAriaLabel": "Select notification topic",
     "notificationSettings.addTopicButtonAriaLabel": "Add topic",
+    "notificationSettings.reminder.1min": "1 minute before",
+    "notificationSettings.notificationTypeLabel": "Notification type",
+    "notificationSettings.notificationTypeBoth": "Both",
+    "notificationSettings.notificationTypeCombinedLabel": "Live + New Video",
+    "notificationSettings.notificationTypeSectionHelp": "Choose whether this topic notifies for live streams, new videos, or both.",
+    "notificationSettings.topicListPanelTitle": "Notification topics",
+    "notificationSettings.topicSortAriaLabel": "Sort topics",
+    "notificationSettings.topicSortSaved": "Saved order",
+    "notificationSettings.topicSortAlphabetical": "By name",
+    "notificationSettings.detailDescription": "Configure the reminder time, notification type, and members for \"{{topic}}\".",
+    "notificationSettings.reminderSectionHelp": "A notification is always sent when the stream starts. If you choose an earlier time, an additional reminder will be sent before the stream.",
+    "notificationSettings.reminderSectionHelpDisabledNewVideo": "Live reminder timing is unavailable while only New Video notifications are enabled.",
+    "notificationSettings.overrideSectionTitle": "Per-member overrides (optional)",
+    "notificationSettings.overrideBadgeCount": "{{count}} custom",
+    "notificationSettings.resetButton": "Reset",
+    "notificationSettings.resetButtonAriaLabel": "Reset \"{{topic}}\" to its defaults",
+    "notificationSettings.memberPreviewMoreLabel": "+{{count}}",
+    "notificationSettings.emptySelection": "Select a topic on the left",
     "myOshiSettings.selectAria": "Set {{name}} as my Oshi",
     "myOshiSettings.pageTitle": "Oshi Settings",
     "myOshiSettings.pageDescription": "Choose the Main Oshi shown by default on the Home screen.",
@@ -584,7 +641,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.gamersGroupLabel": "ゲーマーズ",
     "notificationSettings.searchPlaceholder": "メンバーを検索",
     "notificationSettings.noResults": "該当するメンバーが見つかりません",
-    "notificationSettings.defaultReminderLabel": "リマインド時間",
+    "notificationSettings.defaultReminderLabel": "配信リマインダー時間",
     "notificationSettings.reminder.atStart": "配信開始時",
     "notificationSettings.reminder.10min": "10分前",
     "notificationSettings.reminder.30min": "30分前",
@@ -597,8 +654,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.selectedCountLabel": "{{count}} 人選択中",
     "notificationSettings.namePreviewSeparator": "、",
     "notificationSettings.noSelectedMembers": "まだメンバーが選択されていません",
-    "notificationSettings.manageMembersButton": "リスト管理",
+    "notificationSettings.manageMembersButton": "メンバーを管理",
     "notificationSettings.managementDrawerTitle": "{{topic}} — 通知メンバー",
+    "notificationSettings.managementDrawerNotificationType": "通知タイプ：{{type}}",
     "notificationSettings.favoritesGroupLabel": "お気に入り",
     "notificationSettings.topic.all": "全部",
     "notificationSettings.topicCatalog.gta": "GTA",
@@ -609,6 +667,24 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.topicSelectPlaceholder": "トピックを選択",
     "notificationSettings.topicSelectAriaLabel": "通知トピックを選択",
     "notificationSettings.addTopicButtonAriaLabel": "トピックを追加",
+    "notificationSettings.reminder.1min": "1分前",
+    "notificationSettings.notificationTypeLabel": "通知タイプ",
+    "notificationSettings.notificationTypeBoth": "両方",
+    "notificationSettings.notificationTypeCombinedLabel": "配信＋新着動画",
+    "notificationSettings.notificationTypeSectionHelp": "このトピックで通知する対象（配信・新着動画・両方）を選択します。",
+    "notificationSettings.topicListPanelTitle": "通知トピック",
+    "notificationSettings.topicSortAriaLabel": "トピックの並び替え",
+    "notificationSettings.topicSortSaved": "保存順",
+    "notificationSettings.topicSortAlphabetical": "名前順",
+    "notificationSettings.detailDescription": "「{{topic}}」のリマインダー時間、通知タイプ、メンバーを設定します。",
+    "notificationSettings.reminderSectionHelp": "配信開始時には必ず1回通知されます。事前時間を選択すると、配信開始前にも追加で通知されます。",
+    "notificationSettings.reminderSectionHelpDisabledNewVideo": "新着動画通知のみが有効なため、配信リマインド時間は設定できません。",
+    "notificationSettings.overrideSectionTitle": "個別メンバー設定（任意）",
+    "notificationSettings.overrideBadgeCount": "{{count}}件カスタム",
+    "notificationSettings.resetButton": "リセット",
+    "notificationSettings.resetButtonAriaLabel": "「{{topic}}」を既定値にリセット",
+    "notificationSettings.memberPreviewMoreLabel": "+{{count}}",
+    "notificationSettings.emptySelection": "左側からトピックを選択してください",
     "myOshiSettings.selectAria": "{{name}} を推しに設定",
     "myOshiSettings.pageTitle": "推し設定",
     "myOshiSettings.pageDescription": "ホーム画面で初期表示するメイン推しを選択します。",

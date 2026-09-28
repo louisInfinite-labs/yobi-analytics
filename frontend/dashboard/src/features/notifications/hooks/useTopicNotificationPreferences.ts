@@ -3,9 +3,11 @@ import { createSharedState, useSharedState } from "../../../shared/state/sharedS
 import { getAvailableTopics, type TopicCatalogId } from "../model/notificationTopicCatalog"
 import {
   INITIAL_MEMBER_REMINDER,
+  INITIAL_TOPIC_NOTIFICATION_TYPE,
   INITIAL_TOPIC_REMINDER_MODE,
   MEMBER_CHOICE_MODE,
   type ReminderTimeValue,
+  type TopicNotificationType,
   type TopicReminderMode,
 } from "../model/notificationTopics"
 
@@ -26,6 +28,7 @@ interface TopicPreferenceState {
   live: string[]
   newVideo: string[]
   reminderOverrides: Record<string, ReminderTimeValue>
+  notificationType: TopicNotificationType
 }
 
 /** The 5 permanent default cards the page starts with, in this exact order
@@ -51,7 +54,11 @@ interface TopicPreferencesState {
 }
 
 function emptyTopicState(): TopicPreferenceState {
-  return { reminderMode: INITIAL_TOPIC_REMINDER_MODE, live: [], newVideo: [], reminderOverrides: {} }
+  return { reminderMode: INITIAL_TOPIC_REMINDER_MODE, live: [], newVideo: [], reminderOverrides: {}, notificationType: INITIAL_TOPIC_NOTIFICATION_TYPE }
+}
+
+function isValidNotificationType(value: unknown): value is TopicNotificationType {
+  return value === "live" || value === "newVideo" || value === "both"
 }
 
 function initialState(): TopicPreferencesState {
@@ -84,6 +91,7 @@ function readState(): TopicPreferencesState {
         live: Array.isArray(saved.live) ? saved.live : [],
         newVideo: Array.isArray(saved.newVideo) ? saved.newVideo : [],
         reminderOverrides: typeof saved.reminderOverrides === "object" && saved.reminderOverrides ? saved.reminderOverrides : {},
+        notificationType: isValidNotificationType(saved.notificationType) ? saved.notificationType : INITIAL_TOPIC_NOTIFICATION_TYPE,
       }
     }
     return { topicOrder, topics }
@@ -215,14 +223,74 @@ export function useTopicNotificationPreferences() {
     [topicState, getMemberReminder],
   )
 
+  /** Whether the topic's own notificationType currently permits each
+   * member-level channel -- confirmed with the user: the topic-level
+   * notificationType is the single source of truth for which channels are
+   * live, gating member-level state rather than sitting alongside it
+   * unchecked. Kept private (not returned) since nothing outside this hook
+   * needs to ask this directly -- callers needing to know the topic's type
+   * for their own rendering decisions already have getNotificationType. */
+  const isLiveChannelAllowed = useCallback((topicId: TopicCatalogId) => {
+    const type = topicState(topicId).notificationType
+    return type === "live" || type === "both"
+  }, [topicState])
+
+  const isNewVideoChannelAllowed = useCallback((topicId: TopicCatalogId) => {
+    const type = topicState(topicId).notificationType
+    return type === "newVideo" || type === "both"
+  }, [topicState])
+
   /** Union of Live- and New-Video-enabled creators for this topic -- the
    * main page's own "已選 N 人" count and name preview don't distinguish
    * which of the two a creator is enabled for (this feature's own spec,
-   * section 3: one combined count). */
+   * section 3: one combined count). Limited to whichever channel(s) the
+   * topic's own notificationType currently allows: a creator's own
+   * live/newVideo membership stays stored (setLiveEnabled/setNewVideoEnabled
+   * never get cleared just because the topic's type changed -- non-
+   * destructive, so switching back restores it), but a channel the topic
+   * currently excludes must not count as effectively enabled. */
   const getEnabledCreatorIds = useCallback((topicId: TopicCatalogId): Set<string> => {
     const topic = topicState(topicId)
-    return new Set([...topic.live, ...topic.newVideo])
-  }, [topicState])
+    const live = isLiveChannelAllowed(topicId) ? topic.live : []
+    const newVideo = isNewVideoChannelAllowed(topicId) ? topic.newVideo : []
+    return new Set([...live, ...newVideo])
+  }, [topicState, isLiveChannelAllowed, isNewVideoChannelAllowed])
+
+  const getNotificationType = useCallback((topicId: TopicCatalogId) => topicState(topicId).notificationType, [topicState])
+
+  const setNotificationType = useCallback(
+    (topicId: TopicCatalogId, type: TopicNotificationType) => {
+      setTopicState(topicId, { ...topicState(topicId), notificationType: type })
+    },
+    [topicState, setTopicState],
+  )
+
+  /** How many creators currently have their OWN explicit reminder override
+   * set for this topic (setLiveEnabled already clears a creator's override
+   * the moment Live is turned off for them, so every remaining key here
+   * belongs to a still-Live-enabled creator) -- drives the Notification
+   * Settings detail panel's per-creator override summary. Read-only: it
+   * derives from reminderOverrides, never a separate stored value. Reports
+   * 0 while the topic's own notificationType excludes Live entirely (a
+   * "新片"-only topic sends no live reminder at all) -- the stored
+   * overrides themselves are left untouched so they're restored if Live is
+   * re-enabled later. */
+  const getOverrideCount = useCallback(
+    (topicId: TopicCatalogId) => (isLiveChannelAllowed(topicId) ? Object.keys(topicState(topicId).reminderOverrides).length : 0),
+    [topicState, isLiveChannelAllowed],
+  )
+
+  /** Restores a topic's own reminder mode and notification type to their
+   * starting values -- deliberately leaves Live/New Video membership and
+   * every member's own reminder override untouched, since those represent
+   * who's enabled, not this topic's own defaults, and clearing them from a
+   * generic "reset" action would be a surprising, hard-to-undo data loss. */
+  const resetTopicDefaults = useCallback(
+    (topicId: TopicCatalogId) => {
+      setTopicState(topicId, { ...topicState(topicId), reminderMode: INITIAL_TOPIC_REMINDER_MODE, notificationType: INITIAL_TOPIC_NOTIFICATION_TYPE })
+    },
+    [topicState, setTopicState],
+  )
 
   return {
     savedTopicIds: state.topicOrder,
@@ -239,5 +307,9 @@ export function useTopicNotificationPreferences() {
     setMemberReminder,
     getEffectiveReminder,
     getEnabledCreatorIds,
+    getNotificationType,
+    setNotificationType,
+    getOverrideCount,
+    resetTopicDefaults,
   }
 }

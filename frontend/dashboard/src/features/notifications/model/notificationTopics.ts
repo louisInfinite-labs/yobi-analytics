@@ -8,14 +8,29 @@ import type { TranslationKey } from "../../../shared/i18n/translations"
  * below is genuinely topic-agnostic and unaffected by that change.
  *
  * Reminder-time values a creator can be notified at -- confirmed directly
- * with the user (superseding this feature's original written spec, which
- * also listed "5 分鐘前"): 開播時/10 分鐘前/30 分鐘前/1 小時前 only. */
-export type ReminderTimeValue = "at_start" | "10min" | "30min" | "1hour"
+ * with the user: 開播時/1 分鐘前/10 分鐘前/30 分鐘前/1 小時前 (the Notification
+ * Settings master-detail redesign added "1 分鐘前" to this feature's
+ * original 4-value set).
+ *
+ * Semantics (confirmed with the user): the stream-start notification is a
+ * guaranteed baseline, not one of six mutually-exclusive delivery times.
+ * "at_start" means no extra reminder beyond that baseline; every other
+ * value means an ADDITIONAL pre-live reminder at that offset, on top of
+ * the still-guaranteed stream-start notification -- e.g. "10min" is
+ * "notify 10 minutes before, and again at start", not "notify only 10
+ * minutes before". This was already the intended meaning of "at_start" as
+ * the initial/no-op value; only the Settings page's own helper text under
+ * ReminderTimeSection needed correcting to state it, since nothing in
+ * this codebase actually computes/sends notification delivery events for
+ * this to have silently diverged from -- reminderMode only ever drives
+ * what this Settings page itself displays. */
+export type ReminderTimeValue = "at_start" | "1min" | "10min" | "30min" | "1hour"
 
-export const REMINDER_TIME_VALUES: readonly ReminderTimeValue[] = ["at_start", "10min", "30min", "1hour"]
+export const REMINDER_TIME_VALUES: readonly ReminderTimeValue[] = ["at_start", "1min", "10min", "30min", "1hour"]
 
 export const REMINDER_TIME_LABEL_KEYS: Record<ReminderTimeValue, TranslationKey> = {
   at_start: "notificationSettings.reminder.atStart",
+  "1min": "notificationSettings.reminder.1min",
   "10min": "notificationSettings.reminder.10min",
   "30min": "notificationSettings.reminder.30min",
   "1hour": "notificationSettings.reminder.1hour",
@@ -52,3 +67,17 @@ export const INITIAL_TOPIC_REMINDER_MODE: TopicReminderMode = "10min"
  * INITIAL_TOPIC_REMINDER_MODE above, for consistency, since no other value
  * was specified for this case. */
 export const INITIAL_MEMBER_REMINDER: ReminderTimeValue = "10min"
+
+/** A topic-level preference for which kind(s) of notification it sends --
+ * "both" is the starting value for every topic (matches this feature's own
+ * pre-existing behavior, where a creator's Live and New Video enablement
+ * were always independent per-creator switches with no topic-wide filter
+ * on top; "both" preserves that default exactly for every existing topic).
+ * The topic-level type is the source of truth for which channel(s) are
+ * effectively live: it gates each creator's own Live/New Video switches in
+ * TopicCreatorManagementDrawer (see useTopicNotificationPreferences'
+ * isLiveChannelAllowed/isNewVideoChannelAllowed), while the underlying
+ * per-creator membership itself stays stored and unchanged, so switching
+ * the type back restores exactly what was there before. */
+export type TopicNotificationType = "live" | "newVideo" | "both"
+export const INITIAL_TOPIC_NOTIFICATION_TYPE: TopicNotificationType = "both"

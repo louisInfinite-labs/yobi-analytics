@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react"
 import { Button, ConfigProvider, Drawer, Dropdown, Input, Switch } from "antd"
-import { DownOutlined, SearchOutlined } from "@ant-design/icons"
+import { ChevronDown, Search } from "lucide-react"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
@@ -15,7 +15,7 @@ import {
 } from "../model/notificationCreatorGrouping"
 import { sortFlatNotificationCreatorsLikeLiveStatus } from "../model/notificationCreatorOrder"
 import { getAvailableTopics, type TopicCatalogId } from "../model/notificationTopicCatalog"
-import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, type ReminderTimeValue } from "../model/notificationTopics"
+import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, type ReminderTimeValue, type TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
 
@@ -105,14 +105,39 @@ export function excludeFavorites(agencyGroups: CreatorAgencyGroup[], favoriteIds
     .filter((agency) => agency.regions.length > 0)
 }
 
-function ColumnHeader({ locale }: { locale: Locale }) {
+/** Which member-level columns a topic's own notificationType allows --
+ * confirmed with the user: the topic-level type is the single source of
+ * truth for which notification channels this topic can ever send, so the
+ * drawer must not show (even disabled) a switch for an excluded channel --
+ * that would visually suggest the channel is still part of this topic.
+ * Reminder-time is Live-specific (see notificationTopics.ts), so it only
+ * ever shows alongside the Live column. */
+function drawerColumnFlags(notificationType: TopicNotificationType) {
+  const showLive = notificationType !== "newVideo"
+  const showNewVideo = notificationType !== "live"
+  return { showLive, showNewVideo, showReminder: showLive }
+}
+
+/** The grid-template-columns modifier this notificationType needs (see
+ * settings.css's own .topic-creator-drawer__row/__column-header rules) --
+ * "" for "both", which keeps the existing 5-column default unmodified. */
+function drawerColumnModifier(notificationType: TopicNotificationType): string {
+  if (notificationType === "live") return "live-only"
+  if (notificationType === "newVideo") return "newvideo-only"
+  return ""
+}
+
+function ColumnHeader({ locale, notificationType }: { locale: Locale; notificationType: TopicNotificationType }) {
+  const { showLive, showNewVideo, showReminder } = drawerColumnFlags(notificationType)
+  const modifier = drawerColumnModifier(notificationType)
+  const className = modifier ? `topic-creator-drawer__column-header topic-creator-drawer__column-header--${modifier}` : "topic-creator-drawer__column-header"
   return (
-    <div className="topic-creator-drawer__column-header">
+    <div className={className}>
       <span aria-hidden="true" />
       <span aria-hidden="true" />
-      <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.liveColumnHeader")}</span>
-      <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.newVideoColumnHeader")}</span>
-      <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.reminderColumnHeader")}</span>
+      {showLive && <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.liveColumnHeader")}</span>}
+      {showNewVideo && <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.newVideoColumnHeader")}</span>}
+      {showReminder && <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.reminderColumnHeader")}</span>}
     </div>
   )
 }
@@ -157,7 +182,7 @@ function ReminderCell({ topicId, creator, locale }: { topicId: TopicCatalogId; c
           color="default"
           size="small"
           className="topic-creator-drawer__reminder-trigger"
-          icon={<DownOutlined />}
+          icon={<ChevronDown size={14} aria-hidden="true" />}
           iconPlacement="end"
           aria-label={t(locale, "notificationSettings.reminderSelectAriaLabel", { name: creator.displayName })}
         >
@@ -169,33 +194,42 @@ function ReminderCell({ topicId, creator, locale }: { topicId: TopicCatalogId; c
   )
 }
 
-function CreatorRow({ topicId, creator }: { topicId: TopicCatalogId; creator: NotificationCreator }) {
+function CreatorRow({ topicId, creator, notificationType }: { topicId: TopicCatalogId; creator: NotificationCreator; notificationType: TopicNotificationType }) {
   const [locale] = useLocale()
   const { isLiveEnabled, setLiveEnabled, isNewVideoEnabled, setNewVideoEnabled } = useTopicNotificationPreferences()
+  const { showLive, showNewVideo, showReminder } = drawerColumnFlags(notificationType)
+  const modifier = drawerColumnModifier(notificationType)
+  const className = modifier ? `topic-creator-drawer__row topic-creator-drawer__row--${modifier}` : "topic-creator-drawer__row"
 
   return (
-    <div className="topic-creator-drawer__row" style={creatorAccentStyle(creator)}>
+    <div className={className} style={creatorAccentStyle(creator)}>
       <span className="topic-creator-drawer__avatar" aria-hidden="true">
         {creator.displayName.trim().charAt(0)}
       </span>
       <span className="topic-creator-drawer__creator-name">{creator.displayName}</span>
-      <span className="topic-creator-drawer__switch-cell">
-        <Switch
-          checked={isLiveEnabled(topicId, creator.creatorId)}
-          onChange={(checked) => setLiveEnabled(topicId, creator.creatorId, checked)}
-          aria-label={t(locale, "notificationSettings.liveSwitchAriaLabel", { name: creator.displayName })}
-        />
-      </span>
-      <span className="topic-creator-drawer__switch-cell">
-        <Switch
-          checked={isNewVideoEnabled(topicId, creator.creatorId)}
-          onChange={(checked) => setNewVideoEnabled(topicId, creator.creatorId, checked)}
-          aria-label={t(locale, "notificationSettings.newVideoSwitchAriaLabel", { name: creator.displayName })}
-        />
-      </span>
-      <span className="topic-creator-drawer__reminder-cell">
-        <ReminderCell topicId={topicId} creator={creator} locale={locale} />
-      </span>
+      {showLive && (
+        <span className="topic-creator-drawer__switch-cell">
+          <Switch
+            checked={isLiveEnabled(topicId, creator.creatorId)}
+            onChange={(checked) => setLiveEnabled(topicId, creator.creatorId, checked)}
+            aria-label={t(locale, "notificationSettings.liveSwitchAriaLabel", { name: creator.displayName })}
+          />
+        </span>
+      )}
+      {showNewVideo && (
+        <span className="topic-creator-drawer__switch-cell">
+          <Switch
+            checked={isNewVideoEnabled(topicId, creator.creatorId)}
+            onChange={(checked) => setNewVideoEnabled(topicId, creator.creatorId, checked)}
+            aria-label={t(locale, "notificationSettings.newVideoSwitchAriaLabel", { name: creator.displayName })}
+          />
+        </span>
+      )}
+      {showReminder && (
+        <span className="topic-creator-drawer__reminder-cell">
+          <ReminderCell topicId={topicId} creator={creator} locale={locale} />
+        </span>
+      )}
     </div>
   )
 }
@@ -215,6 +249,7 @@ function CreatorRow({ topicId, creator }: { topicId: TopicCatalogId; creator: No
 export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorManagementDrawerProps) {
   const [locale] = useLocale()
   const { favorites } = useFavoriteCreators()
+  const { getNotificationType } = useTopicNotificationPreferences()
   const [searchQuery, setSearchQuery] = useState("")
 
   const handleClose = () => {
@@ -241,6 +276,16 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
 
   const topicDef = getAvailableTopics().find((entry) => entry.id === topicId)
   const drawerTitle = topicDef ? t(locale, "notificationSettings.managementDrawerTitle", { topic: t(locale, topicDef.labelKey) }) : ""
+
+  // Falls back to "both" only for the brief render where topicId is null
+  // (drawer closing) -- content below is gated on {topicId && ...} anyway.
+  const notificationType = topicId ? getNotificationType(topicId) : "both"
+  const notificationTypeLabelKey =
+    notificationType === "live"
+      ? "notificationSettings.liveColumnHeader"
+      : notificationType === "newVideo"
+        ? "notificationSettings.newVideoColumnHeader"
+        : "notificationSettings.notificationTypeBoth"
 
   return (
     <ConfigProvider
@@ -284,9 +329,12 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
       <Drawer open={topicId !== null} onClose={handleClose} title={drawerTitle} size={480} className="topic-creator-drawer">
         {topicId && (
           <div className="topic-creator-drawer__content">
+            <p className="topic-creator-drawer__notification-type-context">
+              {t(locale, "notificationSettings.managementDrawerNotificationType", { type: t(locale, notificationTypeLabelKey) })}
+            </p>
             <Input
               className="topic-creator-drawer__search"
-              prefix={<SearchOutlined />}
+              prefix={<Search size={14} aria-hidden="true" />}
               placeholder={t(locale, "notificationSettings.searchPlaceholder")}
               allowClear
               value={searchQuery}
@@ -298,10 +346,10 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
                 <h3 className="topic-creator-drawer__group-title">
                   <span aria-hidden="true">★</span> {t(locale, "notificationSettings.favoritesGroupLabel")}
                 </h3>
-                <ColumnHeader locale={locale} />
+                <ColumnHeader locale={locale} notificationType={notificationType} />
                 <div className="topic-creator-drawer__list">
                   {filteredFavorites.map((creator) => (
-                    <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} />
+                    <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} notificationType={notificationType} />
                   ))}
                 </div>
               </section>
@@ -317,10 +365,10 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
                         {subgroup.label && (
                           <h5 className="topic-creator-drawer__subgroup-title">{subgroupTitle(locale, subgroup.label)}</h5>
                         )}
-                        <ColumnHeader locale={locale} />
+                        <ColumnHeader locale={locale} notificationType={notificationType} />
                         <div className="topic-creator-drawer__list">
                           {subgroup.creators.map((creator) => (
-                            <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} />
+                            <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} notificationType={notificationType} />
                           ))}
                         </div>
                       </div>
