@@ -73,7 +73,11 @@ export const INITIAL_MEMBER_REMINDER: ReminderTimeValue = "10min"
  * pre-existing behavior, where a creator's Live and New Video enablement
  * were always independent per-creator switches with no topic-wide filter
  * on top; "both" preserves that default exactly for every existing topic).
- * This sits alongside, not instead of, each creator's own Live/New Video
- * switches in TopicCreatorManagementDrawer -- it does not gate them. */
+ * The topic-level type is the source of truth for which channel(s) are
+ * effectively live: it gates each creator's own Live/New Video switches in
+ * TopicCreatorManagementDrawer (see useTopicNotificationPreferences'
+ * isLiveChannelAllowed/isNewVideoChannelAllowed), while the underlying
+ * per-creator membership itself stays stored and unchanged, so switching
+ * the type back restores exactly what was there before. */
 export type TopicNotificationType = "live" | "newVideo" | "both"
 export const INITIAL_TOPIC_NOTIFICATION_TYPE: TopicNotificationType = "both"

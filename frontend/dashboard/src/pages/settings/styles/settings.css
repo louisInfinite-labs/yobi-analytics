@@ -1087,15 +1087,16 @@
 
   .notification-detail-panel {
     min-height: 0;
-    /* No overflow-y: auto here: after compressing vertical spacing (panel
-       padding, section padding/margins, reminder-grid item height, member
-       preview size, override box, footer button height) and fixing
-       .notification-settings-main's missing flex-grow above, the detail
-       editor's content measures scrollHeight <= clientHeight at
-       1920x1080/1600x900/1440x900 -- confirmed by measurement, not
-       assumed. It stays clipped (not scrollable) at these normal desktop
-       widths, matching "only the left topic list may scroll". */
-    overflow: hidden;
+    /* Content measures scrollHeight <= clientHeight at normal desktop
+       sizes (1920x1080/1600x900/1440x900), so this stays visually
+       scrollbar-free there. But a short-but-wide viewport (confirmed by
+       measurement: e.g. 1600x560, where the panel's own available height
+       shrinks well below its ~555px content height) can push content past
+       the bottom, including the Reset button -- overflow-y: auto (not
+       overflow: hidden) keeps that content reachable without changing
+       anything at the normal sizes above. */
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   /* Topic-card column and scrollbar must never share one width (confirmed
