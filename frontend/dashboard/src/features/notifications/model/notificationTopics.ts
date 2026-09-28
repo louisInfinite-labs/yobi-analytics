@@ -10,7 +10,20 @@ import type { TranslationKey } from "../../../shared/i18n/translations"
  * Reminder-time values a creator can be notified at -- confirmed directly
  * with the user: 開播時/1 分鐘前/10 分鐘前/30 分鐘前/1 小時前 (the Notification
  * Settings master-detail redesign added "1 分鐘前" to this feature's
- * original 4-value set). */
+ * original 4-value set).
+ *
+ * Semantics (confirmed with the user): the stream-start notification is a
+ * guaranteed baseline, not one of six mutually-exclusive delivery times.
+ * "at_start" means no extra reminder beyond that baseline; every other
+ * value means an ADDITIONAL pre-live reminder at that offset, on top of
+ * the still-guaranteed stream-start notification -- e.g. "10min" is
+ * "notify 10 minutes before, and again at start", not "notify only 10
+ * minutes before". This was already the intended meaning of "at_start" as
+ * the initial/no-op value; only the Settings page's own helper text under
+ * ReminderTimeSection needed correcting to state it, since nothing in
+ * this codebase actually computes/sends notification delivery events for
+ * this to have silently diverged from -- reminderMode only ever drives
+ * what this Settings page itself displays. */
 export type ReminderTimeValue = "at_start" | "1min" | "10min" | "30min" | "1hour"
 
 export const REMINDER_TIME_VALUES: readonly ReminderTimeValue[] = ["at_start", "1min", "10min", "30min", "1hour"]

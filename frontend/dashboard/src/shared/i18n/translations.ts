@@ -132,6 +132,7 @@ export type TranslationKey =
   | "notificationSettings.reminder.1min"
   | "notificationSettings.notificationTypeLabel"
   | "notificationSettings.notificationTypeBoth"
+  | "notificationSettings.notificationTypeCombinedLabel"
   | "notificationSettings.notificationTypeSectionHelp"
   | "notificationSettings.topicListPanelTitle"
   | "notificationSettings.topicSortAriaLabel"
@@ -139,10 +140,8 @@ export type TranslationKey =
   | "notificationSettings.topicSortAlphabetical"
   | "notificationSettings.detailDescription"
   | "notificationSettings.reminderSectionHelp"
+  | "notificationSettings.reminderSectionHelpDisabledNewVideo"
   | "notificationSettings.overrideSectionTitle"
-  | "notificationSettings.overrideSectionDescription"
-  | "notificationSettings.overrideSummaryNone"
-  | "notificationSettings.overrideSummaryCount"
   | "notificationSettings.overrideBadgeCount"
   | "notificationSettings.resetButton"
   | "notificationSettings.resetButtonAriaLabel"
@@ -309,17 +308,16 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.1min": "1 分鐘前",
     "notificationSettings.notificationTypeLabel": "通知類型",
     "notificationSettings.notificationTypeBoth": "兩者",
+    "notificationSettings.notificationTypeCombinedLabel": "直播+新片",
     "notificationSettings.notificationTypeSectionHelp": "選擇這個主題要通知直播、新片，或兩者。",
     "notificationSettings.topicListPanelTitle": "通知主題",
     "notificationSettings.topicSortAriaLabel": "主題排序方式",
     "notificationSettings.topicSortSaved": "預設順序",
     "notificationSettings.topicSortAlphabetical": "依名稱排序",
     "notificationSettings.detailDescription": "設定「{{topic}}」的提醒時間、通知類型與成員。",
-    "notificationSettings.reminderSectionHelp": "設定直播開始前多久提醒你。",
+    "notificationSettings.reminderSectionHelp": "開播時一定會通知一次。若選擇提前時間，會在直播開始前額外再通知一次。",
+    "notificationSettings.reminderSectionHelpDisabledNewVideo": "目前只接收新片通知，直播提醒時間無法設定。",
     "notificationSettings.overrideSectionTitle": "個別成員設定（選用）",
-    "notificationSettings.overrideSectionDescription": "個別成員可以覆寫這個主題的預設提醒時間。",
-    "notificationSettings.overrideSummaryNone": "尚無成員自訂提醒時間",
-    "notificationSettings.overrideSummaryCount": "{{count}} 位成員已自訂提醒時間",
     "notificationSettings.overrideBadgeCount": "{{count}} 個別設定",
     "notificationSettings.resetButton": "重設",
     "notificationSettings.resetButtonAriaLabel": "重設「{{topic}}」的預設設定",
@@ -491,17 +489,16 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.1min": "1 minute before",
     "notificationSettings.notificationTypeLabel": "Notification type",
     "notificationSettings.notificationTypeBoth": "Both",
+    "notificationSettings.notificationTypeCombinedLabel": "Live + New Video",
     "notificationSettings.notificationTypeSectionHelp": "Choose whether this topic notifies for live streams, new videos, or both.",
     "notificationSettings.topicListPanelTitle": "Notification topics",
     "notificationSettings.topicSortAriaLabel": "Sort topics",
     "notificationSettings.topicSortSaved": "Saved order",
     "notificationSettings.topicSortAlphabetical": "By name",
     "notificationSettings.detailDescription": "Configure the reminder time, notification type, and members for \"{{topic}}\".",
-    "notificationSettings.reminderSectionHelp": "Choose how far ahead of a stream start you're reminded.",
+    "notificationSettings.reminderSectionHelp": "A notification is always sent when the stream starts. If you choose an earlier time, an additional reminder will be sent before the stream.",
+    "notificationSettings.reminderSectionHelpDisabledNewVideo": "Live reminder timing is unavailable while only New Video notifications are enabled.",
     "notificationSettings.overrideSectionTitle": "Per-member overrides (optional)",
-    "notificationSettings.overrideSectionDescription": "Specific members can override this topic's default reminder time.",
-    "notificationSettings.overrideSummaryNone": "No members have a custom reminder time yet",
-    "notificationSettings.overrideSummaryCount": "{{count}} members have a custom reminder time",
     "notificationSettings.overrideBadgeCount": "{{count}} custom",
     "notificationSettings.resetButton": "Reset",
     "notificationSettings.resetButtonAriaLabel": "Reset \"{{topic}}\" to its defaults",
@@ -673,17 +670,16 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.1min": "1分前",
     "notificationSettings.notificationTypeLabel": "通知タイプ",
     "notificationSettings.notificationTypeBoth": "両方",
+    "notificationSettings.notificationTypeCombinedLabel": "配信＋新着動画",
     "notificationSettings.notificationTypeSectionHelp": "このトピックで通知する対象（配信・新着動画・両方）を選択します。",
     "notificationSettings.topicListPanelTitle": "通知トピック",
     "notificationSettings.topicSortAriaLabel": "トピックの並び替え",
     "notificationSettings.topicSortSaved": "保存順",
     "notificationSettings.topicSortAlphabetical": "名前順",
     "notificationSettings.detailDescription": "「{{topic}}」のリマインダー時間、通知タイプ、メンバーを設定します。",
-    "notificationSettings.reminderSectionHelp": "配信開始のどれくらい前に通知するかを設定します。",
+    "notificationSettings.reminderSectionHelp": "配信開始時には必ず1回通知されます。事前時間を選択すると、配信開始前にも追加で通知されます。",
+    "notificationSettings.reminderSectionHelpDisabledNewVideo": "新着動画通知のみが有効なため、配信リマインド時間は設定できません。",
     "notificationSettings.overrideSectionTitle": "個別メンバー設定（任意）",
-    "notificationSettings.overrideSectionDescription": "特定のメンバーは、このトピックの既定のリマインダー時間を上書きできます。",
-    "notificationSettings.overrideSummaryNone": "カスタムのリマインダー時間を設定したメンバーはまだいません",
-    "notificationSettings.overrideSummaryCount": "{{count}} 人のメンバーがカスタムのリマインダー時間を設定しています",
     "notificationSettings.overrideBadgeCount": "{{count}}件カスタム",
     "notificationSettings.resetButton": "リセット",
     "notificationSettings.resetButtonAriaLabel": "「{{topic}}」を既定値にリセット",

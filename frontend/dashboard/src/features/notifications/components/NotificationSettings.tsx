@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button, ConfigProvider, Segmented, Select } from "antd"
-import { Gamepad2, Plus, SlidersHorizontal, Users } from "lucide-react"
+import { Plus, SlidersHorizontal, Users } from "lucide-react"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
 import { getAllNotificationCreators, type NotificationCreator } from "../model/notificationCreatorGrouping"
@@ -9,7 +9,7 @@ import { MEMBER_CHOICE_MODE, REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, typ
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { TopicCreatorManagementDrawer } from "./TopicCreatorManagementDrawer"
 
-const NOTIFICATION_ACCENT = "#c779a3"
+const NOTIFICATION_ACCENT = "#5a5261"
 
 /** How many member avatars the Notification Members section previews
  * before folding the rest into a "+N" bubble -- keeps the row bounded on
@@ -36,8 +36,15 @@ function topicLabelFor(locale: Locale, topicId: TopicCatalogId): string {
 /** The Live reminder time section -- a real, interactive Segmented wired
  * straight to useTopicNotificationPreferences for whatever `topicId` it's
  * given (works safely against a not-yet-saved draft topicId too, same as
- * before this redesign: every getter/setter already reads/writes lazily). */
-function ReminderTimeSection({ topicId, topicLabel }: { topicId: TopicCatalogId; topicLabel: string }) {
+ * before this redesign: every getter/setter already reads/writes lazily).
+ *
+ * A newVideo-only topic never sends a live/stream-start notification, so
+ * this control has nothing to configure then -- but it stays visible and
+ * disabled rather than disappearing (confirmed with the user, correcting
+ * the earlier version of this correction that hid the section entirely):
+ * the stored reminder value is untouched by disabling, so it's exactly
+ * where the user left it if the topic's type is switched back to Live. */
+function ReminderTimeSection({ topicId, topicLabel, disabled }: { topicId: TopicCatalogId; topicLabel: string; disabled: boolean }) {
   const [locale] = useLocale()
   const { getReminderMode, setReminderMode } = useTopicNotificationPreferences()
   const options = reminderModeOptions(locale)
@@ -46,12 +53,15 @@ function ReminderTimeSection({ topicId, topicLabel }: { topicId: TopicCatalogId;
   return (
     <section className="notification-detail-section">
       <h3 className="notification-detail-section__title">{t(locale, "notificationSettings.defaultReminderLabel")}</h3>
-      <p className="notification-detail-section__description">{t(locale, "notificationSettings.reminderSectionHelp")}</p>
+      <p className="notification-detail-section__description">
+        {t(locale, disabled ? "notificationSettings.reminderSectionHelpDisabledNewVideo" : "notificationSettings.reminderSectionHelp")}
+      </p>
       <Segmented
         name={`notification-reminder-${topicId}`}
         className="notification-reminder-options"
         value={reminderMode}
         options={options}
+        disabled={disabled}
         onChange={(value) => setReminderMode(topicId, value as TopicReminderMode)}
         aria-label={`${t(locale, "notificationSettings.defaultReminderLabel")} ${topicLabel}`}
       />
@@ -76,9 +86,14 @@ function NotificationTypeSection({ topicId, topicLabel }: { topicId: TopicCatalo
         className="notification-type-control"
         value={getNotificationType(topicId)}
         options={[
+          // Order confirmed with the user: combined option first, then Live,
+          // then New Video -- notificationTypeCombinedLabel is its own key
+          // (not the shared notificationTypeBoth) so the drawer's own
+          // "Notification type: 兩者" context line, which also reads
+          // notificationTypeBoth, is unaffected by this control's label.
+          { value: "both", label: t(locale, "notificationSettings.notificationTypeCombinedLabel") },
           { value: "live", label: t(locale, "notificationSettings.liveColumnHeader") },
           { value: "newVideo", label: t(locale, "notificationSettings.newVideoColumnHeader") },
-          { value: "both", label: t(locale, "notificationSettings.notificationTypeBoth") },
         ]}
         onChange={(value) => setNotificationType(topicId, value as TopicNotificationType)}
         aria-label={`${t(locale, "notificationSettings.notificationTypeLabel")} ${topicLabel}`}
@@ -152,43 +167,6 @@ function MembersSection({ topicId, topicLabel, onManage }: { topicId: TopicCatal
   )
 }
 
-/** Per-creator reminder overrides live in the same drawer as membership
- * (see TopicCreatorManagementDrawer's own ReminderCell) -- this section is
- * a second, dedicated summary/entry point into that same drawer, not a
- * separate feature or a separate stored value. */
-function OverrideSection({ topicId, topicLabel, onManage }: { topicId: TopicCatalogId; topicLabel: string; onManage: () => void }) {
-  const [locale] = useLocale()
-  const { getOverrideCount } = useTopicNotificationPreferences()
-  const count = getOverrideCount(topicId)
-
-  return (
-    <section className="notification-detail-section">
-      <h3 className="notification-detail-section__title">{t(locale, "notificationSettings.overrideSectionTitle")}</h3>
-      <div className="notification-member-override-box">
-        <div className="notification-member-override-box__content">
-          <SlidersHorizontal size={20} aria-hidden="true" className="notification-member-override-box__icon" />
-          <div>
-            <p className="notification-member-override-box__title">
-              {count > 0
-                ? t(locale, "notificationSettings.overrideSummaryCount", { count: String(count) })
-                : t(locale, "notificationSettings.overrideSummaryNone")}
-            </p>
-            <p className="notification-member-override-box__description">{t(locale, "notificationSettings.overrideSectionDescription")}</p>
-          </div>
-        </div>
-        <Button
-          className="notification-members-manage"
-          onClick={onManage}
-          aria-label={`${t(locale, "notificationSettings.manageMembersButton")} ${topicLabel}`}
-        >
-          <Users size={16} aria-hidden="true" />
-          {t(locale, "notificationSettings.manageMembersButton")}
-        </Button>
-      </div>
-    </section>
-  )
-}
-
 /** One left-panel row -- the whole row is a real <button>, so it's
  * natively focusable with Enter/Space already selecting it (section 20).
  * The meta row previews this topic's own effective reminder, member
@@ -204,7 +182,7 @@ function TopicListItem({
   onSelect: () => void
 }) {
   const [locale] = useLocale()
-  const { getReminderMode, getEnabledCreatorIds, getOverrideCount } = useTopicNotificationPreferences()
+  const { getReminderMode, getEnabledCreatorIds, getOverrideCount, getNotificationType } = useTopicNotificationPreferences()
   const topicLabel = topicLabelFor(locale, topicId)
   const reminderMode = getReminderMode(topicId)
   const reminderLabel =
@@ -213,6 +191,10 @@ function TopicListItem({
       : t(locale, REMINDER_TIME_LABEL_KEYS[reminderMode])
   const memberCount = getEnabledCreatorIds(topicId).size
   const overrideCount = getOverrideCount(topicId)
+  // A newVideo-only topic never sends a live/stream-start notification, so
+  // the reminder-time badge (section 8 of the reminder-semantics
+  // correction) has nothing to report here either.
+  const showReminderBadge = getNotificationType(topicId) !== "newVideo"
 
   return (
     <button
@@ -221,17 +203,16 @@ function TopicListItem({
       onClick={onSelect}
       aria-current={isSelected ? "true" : undefined}
     >
-      <Gamepad2 className="notification-topic-item__icon" aria-hidden="true" />
       <span className="notification-topic-item__body">
         <span className="notification-topic-item__name">{topicLabel}</span>
         <span className="notification-topic-item__meta">
-          <span className="notification-topic-item__time">{reminderLabel}</span>
+          {showReminderBadge && <span className="notification-topic-item__time">{reminderLabel}</span>}
           <span className="notification-topic-item__meta-label notification-topic-item__members">
-            <Users size={13} aria-hidden="true" />
+            <Users size={14} aria-hidden="true" />
             {t(locale, "notificationSettings.selectedCountLabel", { count: String(memberCount) })}
           </span>
           <span className={`notification-topic-item__override${overrideCount > 0 ? " is-active" : ""}`}>
-            <SlidersHorizontal size={13} aria-hidden="true" />
+            <SlidersHorizontal size={14} aria-hidden="true" />
             {overrideCount > 0 ? t(locale, "notificationSettings.overrideBadgeCount", { count: String(overrideCount) }) : t(locale, "notificationSettings.overrideSectionTitle")}
           </span>
         </span>
@@ -257,6 +238,7 @@ interface DetailPanelProps {
  * to a different topicId. */
 function DetailPanel({ isDraft, topicId, selectableTopics, onSelectDraftTopic, onManage, onSave, onReset }: DetailPanelProps) {
   const [locale] = useLocale()
+  const { getNotificationType } = useTopicNotificationPreferences()
 
   if (topicId === null) {
     if (isDraft) {
@@ -288,17 +270,20 @@ function DetailPanel({ isDraft, topicId, selectableTopics, onSelectDraftTopic, o
   return (
     <div className="notification-detail-panel">
       <div className="notification-detail-header">
-        <Gamepad2 className="notification-detail-header__icon" aria-hidden="true" />
-        <div>
-          <h2 className="notification-detail-header__title">{topicLabel}</h2>
-          <p className="notification-detail-header__description">{t(locale, "notificationSettings.detailDescription", { topic: topicLabel })}</p>
-        </div>
+        <h2 className="notification-detail-header__title">{topicLabel}</h2>
+        <p className="notification-detail-header__description">{t(locale, "notificationSettings.detailDescription", { topic: topicLabel })}</p>
       </div>
 
-      <ReminderTimeSection topicId={topicId} topicLabel={topicLabel} />
+      {/* Live-only semantics: a newVideo-only topic never sends a live/
+          stream-start notification, so this control has nothing to
+          configure -- but it stays visible and disabled (not hidden, per
+          the user's correction: hiding it made it look like the section
+          had disappeared rather than "temporarily unavailable"), and its
+          stored value is left untouched so switching back to Live/Both
+          restores exactly what was selected before. */}
+      <ReminderTimeSection topicId={topicId} topicLabel={topicLabel} disabled={getNotificationType(topicId) === "newVideo"} />
       <NotificationTypeSection topicId={topicId} topicLabel={topicLabel} />
       <MembersSection topicId={topicId} topicLabel={topicLabel} onManage={onManage} />
-      <OverrideSection topicId={topicId} topicLabel={topicLabel} onManage={onManage} />
 
       <div className="notification-detail-actions">
         {isDraft ? (
@@ -403,8 +388,8 @@ export function NotificationSettings() {
             itemColor: "#b9b1c5",
             itemHoverColor: "#f3eff7",
             itemHoverBg: "color-mix(in srgb, #f3eff7 8%, transparent)",
-            itemSelectedBg: "#684052",
-            itemSelectedColor: "#f7edf3",
+            itemSelectedBg: "#332d38",
+            itemSelectedColor: "#f3eff7",
           },
           Select: {
             colorBgContainer: "#292432",
@@ -412,7 +397,7 @@ export function NotificationSettings() {
             colorText: "#f3eff7",
             colorTextPlaceholder: "#948b9f",
             colorBgElevated: "#211d29",
-            optionSelectedBg: "rgba(199, 121, 163, 0.18)",
+            optionSelectedBg: "rgba(90, 82, 97, 0.35)",
             colorTextQuaternary: "#948b9f",
           },
         },

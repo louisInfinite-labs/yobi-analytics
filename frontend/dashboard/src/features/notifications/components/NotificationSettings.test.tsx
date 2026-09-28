@@ -94,11 +94,30 @@ describe("NotificationSettings master-detail layout", () => {
 
     const detail = within(getDetailPanel())
     expect(detail.getByRole("button", { name: "Save" })).toBeEnabled()
-    expect(detail.getAllByRole("button", { name: /Manage Members/ }).length).toBeGreaterThan(0)
+    // Exactly one Manage Members entry point -- the redundant "個別成員設定"
+    // section's own copy of this button was removed (confirmed with the
+    // user: 管理成員 already owns all per-creator configuration, including
+    // reminder overrides, so a second entry point implied two systems).
+    expect(detail.getAllByRole("button", { name: /Manage Members/ })).toHaveLength(1)
     expect(detail.getByRole("radiogroup", { name: /Live reminder time/ })).toBeInTheDocument()
     expect(detail.getByRole("radiogroup", { name: /Notification type/ })).toBeInTheDocument()
     // The topic still isn't a saved card -- picking it must not persist it.
     expect(screen.queryByRole("button", { name: /^GTA/ })).not.toBeInTheDocument()
+  })
+
+  it("does not show the removed per-member-overrides section, only the single Manage Members entry point under Notified members", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+    await user.click(screen.getByRole("button", { name: /^All/ }))
+
+    const detail = within(getDetailPanel())
+    expect(detail.queryByText("Per-member overrides (optional)")).not.toBeInTheDocument()
+    expect(detail.queryByText(/have a custom reminder time/)).not.toBeInTheDocument()
+    expect(detail.getByText("Notified members")).toBeInTheDocument()
+    expect(detail.getAllByRole("button", { name: /Manage Members/ })).toHaveLength(1)
+
+    await user.click(detail.getByRole("button", { name: /Manage Members/ }))
+    expect(await screen.findByText("All — Notified Members")).toBeInTheDocument()
   })
 
   it("keeps draft preferences transient until Save commits the topic", async () => {
@@ -121,6 +140,45 @@ describe("NotificationSettings master-detail layout", () => {
     await user.click(detail.getByRole("button", { name: "Save" }))
     stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
     expect(stored.topics.gta.reminderMode).toBe("30min")
+  })
+
+  // Regression test for the reminder-semantics correction's "verify state,
+  // not just CSS" requirement: the underlying controlled value (and thus
+  // the accessible checked state real screen readers/assistive tech would
+  // see) must move to exactly one option per click, never leaving two
+  // checked or the previous one stuck checked.
+  it("Live reminder time is a real single-select: exactly one option is checked at a time as the value changes", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+    await user.click(screen.getByRole("button", { name: /^All/ }))
+    const detail = within(getDetailPanel())
+
+    await user.click(detail.getByRole("radio", { name: "10 minutes before" }))
+    expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeChecked()
+    expect(detail.getByRole("radio", { name: "30 minutes before" })).not.toBeChecked()
+    expect(detail.getByRole("radio", { name: "1 hour before" })).not.toBeChecked()
+
+    await user.click(detail.getByRole("radio", { name: "30 minutes before" }))
+    expect(detail.getByRole("radio", { name: "10 minutes before" })).not.toBeChecked()
+    expect(detail.getByRole("radio", { name: "30 minutes before" })).toBeChecked()
+    expect(detail.getByRole("radio", { name: "1 hour before" })).not.toBeChecked()
+
+    await user.click(detail.getByRole("radio", { name: "1 hour before" }))
+    expect(detail.getByRole("radio", { name: "10 minutes before" })).not.toBeChecked()
+    expect(detail.getByRole("radio", { name: "30 minutes before" })).not.toBeChecked()
+    expect(detail.getByRole("radio", { name: "1 hour before" })).toBeChecked()
+  })
+
+  it("explains that the stream-start notification is guaranteed and reminder options are an additional pre-live notice", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+    await user.click(screen.getByRole("button", { name: /^All/ }))
+
+    expect(
+      within(getDetailPanel()).getByText(
+        "A notification is always sent when the stream starts. If you choose an earlier time, an additional reminder will be sent before the stream.",
+      ),
+    ).toBeInTheDocument()
   })
 
   it("discards an abandoned draft so reselecting that topic starts clean", async () => {
@@ -216,7 +274,7 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     const detail = within(getDetailPanel())
-    expect(detail.getByRole("radio", { name: "Both" })).toBeChecked()
+    expect(detail.getByRole("radio", { name: "Live + New Video" })).toBeChecked()
 
     await user.click(detail.getByRole("radio", { name: "Live" }))
 
@@ -235,11 +293,17 @@ describe("NotificationSettings master-detail layout", () => {
     expect(stored.topics.all.reminderMode).toBe("1min")
   })
 
-  it("shows no custom reminder overrides for a fresh topic, and a live count once one is set", async () => {
+  // The per-member-overrides section that used to show this count in the
+  // detail panel was removed (its own "Manage Members" entry point was
+  // redundant with the one under Notified members) -- the topic list's own
+  // badge (TopicListItem) is the only remaining surface for this count, so
+  // that's what this now verifies instead of the removed section's text.
+  it("shows the topic-list override badge as the default label for a fresh topic, and a live count once one is set", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderNotificationSettings()
 
-    expect(screen.getByText("No members have a custom reminder time yet")).toBeInTheDocument()
+    const topicCard = screen.getByRole("button", { name: /^All/ })
+    expect(within(topicCard).getByText("Per-member overrides (optional)")).toBeInTheDocument()
 
     await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
     await user.click(screen.getAllByRole("switch", { name: /live notifications/ })[0])
@@ -248,7 +312,7 @@ describe("NotificationSettings master-detail layout", () => {
     await user.click(screen.getByRole("menuitem", { name: "1 hour before" }))
     await user.keyboard("{Escape}")
 
-    expect(await screen.findByText("1 members have a custom reminder time")).toBeInTheDocument()
+    expect(await within(topicCard).findByText("1 custom")).toBeInTheDocument()
   })
 
   it("Reset restores a saved topic's own reminder mode and notification type, without touching enabled members", async () => {
@@ -266,7 +330,7 @@ describe("NotificationSettings master-detail layout", () => {
     await user.click(detail.getByRole("button", { name: /^Reset/ }))
 
     expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeChecked()
-    expect(detail.getByRole("radio", { name: "Both" })).toBeChecked()
+    expect(detail.getByRole("radio", { name: "Live + New Video" })).toBeChecked()
     expect(detail.getByText("1 selected")).toBeInTheDocument()
   })
 })
@@ -303,6 +367,37 @@ describe("member drawer respects the topic's own notificationType", () => {
     expect(screen.queryByText("Reminder time")).not.toBeInTheDocument()
   })
 
+  // A newVideo-only topic never sends a live/stream-start notification, so
+  // this control has nothing to configure -- but per the user's correction
+  // it stays visible and disabled (not hidden, which made the section look
+  // like it had vanished) rather than being removed from the page; only
+  // the topic-list card's own summary badge (a separate, smaller claim)
+  // still disappears.
+  it("newVideo topic: keeps the top-level Live reminder time control visible but disabled, with its stored value preserved and untouchable", async () => {
+    seedAllTopicType("newVideo")
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    const detail = within(getDetailPanel())
+    const radiogroup = detail.getByRole("radiogroup", { name: /Live reminder time/ })
+    expect(radiogroup).toBeInTheDocument()
+    expect(radiogroup).toHaveClass("ant-segmented-disabled")
+    expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeChecked()
+    expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeDisabled()
+    expect(
+      detail.getByText("Live reminder timing is unavailable while only New Video notifications are enabled."),
+    ).toBeInTheDocument()
+
+    // Disabled means unclickable, not just visually dimmed -- clicking a
+    // different option must not change the stored value.
+    await user.click(detail.getByRole("radio", { name: "1 hour before" }))
+    const stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
+    expect(stored.topics.all.reminderMode).toBe("10min")
+
+    const topicCard = screen.getByRole("button", { name: /^All/ })
+    expect(within(topicCard).queryByText("10 minutes before")).not.toBeInTheDocument()
+  })
+
   it("live topic: hides New Video, keeps Live and reminder-time available", async () => {
     seedAllTopicType("live")
     const user = userEvent.setup({ pointerEventsCheck: 0 })
@@ -313,6 +408,7 @@ describe("member drawer respects the topic's own notificationType", () => {
     expect(screen.getByText("Notification type: Live")).toBeInTheDocument()
     expect(screen.getAllByRole("switch", { name: /live notifications/ }).length).toBeGreaterThan(0)
     expect(screen.getAllByText("Reminder time").length).toBeGreaterThan(0)
+    expect(within(getDetailPanel()).getByRole("radiogroup", { name: /Live reminder time/ })).toBeInTheDocument()
     expect(screen.queryByRole("switch", { name: /new video notifications/ })).not.toBeInTheDocument()
   })
 

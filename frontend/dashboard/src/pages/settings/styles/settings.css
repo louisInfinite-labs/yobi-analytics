@@ -959,26 +959,32 @@
    grid entirely (confirmed with the user) -- topic ordering, reminder
    values, member-selection logic, Local Storage behavior and the Drawer
    itself are all unchanged; only how a topic is browsed and edited
-   changes here. Selected/hover states use one muted pink outline only --
-   no separate left-side accent strip on any surface (confirmed with the
-   user: the old .notification-settings__topic-card's `border-left: 3px
-   solid var(--notif-accent)` is explicitly removed, not carried over). */
+   changes here. Selected/hover states read through surface + border
+   contrast only (a low-saturation dark palette, confirmed with the user
+   as a later correction pass away from this redesign's original pink
+   accent) -- no separate left-side accent strip on any surface (the old
+   .notification-settings__topic-card's `border-left: 3px solid
+   var(--notif-accent)` is explicitly removed, not carried over). */
 
 .notification-settings-page {
+  /* Low-saturation dark palette (correction pass: pink/purple removed as
+     the page's theme color) -- selected/active states read through
+     surface + border contrast only, no colored accent. Blue is kept only
+     for the existing "manage members" functional actions. */
   --notification-page-bg: #17141d;
   --notification-surface-1: #1b1821;
-  --notification-surface-2: #211d28;
-  --notification-surface-3: #27222d;
-  --notification-border: #393442;
-  --notification-border-soft: #34303d;
+  --notification-surface-2: #201c24;
+  --notification-surface-3: #26212b;
+  --notification-border: #34303b;
+  --notification-border-soft: #34303b;
+  --notification-border-hover: #4a4350;
+  --notification-border-selected: #5a5261;
   --notification-divider: #35303a;
-  --notification-text-primary: #f6f1f8;
-  --notification-text-secondary: #aaa2b3;
-  --notification-text-muted: #8f8798;
-  --notification-accent: #df6eb2;
-  --notification-accent-strong: #e36fb5;
-  --notification-accent-bg: #5f354f;
-  --notification-purple: #9f73f2;
+  --notification-text-primary: #f1edf3;
+  --notification-text-secondary: #aaa3ae;
+  --notification-text-muted: #827b88;
+  --notification-selected-bg: #302a35;
+  --notification-selected-bg-hover: #37303d;
   --notification-blue: #2a7ed2;
   --notification-blue-text: #75bced;
 
@@ -1087,6 +1093,16 @@
     min-width: 0;
     overflow-y: auto;
     overflow-x: hidden;
+    /* Plain `stable`, not `both-edges` (confirmed with the user, correcting
+       an earlier version of this fix): `stable` alone already reserves the
+       right-side gutter UNCONDITIONALLY -- whether or not the list
+       actually overflows -- which is what stops the shift; `both-edges`
+       was solving a problem this single-sided reservation already solves,
+       while also taking matching space away from the left edge, making
+       the topic-card column narrower than necessary. Topic-card content
+       width is therefore fixed from first paint, never dependent on
+       whether the scrollbar is currently shown. */
+    scrollbar-gutter: stable;
   }
 }
 
@@ -1269,21 +1285,14 @@
 }
 
 .notification-topic-item:hover {
-  background: #25212d;
-  border-color: #51495d;
+  background: #25212a;
+  border-color: var(--notification-border-hover);
 }
 
 .notification-topic-item.is-selected {
   background: var(--notification-surface-3);
-  border-color: var(--notification-accent-strong);
-  box-shadow: 0 0 0 1px rgba(215, 96, 170, 0.16);
-}
-
-.notification-topic-item__icon {
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  color: #e889c2;
+  border-color: var(--notification-border-selected);
+  box-shadow: none;
 }
 
 .notification-topic-item__body {
@@ -1320,8 +1329,8 @@
   padding: 3px 8px;
   border-radius: 6px;
 
-  background: #71435f;
-  color: #fceef8;
+  background: var(--notification-selected-bg);
+  color: var(--notification-text-primary);
 
   font-size: 13px;
   font-weight: 600;
@@ -1331,7 +1340,10 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: #bbb3c1;
+  /* Matches --notification-text-secondary (#aaa3ae), the same default
+     functional-icon/meta-text color as the sibling override badge below --
+     unified per the icon-system pass (was a slightly different #bbb3c1). */
+  color: var(--notification-text-secondary);
   font-size: 13px;
 }
 
@@ -1344,7 +1356,7 @@
 }
 
 .notification-topic-item__override.is-active {
-  color: var(--notification-purple);
+  color: var(--notification-text-primary);
 }
 
 .notification-topic-item__chevron {
@@ -1374,7 +1386,7 @@
 }
 
 .notification-add-topic.ant-btn:hover {
-  border-color: #7d5871;
+  border-color: var(--notification-border-hover);
   background: #201b25;
   color: #ddd4e1;
 }
@@ -1387,8 +1399,8 @@
   display: grid;
   place-items: center;
 
-  background: #5a334d;
-  color: #f4c5df;
+  background: #2d2831;
+  color: #bdb5c2;
 }
 
 /* ---- Right: detail panel -- one continuous settings surface, no left
@@ -1416,17 +1428,10 @@
 
 .notification-detail-header {
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
+  flex-direction: column;
+  gap: 0;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--notification-divider);
-}
-
-.notification-detail-header__icon {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  color: #e488c2;
 }
 
 .notification-detail-header__title {
@@ -1446,7 +1451,8 @@
 
 /* Draft mode: the topic picker takes the header's own slot. */
 .notification-detail-header--draft {
-  align-items: center;
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 
 .notification-detail-topic-select.ant-select {
@@ -1478,58 +1484,129 @@
   line-height: 1.45;
 }
 
-/* ---- Live reminder time -- antd Segmented restyled to the spec's own
-   6-up option grid, keeping Segmented's own radiogroup/radio semantics. ---- */
+/* ---- Live reminder time -- one continuous antd Segmented strip, not a
+   grid of individual button/cards: no per-item border or own background,
+   only the selected item is highlighted (confirmed with the user,
+   correcting an earlier version of this control that gave every item its
+   own bordered box in a grid, which read as 6 separate buttons). ---- */
 
 .notification-reminder-options.ant-segmented {
-  background: transparent;
-  padding: 0;
-  display: grid;
-  /* auto-fit/minmax instead of a fixed 6-up viewport breakpoint: the
-     master-detail layout's own left topic list already claims 360-440px,
-     so how much width the detail panel actually has left for this control
-     varies with the panel, not just the viewport -- a plain
-     repeat(6, minmax(0, 1fr)) truncates every label at normal desktop
-     widths once that's accounted for. This wraps to fewer, wider columns
-     whenever the panel is narrower, and up to 6 across once it's wide
-     enough, with no min/max-width media query to keep in sync. */
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-  gap: 8px;
+  width: 100%;
+  background: var(--notification-surface-2);
+  border: 1px solid var(--notification-border);
+  /* Single-row only (confirmed with the user): Ant Design's MotionThumb
+     only animates a horizontal left/width offset, so a wrapped 2nd row
+     would make the sliding-highlight animation land in the wrong place
+     whenever the selection crosses the wrap boundary. overflow-x is a
+     last-resort safety net for a viewport narrower than any supported
+     breakpoint below -- normal desktop widths never reach it (see the
+     per-breakpoint measurements next to those media queries). */
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .notification-reminder-options .ant-segmented-group {
-  display: contents;
+  flex-wrap: nowrap;
+  gap: 4px;
 }
 
 .notification-reminder-options .ant-segmented-item {
-  min-height: 40px;
+  min-height: 36px;
+  /* flex-grow so items still stretch to fill a wide panel (1920/1600px),
+     flex-shrink:0 so a narrower panel never compresses/clips a label --
+     the font-size/padding steps below do that job instead, in the order
+     the user specified, and overflow-x above is the only fallback once
+     those steps are exhausted. */
+  flex: 1 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-
-  border: 1px solid var(--notification-border);
-  border-radius: 9px;
-  background: #221e29;
+  white-space: nowrap;
 
   color: #ddd7e2;
   font-size: 14px;
   font-weight: 500;
 }
 
-.notification-reminder-options .ant-segmented-item:hover {
-  border-color: #765068;
+/* Around 1440px (measured: ~462px available for a ~494px-wide row at the
+   default 14px/11px-padding sizing) -- confirmed with the user's own
+   priority order: shrink font-size a little, then padding/gap, before
+   ever wrapping or scrolling. */
+@media (max-width: 1550px) {
+  .notification-reminder-options .ant-segmented-item {
+    font-size: 13px;
+  }
+
+  .notification-reminder-options .ant-segmented-item-label {
+    padding: 0 8px;
+  }
+
+  .notification-reminder-options .ant-segmented-group {
+    gap: 3px;
+  }
 }
 
+/* Around 1400px/1366px (measured: ~422px/~388px available) -- one more
+   step down, still not below the user's stated 12px floor. */
+@media (max-width: 1420px) {
+  .notification-reminder-options .ant-segmented-item {
+    font-size: 12px;
+  }
+
+  .notification-reminder-options .ant-segmented-item-label {
+    padding: 0 6px;
+  }
+
+  .notification-reminder-options .ant-segmented-group {
+    gap: 2px;
+  }
+}
+
+.notification-reminder-options .ant-segmented-item:not(.ant-segmented-item-selected):hover {
+  color: #f1edf3;
+}
+
+/* Locally-scoped override: the selected reminder-time option needs one
+   extra level of emphasis above the selected topic card so it reads as
+   obviously selected -- kept local to this control instead of changing
+   the shared Segmented theme tokens (ConfigProvider below), which the
+   notification-type control also uses. */
 .notification-reminder-options .ant-segmented-item-selected {
-  background: var(--notification-accent-bg);
-  border-color: #e36fb5;
-  color: #fff5fb;
-  box-shadow: 0 0 0 1px rgba(227, 111, 181, 0.16);
+  background: #37303d;
+  color: #f5f1f6;
+  box-shadow: 0 0 0 1px rgba(107, 98, 111, 0.32);
 }
 
+.notification-reminder-options .ant-segmented-item-selected:hover {
+  background: #3b3441;
+}
+
+/* NOT display:none: rc-component/segmented gates its own
+   `ant-segmented-item-selected` class on the thumb's motion having
+   finished (`!thumbShow`, reset by the thumb element's transitionend).
+   display:none stops that transition from ever firing, so thumbShow gets
+   stuck true after the first click and no item shows as selected again.
+   Keeping the thumb real but visually inert (no paint) lets its
+   transform/width transition complete normally while nothing renders. */
 .notification-reminder-options .ant-segmented-thumb {
-  display: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Disabled (newVideo-only topic): the control stays visible rather than
+   the whole section disappearing, dimmed via opacity so its existing
+   neutral colors (including the selected item's own background/ring)
+   read as "unavailable" without introducing a separate disabled palette
+   -- scoped to the control itself, not .notification-detail-section, so
+   the section's own title/helper text next to it stays fully readable. */
+.notification-reminder-options.ant-segmented-disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.notification-reminder-options.ant-segmented-disabled .ant-segmented-item {
+  cursor: not-allowed;
 }
 
 /* ---- Notification type ---- */
@@ -1545,8 +1622,8 @@
 }
 
 .notification-type-control .ant-segmented-item-selected {
-  background: var(--notification-accent-bg);
-  color: #fff5fb;
+  background: var(--notification-selected-bg-hover);
+  color: var(--notification-text-primary);
 }
 
 /* ---- Notification members ---- */
@@ -1629,47 +1706,6 @@
   font-weight: 600;
 }
 
-/* ---- Per-creator override summary ---- */
-
-.notification-member-override-box {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-
-  min-height: 56px;
-  padding: 10px 14px 10px 16px;
-
-  background: #221e28;
-  border: 1px solid var(--notification-border-soft);
-  border-radius: 11px;
-}
-
-.notification-member-override-box__content {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-}
-
-.notification-member-override-box__icon {
-  flex: 0 0 auto;
-  color: #2ca8ef;
-}
-
-.notification-member-override-box__title {
-  margin: 0;
-  color: var(--notification-blue-text);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.notification-member-override-box__description {
-  margin-top: 4px;
-  color: #9e97a5;
-  font-size: 13px;
-}
-
 /* ---- Footer actions ---- */
 
 .notification-detail-actions {
@@ -1703,18 +1739,19 @@
   min-width: 126px;
   height: 40px;
 
-  border: 1px solid #e46cb4;
+  border: 1px solid var(--notification-border-selected);
   border-radius: 9px;
 
-  background: linear-gradient(180deg, #e36fb5 0%, #cc559f 100%);
+  background: var(--notification-selected-bg);
 
-  color: #fff;
+  color: var(--notification-text-primary);
   font-weight: 700;
 }
 
 .notification-save-button.ant-btn:hover {
-  filter: brightness(1.05);
-  color: #fff;
+  background: var(--notification-selected-bg-hover);
+  border-color: #625969;
+  color: var(--notification-text-primary);
 }
 
 .notification-settings-page :focus-visible {

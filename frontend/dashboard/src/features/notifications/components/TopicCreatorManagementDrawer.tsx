@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react"
 import { Button, ConfigProvider, Drawer, Dropdown, Input, Switch } from "antd"
-import { DownOutlined, SearchOutlined } from "@ant-design/icons"
+import { ChevronDown, Search } from "lucide-react"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
@@ -182,7 +182,7 @@ function ReminderCell({ topicId, creator, locale }: { topicId: TopicCatalogId; c
           color="default"
           size="small"
           className="topic-creator-drawer__reminder-trigger"
-          icon={<DownOutlined />}
+          icon={<ChevronDown size={14} aria-hidden="true" />}
           iconPlacement="end"
           aria-label={t(locale, "notificationSettings.reminderSelectAriaLabel", { name: creator.displayName })}
         >
@@ -334,7 +334,7 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
             </p>
             <Input
               className="topic-creator-drawer__search"
-              prefix={<SearchOutlined />}
+              prefix={<Search size={14} aria-hidden="true" />}
               placeholder={t(locale, "notificationSettings.searchPlaceholder")}
               allowClear
               value={searchQuery}
