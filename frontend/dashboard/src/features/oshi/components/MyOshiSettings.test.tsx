@@ -45,16 +45,22 @@ describe("MyOshiSettings (default Oshi picker)", () => {
     expect(screen.getByRole("radio", { name: /藍沢エマ/ })).toBeChecked()
   })
 
-  it("offers individual creators but not staff, VSPO's official channel, or a pre_debut group channel", () => {
+  it("offers individual creators but not staff, VSPO's official channel, or the アソビ★まわり隊！ group channel itself", () => {
     renderMyOshiSettings()
 
     expect(screen.getByRole("radio", { name: /兎田ぺこら/ })).toBeInTheDocument()
     expect(screen.queryByText("hololive Production Staff")).not.toBeInTheDocument()
     expect(screen.queryByText("VSPO! Official")).not.toBeInTheDocument()
-    // hololive_asobimawaritai: pre_debut but channelType "group" -- excluded
-    // by the canonical rule (active/pre_debut member only), unlike the old
-    // isEligibleForMyOshi which never excluded any Hololive group channel.
-    expect(screen.queryByText("アソビ★まわり隊！")).not.toBeInTheDocument()
+    // hololive_asobimawaritai (the GROUP channel record, channelType
+    // "group") is excluded by the canonical rule, unlike the old
+    // isEligibleForMyOshi which never excluded any Hololive group channel --
+    // but her 4 real pre_debut MEMBERS are eligible and correctly render
+    // under their own real アソビ★まわり隊！ subgroup heading (fixed grouping
+    // bug: they used to fall into "Other"), so only the group channel's own
+    // radio option must be absent, not the subgroup heading text.
+    expect(screen.queryByRole("radio", { name: "アソビ★まわり隊！" })).not.toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: /百灯キョーコ/ })).toBeInTheDocument()
+    expect(screen.getByText("アソビ★まわり隊！", { selector: ".my-oshi-select__subgroup-title" })).toBeInTheDocument()
   })
 
   it("search never reveals an excluded creator (staff/group/graduated), even by exact name", async () => {
