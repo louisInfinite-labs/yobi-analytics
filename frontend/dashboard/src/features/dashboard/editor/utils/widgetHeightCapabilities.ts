@@ -10,11 +10,10 @@
  * (GAP-2D) reads from this same constant rather than restating it, so
  * there remains exactly one copy of these values.
  *
- * A widgetType with no entry here (e.g. the comparison widget type,
- * `COMPARISON_WIDGET_TYPE` in dashboardComparisonWidgets.ts, or any future
- * catalog-driven type) is deliberately unrestricted -- GAP-2D only defined
- * evidence-backed constraints for the six current production widget types;
- * inventing a restriction for anything else is out of scope.
+ * A widgetType with no entry here (e.g. any future catalog-driven type) is
+ * deliberately unrestricted -- GAP-2D only defined evidence-backed
+ * constraints for the six current production widget types; inventing a
+ * restriction for anything else is out of scope.
  */
 import type { WidgetHeight } from "../model/dashboardLayout"
 import type { WidgetTypeId } from "../model/widget"

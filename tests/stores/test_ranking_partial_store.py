@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 from botocore.exceptions import ClientError
 
-from analytics.history_ranking import CreatorPeriodPartial, RankedGrowth, TopicPeriodPartial
+from analytics.history_ranking import CreatorPeriodPartial, RankedGrowth
 from stores.ranking_partial_store import (
     PARTIAL_RANKING_SCHEMA_VERSION,
     PartialRankingStoreError,
@@ -197,86 +197,92 @@ def test_reducer_style_loop_over_sixteen_shards_costs_exactly_sixteen_gets():
     assert client.get_calls == HISTORY_SHARD_COUNT == 16
 
 
-# --- topicPartials (Topic Phase 3): additive field, no schema-version bump --
+# --- R7 safety correction: schemaVersion=2 compatibility across a rolling --
+# --- deploy of history_worker (writer) and ranking_reducer (reader), two --
+# --- separately-deployed Lambdas that are not guaranteed to update atomically
 
 
-def test_write_then_read_round_trips_topic_partials():
-    client = _FakeS3Client()
-    store = S3PartialRankingStore("test-bucket", s3_client=client)
-    topic_partials = {"c1": {"apex": TopicPeriodPartial(creator_id="c1", topic="apex", view_sum=500, video_count=2)}}
-
-    store.write(date(2026, 9, 9), 0, {}, {}, topic_partials)
-
-    assert store.read_topic_partials(date(2026, 9, 9), 0) == topic_partials
-    _, _, bundled_topic_partials = store.read_bundle(date(2026, 9, 9), 0)
-    assert bundled_topic_partials == topic_partials
+def test_schema_version_was_not_bumped_by_removing_topic_partials():
+    """The smallest compatible change: dropping topicPartials must not need
+    a schemaVersion bump, the same "additive/removable field, no version
+    bump" precedent topicPartials' own original introduction already
+    established. Pinned explicitly so a future edit can't silently change
+    this without a test failing."""
+    assert PARTIAL_RANKING_SCHEMA_VERSION == 2
 
 
-def test_topic_partials_still_written_alongside_schema_version_2():
-    """The bump-free additive design: topicPartials is present in the
-    payload, but schemaVersion is still 2 -- proves this was never made a v3
-    field, which is what keeps a mixed-version rollout safe (see the three
-    scenario tests below)."""
-    client = _FakeS3Client()
-    store = S3PartialRankingStore("test-bucket", s3_client=client)
-    topic_partials = {"c1": {"apex": TopicPeriodPartial(creator_id="c1", topic="apex", view_sum=500, video_count=2)}}
-
-    store.write(date(2026, 9, 9), 0, {}, {}, topic_partials)
-
-    raw = json.loads(client.objects[("test-bucket", partial_ranking_key(date(2026, 9, 9), 0))])
-    assert raw["schemaVersion"] == PARTIAL_RANKING_SCHEMA_VERSION == 2
-    assert raw["topicPartials"] == [{"creatorId": "c1", "topic": "apex", "viewSum": 500, "videoCount": 2}]
-
-
-def test_scenario_a_old_shard_payload_with_no_topic_partials_key_reads_safely():
-    """Mixed-version rollout scenario A: an old-code shard invocation wrote a
-    payload with no topicPartials key at all (this is a real v2 object from
-    before Topic Phase 3 shipped, not a hand-shortened test fixture) -- a
-    new reducer reading it must get empty topic data back, never raise."""
+def test_new_reader_code_safely_ignores_topic_partials_in_an_old_writers_payload():
+    """Direction A: a new (post-R7) reader must tolerate a shard object an
+    old (pre-R7) history_worker Lambda already wrote -- a real, non-empty
+    topicPartials array included -- since the two Lambdas are deployed
+    independently and the writer may still be on old code for a while.
+    schemaVersion is unchanged (2), so this object remains readable at all;
+    the extra key must simply be ignored, never raise."""
     client = _FakeS3Client()
     store = S3PartialRankingStore("test-bucket", s3_client=client)
     key = partial_ranking_key(date(2026, 9, 9), 0)
-    old_style_payload = {
+    old_shaped_payload = {
         "schemaVersion": 2,
-        "scopeRankings": [],
+        "scopeRankings": [
+            {
+                "scopeType": "creator",
+                "scopeValue": "c1",
+                "period": "7d",
+                "entries": [
+                    {
+                        "rank": 1, "videoId": "v1", "creatorId": "c1", "viewCount": 500,
+                        "anchorViewCount": 0, "gain": 500, "observedAt": "2026-09-09T18:00:00+09:00",
+                    }
+                ],
+            }
+        ],
         "creatorPartials": [],
-        # no "topicPartials" key -- exactly what pre-Topic-Phase-3 code wrote.
+        # A real, non-empty topicPartials array -- exactly what a still-old
+        # history_worker Lambda would have written before R7 deployed there.
+        "topicPartials": [{"creatorId": "c1", "topic": "apex", "viewSum": 500, "videoCount": 1}],
     }
-    client.objects[("test-bucket", key)] = json.dumps(old_style_payload).encode("utf-8")
+    client.objects[("test-bucket", key)] = json.dumps(old_shaped_payload).encode("utf-8")
 
-    assert store.read_topic_partials(date(2026, 9, 9), 0) == {}
-    scope_rankings, creator_partials, topic_partials = store.read_bundle(date(2026, 9, 9), 0)
-    assert (scope_rankings, creator_partials, topic_partials) == ({}, {}, {})
+    scope_rankings, creator_partials = store.read_bundle(date(2026, 9, 9), 0)
+
+    assert [entry.video_id for entry in scope_rankings[("creator", "c1")]["7d"]] == ["v1"]
+    assert creator_partials == {}
 
 
-def test_scenario_b_new_shard_payload_is_still_fully_readable_by_the_old_two_tuple_contract():
-    """Mixed-version rollout scenario B: a new-code shard invocation wrote
-    topicPartials, but an "old" reducer only ever calls read()/
-    read_creator_partials() (the pre-Topic-Phase-3 API) -- both must still
-    return exactly the same scope/creator data as before, unaffected by the
-    extra key being present in the same object."""
+def test_new_writers_payload_has_no_top_level_topic_partials_key_at_all():
+    """Direction B's own precondition, proven directly: a payload the
+    current (post-R7) write() produces has no "topicPartials" key at all --
+    not an empty list, absent entirely. This is exactly what an old (pre-R7)
+    reducer's own historical `payload.get("topicPartials", [])` tolerant
+    read was already designed to survive (that pattern treats "key missing"
+    and "key present but empty" identically, returning [] either way) -- so
+    an old reducer reading a new writer's object degrades to zero topic data
+    for that shard rather than raising. Proven here at the data-contract
+    level, since the pre-R7 reducer code itself no longer exists in this
+    repo to invoke directly."""
+    client = _FakeS3Client()
+    store = S3PartialRankingStore("test-bucket", s3_client=client)
+
+    store.write(date(2026, 9, 9), 0, {}, {})
+
+    raw = json.loads(client.objects[("test-bucket", partial_ranking_key(date(2026, 9, 9), 0))])
+    assert "topicPartials" not in raw
+    assert raw.get("topicPartials", []) == []  # the exact old tolerant-read pattern, still safe
+
+
+def test_old_readers_required_keys_are_still_present_in_a_new_writers_payload():
+    """The two keys an old (pre-R7) reducer's own _from_payload required
+    outright (payload["scopeRankings"] / payload["creatorPartials"], no
+    .get() fallback) must still be present and correctly shaped in a new
+    writer's payload -- these were never part of the topicPartials removal,
+    but this pins that a new writer never accidentally drops them too."""
     client = _FakeS3Client()
     store = S3PartialRankingStore("test-bucket", s3_client=client)
     rankings = {("creator", "c1"): {"7d": [_ranked("v1", "c1", value=500, rank=1)]}}
-    creator_partials = {
-        "c1": {"7d": _creator_partial("c1", "7d", view_sum=500, catalog=1, eligible=1, top_candidates=[])}
-    }
-    topic_partials = {"c1": {"apex": TopicPeriodPartial(creator_id="c1", topic="apex", view_sum=500, video_count=1)}}
 
-    store.write(date(2026, 9, 9), 0, rankings, creator_partials, topic_partials)
+    store.write(date(2026, 9, 9), 0, rankings, {})
 
-    # The "old" API surface: exactly what pre-Topic-Phase-3 code called.
-    assert store.read(date(2026, 9, 9), 0) == rankings
-    assert store.read_creator_partials(date(2026, 9, 9), 0) == creator_partials
-
-
-def test_scenario_c_both_new_round_trips_every_part_of_the_payload():
-    client = _FakeS3Client()
-    store = S3PartialRankingStore("test-bucket", s3_client=client)
-    topic_partials = {"c1": {"apex": TopicPeriodPartial(creator_id="c1", topic="apex", view_sum=500, video_count=1)}}
-
-    store.write(date(2026, 9, 9), 0, {}, {}, topic_partials)
-    scope_rankings, creator_partials, read_back_topic_partials = store.read_bundle(date(2026, 9, 9), 0)
-
-    assert (scope_rankings, creator_partials) == ({}, {})
-    assert read_back_topic_partials == topic_partials
+    raw = json.loads(client.objects[("test-bucket", partial_ranking_key(date(2026, 9, 9), 0))])
+    assert raw["schemaVersion"] == 2
+    assert isinstance(raw["scopeRankings"], list) and len(raw["scopeRankings"]) == 1
+    assert raw["creatorPartials"] == []

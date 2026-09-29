@@ -83,8 +83,7 @@
 import { useCallback, useMemo, useRef, useState } from "react"
 import { buildDefaultLayout } from "../utils/dashboardDefaultLayout"
 import { createWidgetId, removeWidget, updateWidgetGeometry, type WidgetPlacement } from "../utils/dashboardWidgetActions"
-import { applyCreatorComparisonSelection } from "../../comparison/utils/dashboardComparisonWidgets"
-import { dropCreatorOntoWidget, dropCreatorsOntoWidget } from "../../comparison/utils/dashboardCreatorDrop"
+import { dropCreatorsOntoWidget } from "../../comparison/utils/dashboardCreatorDrop"
 import { computeRowInsertionPreview, computeValidatedRowInsertion, type InsertionCandidate } from "../utils/dashboardInsertionPreview"
 import { computeAffectedWidgetIds, submitLayoutSave } from "../utils/dashboardLayoutSave"
 import { validateLayout } from "../utils/dashboardLayoutValidation"
@@ -154,21 +153,7 @@ export interface UseDashboardEditorResult {
    * draft mutation here uses). Rejected removals (e.g. leaving an
    * unresolvable `INCOMPLETE_COLUMN` gap) leave `draftLayout` unchanged. */
   removeDraftWidget: (widgetId: string) => void
-  /** MT-11 Flow 1 (Section 3.4): applies a confirmed creator selection to
-   * exactly one compatible widget's draft `comparison.creatorIds`. Never
-   * touches `layout` (canonical state) -- the picker's Apply action commits
-   * only to the draft, same as every other draft mutation this hook owns. */
-  updateDraftWidgetComparison: (widgetId: string, creatorIds: string[]) => void
-  /** MT-13 Flow 3 (Section 3.4): appends a dropped creator to exactly one
-   * compatible widget's draft `comparison.creatorIds`. Never touches `layout`
-   * (canonical state) until the normal Dashboard Save flow runs. */
-  updateDraftWidgetByCreatorDrop: (widgetId: string, creatorId: string) => void
   updateDraftWidgetCreatorScope: (widgetId: string, creatorIds: string[]) => void
-  /** Adopts a layout Flow 2's own atomic transaction
-   * already persisted as the new committed layout (and its draft baseline).
-   * Only meaningful outside edit mode -- Flow 2 is offered in view mode, so
-   * it can never discard an unsaved draft. */
-  commitExternalLayout: (committed: CanonicalLayout) => void
   /** Non-null only while an insertion preview is active. */
   insertionCandidate: InsertionCandidate | null
   /** Creates a candidate with a stable `widgetId` (MT-02's canonical id-creation path) and snapshots the current draft to restore on cancel. */
@@ -268,21 +253,8 @@ export function useDashboardEditor(
     setDraftLayout((current) => removeWidget(current, widgetId).layout)
   }, [])
 
-  const updateDraftWidgetComparison = useCallback((widgetId: string, creatorIds: string[]) => {
-    setDraftLayout((current) => applyCreatorComparisonSelection(current, widgetId, creatorIds))
-  }, [])
-
-  const updateDraftWidgetByCreatorDrop = useCallback((widgetId: string, creatorId: string) => {
-    setDraftLayout((current) => dropCreatorOntoWidget(current, widgetId, creatorId))
-  }, [])
-
   const updateDraftWidgetCreatorScope = useCallback((widgetId: string, creatorIds: string[]) => {
     setDraftLayout((current) => dropCreatorsOntoWidget(current, widgetId, creatorIds))
-  }, [])
-
-  const commitExternalLayout = useCallback((committed: CanonicalLayout) => {
-    setLayout(committed)
-    setDraftLayout(committed)
   }, [])
 
   const [insertionCandidate, setInsertionCandidate] = useState<InsertionCandidate | null>(null)
@@ -348,10 +320,7 @@ export function useDashboardEditor(
     saveError,
     updateDraftWidget,
     removeDraftWidget,
-    updateDraftWidgetComparison,
-    updateDraftWidgetByCreatorDrop,
     updateDraftWidgetCreatorScope,
-    commitExternalLayout,
     insertionCandidate,
     beginInsertion,
     previewInsertionAtSlot,

@@ -74,6 +74,15 @@ class VideoMasterStore(Protocol):
     functions already match this exact signature) is passed directly as a
     module object by history_worker_handler.lambda_handler, with no adapter
     class needed.
+
+    `get_videos` (AWS Cost Recovery, third pass, Scope H) is an *optional*
+    extension, not part of this Protocol's required shape -- duck-typed via
+    `getattr(store, "get_videos", None)` at the one call site that uses it
+    (collection.history_worker._carry_forward_non_due_rows), so an existing
+    caller/test double implementing only the two methods above keeps working
+    unchanged. A store that does provide it (dynamodb_store.get_videos) lets
+    that call site batch every video-master fallback lookup into one bounded
+    BatchGetItem call instead of one GetItem per video.
     """
 
     def get_video(self, video_id: str) -> Video | None:

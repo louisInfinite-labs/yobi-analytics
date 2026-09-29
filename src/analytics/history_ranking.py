@@ -8,7 +8,6 @@ from datetime import date, timedelta
 from typing import Mapping
 
 from stores.history_store import EXACT_ANCHOR_DAYS, HistoryRow, HistoryStore
-from tracking.video_topics import OTHER_TOPIC
 
 ScopeKey = tuple[str, str]
 
@@ -387,59 +386,6 @@ def merge_creator_period_partials(
     return merged
 
 
-@dataclass(frozen=True)
-class TopicPeriodPartial:
-    """One creator's contribution to one topic, from one shard's own
-    today_rows -- Topic Phase 3 (#6/#7), period="all" only.
-
-    `view_sum` is the plain sum of `row.view_count` (the video's own latest
-    collected count, never a growth/anchor value) over just this creator's
-    videos in `today_rows` classified under `topic`; `video_count` is how
-    many such videos there were. Both exact and unbounded, the same as
-    CreatorPeriodPartial.view_sum/catalog_video_count -- there is no Top-N
-    candidate list here at all, since a topic leaderboard ranks creators,
-    not individual videos (unlike CreatorPeriodPartial's own top_candidates,
-    kept for a creator's single best video).
-    """
-
-    creator_id: str
-    topic: str
-    view_sum: int
-    video_count: int
-
-
-def creator_topic_partials(
-    today_rows: list[HistoryRow], *, topic_by_video: Mapping[str, str]
-) -> dict[str, dict[str, TopicPeriodPartial]]:
-    """creator_id -> {topic: TopicPeriodPartial}, from one shard's own today_rows.
-
-    Deliberately takes no anchor_rows: "topicTotalViews" is defined as the
-    sum of the latest collected view_count (Topic Phase 3's own definition),
-    which -- like history_ranking.period_values' own ALL_PERIOD case --
-    needs no historical anchor at all, unlike creator_period_partials'
-    1d/7d/30d growth periods.
-
-    A video absent from topic_by_video (no Video Master row found for it at
-    all -- should not normally happen, since every collected video was
-    discovered through Video Master first) falls back to OTHER_TOPIC, the
-    same safety net classify_video_topic itself guarantees for a title that
-    matches nothing.
-    """
-    sums: dict[tuple[str, str], int] = {}
-    counts: dict[tuple[str, str], int] = {}
-    for row in today_rows:
-        key = (row.creator_id, topic_by_video.get(row.video_id, OTHER_TOPIC))
-        sums[key] = sums.get(key, 0) + row.view_count
-        counts[key] = counts.get(key, 0) + 1
-
-    result: dict[str, dict[str, TopicPeriodPartial]] = {}
-    for (creator_id, topic), video_count in counts.items():
-        result.setdefault(creator_id, {})[topic] = TopicPeriodPartial(
-            creator_id=creator_id, topic=topic, view_sum=sums[(creator_id, topic)], video_count=video_count
-        )
-    return result
-
-
 class IncrementalRankingMerger:
     """Folds one shard's scope-ranking + creator-partial output into bounded
     running accumulators at a time, instead of a reducer holding every
@@ -483,24 +429,18 @@ class IncrementalRankingMerger:
         self._creator_catalog_counts: dict[tuple[str, str], int] = {}
         self._creator_eligible_counts: dict[tuple[str, str], int] = {}
         self._creator_candidates: dict[tuple[str, str], list[RankedGrowth]] = {}
-        self._topic_view_sums: dict[tuple[str, str], int] = {}
-        self._topic_video_counts: dict[tuple[str, str], int] = {}
 
     def add_shard(
         self,
         scope_rankings: dict[ScopeKey, dict[str, list[RankedGrowth]]],
         creator_partials: dict[str, dict[str, CreatorPeriodPartial]],
-        topic_partials: dict[str, dict[str, TopicPeriodPartial]] | None = None,
     ) -> None:
         """Fold one shard's already-bounded contribution into the running merge.
 
         Every argument is exactly one shard's own output (e.g.
-        top_n_by_scope's/creator_period_partials'/creator_topic_partials'
-        own return values, or one read_bundle() call) — this never
-        re-derives anything from raw HistoryRows, only combines
-        already-bounded per-shard results. `topic_partials` defaults to
-        None/{} so an existing caller (or test) that only ever passed the
-        first two arguments keeps working unchanged.
+        top_n_by_scope's/creator_period_partials' own return values, or one
+        read_bundle() call) — this never re-derives anything from raw
+        HistoryRows, only combines already-bounded per-shard results.
         """
         for scope, periods in scope_rankings.items():
             for period, entries in periods.items():
@@ -522,12 +462,6 @@ class IncrementalRankingMerger:
                 self._creator_candidates[key] = heapq.nsmallest(
                     self._creator_limit, combined, key=lambda entry: (-entry.gain, entry.video_id)
                 )
-
-        for creator_id, topics in (topic_partials or {}).items():
-            for topic, agg in topics.items():
-                key = (creator_id, topic)
-                self._topic_view_sums[key] = self._topic_view_sums.get(key, 0) + agg.view_sum
-                self._topic_video_counts[key] = self._topic_video_counts.get(key, 0) + agg.video_count
 
     def scope_rankings(self) -> dict[ScopeKey, dict[str, list[RankedGrowth]]]:
         """Finalize the merged, ranked scope (video) Top-N — same shape/contract
@@ -579,245 +513,6 @@ class IncrementalRankingMerger:
             )
         return merged
 
-    def topic_partials(self) -> dict[str, dict[str, TopicPeriodPartial]]:
-        """Finalize the merged, exact per-creator/per-topic aggregates (Topic
-        Phase 3) — every (creator, topic) pair ever folded in by add_shard,
-        summed across every shard."""
-        merged: dict[str, dict[str, TopicPeriodPartial]] = {}
-        for (creator_id, topic), video_count in self._topic_video_counts.items():
-            merged.setdefault(creator_id, {})[topic] = TopicPeriodPartial(
-                creator_id=creator_id,
-                topic=topic,
-                view_sum=self._topic_view_sums.get((creator_id, topic), 0),
-                video_count=video_count,
-            )
-        return merged
-
-
-@dataclass(frozen=True)
-class CreatorLeaderboardEntry:
-    """One creator's position in an organization's member leaderboard.
-
-    Carries the same creator's own coverage fields (catalog/eligible/
-    complete) alongside its rank, so a future API/UI can explain *why* a
-    member's number looks the way it does (e.g. still bootstrapping,
-    genuinely incomplete that day) without a second lookup.
-    """
-
-    rank: int
-    creator_id: str
-    value: int
-    catalog_video_count: int
-    eligible_video_count: int
-    is_complete: bool
-    video_id: str | None = None  # only set for the "top single video" leaderboard
-
-
-@dataclass(frozen=True)
-class OrganizationPeriodLeaderboard:
-    """One organization's two member leaderboards for one period, plus the
-    org-wide coverage summary a future API/UI needs to explain them.
-
-    `is_complete` is only true when *every* member creator that
-    participates in this organization/period is itself complete — a single
-    incomplete member (a real per-video gap, not a legitimately new video)
-    is enough to keep the whole organization/period marked incomplete, per
-    Roadmap 5.x's bootstrap-availability rule (see organization_creator_
-    leaderboards' own docstring for why an old video's missing anchor must
-    never be silently treated as complete just because the pipeline is
-    still young).
-    """
-
-    organization: str
-    period: str
-    member_count: int
-    complete_member_count: int
-    catalog_video_count: int
-    eligible_video_count: int
-    by_total_views: list[CreatorLeaderboardEntry]
-    by_top_video: list[CreatorLeaderboardEntry]
-
-    @property
-    def is_complete(self) -> bool:
-        return self.complete_member_count == self.member_count
-
-
-def organization_creator_leaderboards(
-    creator_partials: dict[str, dict[str, CreatorPeriodPartial]],
-    *,
-    dimensions_by_creator: Mapping[str, CreatorDimensions],
-) -> dict[str, dict[str, OrganizationPeriodLeaderboard]]:
-    """Build each organization's two member leaderboards per period, from
-    already-merged (final, exact) per-creator aggregates.
-
-    Returns {organization: {period: OrganizationPeriodLeaderboard}}. Only
-    ever reads creator-level totals (merge_creator_period_partials' own
-    output) — never revisits per-video data, since a creator's total/
-    top-video is already exact once every shard's partial has been merged.
-    A creator absent from `dimensions_by_creator`, or with no organization,
-    contributes to no organization's leaderboard (mirrors _scopes_for's own
-    "no dimensions, no org/branch scope" rule). "byTopVideo" additionally
-    skips a creator with no top_candidates for that period (nothing rankable
-    that period), the same way a video with no gain is never ranked — such
-    a creator still counts toward member_count/complete_member_count,
-    just not toward that one ranked list.
-
-    Bootstrap availability (Roadmap 5.x): a member creator's own
-    CreatorPeriodPartial.is_complete already correctly distinguishes "this
-    video is genuinely new, so a missing anchor is a defensible 0 baseline"
-    from "this video already existed and a real anchor is missing" (see
-    history_ranking._period_value) — the latter is what keeps a member,
-    and therefore its whole organization/period, marked incomplete during
-    this pipeline's own bootstrap window (no D-7 snapshot exists anywhere
-    before Day 8, no D-30 before Day 31, regardless of how old any given
-    video is). "all" needs no anchor at all, so it is always complete from
-    Day 1. This function does not special-case any of that itself — it
-    only aggregates whatever completeness each member's own partial
-    already carries.
-    """
-    by_org: dict[str, dict[str, list[tuple[str, CreatorPeriodPartial]]]] = {}
-    for creator_id, periods in creator_partials.items():
-        dimensions = dimensions_by_creator.get(creator_id)
-        if dimensions is None or not dimensions.organization:
-            continue
-        for period, agg in periods.items():
-            by_org.setdefault(dimensions.organization, {}).setdefault(period, []).append((creator_id, agg))
-
-    result: dict[str, dict[str, OrganizationPeriodLeaderboard]] = {}
-    for organization, periods in by_org.items():
-        for period, members in periods.items():
-            by_total = sorted(members, key=lambda pair: (-pair[1].view_sum, pair[0]))
-            by_top_video = sorted(
-                (pair for pair in members if pair[1].top_candidates),
-                key=lambda pair: (-pair[1].top_candidates[0].gain, pair[0]),
-            )
-            result.setdefault(organization, {})[period] = OrganizationPeriodLeaderboard(
-                organization=organization,
-                period=period,
-                member_count=len(members),
-                complete_member_count=sum(1 for _, agg in members if agg.is_complete),
-                catalog_video_count=sum(agg.catalog_video_count for _, agg in members),
-                eligible_video_count=sum(agg.eligible_video_count for _, agg in members),
-                by_total_views=[
-                    CreatorLeaderboardEntry(
-                        rank=rank,
-                        creator_id=creator_id,
-                        value=agg.view_sum,
-                        catalog_video_count=agg.catalog_video_count,
-                        eligible_video_count=agg.eligible_video_count,
-                        is_complete=agg.is_complete,
-                    )
-                    for rank, (creator_id, agg) in enumerate(by_total, start=1)
-                ],
-                by_top_video=[
-                    CreatorLeaderboardEntry(
-                        rank=rank,
-                        creator_id=creator_id,
-                        value=agg.top_candidates[0].gain,
-                        catalog_video_count=agg.catalog_video_count,
-                        eligible_video_count=agg.eligible_video_count,
-                        is_complete=agg.is_complete,
-                        video_id=agg.top_candidates[0].video_id,
-                    )
-                    for rank, (creator_id, agg) in enumerate(by_top_video, start=1)
-                ],
-            )
-    return result
-
-
-@dataclass(frozen=True)
-class TopicCreatorLeaderboardEntry:
-    """One creator's position in one topic's global creator leaderboard (Topic Phase 3, #6/#7)."""
-
-    rank: int
-    creator_id: str
-    organization: str | None
-    branch: str | None
-    topic_total_views: int
-    topic_video_count: int
-    topic_average_views_per_video: float
-
-
-@dataclass(frozen=True)
-class TopicLeaderboard:
-    """One topic's global (every organization combined, Topic Phase 3 #7)
-    creator leaderboard, period="all" only (see the feature's own report
-    for why growth periods are deliberately not computed here)."""
-
-    topic: str
-    creator_count: int
-    video_count: int
-    by_total_views: list[TopicCreatorLeaderboardEntry]
-    by_average_views_per_video: list[TopicCreatorLeaderboardEntry]
-
-
-def topic_creator_leaderboards(
-    creator_topic_partials: dict[str, dict[str, TopicPeriodPartial]],
-    *,
-    dimensions_by_creator: Mapping[str, CreatorDimensions],
-) -> dict[str, TopicLeaderboard]:
-    """Build each topic's global creator leaderboard from already-merged
-    (final, exact) per-creator/per-topic aggregates — the topic-scoped
-    analog of organization_creator_leaderboards, except deliberately global
-    (Hololive + VSPO combined in one ranking, Topic Phase 3 #7) rather than
-    one leaderboard per organization, and ranked by topicTotalViews/
-    topicAverageViewsPerVideo (#6/#7) rather than total-views/top-video.
-
-    A creator absent from dimensions_by_creator still gets an entry (its
-    organization/branch simply come back None) — unlike
-    organization_creator_leaderboards, a topic leaderboard has no per-
-    organization membership check to fail, since it's deliberately global.
-
-    Every entry here has video_count >= 1 by construction (a (creator,
-    topic) pair only ever exists in creator_topic_partials when at least
-    one matching video was actually aggregated into it), so
-    topic_average_views_per_video is always a safe division — a creator
-    with zero matching-topic videos simply never produces an entry, which
-    is what "creators with zero videos for the topic are excluded" (#10)
-    means in practice.
-    """
-    by_topic: dict[str, list[tuple[str, TopicPeriodPartial]]] = {}
-    for creator_id, topics in creator_topic_partials.items():
-        for topic, agg in topics.items():
-            by_topic.setdefault(topic, []).append((creator_id, agg))
-
-    result: dict[str, TopicLeaderboard] = {}
-    for topic, members in by_topic.items():
-        by_total = sorted(members, key=lambda pair: (-pair[1].view_sum, pair[0]))
-        by_average = sorted(members, key=lambda pair: (-(pair[1].view_sum / pair[1].video_count), pair[0]))
-        result[topic] = TopicLeaderboard(
-            topic=topic,
-            creator_count=len(members),
-            video_count=sum(agg.video_count for _, agg in members),
-            by_total_views=[
-                _topic_leaderboard_entry(rank, creator_id, agg, dimensions_by_creator)
-                for rank, (creator_id, agg) in enumerate(by_total, start=1)
-            ],
-            by_average_views_per_video=[
-                _topic_leaderboard_entry(rank, creator_id, agg, dimensions_by_creator)
-                for rank, (creator_id, agg) in enumerate(by_average, start=1)
-            ],
-        )
-    return result
-
-
-def _topic_leaderboard_entry(
-    rank: int,
-    creator_id: str,
-    agg: TopicPeriodPartial,
-    dimensions_by_creator: Mapping[str, CreatorDimensions],
-) -> TopicCreatorLeaderboardEntry:
-    dimensions = dimensions_by_creator.get(creator_id)
-    return TopicCreatorLeaderboardEntry(
-        rank=rank,
-        creator_id=creator_id,
-        organization=dimensions.organization if dimensions else None,
-        branch=dimensions.branch if dimensions else None,
-        topic_total_views=agg.view_sum,
-        topic_video_count=agg.video_count,
-        topic_average_views_per_video=agg.view_sum / agg.video_count,
-    )
-
 
 def merge_partial_rankings(
     partials: list[dict[ScopeKey, dict[str, list[RankedGrowth]]]],
@@ -856,15 +551,19 @@ def _scopes_for(row: HistoryRow, dimensions: CreatorDimensions | None) -> list[S
     """Scope keys this row contributes to.
 
     The organization scope_type is "org", not "organization" (V5.12): the
-    existing production contract -- both the legacy trending_precompute
-    writer and get_organization_trending's own cache lookup -- has always
-    used "org:<organization>:...". Emitting anything else here makes this
-    pipeline's own organization-scope writes unreadable by the public API.
+    existing production contract -- get_organization_trending's own cache
+    lookup -- has always used "org:<organization>:...". Emitting anything
+    else here makes this pipeline's own organization-scope writes unreadable
+    by the public API.
+
+    R7 (AWS Cost Recovery): "branch" and "global" scopes were removed here --
+    both had zero production readers (no API endpoint, frontend, or test
+    ever consumed a branch- or global-scoped trending cache entry), so
+    computing and persisting them was pure recurring cost with no consumer.
+    "creator"/"org" remain: get_creator_trending/get_organization_trending
+    still read them.
     """
-    scopes: list[ScopeKey] = [("global", "global"), ("creator", row.creator_id)]
-    if dimensions is not None:
-        if dimensions.organization:
-            scopes.append(("org", dimensions.organization))
-        if dimensions.branch:
-            scopes.append(("branch", dimensions.branch))
+    scopes: list[ScopeKey] = [("creator", row.creator_id)]
+    if dimensions is not None and dimensions.organization:
+        scopes.append(("org", dimensions.organization))
     return scopes

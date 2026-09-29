@@ -8,7 +8,7 @@ route answers 404, so nothing here can reach DynamoDB or Secrets Manager.
 
 `--seed-fixture` stands in for YobiTrendingCache: it runs the real history
 pipeline code (history_ranking.creator_period_partials and
-ranking_reducer.persist_creator_and_organization_rankings) over a small
+ranking_reducer.persist_creator_summaries) over a small
 deterministic set of history rows for a handful of real Creator Master
 creators, and serves the resulting creatorSummary items to the comparison
 endpoint through the same seam production uses. FIXTURE_CREATORS is the single
@@ -70,10 +70,9 @@ def seed_fixture() -> dict[str, dict]:
     day = FIRST_DATE
     while day <= LAST_DATE:
         anchors = {days: (rows_on(day - timedelta(days=days)) if day - timedelta(days=days) >= FIRST_DATE else []) for days in EXACT_ANCHOR_DAYS}
-        ranking_reducer.persist_creator_and_organization_rankings(
+        ranking_reducer.persist_creator_summaries(
             history_ranking.creator_period_partials(rows_on(day), anchors, report_date=day),
             report_date=day,
-            dimensions_by_creator={},
             put_cached_trending=lambda key, payload, *, computed_at: stored.__setitem__(key, payload),
             computed_at=f"{day.isoformat()}T18:05:00+09:00",
             wru_budget=ranking_reducer.WruBudget(target_wru_per_second=1_000_000),

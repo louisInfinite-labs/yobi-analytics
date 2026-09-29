@@ -4,7 +4,7 @@ ranking/reducer code (Task T2.9).
 For each candidate reportDate, this calls the UNMODIFIED production
 functions -- history_ranking.top_n_by_scope, history_ranking.
 creator_period_partials, history_ranking.IncrementalRankingMerger, and
-ranking_reducer.persist_rankings / persist_creator_and_organization_rankings
+ranking_reducer.persist_rankings / persist_creator_summaries
 -- against rows read from the real S3HistoryStore over the newly uploaded
 s3://yobi-analytics-history/history/daily/ objects. The only substitution is
 `put_cached_trending`: a local stub that records the payload each call would
@@ -44,7 +44,7 @@ from analytics.history_ranking import (
     top_n_by_scope,
 )
 from stores.history_store import EXACT_ANCHOR_DAYS, HISTORY_SHARD_COUNT, S3HistoryStore
-from analytics.ranking_reducer import WruBudget, persist_creator_and_organization_rankings, persist_rankings
+from analytics.ranking_reducer import WruBudget, persist_creator_summaries, persist_rankings
 
 HISTORY_BUCKET = "yobi-analytics-history"
 
@@ -193,10 +193,9 @@ def validate_report_date(store: _CountingS3HistoryStore, report_date: date, dime
             computed_at="1970-01-01T00:00:00+00:00",
             wru_budget=wru_budget,
         )
-        writes += persist_creator_and_organization_rankings(
+        writes += persist_creator_summaries(
             creator_partials_merged,
             report_date=report_date,
-            dimensions_by_creator=dimensions_by_creator,
             put_cached_trending=cache_sink,
             computed_at="1970-01-01T00:00:00+00:00",
             wru_budget=wru_budget,

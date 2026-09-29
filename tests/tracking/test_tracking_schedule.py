@@ -24,19 +24,33 @@ def _published_days_ago(days: int, as_of: date) -> str:
 
 
 def test_recent_video_is_always_due_regardless_of_state():
-    """A video published within the last 30 days is checked every day, even if Cold."""
+    """A video published within the last 7 days is checked every day, even if Cold."""
     today = date(2026, 8, 30)
     published_at = _published_days_ago(0, today)
 
     assert is_due_today("any_video_id", published_at, "Cold", today) is True
 
 
-def test_video_exactly_thirty_days_old_is_still_recent():
-    """The 30-day boundary is inclusive: still checked every day."""
+def test_video_exactly_seven_days_old_is_still_recent():
+    """The 7-day boundary is inclusive: still checked every day."""
     today = date(2026, 8, 30)
-    published_at = _published_days_ago(30, today)
+    published_at = _published_days_ago(7, today)
 
     assert is_due_today("any_video_id", published_at, "Cold", today) is True
+
+
+def test_video_eight_days_old_no_longer_gets_a_free_daily_pass_from_age_alone():
+    """AWS Cost Recovery (second pass): a video just past the narrowed 7-day
+    Recent window must fall back to its own activity_state cadence -- it must
+    not still be due every day purely from being '8-30 days old'. A Cold video
+    (15-day cycle) at day 8 will not be due on every single one of the next
+    COLD_CYCLE_DAYS days."""
+    today = date(2026, 8, 30)
+    published_at = _published_days_ago(8, today)
+
+    results = [is_due_today("any_video_id", published_at, "Cold", today + timedelta(days=i)) for i in range(COLD_CYCLE_DAYS)]
+
+    assert not all(results)
 
 
 def test_malformed_published_at_defaults_to_due():
@@ -54,11 +68,11 @@ def test_unrecognized_activity_state_defaults_to_due():
     assert is_due_today("weird_video_id", published_at, "SomethingUnexpected", today) is True
 
 
-# --- is_due_today: activity_state beyond the 30-day age gate ---------------
+# --- is_due_today: activity_state beyond the Recent age gate ---------------
 
 
-def test_hot_video_is_always_due_beyond_thirty_days():
-    """A Hot video older than 30 days is still checked every day."""
+def test_hot_video_is_always_due_beyond_recent_window():
+    """A Hot video older than RECENT_MAX_AGE_DAYS is still checked every day."""
     today = date(2026, 8, 30)
     published_at = _published_days_ago(60, today)
 
@@ -68,7 +82,7 @@ def test_hot_video_is_always_due_beyond_thirty_days():
 
 
 def test_unknown_tier_video_is_not_due_every_day():
-    """An Unknown-state video older than 30 days is not checked every single day."""
+    """An Unknown-state video older than RECENT_MAX_AGE_DAYS is not checked every single day."""
     today = date(2026, 8, 30)
     published_at = _published_days_ago(60, today)
 
@@ -180,7 +194,7 @@ def _first_due_and_not_due_offset(video_id: str, published_at: str, state: str, 
 
 
 def test_select_due_video_ids_always_includes_recent_videos():
-    """A video published within the last 30 days is due daily, regardless of activity_state."""
+    """A video published within the last 7 days is due daily, regardless of activity_state."""
     today = date(2026, 8, 30)
     recent = _published_days_ago(0, today)
 

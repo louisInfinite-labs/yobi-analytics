@@ -6,19 +6,29 @@ import io
 import os
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Protocol
+from typing import Callable, Protocol
 
 from botocore.exceptions import ClientError
 
 from analytics.history_ranking import UNKNOWN_DISCOVERED_DATE
 from stores.history_store import HISTORY_SHARD_COUNT, shard_for_video
 from tracking.video_master import VALID_ACTIVITY_STATES
+from tracking.video_topics import TOPIC_IDS
 
 MANIFEST_PREFIX = "catalog/current"
 
 
 class TrackingManifestError(RuntimeError):
     """Raised when a tracking manifest cannot be read, written, or validated."""
+
+
+class ManifestConflictError(TrackingManifestError):
+    """Raised when an optimistic-concurrency shard write's precondition failed --
+    another writer created or modified this shard between this call's own read
+    and write. Always retryable: the caller should re-read the shard's current
+    state (read_shard_for_patch) and re-apply its own patch, not treat this as
+    a permanent failure. See patch_shard for the bounded-retry loop built on
+    top of this."""
 
 
 @dataclass(frozen=True)
@@ -46,6 +56,17 @@ class ManifestEntry:
     fall back to on-demand behavior (e.g. tracking_schedule.is_due_today's
     own "can't tell, so check it today" handling for an unrecognized/
     unparsable value), not invent a guessed classification here.
+
+    `topic` (AWS Cost Recovery second pass, mirrors Video.topic) follows the
+    identical optional/nullable precedent, for the identical reason: a
+    manifest object written before this field existed, or a video whose
+    discovery-time classification/one-time backfill hasn't landed yet, reads
+    as None. Unlike `published_at`/`activity_state`, a caller with a None (or
+    otherwise unrecognized) topic here has no title available to reclassify
+    from at this layer — history_worker._resolve_manifest_topics falls back
+    to video_topics.OTHER_TOPIC directly, the same "nothing matched" bucket
+    classify_video_topic itself returns for an unclassifiable title, never a
+    fabricated guess.
     """
 
     video_id: str
@@ -54,6 +75,7 @@ class ManifestEntry:
     discovered_at: str | None = None
     published_at: str | None = None
     activity_state: str | None = None
+    topic: str | None = None
 
 
 class TrackingManifestStore(Protocol):
@@ -64,6 +86,19 @@ class TrackingManifestStore(Protocol):
 
     def read_shard(self, shard: int) -> list[ManifestEntry]:
         """Read one current-catalog shard; a missing shard is an error."""
+
+    def read_shard_for_patch(self, shard: int) -> tuple[list[ManifestEntry], str | None]:
+        """Read one shard plus an opaque version token for write_shard_if_version,
+        or ([], None) if the shard does not exist yet at all (distinct from an
+        existing shard with zero entries, which returns its own real version).
+        Pair with write_shard_if_version -- see patch_shard for the full
+        bounded-retry read-modify-write loop built on top of both."""
+
+    def write_shard_if_version(self, shard: int, entries: list[ManifestEntry], *, version: str | None) -> str:
+        """Idempotently replace one shard, but only if it is still exactly at
+        `version` (None meaning "must not exist yet"). Raises
+        ManifestConflictError -- never silently overwrites -- if another writer
+        already created or changed this shard since `version` was read."""
 
 
 def manifest_key(shard: int) -> str:
@@ -94,6 +129,7 @@ def serialize_manifest(entries: list[ManifestEntry]) -> bytes:
             "discoveredAt": pa.array([entry.discovered_at for entry in entries], type=pa.string()),
             "publishedAt": pa.array([entry.published_at for entry in entries], type=pa.string()),
             "activityState": pa.array([entry.activity_state for entry in entries], type=pa.string()),
+            "topic": pa.array([entry.topic for entry in entries], type=pa.string()),
         }
     )
     output = io.BytesIO()
@@ -133,6 +169,7 @@ def deserialize_manifest(payload: bytes) -> list[ManifestEntry]:
                 discovered_at=entry.get("discoveredAt"),
                 published_at=entry.get("publishedAt"),
                 activity_state=entry.get("activityState"),
+                topic=entry.get("topic"),
             )
             for entry in raw_entries
         ]
@@ -218,17 +255,124 @@ class S3TrackingManifestStore:
             raise TrackingManifestError(f"Failed to read s3://{self.bucket_name}/{key}: {exc}") from exc
         return deserialize_manifest(body)
 
+    def read_shard_for_patch(self, shard: int) -> tuple[list[ManifestEntry], str | None]:
+        key = manifest_key(shard)
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
+            body = response["Body"].read()
+            version = response["ETag"]
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}:
+                return [], None
+            raise TrackingManifestError(f"Failed to read s3://{self.bucket_name}/{key}: {exc}") from exc
+        return deserialize_manifest(body), version
+
+    def write_shard_if_version(self, shard: int, entries: list[ManifestEntry], *, version: str | None) -> str:
+        key = manifest_key(shard)
+        wrong_shard = [entry.video_id for entry in entries if shard_for_video(entry.video_id) != shard]
+        if wrong_shard:
+            raise TrackingManifestError(
+                f"Entries do not belong to shard {shard:02d}: {sorted(wrong_shard)}"
+            )
+        # S3 conditional writes (If-Match/If-None-Match), not a DynamoDB
+        # conditional-claim table or a new Lambda -- AWS Cost Recovery
+        # (third pass): this is what lets two independent daily writers
+        # (discovery adding new videos, history_worker patching activity_state)
+        # safely read-modify-write the same shard object without a lost
+        # update, using an S3 feature already available (no new
+        # infrastructure), rather than a full-catalog rebuild by a single
+        # daily owner.
+        condition = {"IfNoneMatch": "*"} if version is None else {"IfMatch": version}
+        try:
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=serialize_manifest(sorted(entries, key=lambda entry: entry.video_id)),
+                ContentType="application/vnd.apache.parquet",
+                **condition,
+            )
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"PreconditionFailed", "412"}:
+                raise ManifestConflictError(
+                    f"Shard {shard:02d} was modified concurrently (expected version {version!r})"
+                ) from exc
+            raise TrackingManifestError(f"Failed to write s3://{self.bucket_name}/{key}: {exc}") from exc
+        return key
+
+
+# Bounded the same way dynamodb_store.get_video_topics' own
+# _BATCH_GET_ITEM_MAX_ATTEMPTS bounds its UnprocessedKeys retry loop -- a
+# genuine conflict should resolve within a couple of attempts (the other
+# writer's own put_object is not a long-running operation), so nothing here
+# may retry forever against a shard two writers keep fighting over.
+PATCH_SHARD_MAX_ATTEMPTS = 5
+
+
+def patch_shard(
+    store: TrackingManifestStore,
+    shard: int,
+    apply: Callable[[list[ManifestEntry]], list[ManifestEntry]],
+) -> tuple[str, list[ManifestEntry]]:
+    """Bounded-retry, read-modify-write patch of one manifest shard (AWS Cost
+    Recovery, third pass): the safe replacement for "read the whole shard,
+    unconditionally overwrite it" when more than one daily process can write
+    to the same shard (discovery adding newly discovered videos, history_worker
+    patching activity_state after a scheduler-state update).
+
+    `apply(current_entries) -> new_entries` computes the patched entries from
+    whatever the shard's current state actually is right now -- called fresh
+    on every attempt, so it must be a pure function of the entries it's given
+    and must never assume an earlier attempt's read is still valid. On a
+    ManifestConflictError (another writer's put_object landed first, detected
+    via S3's own If-Match/If-None-Match precondition), this re-reads the
+    shard's now-current state and calls `apply` again from scratch -- so a
+    losing writer's own patch is never lost, only re-applied against the
+    winner's already-persisted state.
+
+    Never raises ManifestConflictError itself once PATCH_SHARD_MAX_ATTEMPTS is
+    exhausted without success: that would surface a transient contention
+    outcome as a permanent one. It re-raises the *last* ManifestConflictError
+    instead, so a caller sees exactly why this gave up.
+    """
+    last_conflict: ManifestConflictError | None = None
+    for _ in range(PATCH_SHARD_MAX_ATTEMPTS):
+        entries, version = store.read_shard_for_patch(shard)
+        new_entries = apply(entries)
+        try:
+            key = store.write_shard_if_version(shard, new_entries, version=version)
+            return key, new_entries
+        except ManifestConflictError as exc:
+            last_conflict = exc
+            continue
+    raise last_conflict  # noqa: RSE102 -- last_conflict is always set: the loop only exits via return or this raise
+
 
 def publish_tracking_manifest(videos, store: TrackingManifestStore) -> list[str]:
-    """Publish the complete tracked catalog after discovery/master changes.
+    """Unconditionally rebuild and replace the complete tracked-catalog manifest
+    from a full, authoritative Video Master listing.
+
+    AWS Cost Recovery (third pass): no longer called by the daily
+    `discovery_only` schedule -- that path now uses patch_shard for a bounded,
+    incremental update (see collection.main.run_discovery), so its recurring
+    cost scales with newly discovered videos, never with the whole catalog.
+    This full-rebuild function still exists, deliberately, for the cases that
+    genuinely need one: seeding the very first manifest for a new environment,
+    manual disaster recovery if a shard becomes corrupted, and re-syncing the
+    manifest once after a one-time backfill/migration script bulk-edits Video
+    Master fields the manifest carries (published_at/activity_state/topic) --
+    see backfill_video_topics.py's own call to this at the end of an --execute
+    run. An occasional, deliberately-triggered full rebuild like these is the
+    proportionate response to a bulk change, unlike paying its cost every day
+    for no corresponding daily change.
 
     The caller supplies Video-like objects to avoid coupling the manifest
     abstraction to one metadata backend. All 16 keys are written, including
     empty shards, so removed/deactivated catalog entries cannot linger.
 
-    published_at/activity_state are read directly off each Video-like object
-    (already the authoritative Video Master values) — no separate lookup, since
-    the caller already loaded them to build `videos` in the first place.
+    published_at/activity_state/topic are read directly off each Video-like
+    object (already the authoritative Video Master values) — no separate
+    lookup, since the caller already loaded them to build `videos` in the
+    first place.
     """
     entries = [
         ManifestEntry(
@@ -238,6 +382,7 @@ def publish_tracking_manifest(videos, store: TrackingManifestStore) -> list[str]
             discovered_at=video.discovered_at,
             published_at=video.published_at,
             activity_state=video.activity_state,
+            topic=video.topic,
         )
         for video in videos
     ]
@@ -260,6 +405,8 @@ def _validate_entry(entry: ManifestEntry) -> None:
         raise TrackingManifestError(f"Manifest entry has invalid 'publishedAt': {entry!r}")
     if entry.activity_state is not None and entry.activity_state not in VALID_ACTIVITY_STATES:
         raise TrackingManifestError(f"Manifest entry has invalid 'activityState': {entry!r}")
+    if entry.topic is not None and entry.topic not in TOPIC_IDS:
+        raise TrackingManifestError(f"Manifest entry has invalid 'topic': {entry!r}")
 
 
 def _reject_duplicate_video_ids(entries: list[ManifestEntry]) -> None:

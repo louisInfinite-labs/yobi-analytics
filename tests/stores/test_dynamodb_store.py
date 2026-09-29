@@ -16,6 +16,7 @@ from stores.dynamodb_store import (
     get_cached_trending,
     get_snapshot,
     get_video_topics,
+    get_videos,
     get_videos_by_creator,
     load_videos,
     put_cached_trending,
@@ -256,6 +257,40 @@ def test_put_cached_trending_overwrites_an_existing_key(dynamodb_tables):
     put_cached_trending(key, {"results": ["new"]}, computed_at="2026-09-02T18:00:00+09:00")
 
     assert get_cached_trending(key) == {"results": ["new"]}
+
+
+def test_put_cached_trending_sets_a_bounded_ttl(dynamodb_tables):
+    """AWS Cost Recovery (third pass, Scope F): YobiTrendingCache must be a
+    bounded hot cache, not an unbounded table growing one item per
+    (scope, period, reportDate) forever -- every write sets a real ttlAt
+    attribute TRENDING_CACHE_TTL_DAYS out from computed_at."""
+    from datetime import datetime, timedelta
+
+    from stores.dynamodb_store import TRENDING_CACHE_TTL_DAYS, _resource
+
+    key = "creator:aizawa_ema:1d:daily_trending:2026-09-01:Asia/Tokyo"
+    computed_at = "2026-09-01T18:00:00+09:00"
+
+    put_cached_trending(key, {"results": []}, computed_at=computed_at)
+
+    item = _resource().Table(TRENDING_CACHE_TABLE).get_item(Key={"cacheKey": key})["Item"]
+    expected_ttl = int(
+        (datetime.fromisoformat(computed_at) + timedelta(days=TRENDING_CACHE_TTL_DAYS)).timestamp()
+    )
+    assert int(item["ttlAt"]) == expected_ttl
+
+
+def test_put_cached_trending_ttl_handles_a_z_suffixed_computed_at(dynamodb_tables):
+    """computed_at can arrive either as an explicit-offset ISO timestamp
+    (ranking_reducer.py's own datetime.now(ZoneInfo(...)).isoformat()) or a
+    "Z"-suffixed UTC one -- _compute_ttl_at must parse both, not just one."""
+    from stores.dynamodb_store import _compute_ttl_at, _resource
+
+    key = "creator:aizawa_ema:1d:daily_trending:2026-09-01:Asia/Tokyo"
+    put_cached_trending(key, {"results": []}, computed_at="2026-09-01T09:00:00Z")
+
+    item = _resource().Table(TRENDING_CACHE_TABLE).get_item(Key={"cacheKey": key})["Item"]
+    assert int(item["ttlAt"]) == _compute_ttl_at("2026-09-01T09:00:00Z")
 
 
 # --- Snapshots + run summaries --------------------------------------------
@@ -745,6 +780,103 @@ def test_scan_video_topic_items_returns_only_the_projected_fields(dynamodb_table
     items = sorted(scan_video_topic_items(), key=lambda item: item["videoId"])
 
     assert items == [{"videoId": "v1", "title": "A", "topic": "apex"}, {"videoId": "v2", "title": "B"}]
+
+
+# --- get_videos (AWS Cost Recovery third pass, Scope H: bounded carry-forward fallback) --
+
+
+def test_get_videos_returns_full_records_for_only_the_requested_ids(dynamodb_tables):
+    upsert_videos(
+        [
+            Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", last_view_count=100, last_checked_at="2026-09-01T18:00:00+09:00"),
+            Video(video_id="v2", creator_id="c1", title="B", published_at="2026-08-20T00:00:00Z"),
+        ]
+    )
+
+    videos = get_videos(["v1"])
+
+    assert set(videos) == {"v1"}
+    assert videos["v1"].last_view_count == 100
+    assert videos["v1"].last_checked_at == "2026-09-01T18:00:00+09:00"
+
+
+def test_get_videos_with_an_empty_list_makes_no_request(dynamodb_tables):
+    assert get_videos([]) == {}
+
+
+def test_get_videos_ignores_a_requested_id_that_does_not_exist(dynamodb_tables):
+    upsert_videos([Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z")])
+
+    videos = get_videos(["v1", "ghost_video"])
+
+    assert set(videos) == {"v1"}
+
+
+def test_get_videos_deduplicates_repeated_ids(dynamodb_tables):
+    upsert_videos([Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z")])
+
+    videos = get_videos(["v1", "v1", "v1"])
+
+    assert set(videos) == {"v1"}
+
+
+def test_get_videos_chunks_beyond_the_100_key_batch_get_item_limit(dynamodb_tables):
+    video_count = 150
+    upsert_videos(
+        [
+            Video(video_id=f"v{i}", creator_id="c1", title=f"title {i}", published_at="2026-08-20T00:00:00Z")
+            for i in range(video_count)
+        ]
+    )
+
+    videos = get_videos([f"v{i}" for i in range(video_count)])
+
+    assert len(videos) == video_count
+    assert set(videos) == {f"v{i}" for i in range(video_count)}
+
+
+def test_get_videos_raises_after_exhausting_retries_on_persistent_unprocessed_keys(monkeypatch):
+    import stores.dynamodb_store as dynamodb_store_module
+
+    call_count = {"n": 0}
+
+    class _AlwaysUnprocessedResource:
+        def batch_get_item(self, *, RequestItems):
+            call_count["n"] += 1
+            keys = RequestItems[dynamodb_store_module.VIDEO_MASTER_TABLE]["Keys"]
+            return {"Responses": {}, "UnprocessedKeys": {dynamodb_store_module.VIDEO_MASTER_TABLE: {"Keys": keys}}}
+
+    monkeypatch.setattr(dynamodb_store_module, "_resource", lambda: _AlwaysUnprocessedResource())
+
+    with pytest.raises(VideoMasterError):
+        dynamodb_store_module.get_videos(["v1"])
+
+    assert call_count["n"] == dynamodb_store_module._BATCH_GET_ITEM_MAX_ATTEMPTS
+
+
+def test_get_videos_recovers_once_unprocessed_keys_eventually_clear(monkeypatch):
+    import stores.dynamodb_store as dynamodb_store_module
+
+    call_count = {"n": 0}
+
+    class _RecoversOnSecondAttemptResource:
+        def batch_get_item(self, *, RequestItems):
+            call_count["n"] += 1
+            table = dynamodb_store_module.VIDEO_MASTER_TABLE
+            keys = RequestItems[table]["Keys"]
+            if call_count["n"] == 1:
+                return {"Responses": {}, "UnprocessedKeys": {table: {"Keys": keys}}}
+            return {
+                "Responses": {table: [{"videoId": "v1", "creatorId": "c1", "title": "A", "publishedAt": "2026-08-20T00:00:00Z", "activityState": "Unknown"}]},
+                "UnprocessedKeys": {},
+            }
+
+    monkeypatch.setattr(dynamodb_store_module, "_resource", lambda: _RecoversOnSecondAttemptResource())
+
+    videos = dynamodb_store_module.get_videos(["v1"])
+
+    assert set(videos) == {"v1"}
+    assert call_count["n"] == 2
 
 
 # --- get_video_topics (Topic Phase 3: bounded, per-shard analog of scan_video_topic_items) --

@@ -341,10 +341,9 @@ def test_a_response_is_served_from_the_new_pipelines_own_output_with_no_snapshot
             {days: rows_on(day - timedelta(days=days)) if days == 1 else [] for days in history_ranking.EXACT_ANCHOR_DAYS},
             report_date=day,
         )
-        ranking_reducer.persist_creator_and_organization_rankings(
+        ranking_reducer.persist_creator_summaries(
             partials,
             report_date=day,
-            dimensions_by_creator={},
             put_cached_trending=lambda key, payload, *, computed_at: stored.__setitem__(key, payload),
             computed_at=f"{day.isoformat()}T18:05:00+09:00",
             wru_budget=ranking_reducer.WruBudget(target_wru_per_second=1_000_000),

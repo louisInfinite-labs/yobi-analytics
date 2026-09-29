@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import math
 import threading
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -179,10 +179,31 @@ class TrendingCacheError(Exception):
     """Raised when YobiTrendingCache can't be read or written."""
 
 
+# AWS Cost Recovery (third pass, Scope F): YobiTrendingCache's cacheKey
+# includes reportDate (trending_cache_keys.py), so without a bound this table
+# would accumulate one item per (scope, period, reportDate) forever -- an
+# O(total historical ranking output) DynamoDB table, the same failure class
+# as VideoMaster's old full-catalog Scan, just growing storage/PITR cost
+# instead of RRU. 35 days comfortably covers EXACT_ANCHOR_DAYS' own longest
+# window (30 days) plus a safety margin; a read past this window falls back
+# to the durable S3 archive (stores.trending_cache_archive_store), which every
+# write here is also mirrored into by ranking_reducer.py -- so no historical
+# ranking output is actually lost, only moved out of the hot table once
+# DynamoDB's own background TTL sweep reclaims it.
+TRENDING_CACHE_TTL_DAYS = 35
+
+
+def _compute_ttl_at(computed_at: str) -> int:
+    """Epoch seconds TRENDING_CACHE_TTL_DAYS after `computed_at` -- DynamoDB's
+    own TTL attribute must be a Number of epoch seconds, not an ISO string."""
+    parsed = datetime.fromisoformat(computed_at.replace("Z", "+00:00"))
+    return int((parsed + timedelta(days=TRENDING_CACHE_TTL_DAYS)).timestamp())
+
+
 def get_cached_trending(cache_key: str) -> dict[str, Any] | None:
     """Return one precomputed trending response by its cache key, or None on a cache miss.
 
-    The stored `payload` attribute is the exact response dict trending_precompute.py
+    The stored `payload` attribute is the exact response dict ranking_reducer.py
     built for this scope/period/rankingType/reportDate/timeZone combination —
     already ranked, already capped at MAX_LIMIT — serialized as a JSON string
     so Decimal round-tripping is never a concern for arbitrary nested response
@@ -197,10 +218,26 @@ def get_cached_trending(cache_key: str) -> dict[str, Any] | None:
 
 
 def put_cached_trending(cache_key: str, payload: dict[str, Any], *, computed_at: str) -> None:
-    """Write (or overwrite) one precomputed trending response under cache_key."""
+    """Write (or overwrite) one precomputed trending response under cache_key.
+
+    Also sets `ttlAt` (TRENDING_CACHE_TTL_DAYS out from computed_at) -- see
+    TRENDING_CACHE_TTL_DAYS' own docstring for why this table needs one at
+    all. DynamoDB's TTL sweep is not instantaneous at exactly the boundary
+    (AWS documents it can lag up to 48 hours past ttlAt), which is harmless
+    here: the S3 archive already has a durable copy of this same item by the
+    time this write completes, so a briefly-lingering expired item is not a
+    correctness issue, only a cost one this margin already accounts for.
+    """
     table = _resource().Table(TRENDING_CACHE_TABLE)
     try:
-        table.put_item(Item={"cacheKey": cache_key, "payload": json.dumps(payload), "computedAt": computed_at})
+        table.put_item(
+            Item={
+                "cacheKey": cache_key,
+                "payload": json.dumps(payload),
+                "computedAt": computed_at,
+                "ttlAt": _compute_ttl_at(computed_at),
+            }
+        )
     except ClientError as exc:
         raise TrendingCacheError(f"Failed to write {TRENDING_CACHE_TABLE}: {exc}") from exc
 
@@ -263,6 +300,50 @@ _BATCH_GET_ITEM_LIMIT = 100
 # throttling, but nothing here may loop forever on a chunk DynamoDB keeps
 # returning as unprocessed.
 _BATCH_GET_ITEM_MAX_ATTEMPTS = 5
+
+
+def get_videos(video_ids: list[str]) -> dict[str, Video]:
+    """Batch-read full, authoritative Video Master records for exactly these
+    ids, chunked to DynamoDB's 100-key BatchGetItem limit (AWS Cost Recovery,
+    third pass, Scope H).
+
+    The bounded fallback source for collection.history_worker.
+    _carry_forward_non_due_rows: a video missing from yesterday's own S3
+    daily shard (a genuine gap day, or a shard that was never written) used
+    to fall back to one GetItem per missing video -- fine on an ordinary day
+    (a handful of gaps), but if an entire previous shard is ever missing
+    (e.g. a real S3 outage), that becomes hundreds of sequential GetItem
+    calls per shard. This is the same bounded-chunk/retry shape as
+    get_video_topics, but returns the *full* Video (not a narrow topic-only
+    projection), since the caller needs last_view_count/last_checked_at.
+
+    Duplicate ids are deduplicated up front, matching get_video_topics.
+    Returns only the ids that actually exist, keyed by video_id -- a caller
+    distinguishes "missing" the same way get_video's own None already does.
+    """
+    if not video_ids:
+        return {}
+    resource = _resource()
+    items: list[dict[str, Any]] = []
+    unique_ids = sorted(set(video_ids))
+    for start in range(0, len(unique_ids), _BATCH_GET_ITEM_LIMIT):
+        keys_to_fetch = [{"videoId": video_id} for video_id in unique_ids[start : start + _BATCH_GET_ITEM_LIMIT]]
+        for attempt in range(1, _BATCH_GET_ITEM_MAX_ATTEMPTS + 1):
+            if not keys_to_fetch:
+                break
+            try:
+                response = resource.batch_get_item(RequestItems={VIDEO_MASTER_TABLE: {"Keys": keys_to_fetch}})
+            except ClientError as exc:
+                raise VideoMasterError(f"Failed to batch-read {VIDEO_MASTER_TABLE}: {exc}") from exc
+            items.extend(response.get("Responses", {}).get(VIDEO_MASTER_TABLE, []))
+            keys_to_fetch = response.get("UnprocessedKeys", {}).get(VIDEO_MASTER_TABLE, {}).get("Keys", [])
+            if keys_to_fetch and attempt == _BATCH_GET_ITEM_MAX_ATTEMPTS:
+                raise VideoMasterError(
+                    f"Failed to batch-read {VIDEO_MASTER_TABLE}: {len(keys_to_fetch)} key(s) still "
+                    f"unprocessed after {_BATCH_GET_ITEM_MAX_ATTEMPTS} attempts"
+                )
+    videos = [_item_to_video(item) for item in items]
+    return {video.video_id: video for video in videos}
 
 
 def get_video_topics(video_ids: list[str]) -> list[dict[str, Any]]:

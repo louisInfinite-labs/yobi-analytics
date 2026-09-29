@@ -34,11 +34,10 @@
  * `instanceId`, `type`, `x/y/w/h`) -- confirmed by inspection -- so their
  * only job is satisfying `WidgetInstance`'s TypeScript shape.
  *
- * A canonical widget whose `widgetType` is neither a registered
- * `WidgetTypeId` nor the comparison chart type (it is projected under
- * its own type string, see `gridWidgetMeta.ts`) is excluded from the
- * projected array rather than rendered with a fabricated definition or
- * thrown on -- `isRenderableGridWidgetType` guards this boundary.
+ * A canonical widget whose `widgetType` is not a registered `WidgetTypeId`
+ * is excluded from the projected array rather than rendered with a
+ * fabricated definition or thrown on -- `isRenderableGridWidgetType` guards
+ * this boundary.
  * Excluding it from *this render projection* does not remove it from
  * canonical state: it remains fully present and editable in
  * `draftLayout`/`layout`, just not represented as a GridStack node.

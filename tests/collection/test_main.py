@@ -172,17 +172,21 @@ def test_run_discovery_returns_1_when_the_initial_video_master_read_fails(monkey
 
 
 def test_run_discovery_continues_when_manifest_publishing_fails(monkeypatch):
-    """A TrackingManifestError from the new history-manifest publish must not turn an
-    otherwise-successful discovery_only run into a failure (best-effort, like notification events)."""
+    """A TrackingManifestError from the new incremental manifest patch must not turn an
+    otherwise-successful discovery_only run into a failure (best-effort, like notification
+    events) -- AWS Cost Recovery third pass: run_discovery no longer calls
+    publish_tracking_manifest at all (see _patch_manifest_with_new_videos_if_configured),
+    so this now simulates a failure from patch_shard instead."""
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", "fake-history-bucket")
     monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator()])
     monkeypatch.setattr(main_module, "_discover_creator", lambda *a, **k: (["v1"], [_video("v1")]))
     monkeypatch.setattr(main_module, "upsert_videos", lambda videos: None)
+    monkeypatch.setattr(main_module, "_known_ids_by_creator", lambda: {})
 
-    def _boom(videos, store):
+    def _boom(store, shard, apply):
         raise TrackingManifestError("simulated S3 write failure")
 
-    monkeypatch.setattr(main_module, "publish_tracking_manifest", _boom)
+    monkeypatch.setattr(main_module, "patch_shard", _boom)
 
     assert main_module.run_discovery() == 0
 
@@ -190,8 +194,16 @@ def test_run_discovery_continues_when_manifest_publishing_fails(monkeypatch):
 def test_main_continues_when_manifest_publishing_fails(monkeypatch):
     """The daily collection path must still fetch statistics and save a snapshot even
     when the new history-manifest publish fails — it must never gate the existing
-    YouTube statistics collection this function is actually responsible for."""
+    YouTube statistics collection this function is actually responsible for.
+
+    The clock is frozen to _video's own hardcoded published_at (not left on the
+    real wall clock): "v1" must be due for this test's assertion regardless of
+    when the suite actually runs, not just while real time happens to still be
+    within tracking_schedule.RECENT_MAX_AGE_DAYS of that fixture date."""
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", "fake-history-bucket")
+    monkeypatch.setattr(
+        main_module, "datetime", _frozen_datetime(datetime(2026, 8, 20, 18, 0, 0, tzinfo=main_module.COLLECTION_TIMEZONE))
+    )
     tracked = [_video("v1")]
     monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator(discovery_enabled=False)])
     monkeypatch.setattr(main_module, "load_videos", lambda: tracked)
@@ -219,24 +231,31 @@ def test_run_discovery_continues_when_manifest_publishing_raises_an_unexpected_e
     """Not just TrackingManifestError: an unwrapped exception from pyarrow's own
     serialization/write path (pa.table, parquet.write_table, the S3 upload itself)
     must be just as best-effort, since none of those are wrapped as
-    TrackingManifestError before reaching _publish_manifest_if_configured."""
+    TrackingManifestError before reaching _patch_manifest_with_new_videos_if_configured."""
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", "fake-history-bucket")
     monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator()])
     monkeypatch.setattr(main_module, "_discover_creator", lambda *a, **k: (["v1"], [_video("v1")]))
     monkeypatch.setattr(main_module, "upsert_videos", lambda videos: None)
+    monkeypatch.setattr(main_module, "_known_ids_by_creator", lambda: {})
 
-    def _boom(videos, store):
+    def _boom(store, shard, apply):
         raise RuntimeError("simulated pyarrow runtime failure")
 
-    monkeypatch.setattr(main_module, "publish_tracking_manifest", _boom)
+    monkeypatch.setattr(main_module, "patch_shard", _boom)
 
     assert main_module.run_discovery() == 0
 
 
 def test_main_continues_when_manifest_publishing_raises_an_unexpected_error(monkeypatch):
     """Same as above for the daily collection path: an unwrapped RuntimeError from
-    manifest serialization must not block the existing YouTube statistics collection."""
+    manifest serialization must not block the existing YouTube statistics collection.
+
+    Clock frozen for the same reason as test_main_continues_when_manifest_publishing_fails
+    above -- see its own docstring."""
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", "fake-history-bucket")
+    monkeypatch.setattr(
+        main_module, "datetime", _frozen_datetime(datetime(2026, 8, 20, 18, 0, 0, tzinfo=main_module.COLLECTION_TIMEZONE))
+    )
     tracked = [_video("v1")]
     monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator(discovery_enabled=False)])
     monkeypatch.setattr(main_module, "load_videos", lambda: tracked)
@@ -262,18 +281,34 @@ def test_main_continues_when_manifest_publishing_raises_an_unexpected_error(monk
 
 def test_manifest_publishing_succeeds_when_configured(monkeypatch):
     """The happy path: with YOBI_HISTORY_BUCKET set and no failure, the manifest is
-    actually published (not silently skipped by the same best-effort handling)."""
+    actually patched with the newly discovered video (not silently skipped by
+    the same best-effort handling) -- AWS Cost Recovery third pass: exactly one
+    bounded patch_shard call per affected shard, never a full publish_tracking_
+    manifest rebuild."""
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", "fake-history-bucket")
     monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator()])
     monkeypatch.setattr(main_module, "_discover_creator", lambda *a, **k: (["v1"], [_video("v1")]))
     monkeypatch.setattr(main_module, "upsert_videos", lambda videos: None)
+    monkeypatch.setattr(main_module, "_known_ids_by_creator", lambda: {})
 
-    published = []
-    monkeypatch.setattr(main_module, "publish_tracking_manifest", lambda videos, store: published.append(videos))
+    def _boom(*args, **kwargs):
+        raise AssertionError("publish_tracking_manifest must not be called by run_discovery anymore")
+
+    monkeypatch.setattr(main_module, "publish_tracking_manifest", _boom)
+
+    patched = []
+
+    def _fake_patch_shard(store, shard, apply):
+        new_entries = apply([])
+        patched.append((shard, new_entries))
+        return f"stub-{shard}", new_entries
+
+    monkeypatch.setattr(main_module, "patch_shard", _fake_patch_shard)
 
     assert main_module.run_discovery() == 0
-    assert len(published) == 1
-    assert {video.video_id for video in published[0]} == {"v1"}
+    assert len(patched) == 1
+    shard, new_entries = patched[0]
+    assert {entry.video_id for entry in new_entries} == {"v1"}
 
 
 def test_collection_only_requests_videos_selected_by_tiered_due_selection(monkeypatch):

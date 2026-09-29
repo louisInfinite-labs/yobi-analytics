@@ -29,11 +29,16 @@ const KEYBOARD_LAYOUT: CanonicalLayout = {
 /** Tabs forward from the current focus until an element matching `match`
  * is reached, or fails after `maxSteps` -- the keyboard-only equivalent of
  * "click this specific element," used instead of `.focus()` so every step
- * of the flow below is a real Tab traversal, not a shortcut around one. */
+ * of the flow below is a real Tab traversal, not a shortcut around one.
+ * Always tabs at least once before checking: the un-tabbed starting focus
+ * is `document.body`, whose aggregate `textContent` can coincidentally
+ * equal a target's own text on a page with only one visible string (e.g.
+ * a lone "Edit Layout" button before anything else has rendered), which
+ * would otherwise report success without ever having tabbed anywhere. */
 async function tabUntil(user: ReturnType<typeof userEvent.setup>, match: (el: Element | null) => boolean, maxSteps = 15) {
   for (let i = 0; i < maxSteps; i++) {
-    if (match(document.activeElement)) return
     await user.tab()
+    if (match(document.activeElement)) return
   }
   throw new Error("tabUntil: target not reached within maxSteps")
 }

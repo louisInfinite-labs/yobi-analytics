@@ -94,6 +94,7 @@ def test_history_parquet_round_trip_uses_minimal_schema():
         "viewCount",
         "observedAt",
         "availabilityStatus",
+        "carriedForward",
     ]
 
 
@@ -104,6 +105,13 @@ def test_manifest_parquet_round_trip():
 
 def test_manifest_parquet_round_trip_carries_discovered_at():
     entries = [ManifestEntry("v1", "c1", True, discovered_at="2026-09-06T00:00:00Z")]
+    assert deserialize_manifest(serialize_manifest(entries)) == entries
+
+
+def test_manifest_parquet_round_trip_carries_topic():
+    """AWS Cost Recovery second pass: topic threads through the manifest the
+    same way discovered_at/published_at/activity_state already do."""
+    entries = [ManifestEntry("v1", "c1", True, topic="valorant"), ManifestEntry("v2", "c2", True, topic=None)]
     assert deserialize_manifest(serialize_manifest(entries)) == entries
 
 
@@ -130,6 +138,56 @@ def test_deserialize_manifest_is_backward_compatible_with_a_parquet_file_that_ha
     entries = deserialize_manifest(output.getvalue())
 
     assert entries == [ManifestEntry("v1", "c1", True, discovered_at=None)]
+
+
+def test_deserialize_manifest_is_backward_compatible_with_a_parquet_file_that_has_no_topic_column():
+    """Same backward-compatibility guarantee as discovered_at, for topic: a manifest
+    object written before this field existed still deserializes, with topic read as
+    None -- never inferred, and _resolve_manifest_topics falls back to OTHER_TOPIC
+    for it rather than treating a missing column as an error."""
+    import io
+
+    import pyarrow as pa
+    import pyarrow.parquet as parquet
+
+    old_table = pa.table(
+        {
+            "videoId": pa.array(["v1"], type=pa.string()),
+            "creatorId": pa.array(["c1"], type=pa.string()),
+            "active": pa.array([True], type=pa.bool_()),
+        }
+    )
+    output = io.BytesIO()
+    parquet.write_table(old_table, output)
+
+    entries = deserialize_manifest(output.getvalue())
+
+    assert entries == [ManifestEntry("v1", "c1", True, topic=None)]
+
+
+def test_deserialize_manifest_rejects_an_unrecognized_topic():
+    """serialize_manifest already refuses to write an entry with an invalid topic
+    (_validate_entry) -- deserialize_manifest must reject one too, the same way it
+    already does for activityState, in case the stored object was corrupted or
+    hand-edited after the fact."""
+    import io
+
+    import pyarrow as pa
+    import pyarrow.parquet as parquet
+
+    table = pa.table(
+        {
+            "videoId": pa.array(["v1"], type=pa.string()),
+            "creatorId": pa.array(["c1"], type=pa.string()),
+            "active": pa.array([True], type=pa.bool_()),
+            "topic": pa.array(["not-a-real-topic"], type=pa.string()),
+        }
+    )
+    output = io.BytesIO()
+    parquet.write_table(table, output)
+
+    with pytest.raises(TrackingManifestError, match="topic"):
+        deserialize_manifest(output.getvalue())
 
 
 def test_missing_anchors_are_not_fabricated():
@@ -171,6 +229,8 @@ def test_exact_anchor_loader_reads_only_fixed_dates():
 
 
 def test_top_n_ordering_and_scopes_consider_every_video():
+    """R7 (AWS Cost Recovery) removed the "global"/"branch" scopes -- zero
+    production consumer -- leaving only "creator"/"org"."""
     today = [_row("v1", 110, "c1"), _row("v2", 500, "c1"), _row("v3", 250, "c2")]
     anchors = {
         1: [_row("v1", 100, "c1"), _row("v2", 100, "c1"), _row("v3", 100, "c2")],
@@ -182,17 +242,18 @@ def test_top_n_ordering_and_scopes_consider_every_video():
         "c2": CreatorDimensions("org", "branch-b"),
     }
     result = top_n_by_scope(today, anchors, report_date=date(2026, 9, 9), dimensions_by_creator=dimensions, limit=2)
-    assert [entry.video_id for entry in result[("global", "global")]["1d"]] == ["v2", "v3"]
+    assert set(result) == {("creator", "c1"), ("creator", "c2"), ("org", "org")}
     assert [entry.video_id for entry in result[("creator", "c1")]["1d"]] == ["v2", "v1"]
     assert [entry.video_id for entry in result[("org", "org")]["1d"]] == ["v2", "v3"]
-    assert [entry.video_id for entry in result[("branch", "branch-a")]["1d"]] == ["v2", "v1"]
 
 
 def test_partial_top_n_merge_preserves_global_order():
-    first = top_n_by_scope([_row("a", 200)], {1: [_row("a", 100)]}, report_date=date(2026, 9, 9), limit=1)
-    second = top_n_by_scope([_row("b", 500)], {1: [_row("b", 100)]}, report_date=date(2026, 9, 9), limit=1)
+    """R7 (AWS Cost Recovery): "global" scope removed -- merge ordering is
+    now checked on "creator" scope instead, same underlying merge logic."""
+    first = top_n_by_scope([_row("a", 200, "c1")], {1: [_row("a", 100, "c1")]}, report_date=date(2026, 9, 9), limit=1)
+    second = top_n_by_scope([_row("b", 500, "c1")], {1: [_row("b", 100, "c1")]}, report_date=date(2026, 9, 9), limit=1)
     merged = merge_partial_rankings([first, second], limit=1)
-    assert [entry.video_id for entry in merged[("global", "global")]["1d"]] == ["b"]
+    assert [entry.video_id for entry in merged[("creator", "c1")]["1d"]] == ["b"]
 
 
 def test_failed_shard_does_not_rollback_a_successful_shard(monkeypatch):

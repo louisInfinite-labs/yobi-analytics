@@ -1,6 +1,5 @@
 import { Button } from "antd"
 import { getWidgetDefinition } from "../utils/widgetRegistry"
-import { COMPARISON_WIDGET_TYPE } from "../../comparison/utils/dashboardComparisonWidgets"
 import { getGridWidgetMeta, type GridWidgetType } from "../utils/gridWidgetMeta"
 
 export type ChartCatalogTrayStatus = "loading" | "error" | "success"
@@ -60,9 +59,7 @@ export function WidgetTray({ availableTypes, catalogStatus, selectedType, onSele
       <div className="widget-tray__list">
         {availableTypes.map((type) => {
             const title = getGridWidgetMeta(type).title
-            const description = type === COMPARISON_WIDGET_TYPE
-              ? "Compare selected members on one chart."
-              : getWidgetDefinition(type).description
+            const description = getWidgetDefinition(type).description
             return (
               <button
                 type="button"

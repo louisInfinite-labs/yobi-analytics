@@ -128,13 +128,14 @@ class _FakeCollectResult:
     rows: list = []
     rankings: dict = {}
     creator_partials: dict = {}
+    topic_by_video: dict = {}
 
 
 class _FakePartialStore:
     def __init__(self, bucket_name):
         self.bucket_name = bucket_name
 
-    def write(self, collection_date, shard, rankings, creator_partials, topic_partials=None):
+    def write(self, collection_date, shard, rankings, creator_partials):
         return f"partial/{collection_date.isoformat()}/{shard}"
 
 
@@ -197,6 +198,57 @@ def test_shard_branch_renews_the_lock_after_a_successful_collection(monkeypatch)
     assert call["lease_seconds"] == execution_lock.SHARD_RENEW_LEASE_SECONDS
 
 
+def test_shard_branch_never_reads_topics_via_the_full_catalog_dynamodb_batch_get(monkeypatch):
+    """AWS Cost Recovery second pass: the per-shard branch must never call
+    dynamodb_store.get_video_topics -- the full-catalog BatchGetItem
+    identified as the strongest code-grounded cause of the 2026-09-21
+    YobiVideoMaster read increase.
+
+    R7 (AWS Cost Recovery): this used to also assert the per-shard branch
+    aggregated collect_history_shard's result.topic_by_video (itself
+    manifest-sourced, no DynamoDB read) into a TopicPeriodPartial and forwarded
+    it to S3PartialRankingStore.write -- that aggregation fed the topic
+    leaderboard, which was removed as a zero-production-consumer feature.
+    result.topic_by_video is still computed by collect_history_shard itself
+    (kept as topic metadata a future same-creator topic video ranking will
+    need -- R6/R7's own scope), it is just no longer read or forwarded by
+    this handler.
+    """
+    from stores.history_store import HistoryRow
+
+    _wire_shard_branch(monkeypatch)
+    monkeypatch.setattr(execution_lock, "renew_execution_lock", lambda **kwargs: None)
+
+    def _boom(video_ids):
+        raise AssertionError("get_video_topics must not be called by the per-shard branch")
+
+    monkeypatch.setattr(dynamodb_store, "get_video_topics", _boom)
+
+    class _FakeCollectResultWithTopics(_FakeCollectResult):
+        rows = [
+            HistoryRow(video_id="v1", creator_id="c1", view_count=100, observed_at="2026-01-01T18:00:00+09:00", availability_status="available"),
+        ]
+        topic_by_video = {"v1": "valorant"}
+
+    captured_writes = []
+
+    class _CapturingPartialStore(_FakePartialStore):
+        def write(self, collection_date, shard, rankings, creator_partials):
+            captured_writes.append((rankings, creator_partials))
+            return super().write(collection_date, shard, rankings, creator_partials)
+
+    monkeypatch.setattr(history_worker_handler, "S3PartialRankingStore", _CapturingPartialStore)
+    monkeypatch.setattr(
+        history_worker_handler,
+        "collect_history_shard",
+        lambda **kwargs: _FakeCollectResultWithTopics(),
+    )
+
+    history_worker_handler.lambda_handler({"shard": 3, "reportDate": "2026-01-01", "ownerToken": "exec-9"}, None)
+
+    assert len(captured_writes) == 1
+
+
 def test_shard_branch_lets_execution_lock_lost_error_propagate_uncaught(monkeypatch):
     """If this owner's lease was already reclaimed while the shard was being
     collected, the renew call raises ExecutionLockLostError -- this must
@@ -226,7 +278,7 @@ def _wire_reducer_normal_branch(monkeypatch, *, read_bundle_spy=None):
         def read_bundle(self, report_date, shard):
             if read_bundle_spy is not None:
                 read_bundle_spy(report_date=report_date, shard=shard)
-            return {}, {}, {}
+            return {}, {}
 
     monkeypatch.setattr(ranking_reducer, "S3PartialRankingStore", FakeStore)
     monkeypatch.setattr(ranking_reducer, "load_creators", lambda: [])

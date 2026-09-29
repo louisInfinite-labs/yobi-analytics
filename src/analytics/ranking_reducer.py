@@ -11,27 +11,13 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from collection import execution_lock
+from stores import dynamodb_store
 from tracking.creator_master import load_creators
-from analytics.history_ranking import (
-    ALL_PERIOD,
-    CreatorDimensions,
-    CreatorLeaderboardEntry,
-    CreatorPeriodPartial,
-    IncrementalRankingMerger,
-    RankedGrowth,
-    TopicCreatorLeaderboardEntry,
-    TopicLeaderboard,
-    organization_creator_leaderboards,
-    topic_creator_leaderboards,
-)
+from analytics.history_ranking import CreatorPeriodPartial, IncrementalRankingMerger, RankedGrowth
 from stores.history_store import HISTORY_SHARD_COUNT
 from stores.ranking_partial_store import S3PartialRankingStore
-from analytics.trending_cache_keys import (
-    creator_summary_cache_key,
-    organization_leaderboard_cache_key,
-    topic_leaderboard_cache_key,
-    trending_cache_key,
-)
+from stores.trending_cache_archive_store import S3TrendingCacheArchiveStore
+from analytics.trending_cache_keys import creator_summary_cache_key, trending_cache_key
 
 _TIME_ZONE = "Asia/Tokyo"
 _RANKING_TYPE = {"1d": "daily_trending", "7d": "7d_trending", "30d": "30d_trending"}
@@ -118,36 +104,60 @@ def _dynamodb_item_bytes(*, cache_key: str, payload: dict, computed_at: str) -> 
 
     dynamodb_store.put_cached_trending's actual wire format is
     `Item={"cacheKey": cache_key, "payload": json.dumps(payload),
-    "computedAt": computed_at}` — three String attributes. DynamoDB's own
-    item-size rule (AWS docs) is the sum of every attribute *name's* bytes
-    plus every attribute *value's* bytes, for every attribute in the item —
-    so undercounting to just the "payload" attribute's value (as an
-    earlier version of this function did) missed the "cacheKey"/
-    "computedAt" attributes entirely (both their names and values) and the
-    "payload" attribute's own name. All three attribute values are
-    encoded UTF-8 before measuring, since that's the actual wire encoding
-    DynamoDB bills against — a non-ASCII character (e.g. a Japanese
-    channel name inside payload) can be 2-4 bytes in UTF-8 even though it
-    is one Python character (one code point) in `len(payload_json)`.
+    "computedAt": computed_at, "ttlAt": <epoch seconds>}` — three String
+    attributes plus one Number attribute (AWS Cost Recovery third pass, Scope
+    F: the bounded-retention `ttlAt` field). DynamoDB's own item-size rule
+    (AWS docs) is the sum of every attribute *name's* bytes plus every
+    attribute *value's* bytes, for every attribute in the item — so
+    undercounting to just the "payload" attribute's value (as an earlier
+    version of this function did) missed the "cacheKey"/"computedAt"
+    attributes entirely (both their names and values) and the "payload"
+    attribute's own name; omitting "ttlAt" from this count entirely, the
+    same way, would repeat that exact class of bug the moment that field was
+    added. All string attribute values are encoded UTF-8 before measuring,
+    since that's the actual wire encoding DynamoDB bills against — a
+    non-ASCII character (e.g. a Japanese channel name inside payload) can be
+    2-4 bytes in UTF-8 even though it is one Python character (one code
+    point) in `len(payload_json)`. DynamoDB bills a Number attribute's value
+    by the byte length of its decimal digit-string representation (AWS
+    docs), not Python's own int byte width.
     """
     payload_json = json.dumps(payload)
-    attributes = {"cacheKey": cache_key, "payload": payload_json, "computedAt": computed_at}
-    return sum(len(name.encode("utf-8")) + len(value.encode("utf-8")) for name, value in attributes.items())
+    string_attributes = {"cacheKey": cache_key, "payload": payload_json, "computedAt": computed_at}
+    string_bytes = sum(len(name.encode("utf-8")) + len(value.encode("utf-8")) for name, value in string_attributes.items())
+    ttl_at = dynamodb_store._compute_ttl_at(computed_at)
+    ttl_bytes = len("ttlAt".encode("utf-8")) + len(str(ttl_at).encode("utf-8"))
+    return string_bytes + ttl_bytes
 
 
 def _paced_put(
-    put_cached_trending: Callable[..., None], wru_budget: "WruBudget", key: str, payload: dict, *, computed_at: str
+    put_cached_trending: Callable[..., None],
+    wru_budget: "WruBudget",
+    key: str,
+    payload: dict,
+    *,
+    computed_at: str,
+    archive_put: Callable[..., None] | None = None,
 ) -> None:
     """Charge wru_budget for this exact item's real DynamoDB size, then write it.
 
     See _dynamodb_item_bytes for why this measures the whole item (cacheKey
-    + payload + computedAt attribute names and values), not just the
+    + payload + computedAt + ttlAt attribute names and values), not just the
     payload's own JSON size, so the WRU charged here matches what DynamoDB
     will actually bill for this item.
+
+    AWS Cost Recovery (third pass, Scope F): `archive_put`, when given,
+    durably mirrors this same item into the S3 trending-cache archive right
+    after the DynamoDB write -- see stores.trending_cache_archive_store's own
+    docstring for why YobiTrendingCache's new bounded TTL needs this at all.
+    Defaults to None so every existing caller/test that doesn't care about
+    archiving is unaffected.
     """
     item_bytes = _dynamodb_item_bytes(cache_key=key, payload=payload, computed_at=computed_at)
     wru_budget.charge(item_bytes)
     put_cached_trending(key, payload, computed_at=computed_at)
+    if archive_put is not None:
+        archive_put(key, payload, computed_at=computed_at)
 
 
 def persist_rankings(
@@ -159,19 +169,19 @@ def persist_rankings(
     put_cached_trending: Callable[..., None],
     computed_at: str,
     wru_budget: WruBudget,
+    archive_put: Callable[..., None] | None = None,
 ) -> int:
     """Persist only bounded final results, enriched from master data.
 
     `creators` (creatorId -> Creator) is supplied by the caller rather than
     loaded here — lambda_handler loads Creator Master exactly once per
-    invocation and reuses that same result for this enrichment and for
-    building organization membership, rather than each call site loading
-    it separately.
+    invocation and reuses that same result for this enrichment, rather than
+    each call site loading it separately.
 
     `wru_budget` must be the *same* WruBudget instance passed to
-    persist_creator_and_organization_rankings in the same invocation — see
-    WruBudget's own docstring for why a second, independent budget here
-    would defeat the whole point of pacing against one table-wide cap.
+    persist_creator_summaries in the same invocation — see WruBudget's own
+    docstring for why a second, independent budget here would defeat the
+    whole point of pacing against one table-wide cap.
     """
     video_ids = {
         entry.video_id
@@ -205,36 +215,39 @@ def persist_rankings(
                 ranking_type=_RANKING_TYPE[period],
                 report_date=report_date,
             )
-            _paced_put(put_cached_trending, wru_budget, key, payload, computed_at=computed_at)
+            _paced_put(put_cached_trending, wru_budget, key, payload, computed_at=computed_at, archive_put=archive_put)
             writes += 1
     return writes
 
 
-def persist_creator_and_organization_rankings(
+def persist_creator_summaries(
     creator_partials: dict[str, dict[str, CreatorPeriodPartial]],
     *,
     report_date: date,
-    dimensions_by_creator: dict[str, CreatorDimensions],
     put_cached_trending: Callable[..., None],
     computed_at: str,
     wru_budget: WruBudget,
+    archive_put: Callable[..., None] | None = None,
 ) -> int:
-    """Persist one summary item per (creatorId, period) and one leaderboard
-    item per (organization, period) into the same YobiTrendingCache table,
-    under a namespace (_CREATOR_SUMMARY_PREFIX/_ORG_LEADERBOARD_PREFIX)
-    distinct from persist_rankings' own scope-ranking keys.
+    """Persist one summary item per (creatorId, period) into YobiTrendingCache,
+    under creator_summary_cache_key's own namespace, distinct from
+    persist_rankings' own scope-ranking keys.
+
+    R7 (AWS Cost Recovery): this function used to also build and persist one
+    organization-membership leaderboard item per (organization, period) --
+    removed here along with GET /organizations/{organization}/leaderboard and
+    GET /leaderboard, both zero-consumer. Renamed from
+    persist_creator_and_organization_rankings to persist_creator_summaries to
+    match what it actually does now.
 
     Deliberately reads no storage at all beyond what the caller already
     computed: `creator_partials` is already the fully-merged, exact result
-    of IncrementalRankingMerger.creator_partials() (every shard folded in),
-    and `dimensions_by_creator` is expected to come from one already-loaded
-    creator_master.load_creators() batch (a bundled local JSON file, not a
-    DynamoDB table — see lambda_handler's own call site). No per-video or
-    per-creator Video Master/Creator Master read happens in this function,
-    unlike persist_rankings' own get_video(video_id) enrichment — these
-    items intentionally carry only videoId/creatorId (not title/
-    channelName), since that enrichment would require exactly the kind of
-    per-video read this round must not add.
+    of IncrementalRankingMerger.creator_partials() (every shard folded in).
+    No per-video or per-creator Video Master/Creator Master read happens in
+    this function, unlike persist_rankings' own get_video(video_id)
+    enrichment — these items intentionally carry only videoId/creatorId (not
+    title/channelName), since that enrichment would require exactly the kind
+    of per-video read this was designed to avoid.
 
     `wru_budget` must be the *same* WruBudget instance passed to
     persist_rankings in the same invocation.
@@ -254,106 +267,21 @@ def persist_creator_and_organization_rankings(
                 "top10": [_ranked_growth_cache_row(entry) for entry in agg.top_candidates],
             }
             key = creator_summary_cache_key(creator_id=creator_id, period=period, report_date=report_date)
-            _paced_put(put_cached_trending, wru_budget, key, payload, computed_at=computed_at)
-            writes += 1
-
-    leaderboards = organization_creator_leaderboards(creator_partials, dimensions_by_creator=dimensions_by_creator)
-    for organization, periods in leaderboards.items():
-        for period, board in periods.items():
-            payload = {
-                "organization": organization,
-                "period": period,
-                "reportDate": report_date.isoformat(),
-                "memberCount": board.member_count,
-                "completeMemberCount": board.complete_member_count,
-                "catalogVideoCount": board.catalog_video_count,
-                "eligibleVideoCount": board.eligible_video_count,
-                "isComplete": board.is_complete,
-                "byTotalViews": [_leaderboard_entry_cache_row(entry) for entry in board.by_total_views],
-                "byTopVideo": [_leaderboard_entry_cache_row(entry) for entry in board.by_top_video],
-            }
-            key = organization_leaderboard_cache_key(organization=organization, period=period, report_date=report_date)
-            _paced_put(put_cached_trending, wru_budget, key, payload, computed_at=computed_at)
+            _paced_put(put_cached_trending, wru_budget, key, payload, computed_at=computed_at, archive_put=archive_put)
             writes += 1
     return writes
-
-
-def persist_topic_rankings(
-    leaderboards: dict[str, TopicLeaderboard],
-    *,
-    report_date: date,
-    put_cached_trending: Callable[..., None],
-    computed_at: str,
-    wru_budget: WruBudget,
-) -> int:
-    """Persist one cache item per topic (Topic Phase 3, #6/#7) into the same
-    YobiTrendingCache table, under topic_leaderboard_cache_key's own
-    namespace, distinct from both persist_rankings' and persist_creator_and_
-    organization_rankings' own keys.
-
-    period="all" only — deliberately not one item per (topic, period): see
-    the feature's own report for why topic growth periods (1d/7d/30d) were
-    not implemented, to avoid quadrupling this round's already-small write
-    count for a metric #6/#7 never asked for (topicAverageViewsPerVideo is
-    inherently a cumulative/"all" concept, not a growth one).
-
-    `wru_budget` must be the *same* WruBudget instance passed to
-    persist_rankings/persist_creator_and_organization_rankings in the same
-    invocation — see WruBudget's own docstring.
-    """
-    writes = 0
-    for topic, board in leaderboards.items():
-        payload = {
-            "topic": topic,
-            "period": ALL_PERIOD,
-            "reportDate": report_date.isoformat(),
-            "creatorCount": board.creator_count,
-            "videoCount": board.video_count,
-            "byTotalViews": [_topic_leaderboard_entry_cache_row(entry) for entry in board.by_total_views],
-            "byAverageViewsPerVideo": [
-                _topic_leaderboard_entry_cache_row(entry) for entry in board.by_average_views_per_video
-            ],
-        }
-        key = topic_leaderboard_cache_key(topic=topic, period=ALL_PERIOD, report_date=report_date)
-        _paced_put(put_cached_trending, wru_budget, key, payload, computed_at=computed_at)
-        writes += 1
-    return writes
-
-
-def _topic_leaderboard_entry_cache_row(entry: TopicCreatorLeaderboardEntry) -> dict[str, Any]:
-    return {
-        "rank": entry.rank,
-        "creatorId": entry.creator_id,
-        "organization": entry.organization,
-        "branch": entry.branch,
-        "topicTotalViews": entry.topic_total_views,
-        "topicVideoCount": entry.topic_video_count,
-        "topicAverageViewsPerVideo": entry.topic_average_views_per_video,
-    }
 
 
 def _ranked_growth_cache_row(entry: RankedGrowth) -> dict[str, Any]:
     """A minimal (no title/channelName enrichment — see
-    persist_creator_and_organization_rankings' own docstring for why) cache
-    row for one video inside a creator summary's topVideo/top10."""
+    persist_creator_summaries' own docstring for why) cache row for one video
+    inside a creator summary's topVideo/top10."""
     return {
         "rank": entry.rank,
         "videoId": entry.video_id,
         "value": entry.gain,
         "latestViewCount": entry.view_count,
         "lastUpdatedAt": entry.observed_at,
-    }
-
-
-def _leaderboard_entry_cache_row(entry: CreatorLeaderboardEntry) -> dict[str, Any]:
-    return {
-        "rank": entry.rank,
-        "creatorId": entry.creator_id,
-        "value": entry.value,
-        "videoId": entry.video_id,
-        "catalogVideoCount": entry.catalog_video_count,
-        "eligibleVideoCount": entry.eligible_video_count,
-        "isComplete": entry.is_complete,
     }
 
 
@@ -374,12 +302,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     load_creators() is called exactly once here (a bundled local JSON file
     read, not a DynamoDB table — creator_master.py's own module docstring)
-    and the same result is reused for both persist_rankings' scope-ranking
-    cache row enrichment and this round's dimensions_by_creator — neither
-    persist_rankings nor persist_creator_and_organization_rankings loads
-    Creator Master itself. So this whole invocation costs zero additional
-    DynamoDB reads for organization membership, and exactly one local-file
-    Creator Master read total (not one per call site).
+    and the same result is reused for persist_rankings' own scope-ranking
+    cache row enrichment — persist_rankings never loads Creator Master
+    itself. So this whole invocation costs exactly one local-file Creator
+    Master read total (not one per call site).
 
     Exactly one WruBudget is created and shared across both persist_*
     calls below — see WruBudget's own docstring for why two independent
@@ -411,16 +337,21 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     store = S3PartialRankingStore(os.environ["YOBI_HISTORY_BUCKET"])
     merger = IncrementalRankingMerger()
     for shard in range(HISTORY_SHARD_COUNT):
-        scope_rankings, creator_partials, topic_partials = store.read_bundle(report_date, shard)
-        merger.add_shard(scope_rankings, creator_partials, topic_partials)
+        scope_rankings, creator_partials = store.read_bundle(report_date, shard)
+        merger.add_shard(scope_rankings, creator_partials)
     rankings = merger.scope_rankings()
 
     all_creators = load_creators()
     creators_by_id = {creator.creator_id: creator for creator in all_creators}
-    dimensions_by_creator = {
-        creator.creator_id: CreatorDimensions(organization=creator.organization, branch=creator.branch)
-        for creator in all_creators
-    }
+
+    # AWS Cost Recovery (third pass, Scope F): YobiTrendingCache is now a
+    # bounded TTL cache (dynamodb_store.TRENDING_CACHE_TTL_DAYS), so every
+    # write this invocation makes is also durably mirrored to S3 --
+    # archive_store is None only when YOBI_HISTORY_BUCKET isn't configured
+    # (never true for this real Lambda; guarded anyway for any test/local
+    # caller).
+    archive_store = S3TrendingCacheArchiveStore.from_environment()
+    archive_put = archive_store.put if archive_store is not None else None
 
     wru_budget = WruBudget(target_wru_per_second=TARGET_WRU_PER_SECOND)
     writes = persist_rankings(
@@ -431,22 +362,15 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         put_cached_trending=put_cached_trending,
         computed_at=now.isoformat(),
         wru_budget=wru_budget,
+        archive_put=archive_put,
     )
-    writes += persist_creator_and_organization_rankings(
+    writes += persist_creator_summaries(
         merger.creator_partials(),
         report_date=report_date,
-        dimensions_by_creator=dimensions_by_creator,
         put_cached_trending=put_cached_trending,
         wru_budget=wru_budget,
         computed_at=now.isoformat(),
-    )
-    topic_leaderboards = topic_creator_leaderboards(merger.topic_partials(), dimensions_by_creator=dimensions_by_creator)
-    writes += persist_topic_rankings(
-        topic_leaderboards,
-        report_date=report_date,
-        put_cached_trending=put_cached_trending,
-        wru_budget=wru_budget,
-        computed_at=now.isoformat(),
+        archive_put=archive_put,
     )
     return {"date": report_date.isoformat(), "reportDate": report_date.isoformat(), "ownerToken": owner_token, "cacheWrites": writes}
 

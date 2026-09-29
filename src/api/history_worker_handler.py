@@ -10,14 +10,18 @@ from zoneinfo import ZoneInfo
 from stores import dynamodb_store
 from collection import execution_lock
 from ops.config import get_api_key
-from tracking.creator_master import load_creators
-from analytics.history_ranking import CreatorDimensions, creator_topic_partials
+from tracking.creator_master import get_active_creators, load_creators
+from analytics.history_ranking import CreatorDimensions
 from stores.history_store import HISTORY_SHARD_COUNT, S3HistoryStore
 from collection.history_worker import collect_history_shard
 from stores.ranking_partial_store import S3PartialRankingStore
 from tracking.tracking_manifest import S3TrackingManifestStore
-from tracking.video_topics import resolve_video_topics
-from collection.youtube_client import build_youtube_client
+from collection.youtube_client import QuotaExhaustedError, build_youtube_client
+from collection.subscriber_snapshot import collect_subscriber_snapshot_if_missing
+from stores.subscriber_history_store import S3SubscriberHistoryStore, SubscriberHistoryStoreError
+from analytics.subscriber_ranking import load_exact_anchor_subscriber_rows
+from analytics.subscriber_ranking_result import build_subscriber_ranking_result
+from stores.subscriber_ranking_store import S3SubscriberRankingStore, SubscriberRankingStoreError
 
 COLLECTION_TIMEZONE = ZoneInfo("Asia/Tokyo")
 
@@ -80,18 +84,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         dimensions_by_creator=dimensions,
         observed_at=now.isoformat(),
     )
-    # Topic Phase 3 (#6/#7): topic_by_video is resolved fresh from exactly
-    # this shard's own collected video_ids (result.rows), via a bounded
-    # BatchGetItem (dynamodb_store.get_video_topics), never a full Video
-    # Master scan and never one GetItem per row — see the feature's own
-    # report for why. A video with no persisted topic yet (backfill hasn't
-    # necessarily run) is classified from its title in memory here
-    # (resolve_video_topics), never written back to Video Master.
-    video_ids = sorted({row.video_id for row in result.rows})
-    topic_by_video = resolve_video_topics(dynamodb_store.get_video_topics(video_ids))
-    topic_partials = creator_topic_partials(result.rows, topic_by_video=topic_by_video)
     partial_key = S3PartialRankingStore(bucket_name).write(
-        report_date, shard, result.rankings, result.creator_partials, topic_partials
+        report_date, shard, result.rankings, result.creator_partials
     )
     # Renewed last, and unconditionally on every success path — including the
     # shard_exists idempotent-skip branch inside collect_history_shard, which
@@ -152,11 +146,139 @@ def _acquire_execution_lock(event: dict[str, Any]) -> dict[str, Any]:
         now=datetime.now(COLLECTION_TIMEZONE),
         force_recovery=bool(execution_input.get("forceRecovery", False)),
     )
+    _collect_subscriber_snapshot_if_configured(report_date)
     return {
         "shards": event["validatedShards"],
         "reportDate": report_date.isoformat(),
         "ownerToken": owner_token,
     }
+
+
+def _collect_subscriber_snapshot_if_configured(report_date: date) -> None:
+    """Best-effort daily subscriber-history collection (R3) AND subscriber-
+    leaderboard result build (R4), run from inside AcquireExecutionLock -- a
+    single Task in terraform/history.tf's state machine, reached exactly
+    once per execution before CollectHistoryShards' 16-way Map ever fans
+    out. This is what makes both steps run once per report date, never once
+    per shard: nothing below is reachable from CollectShard's own per-shard
+    code path in this same module, and AcquireExecutionLock itself has no
+    loop/Map around it. R4's ranking build runs strictly AFTER the snapshot
+    step, in the same invocation -- it reads back whatever the snapshot step
+    just left in S3 (freshly collected, repaired, or already-complete),
+    never a stale in-memory copy from before that step ran.
+
+    A failure anywhere below is deliberately never allowed to propagate.
+    Subscriber history/ranking is a separate, independently-idempotent-and-
+    repairing concern from the video-history pipeline this Lambda exists to
+    run -- a subscriber-only problem (YouTube quota exhaustion, a transient
+    network/API error, an S3 write failure on either the history or the
+    ranking-result object) must never turn into a failed AcquireExecutionLock
+    Task, which would abort this execution before CollectHistoryShards even
+    starts and block real video-history collection for something unrelated
+    to it. Every branch below only ever prints a Warning and returns; none
+    of them re-raise.
+
+    `os.environ["YOBI_HISTORY_BUCKET"]` is read first, before building a
+    YouTube client or loading Creator Master, so a bare/misconfigured
+    environment (e.g. an existing test exercising the acquire branch without
+    wiring any of this up) fails this fast and cheaply rather than after
+    already paying for that setup.
+    """
+    try:
+        bucket_name = os.environ["YOBI_HISTORY_BUCKET"]
+        creators = get_active_creators()
+        youtube = build_youtube_client(get_api_key())
+        history_store = S3SubscriberHistoryStore(bucket_name)
+        now = datetime.now(COLLECTION_TIMEZONE)
+        key, skip_reasons, collected = collect_subscriber_snapshot_if_missing(
+            youtube,
+            creators,
+            collection_date=report_date,
+            observed_at=now.isoformat(),
+            store=history_store,
+        )
+        if collected:
+            print(
+                f"Subscriber snapshot collected/repaired for reportDate={report_date.isoformat()}: "
+                f"key={key}, roster={len(creators)}, stillMissing={len(skip_reasons)}"
+            )
+        elif skip_reasons:
+            print(
+                f"Subscriber snapshot attempted but recovered nothing new for "
+                f"reportDate={report_date.isoformat()}: roster={len(creators)}, "
+                f"stillMissing={len(skip_reasons)} -- no S3 write, remains repairable"
+            )
+        else:
+            print(
+                f"Subscriber snapshot already complete for reportDate={report_date.isoformat()}; "
+                "skipped collection"
+            )
+
+        _build_and_persist_subscriber_ranking(
+            report_date=report_date,
+            generated_at=now.isoformat(),
+            creators=creators,
+            history_store=history_store,
+            bucket_name=bucket_name,
+        )
+    except QuotaExhaustedError as exc:
+        print(
+            f"Warning: subscriber snapshot skipped, YouTube quota exhausted for "
+            f"reportDate={report_date.isoformat()}: {exc}"
+        )
+    except SubscriberHistoryStoreError as exc:
+        print(
+            f"Warning: subscriber snapshot S3 write failed for "
+            f"reportDate={report_date.isoformat()}: {exc}"
+        )
+    except SubscriberRankingStoreError as exc:
+        print(
+            f"Warning: subscriber ranking result S3 write failed for "
+            f"reportDate={report_date.isoformat()}: {exc}"
+        )
+    except Exception as exc:  # noqa: BLE001 -- deliberate: see this function's own docstring
+        print(
+            f"Warning: subscriber snapshot/ranking collection failed unexpectedly for "
+            f"reportDate={report_date.isoformat()}: {exc}"
+        )
+
+
+def _build_and_persist_subscriber_ranking(
+    *, report_date: date, generated_at: str, creators, history_store: S3SubscriberHistoryStore, bucket_name: str
+) -> None:
+    """R4: build the subscriber-leaderboard result from whatever is now
+    persisted at subscriber-history/date={report_date} (read fresh here,
+    never trusted from an in-memory value computed before the snapshot
+    step's own collect/repair just ran) plus the exact D-1/D-7/D-30 anchors,
+    and deterministically overwrite subscriber-ranking/date={report_date} --
+    a same-date rebuild after R3 repairs a partial snapshot simply replaces
+    the same key, never "result exists -> skip forever" (see
+    S3SubscriberRankingStore.write_result's own docstring).
+
+    Never writes when D0 has no usable current observations at all
+    (build_subscriber_ranking_result returns None in that case) -- this
+    naturally covers a total subscriber-collection failure too, without any
+    special-case branching here: an empty/absent history snapshot simply
+    produces an empty `total` list.
+    """
+    current_rows = history_store.read_daily_snapshot(report_date)
+    anchor_rows_by_days = load_exact_anchor_subscriber_rows(history_store, report_date=report_date)
+    result = build_subscriber_ranking_result(
+        report_date=report_date,
+        generated_at=generated_at,
+        current_rows=current_rows,
+        anchor_rows_by_days=anchor_rows_by_days,
+        creators=creators,
+    )
+    if result is None:
+        print(
+            f"Subscriber ranking result skipped for reportDate={report_date.isoformat()}: "
+            "no usable current observations"
+        )
+        return
+    ranking_store = S3SubscriberRankingStore(bucket_name)
+    ranking_key = ranking_store.write_result(report_date, result)
+    print(f"Subscriber ranking result written for reportDate={report_date.isoformat()}: key={ranking_key}")
 
 
 def _validate_shard(raw: Any) -> int:

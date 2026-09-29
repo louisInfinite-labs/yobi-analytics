@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core"
-import { Button, ConfigProvider, theme as antdTheme } from "antd"
+import { ConfigProvider, theme as antdTheme } from "antd"
 import { mockCreators } from "../../entities/creator/data/mockCreators"
 import { useMemberTheme } from "../../shared/theme/ThemeContext"
 import { mockDailySeries } from "../../features/dashboard/editor/data/mockDailySeries"
 import { describeApiFailure } from "../../shared/api/apiClient"
 import { useCachedDashboardData } from "../../features/analytics/hooks/useCachedDashboardData"
 import { useChartCatalog } from "../../features/dashboard/catalog/hooks/useChartCatalog"
-import { useComparisonItems } from "../../features/dashboard/comparison/hooks/useComparisonItems"
-import { useComparisonMappingDialog } from "../../features/dashboard/comparison/hooks/useComparisonMappingDialog"
 import { useDashboardEditor } from "../../features/dashboard/editor/hooks/useDashboardEditor"
 import { useFilterState } from "../../features/analytics/hooks/useFilterState"
 import { useHeartbeat } from "../../shared/api/hooks/useHeartbeat"
@@ -20,10 +18,7 @@ import { fetchMockAnalytics, fetchRealAnalytics, MOCK_REPORT_DATE } from "../../
 import { fetchChartCatalog } from "../../features/dashboard/catalog/data/dashboardChartCatalogSource"
 import type { ChartCatalogItem } from "../../features/dashboard/catalog/model/dashboardChartCatalog"
 import { resolveAddableWidgetTypes } from "../../features/dashboard/catalog/utils/dashboardChartCatalogOptions"
-import { defaultComparisonSource } from "../../features/dashboard/comparison/data/defaultComparisonSource"
-import type { ComparisonSource } from "../../features/dashboard/comparison/data/dashboardComparisonSource"
 import { describeCreatorDrop } from "../../features/dashboard/comparison/utils/dashboardCreatorDrop"
-import { isComparisonCapableWidget } from "../../features/dashboard/comparison/utils/dashboardComparisonWidgets"
 import { convertLegacyLayout, createLocalCanonicalLayoutSubmit, loadCanonicalLayoutState } from "../../features/dashboard/editor/data/dashboardCanonicalLayoutStore"
 import { createWidgetId, updateWidgetGeometry } from "../../features/dashboard/editor/utils/dashboardWidgetActions"
 import { computeValidatedRowInsertion } from "../../features/dashboard/editor/utils/dashboardInsertionPreview"
@@ -51,9 +46,6 @@ import { EmptyState } from "../../shared/ui/states/EmptyState"
 import { ErrorState } from "../../shared/ui/states/ErrorState"
 import { LoadingState } from "../../shared/ui/states/LoadingState"
 import { LegacyLayoutRecoveryBanner } from "../../features/dashboard/editor/components/LegacyLayoutRecoveryBanner"
-import { ComparisonWidget } from "../../features/dashboard/comparison/components/ComparisonWidget"
-import { ComparisonMappingDialog } from "../../features/dashboard/comparison/components/ComparisonMappingDialog"
-import { CreatorComparisonPicker } from "../../features/dashboard/comparison/components/CreatorComparisonPicker"
 import { DraggableCreatorList } from "../../features/dashboard/comparison/components/DraggableCreatorList"
 
 const SAVE_CONFIRMATION_DURATION_MS = 2500
@@ -67,19 +59,16 @@ function creatorName(creatorId: string): string {
  * Remounting (via `key`) after a successful legacy conversion makes
  * the content re-read storage through the normal load path. */
 export function DashboardPage({
-  comparisonSource = defaultComparisonSource,
   fetchCatalog = fetchChartCatalog,
-}: { comparisonSource?: ComparisonSource; fetchCatalog?: () => Promise<ChartCatalogItem[]> } = {}) {
+}: { fetchCatalog?: () => Promise<ChartCatalogItem[]> } = {}) {
   const [loadEpoch, setLoadEpoch] = useState(0)
-  return <DashboardPageContent key={loadEpoch} comparisonSource={comparisonSource} fetchCatalog={fetchCatalog} onLegacyConverted={() => setLoadEpoch((epoch) => epoch + 1)} />
+  return <DashboardPageContent key={loadEpoch} fetchCatalog={fetchCatalog} onLegacyConverted={() => setLoadEpoch((epoch) => epoch + 1)} />
 }
 
 function DashboardPageContent({
-  comparisonSource,
   fetchCatalog,
   onLegacyConverted,
 }: {
-  comparisonSource: ComparisonSource
   fetchCatalog: () => Promise<ChartCatalogItem[]>
   onLegacyConverted: () => void
 }) {
@@ -156,17 +145,13 @@ function DashboardPageContent({
     updateDraftWidget,
     removeDraftWidget,
     addWidgetAtSlot,
-    updateDraftWidgetComparison,
     updateDraftWidgetCreatorScope,
-    commitExternalLayout,
   } = useDashboardEditor(initialCanonicalLayout, canonicalSubmit)
 
   // Reproduces the pre-cutover SaveToast behavior (a ~2.5s confirmation
   // after a successful save) from useDashboardEditor's own signals, since
   // that hook has no direct "just saved" event of its own -- isSaving
   // transitioning true -> false with no saveError is exactly that moment.
-  // Flow 1: which comparison widget's in-widget picker is open (UI state only).
-  const [pickerWidgetId, setPickerWidgetId] = useState<string | null>(null)
   const [saveConfirmation, setSaveConfirmation] = useState(false)
   const wasSavingRef = useRef(false)
   useEffect(() => {
@@ -384,7 +369,6 @@ function DashboardPageContent({
       setPendingWidgetType(null)
       setInsertionRejected(false)
       setPreviewSlot(null)
-      setPickerWidgetId(null)
     }
   }, [editMode])
 
@@ -469,39 +453,8 @@ function DashboardPageContent({
         }.`
       : null
 
-  // The live comparison integration. Comparison
-  // items come from the injected source seam (`dashboardComparisonSource.ts`),
-  // loaded once per mount and independent of the chart catalog above.
-  const comparisonItems = useComparisonItems(comparisonSource.loadItems)
-
-  // Flow 1: which comparison widget's in-widget picker is open. Which
-  // picker is open is UI state; the selection itself only ever lands in the
-  // draft (`updateDraftWidgetComparison`), never canonical state.
-  const pickerWidget = pickerWidgetId ? draftLayout.widgets.find((widget) => widget.widgetId === pickerWidgetId) : undefined
-  const handleApplyPickerSelection = useCallback(
-    (creatorIds: string[]) => {
-      if (!pickerWidgetId) return
-      updateDraftWidgetComparison(pickerWidgetId, creatorIds)
-      setAnnouncement(`Comparison creators updated: ${creatorIds.map((id, index) => `${index + 1}, ${creatorName(id)}`).join("; ")}.`)
-      setPickerWidgetId(null)
-    },
-    [pickerWidgetId, updateDraftWidgetComparison],
-  )
-
-  // Flow 2: the dialog owns its own atomic transaction against
-  // *canonical* state (never the draft), persisting through the same store
-  // submit as a normal Save; on success the editor adopts the persisted layout.
-  const handleFlow2Committed = useCallback(
-    (committed: typeof canonicalLayout) => {
-      commitExternalLayout(committed)
-      setAnnouncement("Comparison charts added to the Dashboard.")
-    },
-    [commitExternalLayout],
-  )
-  const comparisonDialog = useComparisonMappingDialog(canonicalLayout, canonicalSubmit, handleFlow2Committed)
-
-  // Flow 3: a creator dragged out of the Creator List onto a
-  // comparison chart appends to that widget's draft config only.
+  // A creator dragged out of the Creator List onto a chart applies its
+  // creator scope to that widget's draft config only.
   const dragSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
   const [activeCreatorIds, setActiveCreatorIds] = useState<string[]>([])
   const [selectedCreatorIds, setSelectedCreatorIds] = useState<string[]>([])
@@ -538,34 +491,11 @@ function DashboardPageContent({
         setAnnouncement(`${name} can't be applied: this widget does not support member filters.`)
         return
       }
-      const target = draftLayout.widgets.find((widget) => widget.widgetId === widgetId)
-      if (target && isComparisonCapableWidget(target)) {
-        updateDraftWidgetComparison(widgetId, creatorIds)
-      } else {
-        updateDraftWidgetCreatorScope(widgetId, creatorIds)
-      }
+      updateDraftWidgetCreatorScope(widgetId, creatorIds)
       setSelectedCreatorIds(creatorIds)
       setAnnouncement(`${creatorIds.length} member${creatorIds.length === 1 ? "" : "s"} applied to this chart.`)
     },
-    [gridEditable, previewActive, draftLayout, updateDraftWidgetCreatorScope, updateDraftWidgetComparison],
-  )
-
-  const renderComparisonWidget = useCallback(
-    (widgetId: string) => {
-      const widget = displayedCanonicalLayout.widgets.find((candidate) => candidate.widgetId === widgetId)
-      if (!widget) return null
-      return (
-        <ComparisonWidget
-          widget={widget}
-          roster={mockCreators}
-          availableComparisonItems={comparisonItems}
-          fetchComparisonData={comparisonSource.fetchData}
-          sampleData={comparisonSource.origin === "mock"}
-          onSelectCreators={gridEditable && !previewActive ? setPickerWidgetId : undefined}
-        />
-      )
-    },
-    [displayedCanonicalLayout, comparisonItems, comparisonSource, gridEditable, previewActive],
+    [gridEditable, previewActive, draftLayout, updateDraftWidgetCreatorScope],
   )
 
   const reportDate = dataSource === "live" ? dateInTimeZone(new Date(), "Asia/Tokyo") : MOCK_REPORT_DATE
@@ -598,10 +528,6 @@ function DashboardPageContent({
   const dataBackedCreatorIds = useMemo(
     () => new Set(allStats.filter((stat) => stat.status === "ok").map((stat) => stat.channelId)),
     [allStats],
-  )
-  const selectableCreators = useMemo(
-    () => mockCreators.filter((creator) => dataBackedCreatorIds.has(creator.channelId)),
-    [dataBackedCreatorIds],
   )
   const filteredStats = useMemo(
     () => allStats.filter((s) => matchesClassification(s, filters.state) && matchesContent(s, filters.state)),
@@ -757,13 +683,6 @@ function DashboardPageContent({
                   onSelectedIdsChange={handleCreatorSelectionChange}
                 />
               )}
-              {/* Flow 2 entry point: view mode only, so the dialog's
-               * canonical-only transaction can never race an unsaved draft. */}
-              {!editMode && (
-                <Button onClick={comparisonDialog.open} disabled={comparisonItems.length === 0}>
-                  Compare Creators
-                </Button>
-              )}
             </div>
           )}
 
@@ -809,7 +728,6 @@ function DashboardPageContent({
               data={widgetData}
               getWidgetData={getWidgetData}
               getWidgetScopeLabels={getWidgetScopeLabels}
-              renderComparisonWidget={renderComparisonWidget}
               onCommitGeometry={handleCommitGeometry}
               onRemoveWidget={removeDraftWidget}
               validateGesturePreview={validateGesturePreview}
@@ -839,33 +757,6 @@ function DashboardPageContent({
               previewStatus={previewStatus}
               canInsert={previewActive}
               onInsert={handleInsert}
-            />
-          )}
-
-          {gridEditable && pickerWidget && isComparisonCapableWidget(pickerWidget) && (
-            <CreatorComparisonPicker
-              key={pickerWidget.widgetId}
-              creators={selectableCreators}
-              initialSelectedIds={pickerWidget.comparison?.creatorIds ?? []}
-              onCancel={() => setPickerWidgetId(null)}
-              onApply={handleApplyPickerSelection}
-            />
-          )}
-
-          {comparisonDialog.isOpen && (
-            <ComparisonMappingDialog
-              creators={selectableCreators}
-              availableComparisonItems={comparisonItems}
-              orderedCreatorIds={comparisonDialog.orderedCreatorIds}
-              onToggleCreator={comparisonDialog.toggleCreator}
-              orderedItemIds={comparisonDialog.orderedItemIds}
-              onToggleItem={comparisonDialog.toggleItem}
-              preview={comparisonDialog.preview}
-              canSave={comparisonDialog.canSave}
-              isSaving={comparisonDialog.isSaving}
-              error={comparisonDialog.error}
-              onSave={() => void comparisonDialog.save()}
-              onCancel={comparisonDialog.close}
             />
           )}
 

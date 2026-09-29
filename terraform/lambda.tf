@@ -5,6 +5,33 @@ locals {
   lambda_placeholder_zip = "${path.module}/placeholder.zip"
 }
 
+# AWS Cost Recovery (third pass, Scope I): every *_SSM_PARAMETER variable
+# below is PREPARED ONLY -- see ops/config.py's own module docstring for the
+# code-side precedence (SSM checked first, falling back to the existing
+# *_SECRET_NAME/plaintext path unchanged). DO NOT apply this file's
+# *_SSM_PARAMETER additions until, in this exact order:
+#   1. The real SSM SecureString parameter is created (manual, live AWS --
+#      this repo's own IAM/secret provisioning has always been done outside
+#      Terraform; see iam.tf's own comments).
+#   2. yobi-analytics-lambda-role is granted ssm:GetParameter on that
+#      parameter's ARN (manual, live AWS -- same reasoning).
+#   3. Only then apply this Terraform change.
+#   4. Verify the Lambda still starts and the relevant call succeeds.
+# Applying step 3 before steps 1-2 would make the affected Lambda try to
+# read a parameter that doesn't exist yet (or lacks permission), breaking
+# production -- this is why these lines exist here as documentation of the
+# prepared change, not as something to apply blindly alongside everything
+# else in this pass. The old *_SECRET_NAME variable is deliberately left in
+# place alongside the new one (not removed) for the same reason: it's the
+# rollback path if the new one needs to be reverted.
+locals {
+  ssm_parameter_prepared_not_applied = {
+    youtube_api_key   = "/yobi-analytics/youtube-api-key"
+    admin_api_key     = "/yobi-analytics/admin-api-key"
+    vapid_private_key = "/yobi-analytics/vapid-private-key"
+  }
+}
+
 resource "aws_lambda_function" "collector" {
   function_name = "yobi-analytics-collector"
   role          = local.lambda_role_arn
@@ -17,9 +44,10 @@ resource "aws_lambda_function" "collector" {
   environment {
     variables = {
       YOUTUBE_API_KEY_SECRET_NAME = "yobi-analytics/youtube-api-key"
-      YOBI_DATA_DIR               = "/tmp"
-      YOBI_HISTORY_BUCKET         = aws_s3_bucket.history.id
-      YOBI_STORAGE_BACKEND        = "dynamodb"
+      # YOUTUBE_API_KEY_SSM_PARAMETER = local.ssm_parameter_prepared_not_applied.youtube_api_key
+      YOBI_DATA_DIR        = "/tmp"
+      YOBI_HISTORY_BUCKET  = aws_s3_bucket.history.id
+      YOBI_STORAGE_BACKEND = "dynamodb"
     }
   }
 
@@ -40,7 +68,8 @@ resource "aws_lambda_function" "history_worker" {
   environment {
     variables = {
       YOUTUBE_API_KEY_SECRET_NAME = "yobi-analytics/youtube-api-key"
-      YOBI_HISTORY_BUCKET         = aws_s3_bucket.history.id
+      # YOUTUBE_API_KEY_SSM_PARAMETER = local.ssm_parameter_prepared_not_applied.youtube_api_key
+      YOBI_HISTORY_BUCKET = aws_s3_bucket.history.id
     }
   }
 
@@ -89,7 +118,8 @@ resource "aws_lambda_function" "api" {
   environment {
     variables = {
       YOBI_ADMIN_API_KEY_SECRET_NAME = "yobi-analytics/admin-api-key"
-      YOBI_STORAGE_BACKEND           = "dynamodb"
+      # YOBI_ADMIN_API_KEY_SSM_PARAMETER = local.ssm_parameter_prepared_not_applied.admin_api_key
+      YOBI_STORAGE_BACKEND = "dynamodb"
     }
   }
 
@@ -120,6 +150,7 @@ resource "aws_lambda_function" "notification_dispatcher" {
     variables = {
       VAPID_CLAIMS_SUB              = var.vapid_claims_sub
       VAPID_PRIVATE_KEY_SECRET_NAME = "yobi-analytics/vapid-private-key"
+      # VAPID_PRIVATE_KEY_SSM_PARAMETER = local.ssm_parameter_prepared_not_applied.vapid_private_key
     }
   }
 

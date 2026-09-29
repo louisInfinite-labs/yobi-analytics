@@ -69,19 +69,6 @@ describe("projectCanonicalLayoutForGridStack", () => {
     expect(result.unrenderableWidgetIds).toEqual(["retired"])
   })
 
-  it("GAP-9: projects a comparison widget under its own type instead of excluding it, keeping its canonical geometry", () => {
-    const result = projectCanonicalLayoutForGridStack(
-      layout({ widgets: [widget({ widgetId: "known" }), widget({ widgetId: "comparison", widgetType: "creator-comparison-chart", x: 1 })] }),
-    )
-
-    expect(result.widgets.map((w) => [w.instanceId, w.type])).toEqual([
-      ["known", "kpi-summary"],
-      ["comparison", "creator-comparison-chart"],
-    ])
-    expect(result.unrenderableWidgetIds).toEqual([])
-    expect(result.widgets[1].x).toBe(1)
-  })
-
   it("never mutates the input layout", () => {
     const input = layout({ widgets: [widget()] })
     const snapshot = JSON.parse(JSON.stringify(input))

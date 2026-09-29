@@ -500,6 +500,37 @@ def test_get_creator_trending_raises_ranking_not_ready_on_genuine_cache_miss(mon
         )
 
 
+def test_get_creator_trending_falls_back_to_the_archive_on_a_cache_miss(monkeypatch):
+    """AWS Cost Recovery (third pass, Scope F): YobiTrendingCache's new bounded
+    TTL means an old-enough reportDate is a genuine DynamoDB miss even though
+    it was really computed -- this must still be served from the durable S3
+    archive, not treated as never-computed."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: None)
+    archived_payload = {"results": [{"rank": 1, "videoId": "v1", "lastUpdatedAt": "2026-01-01T00:00:00+00:00"}]}
+    monkeypatch.setattr(read_api, "get_archived_trending", lambda cache_key: archived_payload)
+
+    response = get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-01-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
+    )
+
+    assert response["results"] == [{"rank": 1, "videoId": "v1", "lastUpdatedAt": "2026-01-01T00:00:00+00:00"}]
+
+
+def test_get_creator_trending_never_checks_the_archive_on_a_cache_hit(monkeypatch):
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "get_cached_trending", lambda cache_key: {"results": []})
+
+    def _boom(cache_key):
+        raise AssertionError("a cache hit must never touch the archive")
+
+    monkeypatch.setattr(read_api, "get_archived_trending", _boom)
+
+    get_creator_trending(
+        {"creatorId": "aizawa_ema", "reportDate": "2026-09-01", "timeZone": "Asia/Tokyo", "period": "1d", "limit": "5"}
+    )
+
+
 def test_get_organization_trending_serves_a_cache_hit_without_touching_live_storage(monkeypatch):
     """Organization scope mirrors the creator-scope cache-hit contract exactly."""
 
@@ -951,11 +982,16 @@ def test_get_creator_trending_rejects_every_invalid_param_before_touching_storag
 # V5.9 removed get_organization_trending's own cross-org leak-prevention test
 # from this file: that behavior (a video from a different organization's
 # creator never leaking into another org's cached entry) lived in the now-
-# removed live-fallback branch. It's still real production behavior, just
-# owned entirely by the writer now — see
-# tests/test_trending_precompute.py::test_run_caches_an_organizations_trending_scoped_to_its_own_creators,
-# which already covers it at the layer where the org's creator set is
-# actually assembled.
+# removed live-fallback branch, owned entirely by the writer instead. R7 (AWS
+# Cost Recovery) deleted analytics/trending_precompute.py (the legacy,
+# already-schedule-disabled writer this comment used to point at) along with
+# its own test coverage for this. The real production writer today
+# (history_ranking.top_n_by_scope, via _scopes_for) assigns each row's "org"
+# scope from that row's own creator's own organization — a leak would require
+# a row to be assigned to a scope keyed by a different creator's org
+# entirely, which _scopes_for's own shape makes structurally impossible, not
+# merely untested; see tests/test_creator_organization_ranking.py's own
+# per-scope isolation coverage of the same underlying mechanism.
 
 
 def test_get_organization_trending_raises_for_an_organization_with_no_creators(monkeypatch):

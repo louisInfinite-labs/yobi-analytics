@@ -10,13 +10,35 @@ from tracking.video_master import Video
 
 
 class _FakeManifest:
-    """A tracking-manifest store stub returning one fixed set of active entries."""
+    """A tracking-manifest store stub returning one fixed set of active entries,
+    with real optimistic-concurrency semantics (an integer version counter,
+    standing in for S3's own ETag) for read_shard_for_patch/
+    write_shard_if_version -- AWS Cost Recovery (third pass): patch_shard
+    relies on a genuine conflict/no-conflict distinction, not a stub that
+    always succeeds, so a test using this fake to prove idempotent/no-op
+    patch behavior (e.g. no scheduler updates -> no write at all) is exercising
+    the same contract the real S3TrackingManifestStore does."""
 
     def __init__(self, entries):
         self._entries = entries
+        self._version = 1
+        self.patch_write_count = 0
 
     def read_shard(self, shard):
         return self._entries
+
+    def read_shard_for_patch(self, shard):
+        return list(self._entries), self._version
+
+    def write_shard_if_version(self, shard, entries, *, version):
+        from tracking.tracking_manifest import ManifestConflictError
+
+        if version != self._version:
+            raise ManifestConflictError(f"stub conflict on shard {shard}")
+        self._entries = list(entries)
+        self._version += 1
+        self.patch_write_count += 1
+        return f"stub-shard-{shard:02d}"
 
 
 class _FakeHistory:
@@ -41,7 +63,13 @@ class _FakeHistory:
 
 class _FakeVideoMaster:
     """A Video Master store stub: an in-memory dict of authoritative Video rows,
-    matching video_master.VideoMasterStore's shape (get_video/upsert_videos)."""
+    matching video_master.VideoMasterStore's shape (get_video/upsert_videos).
+
+    Deliberately does NOT implement get_videos -- proves
+    _carry_forward_non_due_rows' fallback per-id loop still works unchanged
+    for a store that only satisfies the original two-method Protocol (AWS
+    Cost Recovery third pass, Scope H: get_videos is optional, duck-typed).
+    """
 
     def __init__(self, videos: list[Video]):
         self.videos = {video.video_id: video for video in videos}
@@ -54,6 +82,20 @@ class _FakeVideoMaster:
         self.upsert_calls.append(list(videos))
         for video in videos:
             self.videos[video.video_id] = video
+
+
+class _FakeVideoMasterWithBatchGet(_FakeVideoMaster):
+    """Same as _FakeVideoMaster, plus a batched get_videos -- proves
+    _carry_forward_non_due_rows actually calls it (once, with every missing
+    id at once) instead of get_video per video, when a store provides it."""
+
+    def __init__(self, videos: list[Video]):
+        super().__init__(videos)
+        self.get_videos_calls: list[list[str]] = []
+
+    def get_videos(self, video_ids):
+        self.get_videos_calls.append(list(video_ids))
+        return {video_id: self.videos[video_id] for video_id in video_ids if video_id in self.videos}
 
 
 def _kwargs(*, manifest, history, video_master=None):
@@ -327,17 +369,23 @@ def _ids_in_same_shard(target_shard: int, count: int, *, prefix: str = "video") 
     return found
 
 
-def test_full_catalog_collection_still_requests_every_active_manifest_entry(monkeypatch):
-    """This task deliberately does not enable select_due_video_ids in Phase B yet --
-    every active manifest entry is still requested regardless of any activityState/
-    publishedAt on the manifest, exactly as before this change."""
+def test_active_does_not_imply_due(monkeypatch):
+    """AWS Cost Recovery regression test: an active tracked video must not automatically
+    mean 'collect today' -- only videos tracking_schedule.select_due_video_ids considers
+    due may ever reach YouTube. This is the exact architectural regression the task fixes
+    and must never silently return: a manifest entry with no recorded published_at/
+    activity_state at all (a manifest predating those fields) is the one case is_due_today
+    can't tell about and must default to due; a well-established old Cold video with a
+    real publishedAt/activityState (and no matching prior-day carry-forward source) is
+    forced due too, since it has nothing to carry forward -- but neither case is requested
+    because it is merely 'active'."""
     target_shard = 0
     stale_id, cold_id, inactive_id = _ids_in_same_shard(target_shard, 3)
 
     requested = []
 
     def fake_statistics(youtube, video_ids):
-        requested.append(list(video_ids))
+        requested.append(sorted(video_ids))
         return (
             [
                 {"videoId": vid, "title": "t", "publishedAt": "2020-01-01T00:00:00Z", "viewCount": 1}
@@ -370,7 +418,378 @@ def test_full_catalog_collection_still_requests_every_active_manifest_entry(monk
         observed_at="2026-09-15T18:00:00+09:00",
     )
 
+    # Both stale_id (unrecognizable scheduler input) and cold_id (real Cold state,
+    # no prior state anywhere to carry forward) are FORCED due for lack of any
+    # carry-forward source -- never because they are merely "active". inactive_id
+    # is excluded entirely, exactly as before this change.
     assert requested == [sorted([stale_id, cold_id])]
+
+
+# --- AWS Cost Recovery: due-scheduling + carry-forward (Steps 1-4, 9) -------
+
+
+def _due_and_cold_entries(shard: int):
+    """One id whose is_due_today is always True (age <= RECENT_MAX_AGE_DAYS=7) and one whose
+    Cold rotation slot on 2026-09-15 is guaranteed non-due (COLD_CYCLE_DAYS=15,
+    so at most 1-in-15 stable slots is due on any given date -- searching a
+    handful of candidate ids for one that lands off-slot is deterministic and
+    fast, never a flaky retry)."""
+    from tracking.tracking_schedule import is_due_today
+
+    recent_id = _ids_in_same_shard(shard, 1, prefix="recent")[0]
+    candidate = 0
+    while True:
+        cold_id = f"cold-{candidate}"
+        if history_worker.shard_for_video(cold_id) == shard and not is_due_today(
+            cold_id, "2020-01-01T00:00:00Z", "Cold", date(2026, 9, 15)
+        ):
+            break
+        candidate += 1
+    return recent_id, cold_id
+
+
+def test_mixed_due_and_non_due_shard_only_requests_due_ids(monkeypatch):
+    """Only due video ids are handed to YouTube; a non-due id with a usable
+    prior-day carry-forward source is never requested."""
+    shard = 0
+    recent_id, cold_id = _due_and_cold_entries(shard)
+
+    requested = []
+
+    def fake_statistics(youtube, video_ids):
+        requested.append(sorted(video_ids))
+        return (
+            [{"videoId": recent_id, "title": "t", "publishedAt": "2026-09-10T00:00:00Z", "viewCount": 999}],
+            {},
+        )
+
+    monkeypatch.setattr(history_worker, "get_video_statistics", fake_statistics)
+
+    history = _FakeHistory()
+    history.objects[(date(2026, 9, 14), shard)] = [
+        HistoryRow(video_id=cold_id, creator_id="c1", view_count=500, observed_at="2026-09-10T18:00:00+09:00", availability_status="available")
+    ]
+    video_master = _FakeVideoMaster(
+        [
+            Video(video_id=recent_id, creator_id="c1", title="t", published_at="2026-09-10T00:00:00Z"),
+            Video(video_id=cold_id, creator_id="c1", title="t", published_at="2020-01-01T00:00:00Z", activity_state="Cold"),
+        ]
+    )
+
+    result = collect_history_shard(
+        shard=shard,
+        youtube=object(),
+        manifest_store=_FakeManifest(
+            [
+                ManifestEntry(recent_id, "c1", True, published_at="2026-09-10T00:00:00Z", activity_state="Unknown"),
+                ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold"),
+            ]
+        ),
+        history_store=history,
+        video_master_store=video_master,
+        collection_date=date(2026, 9, 15),
+        observed_at="2026-09-15T18:00:00+09:00",
+    )
+
+    assert requested == [[recent_id]]
+    row_by_id = {row.video_id: row for row in result.rows}
+    assert set(row_by_id) == {recent_id, cold_id}
+
+
+def test_non_due_video_scheduler_state_is_untouched(monkeypatch):
+    """A carried-forward video's Video Master row (snapshot_count, last_checked_at,
+    quiet_streak, activity_state, classification fields) must not change at all."""
+    shard = 0
+    recent_id, cold_id = _due_and_cold_entries(shard)
+
+    monkeypatch.setattr(
+        history_worker,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [{"videoId": recent_id, "title": "t", "publishedAt": "2026-09-10T00:00:00Z", "viewCount": 999}],
+            {},
+        ),
+    )
+
+    history = _FakeHistory()
+    history.objects[(date(2026, 9, 14), shard)] = [
+        HistoryRow(video_id=cold_id, creator_id="c1", view_count=500, observed_at="2026-09-01T18:00:00+09:00", availability_status="available")
+    ]
+    cold_before = Video(
+        video_id=cold_id, creator_id="c1", title="t", published_at="2020-01-01T00:00:00Z",
+        activity_state="Cold", last_checked_at="2026-09-01T18:00:00+09:00", last_view_count=500,
+        snapshot_count=9, quiet_streak=3, last_classification_reason="demoted_after_quiet_streak",
+    )
+    video_master = _FakeVideoMaster(
+        [
+            Video(video_id=recent_id, creator_id="c1", title="t", published_at="2026-09-10T00:00:00Z"),
+            cold_before,
+        ]
+    )
+
+    collect_history_shard(
+        shard=shard,
+        youtube=object(),
+        manifest_store=_FakeManifest(
+            [
+                ManifestEntry(recent_id, "c1", True, published_at="2026-09-10T00:00:00Z", activity_state="Unknown"),
+                ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold"),
+            ]
+        ),
+        history_store=history,
+        video_master_store=video_master,
+        collection_date=date(2026, 9, 15),
+        observed_at="2026-09-15T18:00:00+09:00",
+    )
+
+    assert video_master.videos[cold_id] == cold_before
+    updated_ids = {video.video_id for call in video_master.upsert_calls for video in call}
+    assert cold_id not in updated_ids
+
+
+def test_carried_forward_row_preserves_real_previous_observed_at_and_view_count():
+    """A carried-forward row must keep the video's actual previous observed_at/
+    view_count -- never today's timestamp -- and still appear in the daily shard
+    (full ranking/history coverage, Step 2/5)."""
+    shard = 0
+    recent_id, cold_id = _due_and_cold_entries(shard)
+    import collection.history_worker as hw
+
+    history = _FakeHistory()
+    real_previous_observed_at = "2026-09-03T18:00:00+09:00"
+    history.objects[(date(2026, 9, 14), shard)] = [
+        HistoryRow(video_id=cold_id, creator_id="c1", view_count=4242, observed_at=real_previous_observed_at, availability_status="available")
+    ]
+
+    def fake_statistics(youtube, video_ids):
+        return (
+            [{"videoId": vid, "title": "t", "publishedAt": "2026-09-10T00:00:00Z", "viewCount": 1} for vid in video_ids],
+            {},
+        )
+
+    import pytest
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(hw, "get_video_statistics", fake_statistics)
+        result = hw.collect_history_shard(
+            shard=shard,
+            youtube=object(),
+            manifest_store=_FakeManifest(
+                [
+                    ManifestEntry(recent_id, "c1", True, published_at="2026-09-10T00:00:00Z", activity_state="Unknown"),
+                    ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold"),
+                ]
+            ),
+            history_store=history,
+            video_master_store=None,
+            collection_date=date(2026, 9, 15),
+            observed_at="2026-09-15T18:00:00+09:00",
+        )
+
+    [carried] = [row for row in result.rows if row.video_id == cold_id]
+    assert carried.observed_at == real_previous_observed_at
+    assert carried.view_count == 4242
+    assert carried.carried_forward is True
+
+
+def test_new_video_with_no_usable_prior_state_is_collected_not_omitted():
+    """A non-due video (by rotation) with nothing to carry forward -- absent from
+    yesterday's shard and no last_view_count/last_checked_at on Video Master --
+    must still be collected this run rather than silently dropped."""
+    shard = 0
+    _, cold_id = _due_and_cold_entries(shard)
+
+    requested = []
+
+    def fake_statistics(youtube, video_ids):
+        requested.append(list(video_ids))
+        return (
+            [{"videoId": cold_id, "title": "t", "publishedAt": "2020-01-01T00:00:00Z", "viewCount": 7}],
+            {},
+        )
+
+    import pytest
+    import collection.history_worker as hw
+
+    video_master = _FakeVideoMaster(
+        [Video(video_id=cold_id, creator_id="c1", title="t", published_at="2020-01-01T00:00:00Z", activity_state="Cold")]
+    )
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(hw, "get_video_statistics", fake_statistics)
+        result = hw.collect_history_shard(
+            shard=shard,
+            youtube=object(),
+            manifest_store=_FakeManifest(
+                [ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold")]
+            ),
+            history_store=_FakeHistory(),
+            video_master_store=video_master,
+            collection_date=date(2026, 9, 15),
+            observed_at="2026-09-15T18:00:00+09:00",
+        )
+
+    assert requested == [[cold_id]]
+    [row] = result.rows
+    assert row.video_id == cold_id
+    assert row.carried_forward is False
+
+
+def test_carry_forward_falls_back_to_video_master_when_previous_shard_is_missing():
+    """When yesterday's shard is entirely absent (a gap day) but Video Master
+    already has a usable prior observation, that becomes the carry-forward
+    source instead of forcing a needless YouTube re-fetch."""
+    shard = 0
+    recent_id, cold_id = _due_and_cold_entries(shard)
+    import collection.history_worker as hw
+
+    fallback_video = Video(
+        video_id=cold_id, creator_id="c1", title="t", published_at="2020-01-01T00:00:00Z",
+        activity_state="Cold", last_checked_at="2026-09-05T18:00:00+09:00", last_view_count=8080,
+    )
+    video_master = _FakeVideoMaster(
+        [Video(video_id=recent_id, creator_id="c1", title="t", published_at="2026-09-10T00:00:00Z"), fallback_video]
+    )
+
+    def fake_statistics(youtube, video_ids):
+        return (
+            [{"videoId": vid, "title": "t", "publishedAt": "2026-09-10T00:00:00Z", "viewCount": 1} for vid in video_ids],
+            {},
+        )
+
+    import pytest
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(hw, "get_video_statistics", fake_statistics)
+        result = hw.collect_history_shard(
+            shard=shard,
+            youtube=object(),
+            manifest_store=_FakeManifest(
+                [
+                    ManifestEntry(recent_id, "c1", True, published_at="2026-09-10T00:00:00Z", activity_state="Unknown"),
+                    ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold"),
+                ]
+            ),
+            history_store=_FakeHistory(),  # no shard for any date at all -- a real gap
+            video_master_store=video_master,
+            collection_date=date(2026, 9, 15),
+            observed_at="2026-09-15T18:00:00+09:00",
+        )
+
+    [carried] = [row for row in result.rows if row.video_id == cold_id]
+    assert carried.observed_at == "2026-09-05T18:00:00+09:00"
+
+
+def test_carry_forward_batches_video_master_fallback_lookups_into_one_call():
+    """AWS Cost Recovery (third pass, Scope H): every video missing from
+    yesterday's shard must be looked up in exactly one batched get_videos
+    call, never one get_video call per video -- the worst-case quantified
+    in the third-pass report (an entire missing previous shard) is exactly
+    when this matters most."""
+    from collection.history_worker import _carry_forward_non_due_rows
+
+    non_due_ids = ["v1", "v2", "v3"]
+    creator_by_video = {vid: "c1" for vid in non_due_ids}
+    video_master = _FakeVideoMasterWithBatchGet(
+        [
+            Video(
+                video_id="v1", creator_id="c1", title="t", published_at="2020-01-01T00:00:00Z",
+                last_checked_at="2026-09-05T18:00:00+09:00", last_view_count=100,
+            ),
+            Video(
+                video_id="v2", creator_id="c1", title="t", published_at="2020-01-01T00:00:00Z",
+                last_checked_at="2026-09-06T18:00:00+09:00", last_view_count=200,
+            ),
+            # v3 intentionally has no Video Master row at all -- no usable prior state anywhere.
+        ]
+    )
+
+    carried_rows, forced_due_ids = _carry_forward_non_due_rows(
+        non_due_ids,
+        creator_by_video=creator_by_video,
+        collection_date=date(2026, 9, 15),
+        shard=0,
+        history_store=_FakeHistory(),  # empty -- every video is missing from "yesterday"
+        video_master_store=video_master,
+    )
+
+    assert video_master.get_videos_calls == [["v1", "v2", "v3"]]
+    assert {row.video_id for row in carried_rows} == {"v1", "v2"}
+    assert forced_due_ids == {"v3"}
+
+
+def test_carry_forward_never_calls_video_master_when_the_previous_shard_is_fully_healthy():
+    """The other half of the same worst-case analysis: on an ordinary day
+    where yesterday's shard has every non-due video, video_master_store must
+    never be touched at all -- zero get_video/get_videos calls, batched or
+    not."""
+    from collection.history_worker import _carry_forward_non_due_rows
+
+    non_due_ids = ["v1", "v2"]
+    creator_by_video = {vid: "c1" for vid in non_due_ids}
+    history_store = _FakeHistory()
+    history_store.objects[(date(2026, 9, 14), 0)] = [
+        HistoryRow(video_id="v1", creator_id="c1", view_count=10, observed_at="2026-09-14T18:00:00+09:00", availability_status="available"),
+        HistoryRow(video_id="v2", creator_id="c1", view_count=20, observed_at="2026-09-14T18:00:00+09:00", availability_status="available"),
+    ]
+    video_master = _FakeVideoMasterWithBatchGet([])
+
+    carried_rows, forced_due_ids = _carry_forward_non_due_rows(
+        non_due_ids,
+        creator_by_video=creator_by_video,
+        collection_date=date(2026, 9, 15),
+        shard=0,
+        history_store=history_store,
+        video_master_store=video_master,
+    )
+
+    assert video_master.get_videos_calls == []
+    assert {row.video_id for row in carried_rows} == {"v1", "v2"}
+    assert forced_due_ids == set()
+
+
+def test_shard_exists_retry_recomputes_scheduler_updates_only_for_fresh_rows_not_carried_forward():
+    """A shard_exists retry must recover exactly which rows were this run's own
+    genuine observations (HistoryRow.carried_forward=False) versus carried
+    forward -- a carried-forward row read back from the persisted combined
+    shard must never reach _build_scheduler_updates, even on a retry whose own
+    `observed_at` (always freshly computed from wall-clock time) does not match
+    any timestamp already persisted in the shard."""
+    shard = 0
+    recent_id, cold_id = _due_and_cold_entries(shard)
+    history = _FakeHistory()
+    history.objects[(date(2026, 9, 15), shard)] = [
+        HistoryRow(video_id=recent_id, creator_id="c1", view_count=999, observed_at="2026-09-15T18:00:00+09:00", availability_status="available", carried_forward=False),
+        HistoryRow(video_id=cold_id, creator_id="c1", view_count=500, observed_at="2026-09-01T18:00:00+09:00", availability_status="available", carried_forward=True),
+    ]
+    existing_recent = Video(video_id=recent_id, creator_id="c1", title="t", published_at="2026-09-10T00:00:00Z")
+    existing_cold = Video(
+        video_id=cold_id, creator_id="c1", title="t", published_at="2020-01-01T00:00:00Z",
+        activity_state="Cold", last_checked_at="2026-09-01T18:00:00+09:00", last_view_count=500,
+    )
+    video_master = _FakeVideoMaster([existing_recent, existing_cold])
+
+    # Deliberately NOT the persisted rows' own observed_at: a real retry always
+    # computes its own fresh wall-clock `observed_at` (history_worker_handler.
+    # lambda_handler calls datetime.now() on every invocation, including a
+    # retry), so it essentially never matches what an earlier, already-
+    # succeeded invocation persisted. Proves recovery does not depend on that
+    # coincidence -- only HistoryRow.carried_forward does.
+    collect_history_shard(
+        shard=shard,
+        youtube=object(),
+        manifest_store=_FakeManifest(
+            [ManifestEntry(recent_id, "c1", True), ManifestEntry(cold_id, "c1", True)]
+        ),
+        history_store=history,
+        video_master_store=video_master,
+        collection_date=date(2026, 9, 15),
+        observed_at="2026-09-15T18:05:33+09:00",
+    )
+
+    updated_ids = {video.video_id for call in video_master.upsert_calls for video in call}
+    assert updated_ids == {recent_id}
+    assert video_master.videos[cold_id] == existing_cold
 
 
 # --- Micro-task 3: retry-safe scheduler-state write-back ---------------------
@@ -733,3 +1152,75 @@ def test_old_shard_replay_does_not_regress_any_scheduler_field(monkeypatch):
     assert unchanged.last_view_count == 5_000
     assert unchanged.snapshot_count == 7
     assert unchanged.quiet_streak == 2
+
+
+# --- AWS Cost Recovery second pass: manifest-sourced topic_by_video ---------
+
+
+def test_topic_by_video_uses_the_manifest_persisted_topic(monkeypatch):
+    """collect_history_shard's topic_by_video comes straight from each active
+    manifest entry's own topic -- no DynamoDB call anywhere in this path."""
+    monkeypatch.setattr(
+        history_worker,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [{"videoId": vid, "title": "t", "publishedAt": "2026-01-01T00:00:00Z", "viewCount": 1} for vid in video_ids],
+            {},
+        ),
+    )
+
+    result = collect_history_shard(
+        shard=history_worker.shard_for_video("v1"),
+        **_kwargs(
+            manifest=_FakeManifest([ManifestEntry("v1", "c1", True, topic="valorant")]),
+            history=_FakeHistory(),
+        ),
+    )
+
+    assert result.topic_by_video == {"v1": "valorant"}
+
+
+def test_topic_by_video_falls_back_to_other_when_manifest_topic_is_missing(monkeypatch):
+    """A manifest entry with no topic (predates the field, or backfill/discovery-time
+    classification hasn't landed yet) falls back to OTHER_TOPIC, not omitted or crashed."""
+    monkeypatch.setattr(
+        history_worker,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [{"videoId": vid, "title": "t", "publishedAt": "2026-01-01T00:00:00Z", "viewCount": 1} for vid in video_ids],
+            {},
+        ),
+    )
+
+    result = collect_history_shard(
+        shard=history_worker.shard_for_video("v1"),
+        **_kwargs(
+            manifest=_FakeManifest([ManifestEntry("v1", "c1", True, topic=None)]),
+            history=_FakeHistory(),
+        ),
+    )
+
+    assert result.topic_by_video == {"v1": "other"}
+
+
+def test_topic_by_video_falls_back_to_other_for_an_unrecognized_persisted_topic(monkeypatch):
+    """A corrupted/stale/manually-edited topic value is never trusted as-is --
+    same safety net as video_topics.resolve_video_topics' own persisted-value check."""
+    monkeypatch.setattr(
+        history_worker,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [{"videoId": vid, "title": "t", "publishedAt": "2026-01-01T00:00:00Z", "viewCount": 1} for vid in video_ids],
+            {},
+        ),
+    )
+
+    result = collect_history_shard(
+        shard=history_worker.shard_for_video("v1"),
+        **_kwargs(
+            manifest=_FakeManifest([ManifestEntry("v1", "c1", True, topic="not-a-real-topic")]),
+            history=_FakeHistory(),
+        ),
+    )
+
+    assert result.topic_by_video == {"v1": "other"}

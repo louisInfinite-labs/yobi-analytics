@@ -126,8 +126,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         result = handler(event)
     except read_api.VideoNotFoundError as exc:
         return _json_response(404, {"error": str(exc)})
-    except read_api.ScopeNotFoundError as exc:
-        return _json_response(404, {"error": str(exc)})
     except read_api.TrendingNotReadyError as exc:
         return _json_response(503, {"error": str(exc)})
     except read_api.RankingNotReadyError as exc:
@@ -171,20 +169,8 @@ def _handle_get_comparison_data(event: dict[str, Any]) -> dict[str, Any]:
     return comparison_api.get_comparison_data(_merged_params(event))
 
 
-def _handle_get_creator_summary(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_creator_summary(_merged_params(event))
-
-
-def _handle_get_organization_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_organization_leaderboard(_merged_params(event))
-
-
-def _handle_get_global_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_global_leaderboard(_merged_params(event))
-
-
-def _handle_get_topic_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_topic_leaderboard(_merged_params(event))
+def _handle_get_subscriber_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_subscriber_leaderboard(_merged_params(event))
 
 
 def _handle_post_heartbeat(event: dict[str, Any]) -> dict[str, Any]:
@@ -330,10 +316,7 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /dashboard/comparison-items": _handle_get_comparison_items,
     "GET /dashboard/comparison-data": _handle_get_comparison_data,
     "GET /topics": _handle_get_topics,
-    "GET /creators/{creatorId}/summary": _handle_get_creator_summary,
-    "GET /organizations/{organization}/leaderboard": _handle_get_organization_leaderboard,
-    "GET /leaderboard": _handle_get_global_leaderboard,
-    "GET /topics/{topic}/leaderboard": _handle_get_topic_leaderboard,
+    "GET /subscribers/leaderboard": _handle_get_subscriber_leaderboard,
     "POST /heartbeat": _handle_post_heartbeat,
     "GET /heartbeat/{clientId}/status": _handle_get_heartbeat_status,
     "POST /clients/{clientId}/credential": _handle_post_client_credential,

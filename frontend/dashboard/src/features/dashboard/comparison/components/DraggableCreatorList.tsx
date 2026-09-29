@@ -51,10 +51,8 @@ function DraggableCreatorCell({ creator, selectedIds, order, onToggle, onEnsureS
 }
 
 export interface DraggableCreatorListProps {
-  /** The existing Creator List's own data (production: `mockCreators`) --
-   * same reuse convention `CreatorComparisonPicker`/`ComparisonMappingDialog`
-   * already established (`channelId` as the stable comparison `creatorId`,
-   * ordering via `groupCreatorsForDock`). */
+  /** The existing Creator List's own data (production: `mockCreators`):
+   * `channelId` as the stable creator id, ordering via `groupCreatorsForDock`. */
   creators: MockCreator[]
   availableCreatorIds?: ReadonlySet<string>
   initiallyOpen?: boolean

@@ -30,7 +30,6 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from tracking.creator_master import Creator, load_creators
-from analytics.history_ranking import ALL_PERIOD, PERIODS as SUMMARY_PERIODS
 from analytics.trending import (
     DAILY_TRENDING,
     RANKING_TYPES,
@@ -38,15 +37,11 @@ from analytics.trending import (
     THIRTY_DAY_TRENDING,
     RankedEntry,
 )
-from analytics.trending_cache_keys import (
-    CANONICAL_CACHE_TIME_ZONE,
-    creator_summary_cache_key,
-    organization_leaderboard_cache_key,
-    topic_leaderboard_cache_key,
-    trending_cache_key,
-)
+from analytics.trending_cache_keys import CANONICAL_CACHE_TIME_ZONE, trending_cache_key
+from stores.trending_cache_archive_store import get_archived_trending
+from analytics.subscriber_ranking import GROWTH_PERIODS, VALID_SUBSCRIBER_ORGANIZATIONS
+from stores.subscriber_ranking_store import S3SubscriberRankingStore
 from tracking.video_master import Video
-from tracking.video_topics import TOPIC_IDS
 from analytics.view_growth_analytics import (
     COLLECTION_START_DATE,
     PERIOD_DAYS,
@@ -103,21 +98,10 @@ class TrendingNotReadyError(Exception):
     """
 
 
-class ScopeNotFoundError(ClientError):
-    """Raised when a cache-only endpoint's creatorId/organization doesn't exist.
-
-    Checked against Creator Master (a bundled local file, not a DynamoDB
-    read — see get_creator_summary/get_organization_leaderboard) before
-    ever touching YobiTrendingCache, so an unknown scope gets a clean 404
-    instead of being indistinguishable from "this real scope just hasn't
-    been computed yet today" (RankingNotReadyError, 503).
-    """
-
-
 class RankingNotReadyError(Exception):
-    """Raised by a cache-only endpoint (get_creator_summary/get_organization_
-    leaderboard) on a genuine YobiTrendingCache miss for an otherwise valid,
-    existing scope/period/reportDate.
+    """Raised by a cache-only endpoint (get_creator_trending/get_organization_
+    trending/get_subscriber_leaderboard) on a genuine cache/result miss for
+    an otherwise valid, existing scope/period/reportDate.
 
     Deliberately not a ClientError subclass, the same reasoning as
     TrendingNotReadyError: the request is well-formed and the scope is
@@ -130,6 +114,28 @@ class RankingNotReadyError(Exception):
     with a different meaning: "too large to compute on demand" there,
     "not computed yet" here).
     """
+
+
+def _cached_or_archived(key: str) -> dict[str, Any] | None:
+    """Read one YobiTrendingCache item by key, falling back to the durable S3
+    archive on a miss (AWS Cost Recovery, third pass, Scope F).
+
+    YobiTrendingCache now bounds itself with a TTL (dynamodb_store.
+    TRENDING_CACHE_TTL_DAYS) -- a reportDate older than that window is no
+    longer in the hot table, but this codebase's own API contract explicitly
+    supports querying an arbitrary historical reportDate (get_creator_
+    trending/get_organization_trending both accept one with no artificial
+    limit), so a miss here must not be treated as "never computed" without
+    also checking the archive every write is mirrored into.
+    get_archived_trending itself returns None (never raises) when
+    YOBI_HISTORY_BUCKET isn't configured, so this needs no extra branching
+    for local/dev or a non-S3 environment.
+    """
+    if get_cached_trending is not None:
+        cached = get_cached_trending(key)
+        if cached is not None:
+            return cached
+    return get_archived_trending(key)
 
 
 def parse_report_date(raw: Any) -> date:
@@ -168,28 +174,6 @@ def parse_period(raw: Any) -> str:
     """Validate a period query parameter is one of the supported 1d/7d/30d values."""
     if not isinstance(raw, str) or raw not in PERIOD_DAYS:
         raise ClientError(f"period must be one of {sorted(PERIOD_DAYS)}, got {raw!r}")
-    return raw
-
-
-def parse_summary_period(raw: Any) -> str:
-    """Validate an optional period query parameter for the cache-only
-    creator-summary/organization-leaderboard endpoints.
-
-    A deliberately separate function from parse_period — not parse_period
-    widened to accept a 4th value — so the existing /trending endpoints'
-    own period whitelist (1d/7d/30d only) can never be accidentally loosened
-    to also accept "all" as a side effect of this one. Accepts
-    history_ranking.PERIODS (1d/7d/30d/all). Absent/empty defaults to
-    "all" — the one period that's always available from Day 1 of
-    collection (history_ranking.CreatorPeriodPartial.is_complete never
-    needs an anchor for it), a reasonable default for a caller that just
-    wants "this creator's/organization's overall standing" without
-    committing to a specific growth window.
-    """
-    if raw is None or raw == "":
-        return ALL_PERIOD
-    if not isinstance(raw, str) or raw not in SUMMARY_PERIODS:
-        raise ClientError(f"period must be one of {sorted(SUMMARY_PERIODS)}, got {raw!r}")
     return raw
 
 
@@ -238,6 +222,57 @@ def parse_organization(raw: Any) -> str:
     if len(raw) > MAX_IDENTIFIER_LENGTH:
         raise ClientError(f"organization must be at most {MAX_IDENTIFIER_LENGTH} characters, got {len(raw)}")
     return raw
+
+
+# R5: the subscriber leaderboard's own metric enum, distinct from
+# parse_period's video-ranking 1d/7d/30d (no shared validator) -- "total"
+# has no video-ranking analog at all.
+SUBSCRIBER_METRIC_TOTAL = "total"
+_VALID_SUBSCRIBER_METRICS = (SUBSCRIBER_METRIC_TOTAL,) + GROWTH_PERIODS
+
+
+def parse_subscriber_metric(raw: Any) -> str:
+    """Validate a required metric query parameter for the subscriber
+    leaderboard: exactly one of "total"/"1d"/"7d"/"30d" -- the literal R4
+    canonical-result key, so no separate mapping/translation table is
+    needed between the query value and which section of the persisted
+    result to read.
+    """
+    if not isinstance(raw, str) or raw not in _VALID_SUBSCRIBER_METRICS:
+        raise ClientError(f"metric must be one of {sorted(_VALID_SUBSCRIBER_METRICS)}, got {raw!r}")
+    return raw
+
+
+# "all" is not one of R2's own VALID_SUBSCRIBER_ORGANIZATIONS ("vspo"/
+# "hololive" -- real, data-driven organization values) -- it is this read
+# API's own filter keyword for "no organization filter", made an explicit,
+# spellable value here since R5's own contract names it (ALL/VSPO/Hololive)
+# as one of exactly three supported values, not "absent vs present".
+SUBSCRIBER_ORGANIZATION_ALL = "all"
+
+
+def parse_subscriber_organization(raw: Any) -> str:
+    """Validate an optional organization filter for the subscriber
+    leaderboard: "all" (default; case-insensitive) or one of R2's own
+    VALID_SUBSCRIBER_ORGANIZATIONS ("vspo"/"hololive") -- never a silently
+    coerced or invented third value. Case-insensitive (unlike
+    parse_organization's own video-ranking `organization` parameter, which
+    is arbitrary Creator-Master-driven data, not a closed enum) because
+    this is a closed set of exactly three spellable values, the same
+    reasoning parse_period/parse_ranking_type already apply to their own
+    fixed enums.
+    """
+    if raw is None or raw == "":
+        return SUBSCRIBER_ORGANIZATION_ALL
+    if not isinstance(raw, str):
+        raise ClientError(f"organization must be a string, got {raw!r}")
+    normalized = raw.strip().lower()
+    if normalized == SUBSCRIBER_ORGANIZATION_ALL or normalized in VALID_SUBSCRIBER_ORGANIZATIONS:
+        return normalized
+    raise ClientError(
+        f"organization must be one of {SUBSCRIBER_ORGANIZATION_ALL!r} or "
+        f"{sorted(VALID_SUBSCRIBER_ORGANIZATIONS)}, got {raw!r}"
+    )
 
 
 def parse_ranking_type(raw: Any, *, period: str) -> str:
@@ -331,12 +366,12 @@ def _cached_trending(
     live recomputation. An explicit `limit` slices the same cached rows to
     fewer.
     """
-    if get_cached_trending is None or time_zone != CANONICAL_CACHE_TIME_ZONE:
+    if time_zone != CANONICAL_CACHE_TIME_ZONE:
         return None
     key = trending_cache_key(
         scope_type=scope_type, scope_value=scope_value, period=period, ranking_type=ranking_type, report_date=report_date
     )
-    cached = get_cached_trending(key)
+    cached = _cached_or_archived(key)
     if cached is None:
         return None
     effective_limit = limit if limit is not None else MAX_LIMIT
@@ -445,193 +480,120 @@ def _today_in_canonical_time_zone() -> date:
     return datetime.now(ZoneInfo(CANONICAL_CACHE_TIME_ZONE)).date()
 
 
-def get_creator_summary(query: dict[str, Any]) -> dict[str, Any]:
-    """Cache-only creator summary (Roadmap 5.x): viewSum/coverage/topVideo/top10
-    for one creator/period/reportDate, read directly from YobiTrendingCache.
+def get_subscriber_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
+    """Read-only view over the R4 subscriber-leaderboard S3 result (R5):
+    ALL/VSPO/Hololive organization filter x Total Subscribers/1d/7d/30d
+    growth metric, all derived in memory from the ONE persisted canonical
+    result for a report date — never a second/duplicated per-organization
+    or per-metric object (R4's own explicit scope; see
+    stores.subscriber_ranking_store).
 
-    `query` needs `creatorId`; `period` defaults to "all" (see
-    parse_summary_period), `reportDate` defaults to today in
-    CANONICAL_CACHE_TIME_ZONE. Never falls back to live computation: a
-    genuine cache miss raises RankingNotReadyError (503), not a
-    recomputation — this endpoint has no history_worker.py/S3 dependency
-    at all, only Creator Master (a local file) and one YobiTrendingCache
-    GetItem.
+    `query` needs `metric`; `organization` and `reportDate` are optional.
+    Mirrors `GET /subscribers/leaderboard?metric=7d&organization=vspo`.
 
-    creatorId existence is checked against Creator Master *before* ever
-    building a cache key or touching YobiTrendingCache, so an unknown
-    creatorId gets a clean 404 (ScopeNotFoundError) instead of being
-    indistinguishable from "this real creator just isn't cached yet today"
-    (RankingNotReadyError, 503).
+    An explicit reportDate is an exact-date lookup only, no fallback: if
+    that one date has no persisted result, this raises RankingNotReadyError
+    regardless of what any other date holds (R5's own scope — never a
+    nearest-date fallback for a historical request).
+
+    An omitted reportDate means "the latest available result", reusing
+    _leaderboard_report_dates/LATEST_REPORT_LOOKBACK_DAYS exactly as-is —
+    not a new mechanism (see that constant's own comment for why an omitted
+    date needs a lookback at all). This was previously reasoned unnecessary
+    here on the theory that R4's own ranking-result build "runs early in the
+    day"; that reasoning was wrong. R3/R4's subscriber snapshot+ranking hook
+    runs inside the daily_history Step Functions execution's
+    AcquireExecutionLock branch, and that whole execution only ever starts
+    once per day at 18:00 Asia/Tokyo (terraform/eventbridge.tf's
+    aws_scheduler_schedule.daily_collection, cron(0 18 * * ? *)). So for the
+    entire day before that day's execution runs, "today"'s subscriber-
+    ranking object genuinely does not exist yet — the same pre-collection
+    window an omitted reportDate always has to handle. The response's own
+    `reportDate` below is always the actual
+    persisted result's date (R4's own reportDate field), never the
+    request's default/omitted date, so a caller can always tell which day's
+    result it actually got.
+
+    A missing result for every candidate date is RankingNotReadyError (503,
+    code="RANKING_NOT_READY") — a well-formed request for a real, supported
+    metric/organization that just hasn't been computed/persisted yet, the
+    exact same shape every other cache-only endpoint in this module already
+    uses for "not yet computed", never a fabricated empty leaderboard.
+
+    expectedCreatorCount/observedCreatorCount/missingCreatorCount are
+    returned exactly as R4 computed them (against the full roster) — not
+    recomputed per organization filter. R4's own persisted result carries
+    only one, whole-roster completeness measurement; deriving an
+    organization-scoped variant would be a new calculation this endpoint
+    does not have the data to perform safely (it would require re-deriving
+    which roster creators belong to the filtered organization and cross-
+    referencing D0's raw rows, information R4's own result does not carry)
+    and is not part of R5's stated response contract.
     """
-    creator_id = parse_creator_id(query.get("creatorId"))
-    period = parse_summary_period(query.get("period"))
-    raw_report_date = query.get("reportDate")
-    report_date = parse_report_date(raw_report_date) if raw_report_date else _today_in_canonical_time_zone()
-
-    if _find_creator(creator_id) is None:
-        raise ScopeNotFoundError(f"No creator found for creatorId {creator_id!r}")
-
-    if get_cached_trending is None:
-        raise RankingNotReadyError(
-            f"Creator summary for creatorId={creator_id!r} period={period!r} "
-            f"reportDate={report_date.isoformat()!r} is not yet computed"
-        )
-    key = creator_summary_cache_key(creator_id=creator_id, period=period, report_date=report_date)
-    cached = get_cached_trending(key)
-    if cached is None:
-        raise RankingNotReadyError(
-            f"Creator summary for creatorId={creator_id!r} period={period!r} "
-            f"reportDate={report_date.isoformat()!r} is not yet computed"
-        )
-    return cached
-
-
-def get_organization_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
-    """Cache-only organization leaderboard (Roadmap 5.x): byTotalViews/
-    byTopVideo/coverage for one organization/period/reportDate, read
-    directly from YobiTrendingCache.
-
-    Same cache-only contract as get_creator_summary — see its own
-    docstring. `organization` existence is checked the same way
-    get_organization_trending already does (any Creator Master record with
-    a matching organization), before ever touching YobiTrendingCache.
-
-    For period "all", each byTotalViews row also carries totalViews,
-    videoCount and averageViewsPerVideo. An omitted reportDate serves the
-    newest cached report within LATEST_REPORT_LOOKBACK_DAYS; an explicit one
-    requests exactly that date.
-    """
-    organization = parse_organization(query.get("organization"))
-    period = parse_summary_period(query.get("period"))
+    metric = parse_subscriber_metric(query.get("metric"))
+    organization = parse_subscriber_organization(query.get("organization"))
     report_dates = _leaderboard_report_dates(query.get("reportDate"))
 
-    has_any_creator = any(creator.organization == organization for creator in load_creators())
-    if not has_any_creator:
-        raise ScopeNotFoundError(f"No creators found for organization {organization!r}")
-
-    _, [payload] = _read_organization_leaderboards([organization], period, report_dates)
-    if period == ALL_PERIOD:
-        return {**payload, "byTotalViews": [_with_all_period_metrics(row) for row in payload["byTotalViews"]]}
-    return payload
-
-
-def get_global_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
-    """Cache-only creator ranking across every organization in Creator Master.
-
-    `GET /leaderboard` is the unscoped counterpart of
-    `GET /organizations/{organization}/leaderboard`: it merges each
-    organization's cached leaderboard rows and re-ranks them. For period
-    "all" it also returns `byAverageViewsPerVideo`; growth periods carry no
-    average.
-
-    Population is whatever the organization leaderboards contain: every
-    Creator Master creator with collected videos, including graduated
-    creators and group/staff channels, and every video the daily collection
-    returned (no Shorts/live/members-only filtering). It is not limited to
-    active individual members.
-    """
-    period = parse_summary_period(query.get("period"))
-    report_dates = _leaderboard_report_dates(query.get("reportDate"))
-
-    creators = {creator.creator_id: creator for creator in load_creators()}
-    organizations = sorted({creator.organization for creator in creators.values()})
-    report_date, payloads = _read_organization_leaderboards(organizations, period, report_dates)
-
-    rows = []
-    for payload in payloads:
-        for row in payload["byTotalViews"]:
-            creator = creators.get(row["creatorId"])
-            rows.append({**row, "organization": payload["organization"], "branch": creator.branch if creator else None})
-    if period == ALL_PERIOD:
-        rows = [_with_all_period_metrics(row) for row in rows]
-
-    result = {
-        "period": period,
-        "reportDate": report_date.isoformat(),
-        "organizations": organizations,
-        "memberCount": sum(payload["memberCount"] for payload in payloads),
-        "completeMemberCount": sum(payload["completeMemberCount"] for payload in payloads),
-        "catalogVideoCount": sum(payload["catalogVideoCount"] for payload in payloads),
-        "eligibleVideoCount": sum(payload["eligibleVideoCount"] for payload in payloads),
-        "isComplete": all(payload["isComplete"] for payload in payloads),
-        "byTotalViews": _rank_rows(rows, "value"),
-    }
-    if period == ALL_PERIOD:
-        result["byAverageViewsPerVideo"] = _rank_rows(rows, "averageViewsPerVideo")
-    return result
-
-
-def get_topic_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
-    """Cache-only global (every organization combined) creator leaderboard for
-    one canonical video topic (Topic Phase 3, #6/#7): topicTotalViews/
-    topicVideoCount/topicAverageViewsPerVideo per creator, ranked two ways.
-
-    `query` needs `topic`; `reportDate` and `organization` are optional.
-    period="all" only — Topic Phase 3 deliberately does not compute topic
-    growth periods (see the feature's own report); an explicitly-passed
-    period other than "all" is a ClientError, not silently coerced.
-
-    `topic` is validated against tracking.video_topics.TOPIC_IDS, the same
-    canonical taxonomy GET /topics itself serves — a closed enum, like
-    period/rankingType, not Creator-Master-style existence data, so an
-    unknown topic is a plain ClientError (400) the same way parse_period/
-    parse_ranking_type reject an unrecognized fixed value, not
-    ScopeNotFoundError (404, reserved for a syntactically valid but
-    nonexistent creatorId/organization).
-
-    An omitted reportDate serves the newest cached report within
-    LATEST_REPORT_LOOKBACK_DAYS, exactly like get_organization_leaderboard/
-    get_global_leaderboard; an explicit reportDate never falls back.
-
-    `?organization=hololive`/`?organization=vspo` optionally filters and
-    re-ranks the already-cached global rows in memory (#8) — no separate
-    cache entry, no extra read, since every cached row already carries its
-    own `organization`.
-    """
-    topic = query.get("topic")
-    if topic not in TOPIC_IDS:
-        raise ClientError(f"topic must be one of {sorted(TOPIC_IDS)}, got {topic!r}")
-    raw_period = query.get("period")
-    if raw_period not in (None, "", ALL_PERIOD):
-        raise ClientError(f"period must be {ALL_PERIOD!r} for a topic leaderboard, got {raw_period!r}")
-    report_dates = _leaderboard_report_dates(query.get("reportDate"))
-
-    payload = None
-    if get_cached_trending is not None:
-        for candidate_date in report_dates:
-            cached = get_cached_trending(
-                topic_leaderboard_cache_key(topic=topic, period=ALL_PERIOD, report_date=candidate_date)
-            )
-            if cached is not None:
-                payload = cached
-                break
-    if payload is None:
+    store = S3SubscriberRankingStore.from_environment()
+    result = None
+    for candidate_date in report_dates:
+        result = store.read_result(candidate_date)
+        if result is not None:
+            break
+    if result is None:
         raise RankingNotReadyError(
-            f"Topic leaderboard for topic={topic!r} period={ALL_PERIOD!r} "
+            f"Subscriber leaderboard for metric={metric!r} organization={organization!r} "
             f"reportDate={report_dates[0].isoformat()!r} is not yet computed"
         )
 
-    raw_organization = query.get("organization")
-    if raw_organization:
-        organization = parse_organization(raw_organization)
-        by_total_views = _rank_topic_rows(payload["byTotalViews"], organization, "topicTotalViews")
-        payload = {
-            **payload,
-            "creatorCount": len(by_total_views),
-            "videoCount": sum(row["topicVideoCount"] for row in by_total_views),
-            "byTotalViews": by_total_views,
-            "byAverageViewsPerVideo": _rank_topic_rows(
-                payload["byAverageViewsPerVideo"], organization, "topicAverageViewsPerVideo"
-            ),
-        }
-    return payload
+    section = result[metric]
+    rows = section["rows"]
+    ineligible = section["ineligible"]
+    if organization != SUBSCRIBER_ORGANIZATION_ALL:
+        rows = _filter_and_rerank_subscriber_rows(rows, organization)
+        ineligible = _filter_subscriber_ineligible(ineligible, organization)
+
+    return {
+        "reportDate": result["reportDate"],
+        "generatedAt": result["generatedAt"],
+        "organization": organization,
+        "metric": metric,
+        "expectedCreatorCount": result["expectedCreatorCount"],
+        "observedCreatorCount": result["observedCreatorCount"],
+        "missingCreatorCount": result["missingCreatorCount"],
+        "rows": rows,
+        "ineligible": ineligible,
+    }
 
 
-def _rank_topic_rows(rows: list[dict[str, Any]], organization: str, field: str) -> list[dict[str, Any]]:
-    """Filter a cached topic leaderboard's rows to one organization and re-rank
-    them within that subset (#8) — rank 1 is that organization's own top
-    creator for this topic, not its original global rank."""
-    return _rank_rows([row for row in rows if row["organization"] == organization], field)
+def _filter_and_rerank_subscriber_rows(rows: list[dict[str, Any]], organization: str) -> list[dict[str, Any]]:
+    """The JSON-dict analog of analytics.subscriber_ranking.filter_by_organization,
+    applied to an already-persisted R4 result's rows instead of an in-memory
+    dataclass list: filtering an already-sorted-by-key sequence preserves
+    that same relative order for the retained subsequence (R2's own sorted-
+    subsequence proof), so this only ever re-numbers rank starting from 1 —
+    never re-sorts by any other field, and never re-derives percentageGrowth
+    or any other value."""
+    filtered = [row for row in rows if row.get("organization") == organization]
+    return [{**row, "rank": rank} for rank, row in enumerate(filtered, start=1)]
+
+
+def _filter_subscriber_ineligible(ineligible: dict[str, str], organization: str) -> dict[str, str]:
+    """Filter an R4 result's ineligible diagnostics to one organization, using
+    the authoritative Creator Master registry (_find_creator) to look up
+    each ineligible creatorId's real organization — never guessed from the
+    creatorId string or its own ineligibility reason. A creatorId Creator
+    Master doesn't recognize at all (e.g. one R2 itself already reported as
+    creator_not_in_roster) is excluded from every organization-filtered
+    view: there is no authoritative organization to attribute it to, so it
+    must never leak into a VSPO/Hololive-filtered response (it still
+    appears under organization="all", the unfiltered view)."""
+    filtered: dict[str, str] = {}
+    for creator_id, reason in ineligible.items():
+        creator = _find_creator(creator_id)
+        if creator is not None and creator.organization == organization:
+            filtered[creator_id] = reason
+    return filtered
 
 
 # The daily pipeline finishes around 18:00 JST, so an omitted reportDate would
@@ -644,44 +606,6 @@ def _leaderboard_report_dates(raw_report_date: Any) -> list[date]:
         return [parse_report_date(raw_report_date)]
     today = _today_in_canonical_time_zone()
     return [today - timedelta(days=offset) for offset in range(LATEST_REPORT_LOOKBACK_DAYS)]
-
-
-def _read_organization_leaderboards(
-    organizations: list[str], period: str, report_dates: list[date]
-) -> tuple[date, list[dict[str, Any]]]:
-    """Return the first report date, newest first, with every organization's leaderboard cached.
-
-    All organizations must come from the same date so a merge never mixes days.
-    """
-    if get_cached_trending is not None:
-        for report_date in report_dates:
-            payloads = [
-                get_cached_trending(
-                    organization_leaderboard_cache_key(organization=organization, period=period, report_date=report_date)
-                )
-                for organization in organizations
-            ]
-            if None not in payloads:
-                return report_date, payloads
-    raise RankingNotReadyError(
-        f"Organization leaderboard for organizations={organizations!r} period={period!r} "
-        f"reportDate={report_dates[0].isoformat()!r} is not yet computed"
-    )
-
-
-def _with_all_period_metrics(row: dict[str, Any]) -> dict[str, Any]:
-    total_views, video_count = row["value"], row["catalogVideoCount"]
-    return {
-        **row,
-        "totalViews": total_views,
-        "videoCount": video_count,
-        "averageViewsPerVideo": total_views / video_count if video_count else None,
-    }
-
-
-def _rank_rows(rows: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
-    ordered = sorted(rows, key=lambda row: (-(row[field] or 0), row["creatorId"]))
-    return [{**row, "rank": rank} for rank, row in enumerate(ordered, start=1)]
 
 
 def _load_videos_for_creators(creator_ids: set[str]) -> list[Video]:

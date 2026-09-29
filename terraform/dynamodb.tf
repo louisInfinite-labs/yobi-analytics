@@ -129,6 +129,20 @@ resource "aws_dynamodb_table" "remote_config" {
     type = "S"
   }
 
+  # AWS Cost Recovery (production-path audit): remote_config_store.list_by_key
+  # used to be a table-wide Scan+FilterExpression to answer "every client that
+  # has ever stored this configKey" (e.g. the notification dispatcher's own
+  # "notificationPreference" lookup, every 15 minutes) -- O(total clients),
+  # the exact same failure class as VideoMaster's old full-catalog scan, just
+  # on a different scaling axis. This GSI makes that a bounded Query instead:
+  # RCU now scales with how many clients actually stored that one key, never
+  # with the whole table.
+  global_secondary_index {
+    name            = "configKey-index"
+    hash_key        = "configKey"
+    projection_type = "ALL"
+  }
+
   on_demand_throughput {
     max_read_request_units  = 200
     max_write_request_units = 100
@@ -204,6 +218,20 @@ resource "aws_dynamodb_table" "trending_cache" {
   on_demand_throughput {
     max_read_request_units  = 200
     max_write_request_units = 100
+  }
+
+  # AWS Cost Recovery (third pass, Scope F): cacheKey includes reportDate
+  # (analytics/trending_cache_keys.py), so without a bound this table would
+  # accumulate one item per (scope, period, reportDate) forever -- the same
+  # O(total historical output) failure class as VideoMaster's old full-catalog
+  # Scan, just growing storage/PITR cost instead of RRU. ttlAt (epoch
+  # seconds, dynamodb_store.put_cached_trending) bounds it to
+  # TRENDING_CACHE_TTL_DAYS; a reportDate older than that is served from the
+  # durable S3 archive (stores.trending_cache_archive_store) instead, which
+  # every write here is also mirrored into.
+  ttl {
+    attribute_name = "ttlAt"
+    enabled        = true
   }
 
   point_in_time_recovery {

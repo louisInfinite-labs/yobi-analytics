@@ -4,10 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { MemberThemeProvider } from "../../shared/theme/MemberThemeProvider"
 import { DashboardPage } from "./DashboardPage"
-import type { ComparisonSource } from "../../features/dashboard/comparison/data/dashboardComparisonSource"
-import { fakeComparisonSource } from "../../features/dashboard/editor/test/fakeComparisonSource"
 import type { ChartCatalogItem } from "../../features/dashboard/catalog/model/dashboardChartCatalog"
-import type { ComparisonDataRequest } from "../../features/dashboard/comparison/model/dashboardComparisonData"
 
 /** What the backend's `GET /dashboard/chart-catalog` returns today. Injected
  * (dependency injection): the page is never coupled to a network. */
@@ -26,16 +23,16 @@ afterEach(() => {
 })
 
 /** Render DashboardPage wrapped in the theme provider it requires. */
-function renderDashboard(comparisonSource: ComparisonSource = fakeComparisonSource, fetchCatalog: () => Promise<ChartCatalogItem[]> = catalogFetcher()) {
+function renderDashboard(fetchCatalog: () => Promise<ChartCatalogItem[]> = catalogFetcher()) {
   return render(
     <MemberThemeProvider>
-      <DashboardPage comparisonSource={comparisonSource} fetchCatalog={fetchCatalog} />
+      <DashboardPage fetchCatalog={fetchCatalog} />
     </MemberThemeProvider>,
   )
 }
 
-async function renderAndSettle(comparisonSource?: ComparisonSource, fetchCatalog?: () => Promise<ChartCatalogItem[]>) {
-  renderDashboard(comparisonSource, fetchCatalog)
+async function renderAndSettle(fetchCatalog?: () => Promise<ChartCatalogItem[]>) {
+  renderDashboard(fetchCatalog)
   await waitFor(() => expect(screen.getByText("Daily Gain")).toBeInTheDocument(), { timeout: 2000 })
   await waitFor(() => expect(screen.getByTestId("chart-catalog-status")).toHaveTextContent("success"))
 }
@@ -77,7 +74,7 @@ describe("DashboardPage", () => {
 describe("DashboardPage — GAP-1A chart catalog lifecycle wiring", () => {
   it("AC1/AC2: mounting the page makes exactly one catalog fetch", async () => {
     const spy = catalogFetcher()
-    await renderAndSettle(undefined, spy)
+    await renderAndSettle(spy)
 
     expect(spy).toHaveBeenCalledTimes(1)
   })
@@ -85,7 +82,7 @@ describe("DashboardPage — GAP-1A chart catalog lifecycle wiring", () => {
   it("AC3/AC4/AC5: repeating Edit -> Cancel -> Edit five times keeps the total fetch count at one", async () => {
     const spy = catalogFetcher()
     const user = userEvent.setup()
-    await renderAndSettle(undefined, spy)
+    await renderAndSettle(spy)
     expect(spy).toHaveBeenCalledTimes(1)
 
     for (let i = 0; i < 5; i++) {
@@ -102,7 +99,7 @@ describe("DashboardPage — GAP-1A chart catalog lifecycle wiring", () => {
     render(
       <StrictMode>
         <MemberThemeProvider>
-          <DashboardPage comparisonSource={fakeComparisonSource} fetchCatalog={spy} />
+          <DashboardPage fetchCatalog={spy} />
         </MemberThemeProvider>
       </StrictMode>,
     )
@@ -113,7 +110,7 @@ describe("DashboardPage — GAP-1A chart catalog lifecycle wiring", () => {
   })
 
   it("AC7: a catalog fetch failure does not delete or mutate the existing saved widget/layout state", async () => {
-    renderDashboard(undefined, failingCatalogFetcher())
+    renderDashboard(failingCatalogFetcher())
     await waitFor(() => expect(screen.getByText("Daily Gain")).toBeInTheDocument(), { timeout: 2000 })
     await waitFor(() => expect(screen.getByTestId("chart-catalog-status")).toHaveTextContent("error"))
 
@@ -125,7 +122,7 @@ describe("DashboardPage — GAP-1A chart catalog lifecycle wiring", () => {
   it("AC2/AC3: view mode and edit mode render the same cached catalog status without an additional fetch", async () => {
     const spy = catalogFetcher()
     const user = userEvent.setup()
-    await renderAndSettle(undefined, spy)
+    await renderAndSettle(spy)
 
     const viewModeStatus = screen.getByTestId("chart-catalog-status").textContent
     await user.click(screen.getByRole("button", { name: "Edit Layout" }))
@@ -175,7 +172,7 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
       { chartDefinitionId: "future-chart-not-yet-supported", title: "Future Chart" },
     ])
     const user = userEvent.setup()
-    await renderAndSettle(undefined, fetchCatalog)
+    await renderAndSettle(fetchCatalog)
 
     await user.click(screen.getByRole("button", { name: "Edit Layout" }))
 
@@ -190,7 +187,7 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
 
   it("AC6/AC7: a catalog error shows a distinguishable Add-UI message and leaves existing widgets untouched", async () => {
     const user = userEvent.setup()
-    renderDashboard(undefined, failingCatalogFetcher())
+    renderDashboard(failingCatalogFetcher())
     await waitFor(() => expect(screen.getByText("Daily Gain")).toBeInTheDocument())
     await waitFor(() => expect(screen.getByTestId("chart-catalog-status")).toHaveTextContent("error"))
 
@@ -208,7 +205,7 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
       .fn<() => Promise<ChartCatalogItem[]>>()
       .mockRejectedValueOnce(new Error("catalog unavailable"))
       .mockResolvedValue(BACKEND_CATALOG.map((item) => ({ ...item })))
-    renderDashboard(undefined, fetchCatalog)
+    renderDashboard(fetchCatalog)
     await waitFor(() => expect(screen.getByTestId("chart-catalog-status")).toHaveTextContent("error"))
     expect(fetchCatalog).toHaveBeenCalledTimes(1)
 
@@ -477,215 +474,5 @@ describe("DashboardPage — GAP-8D legacy 4/5-column saved-layout recovery", () 
 
     expect(screen.queryByTestId("legacy-layout-banner")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Edit Layout" })).toBeInTheDocument()
-  })
-})
-
-describe("DashboardPage — GAP-9 live comparison integration (MT-10 through MT-14)", () => {
-  const LAYOUT_KEY = "yobi-analytics-canonical-dashboard-layout"
-  const ACTIVE_CREATOR_KEY = "yobi.home.selectedCreatorId"
-  const A = { id: "ch_gawr_gura", name: "Gawr Gura" }
-  const B = { id: "ch_iofi", name: "Airani Iofifteen" }
-  const C = { id: "ch_kiryu_coco", name: "桐生ココ" }
-  const unit = (widgetId: string, widgetType: string, x: number, y: number, extra: object = {}) => ({ widgetId, widgetType, x, y, width: 1, height: 1, ...extra })
-  const TWO_WIDGETS_SHUFFLED = { grid: { columns: 2, rows: 2 }, widgets: [unit("w1", "ranking", 1, 0), unit("w0", "kpi-summary", 0, 0)] }
-  const COMPARISON_LAYOUT = {
-    grid: { columns: 2, rows: 1 },
-    widgets: [
-      unit("cmp0", "creator-comparison-chart", 0, 0, { comparison: { creatorIds: [A.id], comparisonItemIds: ["daily-view-growth"] } }),
-      unit("cmp1", "creator-comparison-chart", 1, 0, { comparison: { creatorIds: [A.id, B.id], comparisonItemIds: ["total-views"] } }),
-    ],
-  }
-
-  afterEach(() => {
-    window.localStorage.clear()
-  })
-
-  /** An injected source that records every outgoing request (dependency injection, no globals). */
-  function recordingSource(): { source: ComparisonSource; requests: ComparisonDataRequest[] } {
-    const requests: ComparisonDataRequest[] = []
-    return {
-      requests,
-      source: {
-        ...fakeComparisonSource,
-        fetchData: (request) => {
-          requests.push({ creatorIds: [...request.creatorIds], comparisonItemIds: [...request.comparisonItemIds] })
-          return fakeComparisonSource.fetchData(request)
-        },
-      },
-    }
-  }
-
-  function seedLayout(layout: unknown) {
-    window.localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout))
-  }
-  const badgeText = (button: HTMLElement) => button.querySelector(".comparison-order-badge")?.getAttribute("aria-label") ?? null
-  const storedWidgets = () => JSON.parse(window.localStorage.getItem(LAYOUT_KEY)!).widgets as { widgetId: string; comparison?: { creatorIds: string[]; comparisonItemIds: string[] } }[]
-  const listIds = (widgetId: string) =>
-    Array.from(
-      document.querySelector(`[data-widget-id="${widgetId}"] [data-testid="comparison-widget-creators"]`)!.querySelectorAll("li"),
-    ).map((li) => li.getAttribute("data-creator-id"))
-
-  it("Flow 2 is reachable from the live page: ordered selection, visual-order preview, one atomic save, widgets render at once, catalog loaded once, active creator untouched", async () => {
-    // AntD's heavier component tree (Segmented/Select/Input/ConfigProvider)
-    // pushes this already-long, many-interaction test past the 5s default
-    // under jsdom; it still completes well within this bound, not hanging.
-    const catalogSpy = catalogFetcher()
-    const user = userEvent.setup()
-    seedLayout(TWO_WIDGETS_SHUFFLED)
-    const { source, requests } = recordingSource()
-    await renderAndSettle(source, catalogSpy)
-    const activeBefore = window.localStorage.getItem(ACTIVE_CREATOR_KEY)
-    const setItem = vi.spyOn(Storage.prototype, "setItem")
-
-    await user.click(screen.getByRole("button", { name: "Compare Creators" }))
-    let dialog = screen.getByRole("dialog", { name: "Add Comparison Charts" })
-    for (const creator of [A, B, C]) await user.click(within(dialog).getByRole("button", { name: creator.name }))
-    expect([A, B, C].map((c) => badgeText(within(dialog).getByRole("button", { name: c.name })))).toEqual(["Comparison order 1", "Comparison order 2", "Comparison order 3"])
-
-    // Deselect B, then reselect it: A(1), C(2), B(3).
-    await user.click(within(dialog).getByRole("button", { name: B.name }))
-    expect([A, B, C].map((c) => badgeText(within(dialog).getByRole("button", { name: c.name })))).toEqual(["Comparison order 1", null, "Comparison order 2"])
-    await user.click(within(dialog).getByRole("button", { name: B.name }))
-    expect([A, B, C].map((c) => badgeText(within(dialog).getByRole("button", { name: c.name })))).toEqual(["Comparison order 1", "Comparison order 3", "Comparison order 2"])
-    // Reopen for the mapping below so the selection is exactly A, B, C.
-    await user.click(within(dialog).getByRole("button", { name: "Cancel" }))
-    await user.click(screen.getByRole("button", { name: "Compare Creators" }))
-    dialog = screen.getByRole("dialog", { name: "Add Comparison Charts" })
-    for (const creator of [A, B, C]) await user.click(within(dialog).getByRole("button", { name: creator.name }))
-    expect([A, B, C].map((c) => badgeText(within(dialog).getByRole("button", { name: c.name })))).toEqual(["Comparison order 1", "Comparison order 2", "Comparison order 3"])
-
-    // Items are chosen in this order (not the backend's definition order): item order is the caller's.
-    for (const item of ["Total views", "Daily view growth"]) await user.click(within(dialog).getByRole("button", { name: item }))
-    expect(within(dialog).getAllByTestId("comparison-mapping-row").map((row) => row.textContent?.replace(/\s+/g, " ").trim())).toEqual([
-      "Total views → widget[0]",
-      "Daily view growth → widget[1]",
-    ])
-    expect(setItem.mock.calls.filter(([key]) => key === LAYOUT_KEY)).toHaveLength(0) // the preview writes nothing
-
-    await user.click(within(dialog).getByRole("button", { name: "Save" }))
-
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add Comparison Charts" })).not.toBeInTheDocument())
-    expect(setItem.mock.calls.filter(([key]) => key === LAYOUT_KEY)).toHaveLength(1)
-    expect(screen.getAllByTestId("comparison-widget")).toHaveLength(2)
-    const widgets = storedWidgets()
-    // w0 is the top-left widget (visual order) even though it is stored second.
-    expect(widgets.find((x) => x.widgetId === "w0")!.comparison).toEqual({ creatorIds: [A.id, B.id, C.id], comparisonItemIds: ["total-views"] })
-    expect(widgets.find((x) => x.widgetId === "w1")!.comparison).toEqual({ creatorIds: [A.id, B.id, C.id], comparisonItemIds: ["daily-view-growth"] })
-    expect(widgets).toHaveLength(2)
-    expect(new Set(widgets.map((x) => x.widgetId)).size).toBe(2)
-    expect(window.localStorage.getItem(ACTIVE_CREATOR_KEY)).toBe(activeBefore)
-    expect(catalogSpy).toHaveBeenCalledTimes(1)
-    await waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(2))
-    for (const request of requests) expect(request.creatorIds).toEqual([A.id, B.id, C.id])
-    expect(screen.getAllByTestId("comparison-widget-sample-data").length).toBe(2) // an injected sample source is labelled as sample data
-  }, 15000)
-
-  it("Flow 2 appends exactly one new widget with a unique id when there are more items than widgets, without moving the existing one", async () => {
-    const user = userEvent.setup()
-    seedLayout({ grid: { columns: 2, rows: 2 }, widgets: [unit("only", "kpi-summary", 1, 0)] })
-    await renderAndSettle()
-
-    await user.click(screen.getByRole("button", { name: "Compare Creators" }))
-    const dialog = screen.getByRole("dialog", { name: "Add Comparison Charts" })
-    for (const creator of [A, B]) await user.click(within(dialog).getByRole("button", { name: creator.name }))
-    for (const item of ["Daily view growth", "Total views"]) await user.click(within(dialog).getByRole("button", { name: item }))
-    await user.click(within(dialog).getByRole("button", { name: "Save" }))
-
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add Comparison Charts" })).not.toBeInTheDocument())
-    const widgets = JSON.parse(window.localStorage.getItem(LAYOUT_KEY)!).widgets as { widgetId: string; x: number; y: number; comparison: { comparisonItemIds: string[] } }[]
-    expect(widgets).toHaveLength(2)
-    expect(widgets[0]).toMatchObject({ widgetId: "only", x: 1, y: 0 })
-    expect(widgets[0].comparison.comparisonItemIds).toEqual(["daily-view-growth"])
-    expect(widgets[1].widgetId).not.toBe("only")
-    expect(widgets[1].comparison.comparisonItemIds).toEqual(["total-views"])
-    expect(screen.getAllByTestId("comparison-widget")).toHaveLength(2)
-  })
-
-  it("Flow 2 rolls back on a failed save: the dialog stays open with an alert, storage and the page are unchanged", async () => {
-    const user = userEvent.setup()
-    seedLayout(TWO_WIDGETS_SHUFFLED)
-    await renderAndSettle()
-    const raw = window.localStorage.getItem(LAYOUT_KEY)
-
-    await user.click(screen.getByRole("button", { name: "Compare Creators" }))
-    const dialog = screen.getByRole("dialog", { name: "Add Comparison Charts" })
-    for (const creator of [A, B]) await user.click(within(dialog).getByRole("button", { name: creator.name }))
-    await user.click(within(dialog).getByRole("button", { name: "Daily view growth" }))
-    const realSetItem = Storage.prototype.setItem
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
-      if (key === LAYOUT_KEY) throw new Error("quota")
-      realSetItem.call(this, key, value)
-    })
-    await user.click(within(dialog).getByRole("button", { name: "Save" }))
-
-    expect(await within(dialog).findByRole("alert")).toBeInTheDocument()
-    expect(screen.getByRole("dialog", { name: "Add Comparison Charts" })).toBeInTheDocument()
-    expect(window.localStorage.getItem(LAYOUT_KEY)).toBe(raw)
-    expect(screen.queryByTestId("comparison-widget")).not.toBeInTheDocument()
-  })
-
-  it("Flow 2 Cancel changes nothing, and the entry point is not offered while editing", async () => {
-    const user = userEvent.setup()
-    seedLayout(TWO_WIDGETS_SHUFFLED)
-    await renderAndSettle()
-    const raw = window.localStorage.getItem(LAYOUT_KEY)
-
-    await user.click(screen.getByRole("button", { name: "Compare Creators" }))
-    await user.click(within(screen.getByRole("dialog", { name: "Add Comparison Charts" })).getByRole("button", { name: "Cancel" }))
-    expect(screen.queryByRole("dialog", { name: "Add Comparison Charts" })).not.toBeInTheDocument()
-    expect(window.localStorage.getItem(LAYOUT_KEY)).toBe(raw)
-
-    await user.click(screen.getByRole("button", { name: "Edit Layout" }))
-    expect(screen.queryByRole("button", { name: "Compare Creators" })).not.toBeInTheDocument()
-  })
-
-  // See the Flow 2 test above for why this needs a longer-than-default timeout.
-  it("Flow 1 is reachable on a comparison widget in edit mode: Cancel leaves the draft alone, Apply updates only the draft, Save persists through the normal flow", async () => {
-    const catalogSpy = catalogFetcher()
-    const user = userEvent.setup()
-    seedLayout(COMPARISON_LAYOUT)
-    renderDashboard(undefined, catalogSpy)
-    await waitFor(() => expect(screen.getByTestId("chart-catalog-status")).toHaveTextContent("success"), { timeout: 2000 })
-    await waitFor(() => expect(screen.getAllByTestId("comparison-widget")).toHaveLength(2))
-    const raw = window.localStorage.getItem(LAYOUT_KEY)
-    const activeBefore = window.localStorage.getItem(ACTIVE_CREATOR_KEY)
-    expect(screen.queryByRole("button", { name: "Select Creators" })).not.toBeInTheDocument() // view mode
-
-    await user.click(screen.getByRole("button", { name: "Edit Layout" }))
-    const selectButtons = screen.getAllByRole("button", { name: "Select Creators" })
-    expect(selectButtons).toHaveLength(2)
-
-    await user.click(selectButtons[0])
-    let picker = screen.getByRole("dialog", { name: "Select Creators" })
-    await user.click(within(picker).getByRole("button", { name: B.name }))
-    await user.click(within(picker).getByRole("button", { name: "Cancel" }))
-    expect(listIds("cmp0")).toEqual([A.id])
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
-
-    await user.click(screen.getAllByRole("button", { name: "Select Creators" })[0])
-    picker = screen.getByRole("dialog", { name: "Select Creators" })
-    expect(badgeText(within(picker).getByRole("button", { name: A.name }))).toBe("Comparison order 1") // existing ids appear selected
-    await user.click(within(picker).getByRole("button", { name: B.name }))
-    await user.click(within(picker).getByRole("button", { name: C.name }))
-    await user.click(within(picker).getByRole("button", { name: "Apply" }))
-
-    expect(listIds("cmp0")).toEqual([A.id, B.id, C.id])
-    expect(listIds("cmp1")).toEqual([A.id, B.id]) // only the target widget
-    expect(window.localStorage.getItem(LAYOUT_KEY)).toBe(raw) // not saved yet
-
-    await user.click(screen.getByRole("button", { name: "Save" }))
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument())
-    const saved = storedWidgets()
-    expect(saved.find((x) => x.widgetId === "cmp0")!.comparison).toEqual({ creatorIds: [A.id, B.id, C.id], comparisonItemIds: ["daily-view-growth"] })
-    expect(saved.map((x) => x.widgetId)).toEqual(["cmp0", "cmp1"])
-    expect(window.localStorage.getItem(ACTIVE_CREATOR_KEY)).toBe(activeBefore)
-    expect(catalogSpy).toHaveBeenCalledTimes(1)
-  }, 15000)
-
-  it("a legacy 4/5-column payload awaiting conversion offers no comparison entry point", async () => {
-    seedLayout({ grid: { columns: 4, rows: 1 }, widgets: [0, 1, 2, 3].map((i) => unit(`w${i}`, "kpi-summary", i, 0)) })
-    await renderAndSettle()
-    expect(screen.getByTestId("legacy-layout-banner")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Compare Creators" })).not.toBeInTheDocument()
   })
 })

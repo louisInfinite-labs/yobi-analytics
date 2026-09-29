@@ -2,8 +2,9 @@
 
 Decides which already-tracked videos need a fresh statistics check today, and
 how a video's activity_state evolves after each check. Age and activity are
-separate dimensions: every video is checked daily for its first 30 days
-regardless of activity_state; afterward, activity_state (Hot/Unknown/Warm/Cold)
+separate dimensions: every video is checked daily for its first
+RECENT_MAX_AGE_DAYS days regardless of activity_state; afterward,
+activity_state (Hot/Unknown/Warm/Cold)
 governs the schedule via a stable per-video rotation (not a calendar trigger),
 so the daily workload stays roughly even instead of spiking on any particular
 date.
@@ -11,6 +12,14 @@ date.
 Discovery (1.4.2/1.4.3) is unaffected by this — it keeps running daily for
 every discovery-enabled creator. This module only decides how often a video's
 *statistics* get refreshed once it is already in the Tracking Universe.
+
+AWS Cost Recovery (second pass): RECENT_MAX_AGE_DAYS narrowed from 30 to 7.
+A video 8-30 days old no longer gets a free daily pass purely from age --
+it now follows its own activity_state cadence (Hot daily; Unknown/Warm/Cold
+on their normal cycles) exactly like any older video. This was a deliberate
+scope decision, not a bug fix: the original 30-day value churned through a
+much larger always-due population than the new-upload-notification/early-
+growth-signal use case actually needs.
 """
 
 from __future__ import annotations
@@ -20,7 +29,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Iterable
 
-RECENT_MAX_AGE_DAYS = 30
+RECENT_MAX_AGE_DAYS = 7
 
 UNKNOWN_CYCLE_DAYS = 2
 WARM_CYCLE_DAYS = 3
