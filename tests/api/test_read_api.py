@@ -6,10 +6,12 @@ import pytest
 from api import read_api
 from api.holodex_client import HolodexAPIError
 from api.holodex_normalization import HolodexNormalizationError
+from ops.config import MissingHolodexApiKeyError
 from tracking.creator_master import Creator
 from api.read_api import (
     ClientError,
     RankingNotReadyError,
+    ScopeNotFoundError,
     VideoNotFoundError,
     _compute_growth_results,
     _load_videos_for_creators,
@@ -17,12 +19,15 @@ from api.read_api import (
     get_creator_trending,
     get_live_streams,
     get_organization_trending,
+    get_recent_streams,
     get_video_growth,
     parse_creator_id,
     parse_limit,
+    parse_offset,
     parse_organization,
     parse_period,
     parse_ranking_type,
+    parse_recent_streams_limit,
     parse_report_date,
     parse_time_zone,
     parse_video_id,
@@ -1293,3 +1298,253 @@ def test_get_live_streams_uses_the_documented_users_live_endpoint_with_channels_
     assert captured["path"] == "/users/live"
     assert captured["params"] == {"channels": "UC_test"}
     assert "max_upcoming_hours" not in captured["params"]
+
+
+# ============ get_recent_streams (GET /recent-streams -- ended archives only) ============
+# Only holodex_get is ever mocked below -- real normalize_holodex_archived_streams_response
+# runs, same convention as the get_live_streams tests above.
+
+
+def _archived_item(*, video_id="v1", title="Archive stream", available_at="2026-09-20T10:00:00Z", channel_id="UC_test", channel_name="Test Creator", **overrides):
+    item = {"id": video_id, "title": title, "available_at": available_at, "channel": {"id": channel_id, "name": channel_name}}
+    item.update(overrides)
+    return item
+
+
+def test_get_recent_streams_returns_archived_streams_for_a_valid_creator(monkeypatch):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_archived_item()])
+
+    result = get_recent_streams({"creatorId": "aizawa_ema"})
+
+    assert result == {
+        "creatorId": "aizawa_ema",
+        "streams": [
+            {
+                "videoId": "v1",
+                "creatorId": "aizawa_ema",
+                "channelName": "Test Creator",
+                "title": "Archive stream",
+                "thumbnailUrl": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                "publishedAt": "2026-09-20T10:00:00+00:00",
+            }
+        ],
+        "hasMore": False,
+    }
+
+
+def test_get_recent_streams_holodex_query_uses_past_stream_type_and_available_at_desc(monkeypatch):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
+    captured = {}
+
+    def fake_holodex_get(path, params=None):
+        captured["path"], captured["params"] = path, params
+        return []
+
+    monkeypatch.setattr(read_api, "holodex_get", fake_holodex_get)
+
+    get_recent_streams({"creatorId": "aizawa_ema"})
+
+    assert captured["path"] == "/videos"
+    assert captured["params"]["channel_id"] == "UC_test"
+    assert captured["params"]["type"] == "stream"
+    assert captured["params"]["status"] == "past"
+    assert captured["params"]["sort"] == "available_at"
+    assert captured["params"]["order"] == "desc"
+
+
+def test_get_recent_streams_defaults_limit_to_four(monkeypatch):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
+    captured = {}
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: (captured.update(params), [])[1])
+
+    get_recent_streams({"creatorId": "aizawa_ema"})
+
+    assert captured["limit"] == "4"
+    assert captured["offset"] == "0"
+
+
+def test_get_recent_streams_forwards_limit_and_offset(monkeypatch):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
+    captured = {}
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: (captured.update(params), [])[1])
+
+    get_recent_streams({"creatorId": "aizawa_ema", "limit": "2", "offset": "6"})
+
+    assert captured["limit"] == "2"
+    assert captured["offset"] == "6"
+
+
+def test_get_recent_streams_has_more_true_when_archive_count_reaches_limit(monkeypatch):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
+    monkeypatch.setattr(
+        read_api, "holodex_get", lambda path, params=None: [_archived_item(video_id=f"v{i}") for i in range(2)]
+    )
+
+    result = get_recent_streams({"creatorId": "aizawa_ema", "limit": "2"})
+
+    assert result["hasMore"] is True
+
+
+@pytest.mark.parametrize("discarded_item", [None, {}, _archived_item(video_id=""), _archived_item(channel=None)])
+def test_get_recent_streams_has_more_uses_raw_count_when_normalization_discards_items(monkeypatch, discarded_item):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator())
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_archived_item(), discarded_item])
+
+    result = get_recent_streams({"creatorId": "aizawa_ema", "limit": "2"})
+
+    assert [stream["videoId"] for stream in result["streams"]] == ["v1"]
+    assert result["hasMore"] is True
+
+
+def test_get_recent_streams_has_more_false_when_archive_count_is_below_limit(monkeypatch):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_archived_item()])
+
+    result = get_recent_streams({"creatorId": "aizawa_ema", "limit": "4"})
+
+    assert result["hasMore"] is False
+
+
+def test_get_recent_streams_rejects_an_unknown_creator(monkeypatch):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: None)
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("Holodex must not be called for an unknown creator")
+
+    monkeypatch.setattr(read_api, "holodex_get", _boom)
+
+    with pytest.raises(ScopeNotFoundError):
+        get_recent_streams({"creatorId": "does_not_exist"})
+
+
+def test_get_recent_streams_rejects_an_ineligible_creator(monkeypatch):
+    """A real Creator Master record that fails is_creator_live_roster_eligible
+    (e.g. graduated, or a group/staff channel) is rejected the same clean way
+    as an unknown creatorId -- get_live_streams applies the identical rule."""
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(lifecycle_stage="graduated"))
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("Holodex must not be called for an ineligible creator")
+
+    monkeypatch.setattr(read_api, "holodex_get", _boom)
+
+    with pytest.raises(ScopeNotFoundError):
+        get_recent_streams({"creatorId": "aizawa_ema"})
+
+
+def test_get_recent_streams_returns_empty_for_a_genuinely_empty_archive(monkeypatch):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [])
+
+    result = get_recent_streams({"creatorId": "aizawa_ema"})
+
+    assert result == {"creatorId": "aizawa_ema", "streams": [], "hasMore": False}
+
+
+def test_get_recent_streams_propagates_holodex_client_failure_without_fabricating_a_result(monkeypatch):
+    """Not caught here -- api_handler.py's existing dispatch already maps
+    HolodexAPIError/MissingHolodexApiKeyError to a safe public 503, the
+    identical handling get_live_streams' own callers go through."""
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
+
+    def _boom(path, params=None):
+        raise HolodexAPIError("Holodex API request to '/videos' timed out")
+
+    monkeypatch.setattr(read_api, "holodex_get", _boom)
+
+    with pytest.raises(HolodexAPIError):
+        get_recent_streams({"creatorId": "aizawa_ema"})
+
+
+def test_get_recent_streams_propagates_missing_api_key_without_fabricating_a_result(monkeypatch):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
+
+    def _boom(path, params=None):
+        raise MissingHolodexApiKeyError("Neither HOLODEX_SECRET_NAME nor HOLODEX_API_KEY is set.")
+
+    monkeypatch.setattr(read_api, "holodex_get", _boom)
+
+    with pytest.raises(MissingHolodexApiKeyError):
+        get_recent_streams({"creatorId": "aizawa_ema"})
+
+
+def test_get_recent_streams_response_contains_only_the_requested_creator(monkeypatch):
+    """Every stream in the response echoes the RESOLVED creator's own
+    canonical creatorId -- never Holodex's own channel identity, and never
+    a second creator's data, even if a malformed Holodex response somehow
+    mixed in a different channel's item."""
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(creator_id="aizawa_ema", youtube_channel_id="UC_test"))
+    monkeypatch.setattr(
+        read_api,
+        "holodex_get",
+        lambda path, params=None: [
+            _archived_item(video_id="v1"),
+            _archived_item(video_id="v2", channel_id="UC_other_channel", channel_name="Someone Else"),
+        ],
+    )
+
+    result = get_recent_streams({"creatorId": "aizawa_ema", "limit": "2"})
+
+    assert [stream["videoId"] for stream in result["streams"]] == ["v1"]
+    assert {stream["creatorId"] for stream in result["streams"]} == {"aizawa_ema"}
+    assert result["creatorId"] == "aizawa_ema"
+    assert result["hasMore"] is True
+
+
+def test_get_recent_streams_never_introduces_live_or_upcoming_fields(monkeypatch):
+    """The response shape is archive-only -- no status/scheduledStart/
+    actualStart fields, which belong exclusively to /live-streams."""
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_archived_item()])
+
+    result = get_recent_streams({"creatorId": "aizawa_ema"})
+
+    [stream] = result["streams"]
+    assert set(stream.keys()) == {"videoId", "creatorId", "channelName", "title", "thumbnailUrl", "publishedAt"}
+
+
+def test_get_recent_streams_requires_creator_id():
+    with pytest.raises(ClientError):
+        get_recent_streams({})
+
+
+class TestParseRecentStreamsLimit:
+    def test_absent_defaults_to_four(self):
+        assert parse_recent_streams_limit(None) == 4
+        assert parse_recent_streams_limit("") == 4
+
+    def test_valid_value_is_parsed(self):
+        assert parse_recent_streams_limit("10") == 10
+
+    def test_rejects_zero_or_negative(self):
+        with pytest.raises(ClientError):
+            parse_recent_streams_limit("0")
+        with pytest.raises(ClientError):
+            parse_recent_streams_limit("-1")
+
+    def test_rejects_above_the_small_safe_upper_bound(self):
+        with pytest.raises(ClientError):
+            parse_recent_streams_limit("21")
+        assert parse_recent_streams_limit("20") == 20
+
+    def test_rejects_non_integer(self):
+        with pytest.raises(ClientError):
+            parse_recent_streams_limit("not-a-number")
+
+
+class TestParseOffset:
+    def test_absent_defaults_to_zero(self):
+        assert parse_offset(None) == 0
+        assert parse_offset("") == 0
+
+    def test_valid_value_is_parsed(self):
+        assert parse_offset("8") == 8
+
+    def test_rejects_negative(self):
+        with pytest.raises(ClientError):
+            parse_offset("-1")
+
+    def test_rejects_non_integer(self):
+        with pytest.raises(ClientError):
+            parse_offset("not-a-number")

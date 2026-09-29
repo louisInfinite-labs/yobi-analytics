@@ -147,7 +147,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # details, neither of which is safe to hand to a public caller (same
         # posture as _check_admin_key's MissingAdminApiKeyError handling
         # below).
-        print(f"Warning: Holodex live-streams request failed ({type(exc).__name__}): {exc}")
+        print(f"Warning: Holodex request failed for route {route_key!r} ({type(exc).__name__}): {exc}")
         return _json_response(503, {"error": "Live stream data is temporarily unavailable", "code": "HOLODEX_UNAVAILABLE"})
     except _ForbiddenError as exc:
         return _json_response(403, {"error": str(exc)})
@@ -206,6 +206,10 @@ def _handle_get_topic_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
 
 def _handle_get_live_streams(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_live_streams(_merged_params(event))
+
+
+def _handle_get_recent_streams(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_recent_streams(_merged_params(event))
 
 
 def _handle_post_heartbeat(event: dict[str, Any]) -> dict[str, Any]:
@@ -356,6 +360,7 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /leaderboard": _handle_get_global_leaderboard,
     "GET /topics/{topic}/leaderboard": _handle_get_topic_leaderboard,
     "GET /live-streams": _handle_get_live_streams,
+    "GET /recent-streams": _handle_get_recent_streams,
     "POST /heartbeat": _handle_post_heartbeat,
     "GET /heartbeat/{clientId}/status": _handle_get_heartbeat_status,
     "POST /clients/{clientId}/credential": _handle_post_client_credential,

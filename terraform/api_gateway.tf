@@ -49,6 +49,7 @@ locals {
     "PUT /clients/{clientId}/push-subscription",
     "DELETE /clients/{clientId}/push-subscription",
     "GET /live-streams",
+    "GET /recent-streams",
   ]
 }
 

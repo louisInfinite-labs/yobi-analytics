@@ -3,8 +3,11 @@ from datetime import datetime, timezone
 import pytest
 
 from api.holodex_normalization import (
+    HolodexArchivedStream,
     HolodexLiveStream,
     HolodexNormalizationError,
+    normalize_holodex_archived_stream,
+    normalize_holodex_archived_streams_response,
     normalize_holodex_live_response,
     normalize_holodex_stream,
 )
@@ -195,3 +198,112 @@ def test_normalized_timestamp_preserves_a_non_utc_offset_by_converting_to_utc():
     stream = normalize_holodex_stream(_raw_item(start_scheduled="2026-09-27T21:00:00+09:00"))
 
     assert stream.scheduled_start == "2026-09-27T12:00:00+00:00"
+
+
+# ============ normalize_holodex_archived_stream (GET /recent-streams' own source) ============
+
+
+def _raw_archived_item(**overrides):
+    """A well-formed raw Holodex /videos (status=past, type=stream) item, overridable per test."""
+    item = {
+        "id": "past123XYZ90",
+        "title": "Karaoke archive",
+        "available_at": "2026-09-20T10:00:00Z",
+        "channel": {"id": "UCabc123", "name": "Test Creator"},
+    }
+    item.update(overrides)
+    return item
+
+
+def test_normalizes_a_valid_archived_item():
+    stream = normalize_holodex_archived_stream(_raw_archived_item())
+
+    assert stream == HolodexArchivedStream(
+        video_id="past123XYZ90",
+        youtube_channel_id="UCabc123",
+        channel_name="Test Creator",
+        title="Karaoke archive",
+        published_at="2026-09-20T10:00:00+00:00",
+        thumbnail_url="https://img.youtube.com/vi/past123XYZ90/hqdefault.jpg",
+    )
+
+
+def test_archived_stream_does_not_check_status_itself():
+    """Unlike normalize_holodex_stream, this function never rejects on `status` --
+    the caller already constrained the Holodex request to status=past, so an
+    item missing `status` entirely (or carrying an unexpected value) must
+    still normalize, not be silently dropped a second time."""
+    raw = _raw_archived_item()
+    raw.pop("status", None)
+    assert normalize_holodex_archived_stream(raw) is not None
+
+    stream = normalize_holodex_archived_stream(_raw_archived_item(status="past"))
+    assert stream is not None
+
+
+def test_archived_missing_available_at_degrades_to_none_without_discarding_the_item():
+    raw = _raw_archived_item()
+    del raw["available_at"]
+
+    stream = normalize_holodex_archived_stream(raw)
+
+    assert stream is not None
+    assert stream.published_at is None
+
+
+def test_archived_missing_title_degrades_to_none():
+    raw = _raw_archived_item()
+    del raw["title"]
+
+    stream = normalize_holodex_archived_stream(raw)
+
+    assert stream is not None
+    assert stream.title is None
+
+
+def test_archived_missing_channel_name_degrades_to_none():
+    stream = normalize_holodex_archived_stream(_raw_archived_item(channel={"id": "UCabc123"}))
+
+    assert stream is not None
+    assert stream.channel_name is None
+
+
+def test_archived_missing_video_id_is_skipped():
+    raw = _raw_archived_item()
+    del raw["id"]
+
+    assert normalize_holodex_archived_stream(raw) is None
+
+
+def test_archived_missing_channel_identity_is_skipped():
+    raw = _raw_archived_item()
+    del raw["channel"]
+
+    assert normalize_holodex_archived_stream(raw) is None
+
+
+def test_archived_non_dict_item_is_rejected():
+    assert normalize_holodex_archived_stream("not-a-dict") is None
+    assert normalize_holodex_archived_stream(None) is None
+
+
+def test_archived_batch_normalization_drops_only_invalid_items():
+    raw_payload = [
+        _raw_archived_item(id="archive-1"),
+        _raw_archived_item(id="missing-channel", channel=None),
+        {"id": "not-a-video"},  # missing channel entirely
+        _raw_archived_item(id="archive-2"),
+    ]
+
+    result = normalize_holodex_archived_streams_response(raw_payload)
+
+    assert [stream.video_id for stream in result] == ["archive-1", "archive-2"]
+
+
+def test_archived_empty_list_payload_remains_a_valid_empty_result():
+    assert normalize_holodex_archived_streams_response([]) == []
+
+
+def test_archived_non_list_payload_raises_normalization_error():
+    with pytest.raises(HolodexNormalizationError):
+        normalize_holodex_archived_streams_response({"error": "not found"})

@@ -30,7 +30,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from api.holodex_client import holodex_get
-from api.holodex_normalization import normalize_holodex_live_response
+from api.holodex_normalization import normalize_holodex_archived_streams_response, normalize_holodex_live_response
 from tracking.creator_master import Creator, is_creator_live_roster_eligible, load_creators
 from analytics.history_ranking import ALL_PERIOD, PERIODS as SUMMARY_PERIODS
 from analytics.trending import (
@@ -747,6 +747,123 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
             }
         )
     return {"streams": streams}
+
+
+# GET /recent-streams' own limit -- deliberately its own constant, not
+# MAX_LIMIT/parse_limit above (that pair backs the /trending family's
+# page sizing, up to 100 rows of already-cheap cached data). A `Latest Live`
+# archive row only ever needed up to ~5 slots even before this endpoint
+# existed (recentVideosSelection.ts's selectLivestreamSlots, frontend) --
+# 20 is a small, safe upper bound comfortably above that real need, not an
+# invitation to page deep into one creator's full upload history through a
+# request-time Holodex call.
+RECENT_STREAMS_DEFAULT_LIMIT = 4
+RECENT_STREAMS_MAX_LIMIT = 20
+
+
+def parse_recent_streams_limit(raw: Any) -> int:
+    """Validate an optional limit query parameter for GET /recent-streams:
+    a positive integer at most RECENT_STREAMS_MAX_LIMIT, defaulting to
+    RECENT_STREAMS_DEFAULT_LIMIT when absent (unlike parse_limit above,
+    whose absence means "caller decides", this endpoint always sends some
+    limit to Holodex)."""
+    if raw is None or raw == "":
+        return RECENT_STREAMS_DEFAULT_LIMIT
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ClientError(f"limit must be a positive integer, got {raw!r}") from None
+    if isinstance(raw, bool) or value <= 0:
+        raise ClientError(f"limit must be a positive integer, got {raw!r}")
+    if value > RECENT_STREAMS_MAX_LIMIT:
+        raise ClientError(f"limit must be at most {RECENT_STREAMS_MAX_LIMIT}, got {value!r}")
+    return value
+
+
+def parse_offset(raw: Any) -> int:
+    """Validate an optional offset query parameter: a non-negative integer, defaulting to 0."""
+    if raw is None or raw == "":
+        return 0
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ClientError(f"offset must be a non-negative integer, got {raw!r}") from None
+    if isinstance(raw, bool) or value < 0:
+        raise ClientError(f"offset must be a non-negative integer, got {raw!r}")
+    return value
+
+
+def get_recent_streams(query: dict[str, Any]) -> dict[str, Any]:
+    """`GET /recent-streams`: one creator's most recent ENDED livestreams (archives
+    only), paginated, sourced from Holodex -- the counterpart to get_live_streams
+    above, which owns current live/upcoming instead. Together:
+
+      /live-streams   -> current LIVE / UPCOMING, every eligible creator, no pagination
+      /recent-streams -> one creator's ended archives, paginated, no live/upcoming
+
+    Never merges the two -- a caller that wants both (the frontend's "Latest
+    Live" row) combines them client-side, the same way it already combines
+    live-now + archives locally (recentVideosSelection.ts's
+    selectLivestreamSlots, unchanged by this endpoint).
+
+    creatorId is resolved and eligibility-checked against Creator Master
+    (is_creator_live_roster_eligible -- the same rule get_live_streams already
+    applies) *before* ever calling Holodex, so an unknown or ineligible
+    creatorId gets a clean 404 (ScopeNotFoundError) rather than an empty
+    result indistinguishable from "this real creator just has no archives."
+
+    Holodex request: GET /videos?channel_id=<real channel>&type=stream&
+    status=past&sort=available_at&order=desc&limit=<limit>&offset=<offset> --
+    exactly the query semantics the frontend's own now-retired
+    fetchArchivedStreamsFromHolodex used for its archive page (never
+    live/upcoming; that request stays entirely inside get_live_streams).
+
+    hasMore is derived from the raw Holodex page count against `limit`
+    (`len(raw_payload) >= limit`), so normalization and channel filtering
+    do not affect pagination. It is independent of /live-streams, which
+    this endpoint never touches.
+
+    Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError
+    on any Holodex failure -- api_handler.py's existing dispatch already maps
+    these to a safe 503 (HOLODEX_UNAVAILABLE), the identical handling
+    get_live_streams' own callers already go through; no separate error
+    path is added for this endpoint.
+    """
+    creator_id = parse_creator_id(query.get("creatorId"))
+    limit = parse_recent_streams_limit(query.get("limit"))
+    offset = parse_offset(query.get("offset"))
+
+    creator = _find_creator(creator_id)
+    if creator is None or not is_creator_live_roster_eligible(creator):
+        raise ScopeNotFoundError(f"No creator found for creatorId {creator_id!r}")
+
+    raw_payload = holodex_get(
+        "/videos",
+        {
+            "channel_id": creator.youtube_channel_id,
+            "type": "stream",
+            "status": "past",
+            "sort": "available_at",
+            "order": "desc",
+            "limit": str(limit),
+            "offset": str(offset),
+        },
+    )
+    archived = normalize_holodex_archived_streams_response(raw_payload)
+
+    streams = [
+        {
+            "videoId": item.video_id,
+            "creatorId": creator.creator_id,
+            "channelName": item.channel_name or creator.display_name,
+            "title": item.title,
+            "thumbnailUrl": item.thumbnail_url,
+            "publishedAt": item.published_at,
+        }
+        for item in archived
+        if item.youtube_channel_id == creator.youtube_channel_id
+    ]
+    return {"creatorId": creator.creator_id, "streams": streams, "hasMore": len(raw_payload) >= limit}
 
 
 # The daily pipeline finishes around 18:00 JST, so an omitted reportDate would
