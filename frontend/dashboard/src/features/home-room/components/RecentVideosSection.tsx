@@ -246,12 +246,15 @@ function VideoTrack({
  * independent buttons) so the whole list reads as a single continuous
  * selector. `trailing` (the sort control) renders as the next sibling in
  * this same flex row, sharing its existing `gap` instead of a margin of its
- * own. Segmented's dark styling goes through antd's own component tokens
- * (trackBg/itemColor/itemSelectedBg/...), same pattern as Settings > Oshi
- * Settings' MyOshiSettings/OshiSettings Segmented usage -- itemSelectedBg
- * is the only token tied to --creator-main, and only at a low mix
- * percentage, so switching currentOshi tints just the selected segment
- * rather than the whole bar. */
+ * own. Deliberately NOT the shared .shared-filter-segmented skin used by
+ * Notification Settings/Favorites/Live Status (confirmed with the user):
+ * this bar keeps its own compact "small" sizing, and its colors/radius
+ * come from the ConfigProvider component tokens below -- fixed, never
+ * creator-tinted (confirmed with the user: the selected tag's own color
+ * must not shift when currentOshi changes). trackBg matches .oshi-videos's
+ * own panel background (--oshi-surface-1) rather than the shared skin's
+ * surface tone, so the track reads as part of the panel instead of a
+ * separately-colored control sitting on it. */
 function VideoSectionTagBar({
   selected,
   onSelect,
@@ -269,12 +272,15 @@ function VideoSectionTagBar({
         theme={{
           components: {
             Segmented: {
-              trackBg: "var(--oshi-surface-2)",
+              trackBg: "var(--oshi-surface-1)",
               trackPadding: 2,
               itemColor: "var(--oshi-text-3)",
               itemHoverColor: "var(--oshi-text-1)",
               itemHoverBg: "rgba(255, 255, 255, 0.05)",
-              itemSelectedBg: "color-mix(in srgb, var(--creator-main) 18%, var(--oshi-surface-3))",
+              // Fixed neutral, never creator-tinted (confirmed with the
+              // user: the selected tag's own color must not shift with
+              // currentOshi) -- --oshi-surface-3, no --creator-main mix.
+              itemSelectedBg: "var(--oshi-surface-3)",
               itemSelectedColor: "var(--oshi-text-1)",
               borderRadius: 4,
               borderRadiusSM: 4,

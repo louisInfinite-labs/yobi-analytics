@@ -384,9 +384,14 @@ describe("member drawer respects the topic's own notificationType", () => {
     expect(radiogroup).toHaveClass("ant-segmented-disabled")
     expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeChecked()
     expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeDisabled()
-    expect(
-      detail.getByText("Live reminder timing is unavailable while only New Video notifications are enabled."),
-    ).toBeInTheDocument()
+    const helperText = detail.getByText("Live reminder timing is unavailable while only New Video notifications are enabled.")
+    expect(helperText).toBeInTheDocument()
+
+    // Section-level disabled state: the title/helper text/control all dim
+    // together as one unit, not just the control on its own.
+    const section = radiogroup.closest(".notification-reminder-section")
+    expect(section).toHaveClass("notification-reminder-section--disabled")
+    expect(section).toContainElement(helperText)
 
     // Disabled means unclickable, not just visually dimmed -- clicking a
     // different option must not change the stored value.
@@ -452,6 +457,11 @@ describe("member drawer respects the topic's own notificationType", () => {
     expect(screen.getAllByRole("switch", { name: /live notifications/ }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole("switch", { name: /new video notifications/ }).length).toBeGreaterThan(0)
     expect(screen.getAllByText("Reminder time").length).toBeGreaterThan(0)
+
+    const detail = within(getDetailPanel())
+    const radiogroup = detail.getByRole("radiogroup", { name: /Live reminder time/ })
+    expect(radiogroup).not.toHaveClass("ant-segmented-disabled")
+    expect(radiogroup.closest(".notification-reminder-section")).not.toHaveClass("notification-reminder-section--disabled")
   })
 
   it("changing the topic's notification type updates the already-open drawer's columns immediately", async () => {

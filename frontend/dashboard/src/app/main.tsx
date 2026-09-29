@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/index.css'
+import '../shared/styles/segmentedFilter.css'
 import '../features/dashboard/styles/dashboard.css'
 import '../pages/home/styles/home.css'
 import './navigation/styles/main-navbar.css'
