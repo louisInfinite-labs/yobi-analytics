@@ -930,7 +930,7 @@ def test_get_live_streams_returns_200(monkeypatch):
     ],
     ids=["client_failure", "normalization_failure", "missing_api_key"],
 )
-def test_get_live_streams_maps_every_holodex_failure_to_503_not_a_fabricated_result(monkeypatch, exc):
+def test_get_live_streams_maps_every_holodex_failure_to_503_not_a_fabricated_result(monkeypatch, capsys, exc):
     def _boom(query):
         raise exc
 
@@ -940,7 +940,32 @@ def test_get_live_streams_maps_every_holodex_failure_to_503_not_a_fabricated_res
 
     assert response["statusCode"] == 503
     assert _body(response)["code"] == "HOLODEX_UNAVAILABLE"
-    assert _body(response)["error"] == str(exc)
+    assert _body(response)["error"] == "Live stream data is temporarily unavailable"
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        HolodexAPIError("Holodex API request to '/users/live' timed out"),
+        HolodexNormalizationError("Expected a list from Holodex's /users/live response, got dict"),
+        MissingHolodexApiKeyError("Neither HOLODEX_SECRET_NAME nor HOLODEX_API_KEY is set."),
+    ],
+    ids=["client_failure", "normalization_failure", "missing_api_key"],
+)
+def test_get_live_streams_failure_never_leaks_exception_details_to_the_client(monkeypatch, capsys, exc):
+    """The raw exception -- which can carry Holodex's own response text or
+    Secrets Manager failure details -- must never reach the HTTP response,
+    even though it's still logged server-side for diagnosis."""
+
+    def _boom(query):
+        raise exc
+
+    monkeypatch.setattr(read_api, "get_live_streams", _boom)
+
+    response = lambda_handler(_event("GET /live-streams"), None)
+
+    assert str(exc) not in response["body"]
+    assert str(exc) in capsys.readouterr().out
 
 
 def test_get_live_streams_calls_read_api_rather_than_duplicating_http_logic(monkeypatch):

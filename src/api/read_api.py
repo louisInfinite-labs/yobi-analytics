@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -639,19 +639,65 @@ def _rank_topic_rows(rows: list[dict[str, Any]], organization: str, field: str) 
 # Yobi's own approved Holodex Live/Upcoming lookahead window: 7 days, not
 # Holodex's own 48-hour /live default (docs.holodex.net) -- a product
 # decision made ahead of this integration, confirmed with the user.
+#
+# Enforced locally (see _is_within_lookahead below), not sent to Holodex as a
+# request parameter: /users/live -- the endpoint this function actually
+# calls, see its docstring -- does not document max_upcoming_hours, and a
+# live probe against the real API (2026-09-29, using the already-configured
+# Secrets Manager key) confirmed it has no effect there: an identical request
+# with and without max_upcoming_hours=168 returned byte-identical results,
+# including upcoming entries scheduled over 700 days out. /users/live simply
+# returns everything upcoming for the requested channels with no time-window
+# truncation of its own, which is exactly what makes local enforcement safe
+# here -- nothing within the 7-day window is ever missing from the response.
 _HOLODEX_MAX_UPCOMING_HOURS = 24 * 7
+
+
+def _is_within_lookahead(scheduled_start: str | None, *, now: datetime) -> bool:
+    """Whether an "upcoming" stream's scheduled_start falls within Yobi's lookahead window.
+
+    scheduled_start is already an absolute, offset-aware UTC ISO-8601 string
+    when present (holodex_normalization._parse_utc_timestamp's contract) --
+    re-parsing it here can only fail if that contract is somehow violated,
+    which is treated the same as a missing timestamp: excluded rather than
+    raised, matching normalize_holodex_stream's own "degrade the item, never
+    take down the batch" posture for anything Holodex-sourced. An "upcoming"
+    item this project cannot confirm is due within the window must not be
+    shown as if it were -- silently guessing a default would misrepresent it.
+    """
+    if scheduled_start is None:
+        return False
+    try:
+        scheduled_at = datetime.fromisoformat(scheduled_start)
+    except ValueError:
+        return False
+    return scheduled_at <= now + timedelta(hours=_HOLODEX_MAX_UPCOMING_HOURS)
 
 
 def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     """`GET /live-streams`: current live/upcoming streams for Yobi's supported creators, sourced from Holodex.
 
-    One aggregate Holodex `/live` request for every live-roster-eligible
+    One aggregate Holodex `/users/live` request for every live-roster-eligible
     creator's channel at once (`channels=<comma-separated ids>`) — never one
-    request per creator. Holodex is queried directly here rather than
-    through any persisted store (DynamoDB/S3/cache): this is read-path
-    integration only, matching TrendingNotReadyError's "no live fallback"
-    precedent in reverse -- here Holodex itself *is* the live source, with
-    no persistence layer in front of it yet.
+    request per creator. `/users/live`, not `/live`: Holodex only documents
+    the `channels` (plural, comma-separated) filter for `/users/live` --
+    `/live` documents just `channel_id` (singular). A live probe against the
+    real API (2026-09-29) confirmed this isn't pedantic: the same `channels=`
+    request against `/live` returned 806 distinct channels across 1,272 items
+    (i.e. `/live` silently ignores an undocumented `channels` filter and
+    returns platform-wide results), while `/users/live` returned exactly this
+    project's own 97 requested channels (79 with current activity). `/live`'s
+    result staying correct at all currently depends entirely on this
+    function's own defensive channel_index filter below rather than on
+    Holodex actually scoping the request -- and that same local filter cannot
+    recover an eligible stream that never made it into `/live`'s response in
+    the first place if its (undocumented, platform-wide) result was ever
+    truncated. `/users/live` is genuinely channel-scoped instead, so no such
+    risk applies. Holodex is queried directly here rather than through any
+    persisted store (DynamoDB/S3/cache): this is read-path integration only,
+    matching TrendingNotReadyError's "no live fallback" precedent in reverse
+    -- here Holodex itself *is* the live source, with no persistence layer in
+    front of it yet.
 
     Eligibility reuses Creator Master's own is_creator_live_roster_eligible
     (tracking/creator_master.py) -- the same rule already governing Live
@@ -660,6 +706,12 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     isn't in that eligible set (Holodex returning something unrequested,
     e.g. a collab guest) is dropped defensively, the same "never guess"
     posture normalize_holodex_stream itself already takes per-field.
+
+    An "upcoming" stream is additionally kept only when _is_within_lookahead
+    says its scheduled_start is within _HOLODEX_MAX_UPCOMING_HOURS from now
+    -- see that function's own docstring for why this must be enforced
+    locally rather than requested from Holodex. A "live" stream is always
+    kept regardless of scheduled_start; it's already happening.
 
     Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError
     on any Holodex failure rather than returning a fabricated empty result --
@@ -671,19 +723,16 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     if not channel_index:
         return {"streams": []}
 
-    raw_payload = holodex_get(
-        "/live",
-        {
-            "channels": ",".join(channel_index),
-            "max_upcoming_hours": str(_HOLODEX_MAX_UPCOMING_HOURS),
-        },
-    )
+    raw_payload = holodex_get("/users/live", {"channels": ",".join(channel_index)})
     normalized_streams = normalize_holodex_live_response(raw_payload)
 
+    now = datetime.now(timezone.utc)
     streams = []
     for stream in normalized_streams:
         creator = channel_index.get(stream.youtube_channel_id)
         if creator is None:
+            continue
+        if stream.status == "upcoming" and not _is_within_lookahead(stream.scheduled_start, now=now):
             continue
         streams.append(
             {

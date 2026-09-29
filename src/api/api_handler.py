@@ -141,7 +141,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # unrecognized response shape, or a missing/unreadable API key are
         # all "the data isn't available right now", the same 503 treatment
         # as TrendingNotReadyError above, never a fabricated empty result.
-        return _json_response(503, {"error": str(exc), "code": "HOLODEX_UNAVAILABLE"})
+        # str(exc) is logged server-side only, never returned to the client --
+        # HolodexAPIError can carry Holodex's own raw response text and
+        # MissingHolodexApiKeyError can carry Secrets Manager failure
+        # details, neither of which is safe to hand to a public caller (same
+        # posture as _check_admin_key's MissingAdminApiKeyError handling
+        # below).
+        print(f"Warning: Holodex live-streams request failed ({type(exc).__name__}): {exc}")
+        return _json_response(503, {"error": "Live stream data is temporarily unavailable", "code": "HOLODEX_UNAVAILABLE"})
     except _ForbiddenError as exc:
         return _json_response(403, {"error": str(exc)})
     except _CLIENT_ERROR_TYPES as exc:
