@@ -160,3 +160,88 @@ def normalize_holodex_live_response(raw_payload: Any) -> list[HolodexLiveStream]
             f"Expected a list from Holodex's /live response, got {type(raw_payload).__name__}: {raw_payload!r}"
         )
     return [stream for raw_item in raw_payload if (stream := normalize_holodex_stream(raw_item)) is not None]
+
+
+@dataclass(frozen=True)
+class HolodexArchivedStream:
+    """One normalized, already-ended Holodex stream (GET /recent-streams' own
+    source shape) -- deliberately a separate type from HolodexLiveStream, not
+    that type widened to a third status: HolodexLiveStream/normalize_holodex_
+    stream are scoped to live/upcoming only by design (H3's own docstring),
+    and an ended stream has no scheduled_start/actual_start concept worth
+    carrying -- only published_at (Holodex's `available_at`, the same field
+    this project's now-retired frontend-direct Holodex client used for its
+    own `publishedAt`).
+
+    video_id/youtube_channel_id are always present -- an item missing either
+    is skipped by normalize_holodex_archived_streams_response and never
+    represented here, same "never fabricate identity" posture as
+    HolodexLiveStream.
+    """
+
+    video_id: str
+    youtube_channel_id: str
+    channel_name: str | None
+    title: str | None
+    published_at: str | None
+    thumbnail_url: str
+
+
+def normalize_holodex_archived_stream(raw_item: Any) -> HolodexArchivedStream | None:
+    """Normalize one raw Holodex /videos item (status=past, type=stream), or
+    None if it can't be trusted enough to show.
+
+    Skipped entirely when the item cannot identify a stream (missing/blank
+    `id`) or a channel (missing/blank `channel.id`) -- this function does
+    NOT check `status` itself (unlike normalize_holodex_stream): the caller
+    (get_recent_streams) already constrains the Holodex request itself to
+    `status=past&type=stream`, so re-validating status here would only ever
+    reject exactly what the request already guaranteed, for no benefit.
+    """
+    if not isinstance(raw_item, dict):
+        return None
+
+    video_id = raw_item.get("id")
+    if not isinstance(video_id, str) or not video_id.strip():
+        return None
+
+    channel = raw_item.get("channel")
+    channel_id = channel.get("id") if isinstance(channel, dict) else None
+    if not isinstance(channel_id, str) or not channel_id.strip():
+        return None
+
+    channel_name = channel.get("name") if isinstance(channel, dict) else None
+    if not isinstance(channel_name, str) or not channel_name.strip():
+        channel_name = None
+
+    title = raw_item.get("title")
+    if not isinstance(title, str) or not title.strip():
+        title = None
+
+    return HolodexArchivedStream(
+        video_id=video_id,
+        youtube_channel_id=channel_id,
+        channel_name=channel_name,
+        title=title,
+        published_at=_parse_utc_timestamp(raw_item.get("available_at")),
+        thumbnail_url=f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+    )
+
+
+def normalize_holodex_archived_streams_response(raw_payload: Any) -> list[HolodexArchivedStream]:
+    """Normalize a raw Holodex /videos (archived streams) response.
+
+    Same top-level-shape contract as normalize_holodex_live_response: raises
+    HolodexNormalizationError if raw_payload isn't a list at all (a genuine
+    "no archives yet" result is a valid, meaningful empty list, never
+    conflated with Holodex returning something unexpected). Returned in the
+    same order Holodex sent them -- the caller's own request already asked
+    for `sort=available_at&order=desc`, so no re-sorting happens here.
+    """
+    if not isinstance(raw_payload, list):
+        raise HolodexNormalizationError(
+            f"Expected a list from Holodex's /videos response, got {type(raw_payload).__name__}: {raw_payload!r}"
+        )
+    return [
+        stream for raw_item in raw_payload if (stream := normalize_holodex_archived_stream(raw_item)) is not None
+    ]
