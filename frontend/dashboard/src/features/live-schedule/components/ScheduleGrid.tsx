@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react"
-import { getCreatorAvatarVisual } from "../../analytics/charts/CreatorAvatar"
+import { getScheduleCreatorAvatarVisual } from "../utils/creatorAvatar"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { SLOT_COUNT, initialScrollSlotIndex, slotLabel } from "../model/scheduleGrid"
 import type { ScheduleDay } from "../hooks/useWeeklySchedule"
@@ -30,7 +30,7 @@ function StreamAvatarGroup({ streams, locale, onSelectStream }: { streams: Sched
     <div className="stream-avatar-group">
       {visibleStreams.map((stream) => {
         const creator = creatorsById.get(stream.channelId)
-        const visual = getCreatorAvatarVisual(stream.channelId, creator?.channelName ?? stream.channelId)
+        const visual = getScheduleCreatorAvatarVisual(stream.channelId, creator?.channelName ?? stream.channelId)
         return (
           <div key={stream.id} className="stream-avatar-item">
             {stream.status === "live" && <span className="stream-avatar-live-badge">{t(locale, "liveSchedule.liveBadge")}</span>}
