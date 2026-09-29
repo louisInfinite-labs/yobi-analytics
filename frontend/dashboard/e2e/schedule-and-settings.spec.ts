@@ -208,4 +208,56 @@ test.describe("Settings sections", () => {
     await expect(page.getByText("12-hour (AM/PM)")).toBeVisible()
     await expect(page.getByText("Countdown", { exact: true })).toBeVisible()
   })
+
+  // Each entry identifies its own section's content by whichever is
+  // actually stable today: a page-level <h1> where one exists, or the
+  // page's own root container class where it doesn't (Notification
+  // Settings' redesign dropped its page-level heading -- section 39/
+  // AGENTS.md: not this task's place to add one back).
+  const SETTINGS_SECTIONS = [
+    { navLabel: "Oshi Settings", heading: "MAIN OSHI SELECT" },
+    { navLabel: "Favorites List", heading: "My Favorites" },
+    { navLabel: "Live/Video Notifications", contentSelector: ".notification-settings" },
+    { navLabel: "Display", heading: "Display" },
+  ] as const
+
+  async function expectSectionContentVisible(page: Page, section: (typeof SETTINGS_SECTIONS)[number]) {
+    if ("heading" in section) {
+      await expect(page.getByRole("heading", { level: 1, name: section.heading })).toBeVisible()
+    } else {
+      await expect(page.locator(section.contentSelector)).toBeVisible()
+    }
+  }
+
+  test("every Settings sub-page stays active -- and shows the right nav item and content -- across a page reload", async ({ page }) => {
+    await page.goto("/setting")
+    const nav = page.getByRole("navigation", { name: "Settings navigation" })
+
+    for (const section of SETTINGS_SECTIONS) {
+      await nav.getByRole("button", { name: section.navLabel }).click()
+      await expectSectionContentVisible(page, section)
+
+      await page.reload()
+
+      await expect(nav.getByRole("button", { name: section.navLabel })).toHaveAttribute("aria-current", "page")
+      await expectSectionContentVisible(page, section)
+    }
+  })
+
+  test("Settings sub-page navigation supports browser Back and Forward", async ({ page }) => {
+    await page.goto("/setting")
+    const nav = page.getByRole("navigation", { name: "Settings navigation" })
+
+    await nav.getByRole("button", { name: "Display" }).click()
+    await expect(page.getByRole("heading", { level: 1, name: "Display" })).toBeVisible()
+
+    await nav.getByRole("button", { name: "Live/Video Notifications" }).click()
+    await expect(page.locator(".notification-settings")).toBeVisible()
+
+    await page.goBack()
+    await expect(page.getByRole("heading", { level: 1, name: "Display" })).toBeVisible()
+
+    await page.goForward()
+    await expect(page.locator(".notification-settings")).toBeVisible()
+  })
 })
