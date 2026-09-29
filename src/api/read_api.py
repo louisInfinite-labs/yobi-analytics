@@ -29,7 +29,9 @@ from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from tracking.creator_master import Creator, load_creators
+from api.holodex_client import holodex_get
+from api.holodex_normalization import normalize_holodex_live_response
+from tracking.creator_master import Creator, is_creator_live_roster_eligible, load_creators
 from analytics.history_ranking import ALL_PERIOD, PERIODS as SUMMARY_PERIODS
 from analytics.trending import (
     DAILY_TRENDING,
@@ -632,6 +634,70 @@ def _rank_topic_rows(rows: list[dict[str, Any]], organization: str, field: str) 
     them within that subset (#8) — rank 1 is that organization's own top
     creator for this topic, not its original global rank."""
     return _rank_rows([row for row in rows if row["organization"] == organization], field)
+
+
+# Yobi's own approved Holodex Live/Upcoming lookahead window: 7 days, not
+# Holodex's own 48-hour /live default (docs.holodex.net) -- a product
+# decision made ahead of this integration, confirmed with the user.
+_HOLODEX_MAX_UPCOMING_HOURS = 24 * 7
+
+
+def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
+    """`GET /live-streams`: current live/upcoming streams for Yobi's supported creators, sourced from Holodex.
+
+    One aggregate Holodex `/live` request for every live-roster-eligible
+    creator's channel at once (`channels=<comma-separated ids>`) — never one
+    request per creator. Holodex is queried directly here rather than
+    through any persisted store (DynamoDB/S3/cache): this is read-path
+    integration only, matching TrendingNotReadyError's "no live fallback"
+    precedent in reverse -- here Holodex itself *is* the live source, with
+    no persistence layer in front of it yet.
+
+    Eligibility reuses Creator Master's own is_creator_live_roster_eligible
+    (tracking/creator_master.py) -- the same rule already governing Live
+    Status/Live Schedule elsewhere -- rather than inventing a second
+    supported-creator definition here. A normalized stream whose channel
+    isn't in that eligible set (Holodex returning something unrequested,
+    e.g. a collab guest) is dropped defensively, the same "never guess"
+    posture normalize_holodex_stream itself already takes per-field.
+
+    Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError
+    on any Holodex failure rather than returning a fabricated empty result --
+    api_handler.py's dispatch maps these to 503, the same "external
+    dependency temporarily unavailable" treatment as TrendingNotReadyError.
+    """
+    eligible_creators = [creator for creator in load_creators() if is_creator_live_roster_eligible(creator)]
+    channel_index = {creator.youtube_channel_id: creator for creator in eligible_creators}
+    if not channel_index:
+        return {"streams": []}
+
+    raw_payload = holodex_get(
+        "/live",
+        {
+            "channels": ",".join(channel_index),
+            "max_upcoming_hours": str(_HOLODEX_MAX_UPCOMING_HOURS),
+        },
+    )
+    normalized_streams = normalize_holodex_live_response(raw_payload)
+
+    streams = []
+    for stream in normalized_streams:
+        creator = channel_index.get(stream.youtube_channel_id)
+        if creator is None:
+            continue
+        streams.append(
+            {
+                "videoId": stream.video_id,
+                "creatorId": creator.creator_id,
+                "channelName": stream.channel_name or creator.display_name,
+                "title": stream.title,
+                "status": stream.status,
+                "scheduledStart": stream.scheduled_start,
+                "actualStart": stream.actual_start,
+                "thumbnailUrl": stream.thumbnail_url,
+            }
+        )
+    return {"streams": streams}
 
 
 # The daily pipeline finishes around 18:00 JST, so an omitted reportDate would

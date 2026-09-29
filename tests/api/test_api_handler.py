@@ -8,8 +8,11 @@ from api import client_credential_api
 from stores import client_credential_store
 from api import heartbeat_api
 from stores import heartbeat_store
+from api.holodex_client import HolodexAPIError
+from api.holodex_normalization import HolodexNormalizationError
 from notifications import notification_dispatch
 from notifications import push_sender
+from ops.config import MissingHolodexApiKeyError
 from api import read_api
 from api import remote_config_api
 from stores import remote_config_store
@@ -904,3 +907,54 @@ def test_get_admin_heartbeat_stats_without_admin_key_returns_403(monkeypatch, ad
     response = lambda_handler(_event("GET /admin/heartbeat-stats"), None)
 
     assert response["statusCode"] == 403
+
+
+# --- GET /live-streams -----------------------------------------------------
+
+
+def test_get_live_streams_returns_200(monkeypatch):
+    monkeypatch.setattr(read_api, "get_live_streams", lambda query: {"streams": []})
+
+    response = lambda_handler(_event("GET /live-streams"), None)
+
+    assert response["statusCode"] == 200
+    assert _body(response) == {"streams": []}
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        HolodexAPIError("Holodex API request to '/live' timed out"),
+        HolodexNormalizationError("Expected a list from Holodex's /live response, got dict"),
+        MissingHolodexApiKeyError("Neither HOLODEX_SECRET_NAME nor HOLODEX_API_KEY is set."),
+    ],
+    ids=["client_failure", "normalization_failure", "missing_api_key"],
+)
+def test_get_live_streams_maps_every_holodex_failure_to_503_not_a_fabricated_result(monkeypatch, exc):
+    def _boom(query):
+        raise exc
+
+    monkeypatch.setattr(read_api, "get_live_streams", _boom)
+
+    response = lambda_handler(_event("GET /live-streams"), None)
+
+    assert response["statusCode"] == 503
+    assert _body(response)["code"] == "HOLODEX_UNAVAILABLE"
+    assert _body(response)["error"] == str(exc)
+
+
+def test_get_live_streams_calls_read_api_rather_than_duplicating_http_logic(monkeypatch):
+    """api_handler must delegate to read_api.get_live_streams, not call
+    holodex_client/holodex_normalization directly itself."""
+    captured = {}
+
+    def fake_get_live_streams(query):
+        captured["query"] = query
+        return {"streams": []}
+
+    monkeypatch.setattr(read_api, "get_live_streams", fake_get_live_streams)
+
+    response = lambda_handler(_event("GET /live-streams", query={"foo": "bar"}), None)
+
+    assert response["statusCode"] == 200
+    assert captured["query"] == {"foo": "bar"}
