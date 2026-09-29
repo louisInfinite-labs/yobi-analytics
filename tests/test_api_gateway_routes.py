@@ -17,12 +17,6 @@ def _terraform_routes() -> set[str]:
 # The exact-set assertion below fails when this list goes stale in either direction.
 _HANDLERS_WITHOUT_GATEWAY_ROUTE = {
     "GET /creators/{creatorId}/summary",
-    # Holodex backend integration (read-path only, per the task's own scope):
-    # code-complete but deliberately not wired into terraform/api_gateway.tf
-    # yet -- Terraform/deploy is explicitly a later step, to be done on the
-    # machine with AWS access. Remove this line as part of that step, not
-    # before it.
-    "GET /live-streams",
 }
 
 

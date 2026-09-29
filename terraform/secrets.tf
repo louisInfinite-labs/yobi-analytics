@@ -16,3 +16,11 @@ data "aws_secretsmanager_secret" "admin_api_key" {
 data "aws_secretsmanager_secret" "vapid_private_key" {
   name = "yobi-analytics/vapid-private-key"
 }
+
+# Same pattern: created manually (AWS CLI/Console) with the rotated Holodex
+# API key, never owned/rotated by Terraform. See ops.config.get_holodex_api_key
+# for the exact name this secret must have (HOLODEX_SECRET_NAME below) and its
+# expected format (a plain SecretString, not JSON).
+data "aws_secretsmanager_secret" "holodex_api_key" {
+  name = "yobi-analytics/holodex-api-key"
+}
