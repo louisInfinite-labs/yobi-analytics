@@ -1,16 +1,23 @@
-import { render, screen, within } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { LiveSchedulePage } from "./LiveSchedulePage"
 import { resetAllSharedStateForTests } from "../../shared/state/sharedState"
+import * as liveStreams from "../../shared/api/liveStreams"
+
+vi.mock("../../shared/api/liveStreams", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../shared/api/liveStreams")>()),
+  fetchLiveStreams: vi.fn(),
+}))
 
 beforeEach(() => {
   localStorage.setItem("yobi.locale", "en")
   resetAllSharedStateForTests()
+  vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue([])
 })
 
 describe("LiveSchedulePage", () => {
-  it("renders the page title, toolbar, and one column per day of the week", () => {
+  it("renders the page title, toolbar, and one column per day of the window", () => {
     const { container } = render(<LiveSchedulePage />)
 
     expect(screen.getByText("Live Schedule")).toBeInTheDocument()
@@ -20,9 +27,11 @@ describe("LiveSchedulePage", () => {
     expect(container.querySelectorAll(".day-column")).toHaveLength(7)
   })
 
-  it("renders the filter toolbar control as disabled (not wired to real behavior yet), with no manual timezone control", () => {
+  it("renders the week-navigation and filter toolbar controls as disabled -- this phase has no history/beyond-7-day data to page into", () => {
     render(<LiveSchedulePage />)
 
+    expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled()
     expect(screen.getByText("Filter").closest("button")).toBeDisabled()
     expect(screen.queryByText("JST")).not.toBeInTheDocument()
   })
@@ -30,8 +39,9 @@ describe("LiveSchedulePage", () => {
 
 describe("LiveSchedulePage timetable", () => {
   beforeEach(() => {
-    // Fix "now" (Wed 2026-09-23, local) so the displayed week is deterministic;
-    // only Date is faked, real timers keep user-event and React scheduling working.
+    // Fix "now" (Wed 2026-09-23, local) so the displayed window is
+    // deterministic; only Date is faked, real timers keep user-event, the
+    // shared live-streams poll, and React scheduling working.
     vi.useFakeTimers({ toFake: ["Date"] })
     vi.setSystemTime(new Date(2026, 8, 23, 12, 0, 0))
   })
@@ -39,12 +49,12 @@ describe("LiveSchedulePage timetable", () => {
     vi.useRealTimers()
   })
 
-  it("shows the Sunday-to-Saturday week containing today", () => {
+  it("shows today through the next 6 days, not a Sunday-aligned calendar week", () => {
     const { container } = render(<LiveSchedulePage />)
 
     const dayNames = Array.from(container.querySelectorAll(".day-name")).map((node) => node.textContent)
-    expect(dayNames).toEqual(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"])
-    expect(container.querySelector(".week-selector__label")).toHaveTextContent("Sep 20 - Sep 26")
+    expect(dayNames).toEqual(["Wed", "Thu", "Fri", "Sat", "Sun", "Mon", "Tue"])
+    expect(container.querySelector(".week-selector__label")).toHaveTextContent("Sep 23 - Sep 29")
     expect(container.querySelectorAll(".schedule-day-header.is-today")).toHaveLength(1)
     expect(container.querySelector(".schedule-day-header.is-today .day-name")).toHaveTextContent("Wed")
   })
@@ -63,22 +73,22 @@ describe("LiveSchedulePage timetable", () => {
     }
   })
 
-  it("pages between weeks with the Previous/Next buttons", async () => {
-    const user = userEvent.setup()
-    const { container } = render(<LiveSchedulePage />)
-    const label = () => container.querySelector(".week-selector__label")!.textContent
-
-    await user.click(screen.getByRole("button", { name: "Next week" }))
-    expect(label()).toBe("Sep 27 - Oct 3")
-
-    await user.click(screen.getByRole("button", { name: "Previous week" }))
-    await user.click(screen.getByRole("button", { name: "Previous week" }))
-    expect(label()).toBe("Sep 13 - Sep 19")
-  })
-
   it("opens the stream detail dialog from an avatar with creator, title and both actions, and closes it with Escape", async () => {
-    const user = userEvent.setup()
+    vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue([
+      {
+        videoId: "v1",
+        creatorId: "aizawa_ema",
+        channelName: "藍沢エマ",
+        title: "Ranked grind",
+        status: "live",
+        scheduledStart: null,
+        actualStart: new Date(2026, 8, 23, 12, 0, 0).toISOString(),
+        thumbnailUrl: "https://img.youtube.com/vi/v1/hqdefault.jpg",
+      },
+    ])
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const { container } = render(<LiveSchedulePage />)
+    await waitFor(() => expect(container.querySelector(".stream-avatar-button")).toBeInTheDocument())
 
     await user.click(container.querySelector<HTMLElement>(".stream-avatar-button")!)
 
@@ -93,8 +103,21 @@ describe("LiveSchedulePage timetable", () => {
   })
 
   it("Open Stream swaps the detail dialog for the player-only video modal, which closes on a backdrop click", async () => {
-    const user = userEvent.setup()
+    vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue([
+      {
+        videoId: "v1",
+        creatorId: "aizawa_ema",
+        channelName: "藍沢エマ",
+        title: "Ranked grind",
+        status: "live",
+        scheduledStart: null,
+        actualStart: new Date(2026, 8, 23, 12, 0, 0).toISOString(),
+        thumbnailUrl: "https://img.youtube.com/vi/v1/hqdefault.jpg",
+      },
+    ])
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const { container } = render(<LiveSchedulePage />)
+    await waitFor(() => expect(container.querySelector(".stream-avatar-button")).toBeInTheDocument())
     await user.click(container.querySelector<HTMLElement>(".stream-avatar-button")!)
 
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Open Stream" }))

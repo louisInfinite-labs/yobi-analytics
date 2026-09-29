@@ -15,7 +15,7 @@ import "./styles/schedule.css"
  * than building its own sidebar/full-viewport shell. */
 export function LiveSchedulePage() {
   const [locale] = useLocale()
-  const { weekStart, days, now, goToPreviousWeek, goToNextWeek } = useWeeklySchedule()
+  const { weekStart, days, now } = useWeeklySchedule()
   const [selectedStream, setSelectedStream] = useState<ScheduledStream | null>(null)
   const [embed, setEmbed] = useState<{ videoId: string; title: string } | null>(null)
 
@@ -37,7 +37,7 @@ export function LiveSchedulePage() {
           <div className="schedule-subtitle">{t(locale, "liveSchedule.pageSubtitle")}</div>
         </div>
 
-        <ScheduleToolbar locale={locale} weekStart={weekStart} onPreviousWeek={goToPreviousWeek} onNextWeek={goToNextWeek} />
+        <ScheduleToolbar locale={locale} weekStart={weekStart} />
       </header>
 
       <ScheduleGrid locale={locale} days={days} now={now} selectedStreamId={selectedStream?.id ?? null} onSelectStream={setSelectedStream} />

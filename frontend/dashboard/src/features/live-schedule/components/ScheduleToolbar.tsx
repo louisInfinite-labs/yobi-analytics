@@ -4,8 +4,6 @@ import { t, type Locale } from "../../../shared/i18n/translations"
 interface ScheduleToolbarProps {
   locale: Locale
   weekStart: Date
-  onPreviousWeek: () => void
-  onNextWeek: () => void
 }
 
 function formatWeekRange(weekStart: Date, locale: Locale): string {
@@ -22,16 +20,19 @@ function formatWeekRange(weekStart: Date, locale: Locale): string {
  * isn't wired to real behavior (no filtering logic exists to back it) --
  * native `disabled` rather than a fake, clickable no-op, same "don't
  * pretend to be functional" call already made for Home's Oshi Videos View
- * All button. */
-export function ScheduleToolbar({ locale, weekStart, onPreviousWeek, onNextWeek }: ScheduleToolbarProps) {
+ * All button. The week-selector arrows are disabled the same way: this
+ * phase's data is always the backend's own fixed today-through-+6-day
+ * window (GET /live-streams' 168-hour lookahead, no persisted history), so
+ * there is nothing to page back or forward into. */
+export function ScheduleToolbar({ locale, weekStart }: ScheduleToolbarProps) {
   return (
     <div className="schedule-toolbar">
       <div className="week-selector schedule-control">
-        <button type="button" className="week-selector__arrow" onClick={onPreviousWeek} aria-label={t(locale, "liveSchedule.prevWeekAria")}>
+        <button type="button" className="week-selector__arrow" disabled aria-label={t(locale, "liveSchedule.prevWeekAria")}>
           <ChevronLeft size={16} />
         </button>
         <span className="week-selector__label">{formatWeekRange(weekStart, locale)}</span>
-        <button type="button" className="week-selector__arrow" onClick={onNextWeek} aria-label={t(locale, "liveSchedule.nextWeekAria")}>
+        <button type="button" className="week-selector__arrow" disabled aria-label={t(locale, "liveSchedule.nextWeekAria")}>
           <ChevronRight size={16} />
         </button>
       </div>

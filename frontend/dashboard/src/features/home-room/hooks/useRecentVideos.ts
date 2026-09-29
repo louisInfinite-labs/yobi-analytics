@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { getRecentVideosForCreator } from "../data/mockRecentVideos"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
-import { fetchArchivedStreamsFromHolodex, fetchUploadedVideosFromHolodex, type HolodexPage } from "../../../integrations/holodex/holodexClient"
+import { fetchUploadedVideosFromHolodex, type HolodexPage } from "../../../integrations/holodex/holodexClient"
+import { useLiveStreams } from "../../../shared/api/hooks/useLiveStreams"
+import type { LiveStreamDto } from "../../../shared/api/liveStreams"
 
 /** C6's real-fetch scope is intentionally still just gawr_gura -- the
  * original hand-picked local-testing case (this session's own request to
@@ -137,8 +139,70 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
 interface UseRecentVideosResult {
   /** "Latest Videos" — plain (non-stream) uploads only. */
   latestVideos: VideoPage
-  /** "Latest Live" — live-now/upcoming + archived streams only. */
+  /** "Latest Live" — the creator's current live/upcoming stream, if any, from
+   * the shared /live-streams store. See useLiveStreamVideoPool's own
+   * docstring for why this intentionally no longer includes past/archived
+   * streams. */
   streamVideos: VideoPage
+}
+
+/** One /live-streams item as a RecentVideo -- publishedAt prefers
+ * actualStart (when it actually went live) over scheduledStart, the same
+ * fallback order holodexClient.ts's own mapVideo already uses for its real
+ * Holodex-fetched entries. contentFormat maps status the same way mapVideo
+ * does ("live"->"live_now", "upcoming"->"live_upcoming") so
+ * recentVideosSelection.ts's existing selectLivestreamSlots (which only
+ * ever looks for "live_now"/"live_archive") needs no changes at all -- an
+ * "upcoming" entry is simply not selected by it, exactly as before this
+ * migration (a real Holodex "upcoming" item was never surfaced there either). */
+function toRecentVideo(dto: LiveStreamDto): RecentVideo {
+  return {
+    videoId: dto.videoId,
+    title: dto.title,
+    publishedAt: dto.actualStart ?? dto.scheduledStart ?? new Date(0).toISOString(),
+    contentFormat: dto.status === "live" ? "live_now" : "live_upcoming",
+  }
+}
+
+/** "Latest Live" real data source: the SAME shared /live-streams store Home's
+ * Live Status/Oshi Status/player switching and Schedule already read --
+ * never a second fetch, never holodex.net directly, never a Holodex API key
+ * in this pool. selectLivestreamSlots (recentVideosSelection.ts) is
+ * untouched and still decides what actually renders from whatever this
+ * returns.
+ *
+ * INTENTIONAL LIMITATION, not a bug: /live-streams only ever contains live
+ * and upcoming streams (no persistence layer backs it) -- so this pool
+ * contains at most that one creator's current live/upcoming stream, never
+ * anything past/archived. A creator with no live or upcoming stream right
+ * now renders an empty "Latest Live" row. This replaces what used to be up
+ * to ~5 slots (1 live + up to 4 recent archives, from either mock data or a
+ * direct browser->holodex.net fetch for one hand-picked test creator) --
+ * that reduction is accepted for this phase in exchange for removing the
+ * insecure direct-Holodex dependency and its browser-exposed API key.
+ *
+ * Do NOT "fix" this by restoring a browser-direct Holodex archive request,
+ * and do NOT add a new backend endpoint from this frontend branch. Historical
+ * archives belong behind a future server-side endpoint (e.g. a new
+ * `GET /recent-streams` or an extension of an existing one) built and owned
+ * on the backend, once that work is actually scoped -- not by reaching back
+ * out to Holodex directly from here. */
+function useLiveStreamVideoPool(creatorId: string): VideoPage {
+  const canonicalCreatorId = resolveCreatorKey(creatorId)?.creatorId
+  const { streams, isLoading, error } = useLiveStreams()
+
+  const videos = useMemo(
+    () => (canonicalCreatorId ? streams.filter((stream) => stream.creatorId === canonicalCreatorId).map(toRecentVideo) : []),
+    [streams, canonicalCreatorId],
+  )
+
+  return {
+    videos,
+    loading: isLoading,
+    error: error ? new Error(error) : null,
+    loadMore: () => {},
+    hasMore: false,
+  }
 }
 
 /** Mock data by default; real, independently-paginated Holodex data for the
@@ -157,6 +221,6 @@ interface UseRecentVideosResult {
 export function useRecentVideos(creatorId: string): UseRecentVideosResult {
   const holodexChannelId = resolveHolodexChannelId(creatorId)
   const latestVideos = usePaginatedVideos(creatorId, holodexChannelId, fetchUploadedVideosFromHolodex)
-  const streamVideos = usePaginatedVideos(creatorId, holodexChannelId, fetchArchivedStreamsFromHolodex)
+  const streamVideos = useLiveStreamVideoPool(creatorId)
   return { latestVideos, streamVideos }
 }

@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 import { resetLiveDockExpandedForTests } from "../features/live-status/hooks/useLiveDockExpanded"
 import { resetHomeSelectedVideoForTests } from "../features/home-room/hooks/useHomeSelectedVideo"
 import { resetAllSharedStateForTests } from "../shared/state/sharedState"
+import { resetLiveStreamsPollingForTests } from "../shared/api/liveStreamsPollState"
 
 // @testing-library/react's own auto-cleanup only self-registers when
 // `afterEach` is a global (vitest's `test.globals: true`); this project
@@ -27,6 +28,11 @@ afterEach(() => {
   // Same reasoning as useLiveDockExpanded above -- Home's selected-video
   // singleton is deliberately not persisted either.
   resetHomeSelectedVideoForTests()
+  // liveStreamsStore's poll ref-count/interval handle are the same kind of
+  // non-persisted module-level singleton, separate from its
+  // createSharedState-backed value (already covered by
+  // resetAllSharedStateForTests above).
+  resetLiveStreamsPollingForTests()
 })
 
 // jsdom has no matchMedia implementation; components that read
