@@ -1,9 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
 from api import read_api
+from api.holodex_client import HolodexAPIError
+from api.holodex_normalization import HolodexNormalizationError
 from tracking.creator_master import Creator
 from api.read_api import (
     ClientError,
@@ -13,6 +15,7 @@ from api.read_api import (
     _load_videos_for_creators,
     _trending_response,
     get_creator_trending,
+    get_live_streams,
     get_organization_trending,
     get_video_growth,
     parse_creator_id,
@@ -1013,3 +1016,280 @@ def test_get_organization_trending_rejects_every_invalid_param_before_touching_s
 
     with pytest.raises(ClientError):
         get_organization_trending(query)
+
+
+# ============ get_live_streams (Holodex read-path integration) ============
+# Only holodex_get (the actual HTTP boundary, api/holodex_client.py) is ever
+# mocked below -- normalize_holodex_live_response/normalize_holodex_stream
+# (api/holodex_normalization.py) run for real, so these tests exercise the
+# same normalization this endpoint runs in production, not a stand-in for it.
+
+
+def _holodex_item(*, video_id="v1", status="live", channel_id="UC_test", channel_name="藍沢エマ", **overrides):
+    """Build one raw Holodex /users/live item, shaped like the real documented response."""
+    item = {
+        "id": video_id,
+        "status": status,
+        "channel": {"id": channel_id, "name": channel_name},
+        "title": "Test Stream",
+        "start_scheduled": None,
+        "start_actual": "2026-09-01T10:00:00Z" if status == "live" else None,
+    }
+    item.update(overrides)
+    return item
+
+
+def test_get_live_streams_returns_a_live_stream_for_a_supported_creator(monkeypatch):
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    captured = {}
+
+    def fake_holodex_get(path, params=None):
+        captured["path"], captured["params"] = path, params
+        return [_holodex_item(status="live")]
+
+    monkeypatch.setattr(read_api, "holodex_get", fake_holodex_get)
+
+    result = get_live_streams()
+
+    assert captured["path"] == "/users/live"
+    assert result == {
+        "streams": [
+            {
+                "videoId": "v1",
+                "creatorId": "aizawa_ema",
+                "channelName": "藍沢エマ",
+                "title": "Test Stream",
+                "status": "live",
+                "scheduledStart": None,
+                "actualStart": "2026-09-01T10:00:00+00:00",
+                "thumbnailUrl": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+            }
+        ]
+    }
+
+
+def test_get_live_streams_returns_an_upcoming_stream_for_a_supported_creator(monkeypatch):
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    monkeypatch.setattr(
+        read_api,
+        "holodex_get",
+        lambda path, params=None: [_holodex_item(status="upcoming", start_scheduled="2026-09-02T09:00:00Z")],
+    )
+
+    result = get_live_streams()
+
+    assert len(result["streams"]) == 1
+    assert result["streams"][0]["status"] == "upcoming"
+    assert result["streams"][0]["scheduledStart"] == "2026-09-02T09:00:00+00:00"
+
+
+def test_get_live_streams_retains_an_upcoming_stream_within_the_168_hour_lookahead(monkeypatch):
+    """/users/live has no lookahead limit of its own (a live probe found upcoming
+    entries scheduled over 700 days out) -- Yobi's 7-day window is enforced
+    locally, so an upcoming stream just inside it must still be retained."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    scheduled_at = datetime.now(timezone.utc) + timedelta(hours=167)
+    monkeypatch.setattr(
+        read_api,
+        "holodex_get",
+        lambda path, params=None: [
+            _holodex_item(status="upcoming", start_scheduled=scheduled_at.isoformat().replace("+00:00", "Z"))
+        ],
+    )
+
+    result = get_live_streams()
+
+    assert len(result["streams"]) == 1
+    assert result["streams"][0]["status"] == "upcoming"
+
+
+def test_get_live_streams_excludes_an_upcoming_stream_beyond_the_168_hour_lookahead(monkeypatch):
+    """The same local window must actually exclude what it's supposed to --
+    /users/live returning a stream scheduled well beyond 7 days out (which it
+    does, unlike /live, since it applies no lookahead cutoff of its own) must
+    not leak into the response just because Holodex included it."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    scheduled_at = datetime.now(timezone.utc) + timedelta(hours=169)
+    monkeypatch.setattr(
+        read_api,
+        "holodex_get",
+        lambda path, params=None: [
+            _holodex_item(status="upcoming", start_scheduled=scheduled_at.isoformat().replace("+00:00", "Z"))
+        ],
+    )
+
+    assert get_live_streams() == {"streams": []}
+
+
+def test_get_live_streams_always_retains_live_regardless_of_scheduled_start(monkeypatch):
+    """The 168-hour lookahead only governs "upcoming" -- a "live" stream is
+    already happening and must never be excluded by it, even if its (now
+    historical) scheduled_start happens to be missing or far in the past."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    monkeypatch.setattr(
+        read_api, "holodex_get", lambda path, params=None: [_holodex_item(status="live", start_scheduled=None)]
+    )
+
+    result = get_live_streams()
+
+    assert len(result["streams"]) == 1
+    assert result["streams"][0]["status"] == "live"
+
+
+def test_get_live_streams_excludes_an_upcoming_stream_with_an_unparsable_scheduled_start(monkeypatch):
+    """An upcoming item this project cannot confirm is due within the window
+    must not be shown as if it were -- excluded defensively, same posture as
+    normalize_holodex_stream's own per-field degradation, never a crash."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    monkeypatch.setattr(
+        read_api,
+        "holodex_get",
+        lambda path, params=None: [_holodex_item(status="upcoming", start_scheduled="not-a-timestamp")],
+    )
+
+    assert get_live_streams() == {"streams": []}
+
+
+def test_get_live_streams_filters_out_a_channel_holodex_returns_that_is_not_supported(monkeypatch):
+    """Defense-in-depth: even though the request itself only asks Holodex for
+    eligible channels, a normalized item for an unrequested/unsupported
+    channel (e.g. an unmapped collab guest) must never leak into the result."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    monkeypatch.setattr(
+        read_api,
+        "holodex_get",
+        lambda path, params=None: [_holodex_item(channel_id="UC_unsupported_guest")],
+    )
+
+    result = get_live_streams()
+
+    assert result == {"streams": []}
+
+
+def test_get_live_streams_excludes_an_ineligible_creator_from_the_request_itself(monkeypatch):
+    """A graduated creator is a real Creator Master identity but not
+    live-roster-eligible -- must not appear in the Holodex `channels` param."""
+    monkeypatch.setattr(
+        read_api,
+        "load_creators",
+        lambda: [
+            _creator(creator_id="active_one", youtube_channel_id="UC_active"),
+            _creator(creator_id="graduated_one", youtube_channel_id="UC_graduated", lifecycle_stage="graduated"),
+        ],
+    )
+    captured = {}
+
+    def fake_holodex_get(path, params=None):
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(read_api, "holodex_get", fake_holodex_get)
+
+    get_live_streams()
+
+    assert captured["params"]["channels"] == "UC_active"
+
+
+def test_get_live_streams_skips_the_holodex_call_entirely_when_no_creator_is_eligible(monkeypatch):
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(lifecycle_stage="graduated")])
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("Holodex must not be called when there is nothing to ask it about")
+
+    monkeypatch.setattr(read_api, "holodex_get", _boom)
+
+    assert get_live_streams() == {"streams": []}
+
+
+def test_get_live_streams_returns_empty_for_a_genuinely_empty_holodex_result(monkeypatch):
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [])
+
+    assert get_live_streams() == {"streams": []}
+
+
+def test_get_live_streams_propagates_holodex_client_failure_without_fabricating_a_result(monkeypatch):
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+
+    def _boom(path, params=None):
+        raise HolodexAPIError("Holodex API request to '/live' timed out")
+
+    monkeypatch.setattr(read_api, "holodex_get", _boom)
+
+    with pytest.raises(HolodexAPIError):
+        get_live_streams()
+
+
+def test_get_live_streams_propagates_an_unexpected_top_level_shape_as_normalization_error(monkeypatch):
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    # Not a list -- the documented Holodex /users/live shape -- so real
+    # normalize_holodex_live_response (not mocked) must raise, not coerce it.
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: {"error": "rate limited"})
+
+    with pytest.raises(HolodexNormalizationError):
+        get_live_streams()
+
+
+def test_get_live_streams_tolerates_one_malformed_item_alongside_valid_ones(monkeypatch):
+    monkeypatch.setattr(
+        read_api,
+        "load_creators",
+        lambda: [_creator(creator_id="aizawa_ema", youtube_channel_id="UC_test")],
+    )
+    monkeypatch.setattr(
+        read_api,
+        "holodex_get",
+        lambda path, params=None: [
+            {"status": "live", "channel": {"id": "UC_test"}},  # missing "id" -- dropped, not a crash
+            _holodex_item(video_id="v2", status="live"),
+        ],
+    )
+
+    result = get_live_streams()
+
+    assert [stream["videoId"] for stream in result["streams"]] == ["v2"]
+
+
+def test_get_live_streams_makes_exactly_one_aggregate_holodex_request_for_every_eligible_creator(monkeypatch):
+    """Never one Holodex request per creator -- a single /users/live call
+    carrying every eligible creator's channel id in one `channels` param."""
+    creators = [_creator(creator_id=f"creator_{i}", youtube_channel_id=f"UC_{i}") for i in range(5)]
+    monkeypatch.setattr(read_api, "load_creators", lambda: creators)
+    calls = []
+
+    def fake_holodex_get(path, params=None):
+        calls.append((path, params))
+        return []
+
+    monkeypatch.setattr(read_api, "holodex_get", fake_holodex_get)
+
+    get_live_streams()
+
+    assert len(calls) == 1
+    path, params = calls[0]
+    assert path == "/users/live"
+    assert set(params["channels"].split(",")) == {f"UC_{i}" for i in range(5)}
+
+
+def test_get_live_streams_uses_the_documented_users_live_endpoint_with_channels_param(monkeypatch):
+    """/live only documents `channel_id` (singular); Holodex documents the
+    `channels` (comma-separated) filter for /users/live -- verified against
+    the real API (2026-09-29): the same `channels=` request against /live
+    silently ignored the filter and returned platform-wide results (806
+    distinct channels for a 97-channel request), while /users/live correctly
+    scoped its response to only the requested channels. No max_upcoming_hours
+    is sent -- a live probe confirmed /users/live doesn't honor it anyway."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    captured = {}
+
+    def fake_holodex_get(path, params=None):
+        captured["path"], captured["params"] = path, params
+        return []
+
+    monkeypatch.setattr(read_api, "holodex_get", fake_holodex_get)
+
+    get_live_streams()
+
+    assert captured["path"] == "/users/live"
+    assert captured["params"] == {"channels": "UC_test"}
+    assert "max_upcoming_hours" not in captured["params"]

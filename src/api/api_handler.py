@@ -55,9 +55,12 @@ from api import client_credential_api
 from stores import client_credential_store
 from api import comparison_api
 from ops import config
+from ops.config import MissingHolodexApiKeyError
 from api import dashboard_catalog_api
 from api import heartbeat_api
 from stores import heartbeat_store
+from api.holodex_client import HolodexAPIError
+from api.holodex_normalization import HolodexNormalizationError
 from notifications import notification_dispatch
 from notifications import push_sender
 from api import read_api
@@ -132,6 +135,20 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return _json_response(503, {"error": str(exc)})
     except read_api.RankingNotReadyError as exc:
         return _json_response(503, {"error": str(exc), "code": "RANKING_NOT_READY"})
+    except (HolodexAPIError, HolodexNormalizationError, MissingHolodexApiKeyError) as exc:
+        # Holodex is a supplementary, best-effort external dependency with
+        # no uptime guarantee (Roadmap 3.9/9) -- a request failure, an
+        # unrecognized response shape, or a missing/unreadable API key are
+        # all "the data isn't available right now", the same 503 treatment
+        # as TrendingNotReadyError above, never a fabricated empty result.
+        # str(exc) is logged server-side only, never returned to the client --
+        # HolodexAPIError can carry Holodex's own raw response text and
+        # MissingHolodexApiKeyError can carry Secrets Manager failure
+        # details, neither of which is safe to hand to a public caller (same
+        # posture as _check_admin_key's MissingAdminApiKeyError handling
+        # below).
+        print(f"Warning: Holodex live-streams request failed ({type(exc).__name__}): {exc}")
+        return _json_response(503, {"error": "Live stream data is temporarily unavailable", "code": "HOLODEX_UNAVAILABLE"})
     except _ForbiddenError as exc:
         return _json_response(403, {"error": str(exc)})
     except _CLIENT_ERROR_TYPES as exc:
@@ -185,6 +202,10 @@ def _handle_get_global_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
 
 def _handle_get_topic_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_topic_leaderboard(_merged_params(event))
+
+
+def _handle_get_live_streams(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_live_streams(_merged_params(event))
 
 
 def _handle_post_heartbeat(event: dict[str, Any]) -> dict[str, Any]:
@@ -334,6 +355,7 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /organizations/{organization}/leaderboard": _handle_get_organization_leaderboard,
     "GET /leaderboard": _handle_get_global_leaderboard,
     "GET /topics/{topic}/leaderboard": _handle_get_topic_leaderboard,
+    "GET /live-streams": _handle_get_live_streams,
     "POST /heartbeat": _handle_post_heartbeat,
     "GET /heartbeat/{clientId}/status": _handle_get_heartbeat_status,
     "POST /clients/{clientId}/credential": _handle_post_client_credential,

@@ -90,6 +90,7 @@ resource "aws_lambda_function" "api" {
     variables = {
       YOBI_ADMIN_API_KEY_SECRET_NAME = "yobi-analytics/admin-api-key"
       YOBI_STORAGE_BACKEND           = "dynamodb"
+      HOLODEX_SECRET_NAME            = "yobi-analytics/holodex-api-key"
     }
   }
 
