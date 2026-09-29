@@ -1,18 +1,18 @@
-import { useState } from "react"
 import { MyOshiSettings } from "../../features/oshi/components/MyOshiSettings"
 import { NotificationSettings } from "../../features/notifications/components/NotificationSettings"
 import { OshiSettings } from "../../features/oshi/components/OshiSettings"
 import { DisplaySettings } from "./DisplaySettings"
-import { SettingsSecondaryNavbar, type SettingsSection } from "./SettingsSecondaryNavbar"
+import { SettingsSecondaryNavbar } from "./SettingsSecondaryNavbar"
+import { useSettingsSection } from "./useSettingsSection"
 
 /** Settings' own [MainNavbar] [SettingsSecondaryNavbar] [Content] layout
  * (MainNavbar is mounted one level up, in App.tsx -- this renders the
- * other two). Which section is active is plain local state, not part of
- * the URL, since nothing else needs to deep-link into a specific
- * settings section today -- defaults to OshiSettings per this feature's
- * own spec. */
+ * other two). Which section is active lives in this page's own URL (see
+ * useSettingsSection.ts), not plain local state, so it survives a full
+ * reload -- defaults to OshiSettings per this feature's own spec whenever
+ * no section is addressed yet. */
 export function SettingsPage() {
-  const [activeSection, setActiveSection] = useState<SettingsSection>("oshi")
+  const [activeSection, setActiveSection] = useSettingsSection()
   const contentClassName = [
     "settings-page__content",
     activeSection === "myOshi" ? "settings-page__content--main-oshi" : "",

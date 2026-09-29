@@ -15,6 +15,13 @@ function renderSettingsPage() {
 }
 
 beforeEach(() => {
+  // The active section now lives in the URL (see useSettingsSection.ts),
+  // so it persists across jsdom's own shared window within this file the
+  // same way it would persist across a real reload -- reset it before
+  // every test the same way MainNavbar.test.tsx already resets its own
+  // page-level path, or a later test would inherit whichever section a
+  // prior test navigated to.
+  window.history.pushState({}, "", "/setting")
   localStorage.setItem("yobi.locale", "en")
   resetAllSharedStateForTests()
 })
