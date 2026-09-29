@@ -1386,6 +1386,17 @@ def test_get_recent_streams_has_more_true_when_archive_count_reaches_limit(monke
     assert result["hasMore"] is True
 
 
+@pytest.mark.parametrize("discarded_item", [None, {}, _archived_item(video_id=""), _archived_item(channel=None)])
+def test_get_recent_streams_has_more_uses_raw_count_when_normalization_discards_items(monkeypatch, discarded_item):
+    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator())
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_archived_item(), discarded_item])
+
+    result = get_recent_streams({"creatorId": "aizawa_ema", "limit": "2"})
+
+    assert [stream["videoId"] for stream in result["streams"]] == ["v1"]
+    assert result["hasMore"] is True
+
+
 def test_get_recent_streams_has_more_false_when_archive_count_is_below_limit(monkeypatch):
     monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_test"))
     monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_archived_item()])
@@ -1473,10 +1484,12 @@ def test_get_recent_streams_response_contains_only_the_requested_creator(monkeyp
         ],
     )
 
-    result = get_recent_streams({"creatorId": "aizawa_ema"})
+    result = get_recent_streams({"creatorId": "aizawa_ema", "limit": "2"})
 
+    assert [stream["videoId"] for stream in result["streams"]] == ["v1"]
     assert {stream["creatorId"] for stream in result["streams"]} == {"aizawa_ema"}
     assert result["creatorId"] == "aizawa_ema"
+    assert result["hasMore"] is True
 
 
 def test_get_recent_streams_never_introduces_live_or_upcoming_fields(monkeypatch):

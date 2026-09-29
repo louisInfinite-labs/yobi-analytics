@@ -818,9 +818,9 @@ def get_recent_streams(query: dict[str, Any]) -> dict[str, Any]:
     fetchArchivedStreamsFromHolodex used for its archive page (never
     live/upcoming; that request stays entirely inside get_live_streams).
 
-    hasMore is derived from the archive result's own count against `limit`
-    (`len(archived) >= limit`), the same rule the frontend's own HolodexPage
-    used -- deliberately independent of anything from /live-streams, which
+    hasMore is derived from the raw Holodex page count against `limit`
+    (`len(raw_payload) >= limit`), so normalization and channel filtering
+    do not affect pagination. It is independent of /live-streams, which
     this endpoint never touches.
 
     Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError
@@ -861,8 +861,9 @@ def get_recent_streams(query: dict[str, Any]) -> dict[str, Any]:
             "publishedAt": item.published_at,
         }
         for item in archived
+        if item.youtube_channel_id == creator.youtube_channel_id
     ]
-    return {"creatorId": creator.creator_id, "streams": streams, "hasMore": len(archived) >= limit}
+    return {"creatorId": creator.creator_id, "streams": streams, "hasMore": len(raw_payload) >= limit}
 
 
 # The daily pipeline finishes around 18:00 JST, so an omitted reportDate would
