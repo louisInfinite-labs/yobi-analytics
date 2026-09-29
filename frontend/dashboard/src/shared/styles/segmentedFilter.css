@@ -1,0 +1,129 @@
+/* ============ Shared Segmented filter visual style ============
+   Extracted from Notification Settings' own Live Reminder Time control
+   (pages/settings/styles/settings.css's .notification-reminder-options),
+   confirmed with the user as the visual source of truth -- literal
+   resolved color/size values, not CSS custom properties, since this class
+   is also used outside that page's own --notification-* custom-property
+   scope (Favorites/Live Status don't sit inside .notification-settings-page's
+   own subtree, so those page-scoped vars can't reach them). Every value
+   below was read via getComputedStyle() on the real source control, not
+   assumed from its CSS source (see each rule's own comment for what was
+   actually measured and why it needed an explicit override here).
+
+   Owns the COMPLETE visual+interaction skin: root geometry, item geometry
+   and internal centering, all state colors (normal/hover/active/selected/
+   selected-hover/focus-visible). A consumer's own CSS may only add pure
+   external layout (width, flex-basis/grow, item-count-driven distribution,
+   surrounding margin) -- confirmed with the user: this is deliberately NOT
+   "shared base + per-page visual tweaks", since that pattern is exactly
+   what caused the earlier mismatch (hover color, vertical centering, and
+   focus-ring color all silently lost to Ant Design's own higher-specificity
+   generated CSS). Reused, not copy-pasted, by all three: Notification
+   Settings' own Reminder Time control, Favorites' All/Favorites toggle,
+   and Live Status' All/Favorites toggle. */
+.shared-filter-segmented.ant-segmented {
+  background: #201c24;
+  border: 1px solid #34303b;
+  border-radius: 6px;
+  padding: 2px;
+
+  /* Ant Design's :focus-visible outline reads --ant-color-primary-border,
+     a per-ConfigProvider-generated custom property derived from that
+     provider's own token.colorPrimary -- Notification Settings, Favorites,
+     and Live Status each set (or omit) colorPrimary differently, which
+     would otherwise make the focus ring color diverge between all three.
+     Measured on the source control (colorPrimary #5a5261 -> this resolved
+     value) and pinned here rather than touching colorPrimary itself, which
+     also drives unrelated controls (Checkbox, etc.) on the consuming
+     pages. */
+  --ant-color-primary-border: #847f87;
+
+  /* --ant-segmented-item-selected-bg/-hover-bg are Ant Design's OWN
+     internal tokens, read by BOTH the static .ant-segmented-item-selected
+     rule below AND, critically, .ant-segmented-thumb -- the separate,
+     absolutely-positioned element Ant Design mounts only while the
+     selection is animating (confirmed: it wasn't in the DOM at rest, only
+     appeared mid-transition). Overriding the .ant-segmented-item-selected
+     *property* directly (below) never touched this variable, so the
+     literal property win there was cosmetic: the moving thumb kept
+     reading the ConfigProvider's own raw value underneath -- on Live
+     Status specifically, itemSelectedBg is
+     color-mix(in srgb, var(--creator-main) 18%, var(--oshi-surface-3)),
+     confirmed via getComputedStyle() to resolve to a creator-tinted color
+     during the ALL<->收藏 slide. Overriding the variable itself here fixes
+     every consumer of it, thumb included, everywhere this class is used --
+     not a Live-Status-only patch. Same reasoning for hover-bg (the
+     .ant-segmented-item:hover::after overlay also reads its own variable
+     directly, never the plain `background` property). */
+  --ant-segmented-item-selected-bg: #37303d;
+  --ant-segmented-item-hover-bg: color-mix(in srgb, #f3eff7 8%, transparent);
+}
+
+/* Defense-in-depth alongside the --ant-segmented-item-selected-bg override
+   above: pins the thumb's own background directly too, in case a future
+   Ant Design version reads a literal fallback instead of (or in addition
+   to) the variable. Never themed, never creator-derived. */
+.shared-filter-segmented .ant-segmented-thumb {
+  background: #37303d;
+}
+
+/* display/align-items/justify-content center the label vertically and
+   horizontally -- Ant Design itself does not set `display` on
+   .ant-segmented-item at all (confirmed: no other stylesheet rule targets
+   it), so without this, the item is a plain block box and its 28px-tall
+   label sits flush at the top of the 36px item instead of centered. This
+   was the actual cause of Favorites/Live Status' vertical-centering bug:
+   the label's OWN geometry (min-height/line-height/padding, all from Ant
+   Design's own calc()-driven defaults, confirmed identical across all
+   three controls by measurement) was never the problem. */
+.shared-filter-segmented .ant-segmented-item {
+  min-height: 36px;
+  border-radius: 4px;
+  color: #ddd7e2;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.2s;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+/* Hover changes text color only, no background. Ant Design's own generated
+   hover rule is :where(<hashed ConfigProvider class>).ant-segmented
+   .ant-segmented-item:not(.ant-segmented-item-selected):not(.ant-segmented-item-disabled):hover
+   -- :where() zeroes the hashed class's own specificity, but the rest
+   still totals 5 (confirmed by inspecting document.styleSheets directly,
+   not assumed): .ant-segmented + .ant-segmented-item + two :not() + :hover.
+   Our own root/selected-item rules below only tie antd's equivalent ones
+   (2 vs 2) and still win because this stylesheet loads after antd's
+   ConfigProvider-injected one, but a plain 4-deep hover selector loses
+   outright regardless of load order. Matching antd's own :not(...disabled)
+   clause brings this to the same 5, which reliably wins the same way. */
+.shared-filter-segmented .ant-segmented-item:not(.ant-segmented-item-selected):not(.ant-segmented-item-disabled):hover {
+  color: #f3eff7;
+  background: transparent;
+}
+
+.shared-filter-segmented .ant-segmented-item:not(.ant-segmented-item-selected):not(.ant-segmented-item-disabled):hover .ant-segmented-item-label {
+  background: transparent;
+}
+
+.shared-filter-segmented .ant-segmented-item-selected {
+  background: #37303d;
+  color: #f1edf3;
+}
+
+/* active/mousedown (Ant Design's own .ant-segmented-item:active::after,
+   reading --ant-segmented-item-active-bg) and the item label's own
+   geometry (min-height/line-height/padding, calc()-derived from
+   --ant-control-height/--ant-segmented-track-padding) were measured and
+   confirmed ALREADY identical across all three controls without any
+   override needed here -- none of Notification Settings/Favorites/Live
+   Status' own ConfigProviders customize --ant-segmented-item-active-bg or
+   diverge on the height/padding tokens those calc()s read, so no rule for
+   either is added here (adding one that only restates the existing
+   value would be dead weight, not a fix). */

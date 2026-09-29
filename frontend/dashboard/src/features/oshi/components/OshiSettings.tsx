@@ -166,11 +166,15 @@ export function OshiSettings() {
 
   return (
     // Scoped to this component's own subtree only -- Checkbox and Segmented
-    // are the only antd controls used here, themed off this app's own
-    // active member color the same way NotificationSettings' Switch
-    // already is. Segmented's own dark styling goes through antd's real,
-    // documented component tokens (trackBg/itemColor/itemSelectedBg/...)
-    // rather than overriding its internal, version-fragile CSS classes.
+    // are the only antd controls used here. The Segmented below now gets
+    // its actual visual style (background/border/radius/item height/font/
+    // colors/hover) from the shared .shared-filter-segmented class,
+    // matching Live Reminder Time and Live Status' own All/Favorites
+    // toggle 1:1 (confirmed with the user) -- the theme-tinted Segmented
+    // tokens just below (incl. this control's own active-member-colored
+    // itemSelectedBg) are now superseded by that shared class, not removed
+    // outright, in case a future control in this same subtree still wants
+    // them. Checkbox itself is unaffected, still themed off colorPrimary.
     <ConfigProvider
       theme={{
         token: { colorPrimary: theme.primary },
@@ -199,7 +203,7 @@ export function OshiSettings() {
 
         <div className="favorites-roster__controls">
           <Segmented
-            classNames={{ root: "favorites-roster__segmented" }}
+            classNames={{ root: "favorites-roster__segmented shared-filter-segmented" }}
             value={viewMode}
             onChange={(value) => setViewMode(value as ViewMode)}
             options={[

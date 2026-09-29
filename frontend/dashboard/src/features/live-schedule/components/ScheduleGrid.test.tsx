@@ -24,30 +24,38 @@ function renderGrid(days: ScheduleDay[], now = new Date(2026, 8, 21, 22, 10)) {
 
 // jsdom has no layout: give each time-label a row-height-based rect so the
 // scroll math has something to measure.
+let scrollToSpy: ReturnType<typeof vi.spyOn>
+
 beforeEach(() => {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const index = this.classList.contains("time-label") ? Array.from(this.parentElement!.children).indexOf(this) : 0
     return { top: index * ROW_HEIGHT, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) }
   })
+  // The grid no longer owns its own scroll (Schedule uses normal page
+  // scrolling; see schedule.css's own comment on .schedule-page) -- the
+  // initial-position effect now calls window.scrollTo instead of setting
+  // grid.scrollTop, so that's what these tests assert against. jsdom has no
+  // real window.scrollTo implementation, hence the mock.
+  scrollToSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {})
 })
 afterEach(() => vi.restoreAllMocks())
 
 describe("ScheduleGrid initial scroll", () => {
   it("puts the earliest live row at the top", () => {
-    const { grid } = renderGrid(makeDays({ 41: [makeStream("a", "live")], 43: [makeStream("b", "live")] }))
-    expect(grid.scrollTop).toBe(41 * ROW_HEIGHT)
+    renderGrid(makeDays({ 41: [makeStream("a", "live")], 43: [makeStream("b", "live")] }))
+    expect(scrollToSpy).toHaveBeenCalledWith(0, 41 * ROW_HEIGHT)
   })
 
   it("puts the current local slot at the top when nothing is live", () => {
-    const { grid } = renderGrid(makeDays({ 41: [makeStream("a", "upcoming")] }))
-    expect(grid.scrollTop).toBe(44 * ROW_HEIGHT)
+    renderGrid(makeDays({ 41: [makeStream("a", "upcoming")] }))
+    expect(scrollToSpy).toHaveBeenCalledWith(0, 44 * ROW_HEIGHT)
   })
 
   it("does not move the viewport again when days/now refresh", () => {
-    const { grid, rerender, props } = renderGrid(makeDays({ 41: [makeStream("a", "live")] }))
-    grid.scrollTop = 5 * ROW_HEIGHT
+    const { rerender, props } = renderGrid(makeDays({ 41: [makeStream("a", "live")] }))
+    scrollToSpy.mockClear()
     rerender(<ScheduleGrid {...props} days={makeDays({ 10: [makeStream("b", "live")] })} now={new Date(2026, 8, 21, 22, 40)} />)
-    expect(grid.scrollTop).toBe(5 * ROW_HEIGHT)
+    expect(scrollToSpy).not.toHaveBeenCalled()
   })
 })
 
