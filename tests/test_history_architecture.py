@@ -498,11 +498,13 @@ def test_collect_history_shard_skips_youtube_when_the_shard_is_already_collected
 
     assert result.rows == existing_rows
     assert result.history_key == daily_history_key(date(2026, 9, 9), shard)
-    # The idempotent-skip path must still produce a creator-period partial for
-    # this shard's write() — the only place that writes it for the day — not
-    # omit it just because YouTube itself was skipped.
-    assert result.creator_partials["c1"]["all"].view_sum == 500
-    assert result.creator_partials["c1"]["all"].eligible_video_count == 1
+    # The idempotent-skip path must still produce a real ranking result for
+    # this shard — the only place that computes it for the day — not omit it
+    # just because YouTube itself was skipped. FakeHistory.read_daily_shard
+    # returns existing_rows for every date, including the D-1/D-7/D-30 anchor
+    # reads load_exact_anchor_rows makes, so every exact period sees a real
+    # (zero) gain here, not a missing anchor.
+    assert result.rankings[("creator", "c1")]["7d"][0].view_count == 500
 
 
 def test_collect_history_shard_skips_youtube_for_a_shard_that_legitimately_collected_zero_rows(monkeypatch):
@@ -542,15 +544,14 @@ def test_collect_history_shard_skips_youtube_for_a_shard_that_legitimately_colle
     )
 
     assert result.rows == []
-    assert result.creator_partials == {}
+    assert result.rankings == {}
 
 
-def test_collect_history_shard_idempotent_skip_produces_the_same_creator_partial_as_a_fresh_compute(monkeypatch):
+def test_collect_history_shard_idempotent_skip_produces_the_same_ranking_as_a_fresh_compute(monkeypatch):
     """A retry that skips YouTube (because the shard already exists) must
-    produce byte-for-byte the same creator-period partial a fresh compute
-    over the same underlying rows would — the reducer's later merge must
-    never see a gap just because a particular invocation happened to skip
-    YouTube."""
+    produce byte-for-byte the same ranking a fresh compute over the same
+    underlying rows would — the reducer's later merge must never see a gap
+    just because a particular invocation happened to skip YouTube."""
     shard = 7
     video_id = _video_for_shard(shard)
 
@@ -618,8 +619,7 @@ def test_collect_history_shard_idempotent_skip_produces_the_same_creator_partial
         observed_at="2026-09-09T18:00:00+09:00",
     )
 
-    assert skip_result.creator_partials == fresh_result.creator_partials
-    assert skip_result.creator_partials["c1"]["all"].view_sum == 777
+    assert skip_result.rankings == fresh_result.rankings
 
 
 # --- manifest fail-fast validation (Roadmap 5.3 cost/abuse containment) ----

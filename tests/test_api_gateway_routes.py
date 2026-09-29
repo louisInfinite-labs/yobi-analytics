@@ -32,7 +32,7 @@ def test_every_handler_route_has_a_gateway_route_except_the_ones_without_one():
 def test_dashboard_routes_are_wired():
     routes = _terraform_routes()
 
-    assert {"GET /dashboard/chart-catalog", "GET /dashboard/comparison-items", "GET /dashboard/comparison-data"} <= routes
+    assert {"GET /dashboard/chart-catalog"} <= routes
 
 
 def test_topics_route_is_wired():
@@ -50,3 +50,15 @@ def test_removed_leaderboard_and_summary_routes_are_no_longer_exposed():
     assert "GET /topics/{topic}/leaderboard" not in routes
     assert "GET /creators/{creatorId}/summary" not in routes
     assert "GET /creators/{creatorId}/summary" not in api_handler._ROUTES
+
+
+# --- R8B (AWS Cost Recovery): comparison routes must no longer be exposed ----
+
+
+def test_removed_comparison_routes_are_no_longer_exposed():
+    routes = _terraform_routes()
+
+    assert "GET /dashboard/comparison-items" not in routes
+    assert "GET /dashboard/comparison-data" not in routes
+    assert "GET /dashboard/comparison-items" not in api_handler._ROUTES
+    assert "GET /dashboard/comparison-data" not in api_handler._ROUTES

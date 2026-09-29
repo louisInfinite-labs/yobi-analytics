@@ -24,7 +24,11 @@ from datetime import date
 # before it even builds a cache key to look up.
 CANONICAL_CACHE_TIME_ZONE = "Asia/Tokyo"
 
-_CREATOR_SUMMARY_PREFIX = "creatorSummary"
+# R8B (AWS Cost Recovery): creator_summary_cache_key/_CREATOR_SUMMARY_PREFIX
+# (the "creatorSummary:*" namespace) were removed here once both of that
+# namespace's callers were gone -- the writer (ranking_reducer.
+# persist_creator_summaries) and its last production reader (comparison_api.
+# get_comparison_data, deleted along with GET /dashboard/comparison-data).
 
 
 def trending_cache_key(*, scope_type: str, scope_value: str, period: str, ranking_type: str, report_date: date) -> str:
@@ -34,14 +38,3 @@ def trending_cache_key(*, scope_type: str, scope_value: str, period: str, rankin
     this cache shape always agree on the same key for the same request.
     """
     return f"{scope_type}:{scope_value}:{period}:{ranking_type}:{report_date.isoformat()}:{CANONICAL_CACHE_TIME_ZONE}"
-
-
-def creator_summary_cache_key(*, creator_id: str, period: str, report_date: date) -> str:
-    """Build YobiTrendingCache's cacheKey for one creator/period/reportDate summary.
-
-    A namespace distinct from trending_cache_key's own scope-ranking keys
-    (scope_type there is "creator" or "org", never the literal string
-    "creatorSummary") — YobiTrendingCache has only one key attribute
-    (cacheKey, no sort key), so the whole string must be, and is, unique.
-    """
-    return f"{_CREATOR_SUMMARY_PREFIX}:{creator_id}:{period}:{report_date.isoformat()}"

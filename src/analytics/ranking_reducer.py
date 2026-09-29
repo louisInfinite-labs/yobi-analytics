@@ -13,11 +13,11 @@ from zoneinfo import ZoneInfo
 from collection import execution_lock
 from stores import dynamodb_store
 from tracking.creator_master import load_creators
-from analytics.history_ranking import CreatorPeriodPartial, IncrementalRankingMerger, RankedGrowth
+from analytics.history_ranking import IncrementalRankingMerger, RankedGrowth
 from stores.history_store import HISTORY_SHARD_COUNT
 from stores.ranking_partial_store import S3PartialRankingStore
 from stores.trending_cache_archive_store import S3TrendingCacheArchiveStore
-from analytics.trending_cache_keys import creator_summary_cache_key, trending_cache_key
+from analytics.trending_cache_keys import trending_cache_key
 
 _TIME_ZONE = "Asia/Tokyo"
 _RANKING_TYPE = {"1d": "daily_trending", "7d": "7d_trending", "30d": "30d_trending"}
@@ -36,14 +36,12 @@ class WruBudget:
     """Paces a sequence of DynamoDB writes to a shared target WRU/second rate.
 
     One instance must be shared across *every* write a single reducer
-    invocation makes — the existing scope-ranking cache (persist_rankings)
-    and the new creator/organization cache (persist_creator_and_
-    organization_rankings) both write the same YobiTrendingCache table, and
-    its throughput cap applies to the table as a whole. Two independent
-    budgets (one per cache "kind") could each individually stay under the
-    target and still blow past the real per-table cap together — this is
-    why lambda_handler constructs exactly one WruBudget and passes it into
-    both persist_* calls, rather than each call site making its own.
+    invocation makes — YobiTrendingCache's throughput cap applies to the
+    table as a whole, not per caller. R8B (AWS Cost Recovery): persist_
+    rankings is now this invocation's only writer (persist_creator_summaries,
+    a second writer this budget also used to be shared with, was removed);
+    kept as an explicit shared-budget object anyway rather than folded away,
+    in case a future second writer needs to pace against the same cap again.
 
     charge() computes WRU the same way DynamoDB itself does for a standard
     write — ceil(item_bytes / 1024), a minimum of 1 KB-unit per item — and
@@ -178,10 +176,11 @@ def persist_rankings(
     invocation and reuses that same result for this enrichment, rather than
     each call site loading it separately.
 
-    `wru_budget` must be the *same* WruBudget instance passed to
-    persist_creator_summaries in the same invocation — see WruBudget's own
-    docstring for why a second, independent budget here would defeat the
-    whole point of pacing against one table-wide cap.
+    `wru_budget` paces every write this invocation makes against
+    YobiTrendingCache's one table-wide throughput cap — see WruBudget's own
+    docstring. R8B (AWS Cost Recovery): this is now the only writer
+    lambda_handler calls per invocation (persist_creator_summaries, the
+    other former caller sharing this same budget, was removed).
     """
     video_ids = {
         entry.video_id
@@ -220,71 +219,6 @@ def persist_rankings(
     return writes
 
 
-def persist_creator_summaries(
-    creator_partials: dict[str, dict[str, CreatorPeriodPartial]],
-    *,
-    report_date: date,
-    put_cached_trending: Callable[..., None],
-    computed_at: str,
-    wru_budget: WruBudget,
-    archive_put: Callable[..., None] | None = None,
-) -> int:
-    """Persist one summary item per (creatorId, period) into YobiTrendingCache,
-    under creator_summary_cache_key's own namespace, distinct from
-    persist_rankings' own scope-ranking keys.
-
-    R7 (AWS Cost Recovery): this function used to also build and persist one
-    organization-membership leaderboard item per (organization, period) --
-    removed here along with GET /organizations/{organization}/leaderboard and
-    GET /leaderboard, both zero-consumer. Renamed from
-    persist_creator_and_organization_rankings to persist_creator_summaries to
-    match what it actually does now.
-
-    Deliberately reads no storage at all beyond what the caller already
-    computed: `creator_partials` is already the fully-merged, exact result
-    of IncrementalRankingMerger.creator_partials() (every shard folded in).
-    No per-video or per-creator Video Master/Creator Master read happens in
-    this function, unlike persist_rankings' own get_video(video_id)
-    enrichment — these items intentionally carry only videoId/creatorId (not
-    title/channelName), since that enrichment would require exactly the kind
-    of per-video read this was designed to avoid.
-
-    `wru_budget` must be the *same* WruBudget instance passed to
-    persist_rankings in the same invocation.
-    """
-    writes = 0
-    for creator_id, periods in creator_partials.items():
-        for period, agg in periods.items():
-            payload = {
-                "creatorId": creator_id,
-                "period": period,
-                "reportDate": report_date.isoformat(),
-                "viewSum": agg.view_sum,
-                "catalogVideoCount": agg.catalog_video_count,
-                "eligibleVideoCount": agg.eligible_video_count,
-                "isComplete": agg.is_complete,
-                "topVideo": _ranked_growth_cache_row(agg.top_candidates[0]) if agg.top_candidates else None,
-                "top10": [_ranked_growth_cache_row(entry) for entry in agg.top_candidates],
-            }
-            key = creator_summary_cache_key(creator_id=creator_id, period=period, report_date=report_date)
-            _paced_put(put_cached_trending, wru_budget, key, payload, computed_at=computed_at, archive_put=archive_put)
-            writes += 1
-    return writes
-
-
-def _ranked_growth_cache_row(entry: RankedGrowth) -> dict[str, Any]:
-    """A minimal (no title/channelName enrichment — see
-    persist_creator_summaries' own docstring for why) cache row for one video
-    inside a creator summary's topVideo/top10."""
-    return {
-        "rank": entry.rank,
-        "videoId": entry.video_id,
-        "value": entry.gain,
-        "latestViewCount": entry.view_count,
-        "lastUpdatedAt": entry.observed_at,
-    }
-
-
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Merge all successful shard partials after the Step Functions Map.
 
@@ -293,12 +227,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     states — see `_mark_execution_complete`/`_mark_execution_failed` for why
     those are handled by this same Lambda rather than new ones.
 
-    Reads each shard exactly once (one S3 GetObject via read_bundle, not a
-    separate read()+read_creator_partials() pair) and folds it straight
-    into IncrementalRankingMerger's bounded running accumulators, so this
-    never holds all HISTORY_SHARD_COUNT shards' own (potentially several-MB
-    each) payloads in memory simultaneously — only whichever one shard's
-    bundle is currently being folded in, plus the bounded merge state.
+    Reads each shard exactly once (one S3 GetObject via read) and folds it
+    straight into IncrementalRankingMerger's bounded running accumulator, so
+    this never holds all HISTORY_SHARD_COUNT shards' own (potentially
+    several-MB each) payloads in memory simultaneously — only whichever one
+    shard's payload is currently being folded in, plus the bounded merge
+    state.
 
     load_creators() is called exactly once here (a bundled local JSON file
     read, not a DynamoDB table — creator_master.py's own module docstring)
@@ -307,10 +241,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     itself. So this whole invocation costs exactly one local-file Creator
     Master read total (not one per call site).
 
-    Exactly one WruBudget is created and shared across both persist_*
-    calls below — see WruBudget's own docstring for why two independent
-    budgets (one per cache "kind") would defeat the point of pacing
-    against YobiTrendingCache's one table-wide throughput cap.
+    R8B (AWS Cost Recovery): this used to also call persist_creator_summaries
+    with the merger's own creator_partials() — removed along with
+    creatorSummary:*, its last production reader (comparison_api.py) gone.
+    persist_rankings is the only remaining WruBudget-paced writer this
+    invocation makes; WruBudget is still constructed the same way in case a
+    future second writer needs to share it again.
 
     `reportDate`/`ownerToken` arrive explicitly in the event (forwarded from
     AcquireExecutionLock's own output via ReduceRankings' Parameters) —
@@ -337,8 +273,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     store = S3PartialRankingStore(os.environ["YOBI_HISTORY_BUCKET"])
     merger = IncrementalRankingMerger()
     for shard in range(HISTORY_SHARD_COUNT):
-        scope_rankings, creator_partials = store.read_bundle(report_date, shard)
-        merger.add_shard(scope_rankings, creator_partials)
+        merger.add_shard(store.read(report_date, shard))
     rankings = merger.scope_rankings()
 
     all_creators = load_creators()
@@ -362,14 +297,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         put_cached_trending=put_cached_trending,
         computed_at=now.isoformat(),
         wru_budget=wru_budget,
-        archive_put=archive_put,
-    )
-    writes += persist_creator_summaries(
-        merger.creator_partials(),
-        report_date=report_date,
-        put_cached_trending=put_cached_trending,
-        wru_budget=wru_budget,
-        computed_at=now.isoformat(),
         archive_put=archive_put,
     )
     return {"date": report_date.isoformat(), "reportDate": report_date.isoformat(), "ownerToken": owner_token, "cacheWrites": writes}

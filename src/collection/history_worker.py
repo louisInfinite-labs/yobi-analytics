@@ -8,10 +8,8 @@ from typing import Mapping
 
 from analytics.history_ranking import (
     CreatorDimensions,
-    CreatorPeriodPartial,
     RankedGrowth,
     ScopeKey,
-    creator_period_partials,
     load_exact_anchor_rows,
     top_n_by_scope,
 )
@@ -35,7 +33,6 @@ class ShardCollectionResult:
     history_key: str
     rows: list[HistoryRow]
     rankings: dict[ScopeKey, dict[str, list[RankedGrowth]]]
-    creator_partials: dict[str, dict[str, CreatorPeriodPartial]]
     topic_by_video: dict[str, str]
 
 
@@ -195,18 +192,6 @@ def collect_history_shard(
         dimensions_by_creator=dimensions_by_creator,
         limit=top_n,
     )
-    # Same rows/anchors/report_date/discovered_date_by_video already built
-    # above for the video-ranking scopes — no extra Video Master or history
-    # read for this. Computed unconditionally, including the shard_exists
-    # (idempotent-skip) branch above: a retry that skips YouTube must still
-    # produce the same creator-period partials, not omit them, since this
-    # is the only place that writes them for the day.
-    partials = creator_period_partials(
-        rows,
-        anchors,
-        report_date=collection_date,
-        discovered_date_by_video=discovered_date_by_video,
-    )
     return ShardCollectionResult(
         collection_date=collection_date,
         shard=shard,
@@ -216,7 +201,6 @@ def collect_history_shard(
         history_key=history_key,
         rows=rows,
         rankings=rankings,
-        creator_partials=partials,
         topic_by_video=_resolve_manifest_topics(active_entries),
     )
 

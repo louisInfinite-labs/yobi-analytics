@@ -37,8 +37,6 @@ locals {
     "GET /topics",
     "GET /subscribers/leaderboard",
     "GET /dashboard/chart-catalog",
-    "GET /dashboard/comparison-items",
-    "GET /dashboard/comparison-data",
     "POST /remote-config",
     "GET /admin/heartbeat-stats",
     "GET /heartbeat/{clientId}/status",

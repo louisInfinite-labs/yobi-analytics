@@ -194,8 +194,6 @@ ALL_PERIOD = "all"
 # historical anchor and is therefore never None.
 PERIODS = tuple(f"{days}d" for days in EXACT_ANCHOR_DAYS) + (ALL_PERIOD,)
 
-CREATOR_TOP_N = 10
-
 
 def period_values(
     today_rows: list[HistoryRow],
@@ -223,224 +221,62 @@ def period_values(
     }
 
 
-@dataclass(frozen=True)
-class CreatorPeriodPartial:
-    """One creator's contribution to one period — from a single shard's own
-    subset of that creator's videos, or already merged across every shard.
-
-    `view_sum` is the sum over only the *eligible* videos (those with a
-    real anchor, or a defensible new-video baseline — see _period_value);
-    it's meaningless to add an incomplete (None) video's unknown value.
-    `catalog_video_count` is every video this creator had in the input
-    rows, regardless of eligibility; `eligible_video_count` is the subset
-    that actually got a value for this period. `is_complete` tells a
-    caller whether those two numbers matched — false means at least one of
-    this creator's videos has a real collection gap for this period, not
-    that the creator has no data at all. Neither count is ever bounded: a
-    creator with 2,000+ videos still has every one of them counted here
-    across however many shards it takes — the background worker computing
-    this must never borrow the read API's own MAX_LIVE_FALLBACK_VIDEOS
-    live-fallback guard (read_api.py), which bounds an unrelated on-demand
-    computation, not this scheduled one. `top_candidates` is the only
-    bounded field (at most `limit` entries, highest value first, so
-    `top_candidates[0]` is this partial's own highest-value video) —
-    retaining every video's own RankedGrowth across all shards centrally,
-    just to find the true Top-10, is exactly the "126,000 sorted results
-    in memory" this avoids.
-    """
-
-    creator_id: str
-    period: str
-    view_sum: int
-    catalog_video_count: int
-    eligible_video_count: int
-    top_candidates: list[RankedGrowth]
-
-    @property
-    def is_complete(self) -> bool:
-        return self.eligible_video_count == self.catalog_video_count
-
-
-def creator_period_partials(
-    today_rows: list[HistoryRow],
-    anchor_rows: Mapping[int, list[HistoryRow]],
-    *,
-    report_date: date,
-    discovered_date_by_video: Mapping[str, date] | None = None,
-    limit: int = CREATOR_TOP_N,
-) -> dict[str, dict[str, CreatorPeriodPartial]]:
-    """Bounded per-creator, per-period partial aggregate from one shard's rows.
-
-    Mirrors top_n_by_scope's own shape (bounded heap per key, deterministic
-    tie-break by video_id) but keyed by creator_id alone (not creator/org/
-    branch/global scope) and additionally tracking the exact, unbounded sum
-    and catalog/eligible counts alongside the bounded Top-N candidate heap.
-    """
-    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-        raise ValueError(f"limit must be a positive integer, got {limit!r}")
-    values = period_values(today_rows, anchor_rows, report_date=report_date, discovered_date_by_video=discovered_date_by_video)
-    heaps: dict[tuple[str, str], list[tuple[int, int, HistoryRow, int]]] = {}
-    sums: dict[tuple[str, str], int] = {}
-    catalog_counts: dict[tuple[str, str], int] = {}
-    eligible_counts: dict[tuple[str, str], int] = {}
-
-    for sequence, row in enumerate(sorted(today_rows, key=lambda item: item.video_id)):
-        for period in PERIODS:
-            key = (row.creator_id, period)
-            catalog_counts[key] = catalog_counts.get(key, 0) + 1
-            value = values[row.video_id][period]
-            if value is None:
-                continue
-            sums[key] = sums.get(key, 0) + value
-            eligible_counts[key] = eligible_counts.get(key, 0) + 1
-            heap = heaps.setdefault(key, [])
-            candidate = (value, -sequence, row, value)
-            if len(heap) < limit:
-                heapq.heappush(heap, candidate)
-            elif candidate[:2] > heap[0][:2]:
-                heapq.heapreplace(heap, candidate)
-
-    result: dict[str, dict[str, CreatorPeriodPartial]] = {}
-    for (creator_id, period), catalog_count in catalog_counts.items():
-        heap = heaps.get((creator_id, period), [])
-        ordered = sorted(heap, key=lambda item: (-item[0], item[2].video_id))
-        top_candidates = [
-            RankedGrowth(
-                rank=rank,
-                video_id=row.video_id,
-                creator_id=row.creator_id,
-                period=period,
-                view_count=row.view_count,
-                anchor_view_count=row.view_count - value,
-                gain=value,
-                observed_at=row.observed_at,
-            )
-            for rank, (_, _, row, value) in enumerate(ordered, start=1)
-        ]
-        result.setdefault(creator_id, {})[period] = CreatorPeriodPartial(
-            creator_id=creator_id,
-            period=period,
-            view_sum=sums.get((creator_id, period), 0),
-            catalog_video_count=catalog_count,
-            eligible_video_count=eligible_counts.get((creator_id, period), 0),
-            top_candidates=top_candidates,
-        )
-    return result
-
-
-def merge_creator_period_partials(
-    partials: list[dict[str, dict[str, CreatorPeriodPartial]]],
-    *,
-    limit: int = CREATOR_TOP_N,
-) -> dict[str, dict[str, CreatorPeriodPartial]]:
-    """Merge every shard's bounded per-creator partial into each creator's
-    final, exact total and final Top-N.
-
-    view_sum/catalog_video_count/eligible_video_count are plain sums across
-    every shard's own partial (already exact per shard, so summing them is
-    exact overall — never truncated). Only the Top-N candidate lists are
-    merged and re-trimmed; the reducer never materializes more than
-    `limit` RankedGrowth rows per (creator, period) at a time, the same
-    discipline merge_partial_rankings already applies at the video-ranking
-    level.
-    """
-    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-        raise ValueError(f"limit must be a positive integer, got {limit!r}")
-    sums: dict[tuple[str, str], int] = {}
-    catalog_counts: dict[tuple[str, str], int] = {}
-    eligible_counts: dict[tuple[str, str], int] = {}
-    candidates: dict[tuple[str, str], list[RankedGrowth]] = {}
-    for partial in partials:
-        for creator_id, periods in partial.items():
-            for period, agg in periods.items():
-                key = (creator_id, period)
-                sums[key] = sums.get(key, 0) + agg.view_sum
-                catalog_counts[key] = catalog_counts.get(key, 0) + agg.catalog_video_count
-                eligible_counts[key] = eligible_counts.get(key, 0) + agg.eligible_video_count
-                candidates.setdefault(key, []).extend(agg.top_candidates)
-
-    merged: dict[str, dict[str, CreatorPeriodPartial]] = {}
-    for (creator_id, period), entries in candidates.items():
-        winners = heapq.nsmallest(limit, entries, key=lambda entry: (-entry.gain, entry.video_id))
-        top_candidates = [
-            RankedGrowth(
-                rank=rank,
-                video_id=entry.video_id,
-                creator_id=entry.creator_id,
-                period=entry.period,
-                view_count=entry.view_count,
-                anchor_view_count=entry.anchor_view_count,
-                gain=entry.gain,
-                observed_at=entry.observed_at,
-            )
-            for rank, entry in enumerate(winners, start=1)
-        ]
-        merged.setdefault(creator_id, {})[period] = CreatorPeriodPartial(
-            creator_id=creator_id,
-            period=period,
-            view_sum=sums[(creator_id, period)],
-            catalog_video_count=catalog_counts[(creator_id, period)],
-            eligible_video_count=eligible_counts[(creator_id, period)],
-            top_candidates=top_candidates,
-        )
-    return merged
 
 
 class IncrementalRankingMerger:
-    """Folds one shard's scope-ranking + creator-partial output into bounded
-    running accumulators at a time, instead of a reducer holding every
-    shard's own partial in memory simultaneously before merging any of them
-    (the way merge_partial_rankings/merge_creator_period_partials require,
-    since both take the *whole* `partials` list up front).
+    """Folds one shard's scope-ranking output into a bounded running
+    accumulator at a time, instead of a reducer holding every shard's own
+    partial in memory simultaneously before merging any of them (the way
+    merge_partial_rankings requires, since it takes the *whole* `partials`
+    list up front).
 
     `add_shard` is called once per shard, in any order, and its argument
     (typically straight from ranking_partial_store.S3PartialRankingStore.
-    read_bundle) can be discarded immediately afterward — nothing from it
-    is retained beyond what's already folded into the bounded accumulator.
-    scope_rankings()/creator_partials() (called once, after every shard has
-    been folded in) produce byte-for-byte the same result
-    merge_partial_rankings/merge_creator_period_partials would from the
-    same shards' full batch — see the class-level proof below.
+    read_bundle/read) can be discarded immediately afterward — nothing from
+    it is retained beyond what's already folded into the bounded
+    accumulator. scope_rankings() (called once, after every shard has been
+    folded in) produces byte-for-byte the same result merge_partial_rankings
+    would from the same shards' full batch — see the class-level proof below.
+
+    R8B (AWS Cost Recovery): this class used to also fold and finalize each
+    shard's creator_partials (view_sum/catalog/eligible counts, Top-N
+    candidates) alongside scope_rankings — removed here along with
+    persist_creator_summaries/creatorSummary:* (comparison_api.py, its last
+    production consumer, is gone) and creator_period_partials itself
+    (analytics.history_ranking), since nothing production still reads a
+    per-creator/per-period aggregate.
 
     Why this produces the identical result as the batch merge: at every
-    step, each (scope, period) or (creator, period) key's accumulator holds
-    at most `limit` entries — already the true top-`limit` of everything
-    folded in *so far*. Folding in one more shard's own (already <= limit)
-    contribution and re-selecting the top-`limit` of (current accumulator
-    + new contribution) can only ever discard an entry once at least
-    `limit` other entries already outrank it among everything seen so far
-    — and every later shard only ever adds more competing entries, never
-    removes any accumulator member without an equal-or-better replacement.
-    So nothing discarded at any step could ever have been part of the true
+    step, each (scope, period) key's accumulator holds at most `limit`
+    entries — already the true top-`limit` of everything folded in *so
+    far*. Folding in one more shard's own (already <= limit) contribution
+    and re-selecting the top-`limit` of (current accumulator + new
+    contribution) can only ever discard an entry once at least `limit`
+    other entries already outrank it among everything seen so far — and
+    every later shard only ever adds more competing entries, never removes
+    any accumulator member without an equal-or-better replacement. So
+    nothing discarded at any step could ever have been part of the true
     global top-`limit` computed from every shard's entries at once. This is
     the standard streaming top-k accumulation argument, not specific to
     this codebase.
     """
 
-    def __init__(self, *, scope_limit: int = 100, creator_limit: int = CREATOR_TOP_N):
+    def __init__(self, *, scope_limit: int = 100):
         if isinstance(scope_limit, bool) or not isinstance(scope_limit, int) or scope_limit < 1:
             raise ValueError(f"scope_limit must be a positive integer, got {scope_limit!r}")
-        if isinstance(creator_limit, bool) or not isinstance(creator_limit, int) or creator_limit < 1:
-            raise ValueError(f"creator_limit must be a positive integer, got {creator_limit!r}")
         self._scope_limit = scope_limit
-        self._creator_limit = creator_limit
         self._scope_candidates: dict[tuple[ScopeKey, str], list[RankedGrowth]] = {}
-        self._creator_view_sums: dict[tuple[str, str], int] = {}
-        self._creator_catalog_counts: dict[tuple[str, str], int] = {}
-        self._creator_eligible_counts: dict[tuple[str, str], int] = {}
-        self._creator_candidates: dict[tuple[str, str], list[RankedGrowth]] = {}
 
     def add_shard(
         self,
         scope_rankings: dict[ScopeKey, dict[str, list[RankedGrowth]]],
-        creator_partials: dict[str, dict[str, CreatorPeriodPartial]],
     ) -> None:
         """Fold one shard's already-bounded contribution into the running merge.
 
-        Every argument is exactly one shard's own output (e.g.
-        top_n_by_scope's/creator_period_partials' own return values, or one
-        read_bundle() call) — this never re-derives anything from raw
-        HistoryRows, only combines already-bounded per-shard results.
+        `scope_rankings` is exactly one shard's own top_n_by_scope output
+        (e.g. one read_bundle()/read() call) — this never re-derives
+        anything from raw HistoryRows, only combines already-bounded
+        per-shard results.
         """
         for scope, periods in scope_rankings.items():
             for period, entries in periods.items():
@@ -448,19 +284,6 @@ class IncrementalRankingMerger:
                 combined = self._scope_candidates.get(key, []) + entries
                 self._scope_candidates[key] = heapq.nsmallest(
                     self._scope_limit, combined, key=lambda entry: (-entry.gain, entry.video_id)
-                )
-
-        for creator_id, periods in creator_partials.items():
-            for period, agg in periods.items():
-                key = (creator_id, period)
-                self._creator_view_sums[key] = self._creator_view_sums.get(key, 0) + agg.view_sum
-                self._creator_catalog_counts[key] = self._creator_catalog_counts.get(key, 0) + agg.catalog_video_count
-                self._creator_eligible_counts[key] = (
-                    self._creator_eligible_counts.get(key, 0) + agg.eligible_video_count
-                )
-                combined = self._creator_candidates.get(key, []) + agg.top_candidates
-                self._creator_candidates[key] = heapq.nsmallest(
-                    self._creator_limit, combined, key=lambda entry: (-entry.gain, entry.video_id)
                 )
 
     def scope_rankings(self) -> dict[ScopeKey, dict[str, list[RankedGrowth]]]:
@@ -481,36 +304,6 @@ class IncrementalRankingMerger:
                 )
                 for rank, entry in enumerate(entries, start=1)
             ]
-        return merged
-
-    def creator_partials(self) -> dict[str, dict[str, CreatorPeriodPartial]]:
-        """Finalize the merged, exact per-creator/per-period aggregates — same
-        shape/contract merge_creator_period_partials' own output has."""
-        merged: dict[str, dict[str, CreatorPeriodPartial]] = {}
-        for key, catalog_count in self._creator_catalog_counts.items():
-            creator_id, period = key
-            entries = self._creator_candidates.get(key, [])
-            top_candidates = [
-                RankedGrowth(
-                    rank=rank,
-                    video_id=entry.video_id,
-                    creator_id=entry.creator_id,
-                    period=entry.period,
-                    view_count=entry.view_count,
-                    anchor_view_count=entry.anchor_view_count,
-                    gain=entry.gain,
-                    observed_at=entry.observed_at,
-                )
-                for rank, entry in enumerate(entries, start=1)
-            ]
-            merged.setdefault(creator_id, {})[period] = CreatorPeriodPartial(
-                creator_id=creator_id,
-                period=period,
-                view_sum=self._creator_view_sums.get(key, 0),
-                catalog_video_count=catalog_count,
-                eligible_video_count=self._creator_eligible_counts.get(key, 0),
-                top_candidates=top_candidates,
-            )
         return merged
 
 

@@ -84,9 +84,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         dimensions_by_creator=dimensions,
         observed_at=now.isoformat(),
     )
-    partial_key = S3PartialRankingStore(bucket_name).write(
-        report_date, shard, result.rankings, result.creator_partials
-    )
+    partial_key = S3PartialRankingStore(bucket_name).write(report_date, shard, result.rankings)
     # Renewed last, and unconditionally on every success path — including the
     # shard_exists idempotent-skip branch inside collect_history_shard, which
     # never touched YouTube but still fully completed this shard's own work.

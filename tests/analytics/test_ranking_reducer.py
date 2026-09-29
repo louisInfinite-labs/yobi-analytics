@@ -1,7 +1,7 @@
 """End-to-end test of ranking_reducer.lambda_handler's own read/merge loop —
-confirms it reads each shard exactly once (via read_bundle, never a separate
-read()+read_creator_partials() pair) and still produces the same cache-write
-output the previous read()+merge_partial_rankings() approach would have.
+confirms it reads each shard exactly once (via read) and still produces the
+same cache-write output the previous read()+merge_partial_rankings() approach
+would have.
 """
 
 import io
@@ -14,7 +14,7 @@ import pytest
 from analytics import ranking_reducer
 from botocore.exceptions import ClientError
 from tracking.creator_master import Creator
-from analytics.history_ranking import CreatorPeriodPartial, RankedGrowth
+from analytics.history_ranking import RankedGrowth
 from stores.history_store import HISTORY_SHARD_COUNT
 from stores.ranking_partial_store import S3PartialRankingStore, partial_ranking_key
 
@@ -100,7 +100,7 @@ def _ranked(video_id, creator_id, *, value, rank, period="7d"):
     )
 
 
-def test_lambda_handler_reads_every_shard_exactly_once_via_read_bundle(monkeypatch):
+def test_lambda_handler_reads_every_shard_exactly_once(monkeypatch):
     report_date = date(2026, 9, 9)
     client = _CountingS3Client()
     store = S3PartialRankingStore("test-bucket", s3_client=client)
@@ -112,16 +112,9 @@ def test_lambda_handler_reads_every_shard_exactly_once_via_read_bundle(monkeypat
     for shard in range(HISTORY_SHARD_COUNT):
         if shard == 3:
             rankings = {("creator", "c1"): {"7d": [_ranked("winner", "c1", value=999_999, rank=1)]}}
-            creator_partials = {
-                "c1": {"7d": CreatorPeriodPartial(
-                    creator_id="c1", period="7d", view_sum=999_999,
-                    catalog_video_count=1, eligible_video_count=1,
-                    top_candidates=[_ranked("winner", "c1", value=999_999, rank=1)],
-                )}
-            }
         else:
-            rankings, creator_partials = {}, {}
-        store.write(report_date, shard, rankings, creator_partials)
+            rankings = {}
+        store.write(report_date, shard, rankings)
 
     client.get_calls = 0  # ignore the writes above; only count the reducer's own reads
 
@@ -139,147 +132,20 @@ def test_lambda_handler_reads_every_shard_exactly_once_via_read_bundle(monkeypat
     result = ranking_reducer.lambda_handler({"reportDate": report_date.isoformat(), "ownerToken": "exec-1"}, None)
 
     assert client.get_calls == HISTORY_SHARD_COUNT == 16
-    # 1 scope-ranking write + 1 creator-summary write (c1/7d). R7 (AWS Cost
-    # Recovery) removed the third write this used to also produce (an
-    # organization-leaderboard item) -- zero consumer.
+    # 1 scope-ranking write. R7 (AWS Cost Recovery) removed the organization-
+    # leaderboard write this used to also produce; R8B (AWS Cost Recovery)
+    # removed the creator-summary write for the same reason -- zero consumer.
     assert result == {
         "date": "2026-09-09",
         "reportDate": "2026-09-09",
         "ownerToken": "exec-1",
-        "cacheWrites": 2,
+        "cacheWrites": 1,
     }
     writes_by_key = dict(cache_writes)
     keys_written = list(writes_by_key)
     (scope_key,) = [key for key in keys_written if key.startswith("creator:c1:")]
     assert [row["videoId"] for row in writes_by_key[scope_key]["results"]] == ["winner"]
-    assert any(key.startswith("creatorSummary:c1:7d:") for key in keys_written)
-
-
-# --- persist_creator_summaries (unit-level) ---------------------------------
-
-
-def _creator_partial(creator_id, period, *, view_sum, catalog, eligible, top_candidates):
-    return CreatorPeriodPartial(
-        creator_id=creator_id,
-        period=period,
-        view_sum=view_sum,
-        catalog_video_count=catalog,
-        eligible_video_count=eligible,
-        top_candidates=top_candidates,
-    )
-
-
-def test_persist_creator_summaries_writes_all_four_periods_per_creator():
-    """One item per (creatorId, period) -- never all four periods folded into
-    a single item (that would quadruple an API read for just one period)."""
-    report_date = date(2026, 9, 9)
-    creator_partials = {
-        "c1": {
-            period: _creator_partial(
-                "c1", period, view_sum=100, catalog=1, eligible=1,
-                top_candidates=[_ranked("v1", "c1", value=100, rank=1, period=period)],
-            )
-            for period in ("1d", "7d", "30d", "all")
-        }
-    }
-    writes_log = []
-    ranking_reducer.persist_creator_summaries(
-        creator_partials,
-        report_date=report_date,
-        put_cached_trending=lambda key, payload, *, computed_at: writes_log.append((key, payload)),
-        computed_at="2026-09-09T18:05:00+09:00",
-        wru_budget=_instant_budget(),
-    )
-
-    assert len(writes_log) == 4
-    periods_written = {payload["period"] for _, payload in writes_log}
-    assert periods_written == {"1d", "7d", "30d", "all"}
-    for key, payload in writes_log:
-        assert key == f"creatorSummary:c1:{payload['period']}:2026-09-09"
-
-
-def test_persist_creator_summaries_creator_summary_fields_are_complete():
-    report_date = date(2026, 9, 9)
-    creator_partials = {
-        "c1": {
-            "7d": _creator_partial(
-                "c1", "7d", view_sum=1_500, catalog=10, eligible=8,
-                top_candidates=[
-                    _ranked("best", "c1", value=900, rank=1, period="7d"),
-                    _ranked("second", "c1", value=600, rank=2, period="7d"),
-                ],
-            )
-        }
-    }
-    writes_log = []
-    ranking_reducer.persist_creator_summaries(
-        creator_partials,
-        report_date=report_date,
-        put_cached_trending=lambda key, payload, *, computed_at: writes_log.append((key, payload)),
-        computed_at="2026-09-09T18:05:00+09:00",
-        wru_budget=_instant_budget(),
-    )
-
-    ((_, payload),) = writes_log
-    assert payload == {
-        "creatorId": "c1",
-        "period": "7d",
-        "reportDate": "2026-09-09",
-        "viewSum": 1_500,
-        "catalogVideoCount": 10,
-        "eligibleVideoCount": 8,
-        "isComplete": False,  # 8 != 10
-        "topVideo": {
-            "rank": 1, "videoId": "best", "value": 900,
-            "latestViewCount": 900, "lastUpdatedAt": "2026-09-09T18:00:00+09:00",
-        },
-        "top10": [
-            {"rank": 1, "videoId": "best", "value": 900, "latestViewCount": 900, "lastUpdatedAt": "2026-09-09T18:00:00+09:00"},
-            {"rank": 2, "videoId": "second", "value": 600, "latestViewCount": 600, "lastUpdatedAt": "2026-09-09T18:00:00+09:00"},
-        ],
-    }
-
-
-def test_new_cache_namespace_never_collides_with_existing_scope_ranking_keys():
-    """creatorSummary:* keys must never equal any key trending_cache_key (the
-    existing scope-ranking scheme) can produce for the same creatorId/
-    period/reportDate -- YobiTrendingCache has only a single partition key
-    (cacheKey, no sort key), so this is the entire uniqueness guarantee."""
-    from api.read_api import trending_cache_key
-
-    report_date = date(2026, 9, 9)
-    new_creator_key = ranking_reducer.creator_summary_cache_key(creator_id="c1", period="7d", report_date=report_date)
-    existing_keys = {
-        trending_cache_key(
-            scope_type=scope_type, scope_value=value, period="7d", ranking_type="7d_trending", report_date=report_date
-        )
-        for scope_type, value in [("creator", "c1"), ("org", "vspo")]
-    }
-
-    assert new_creator_key not in existing_keys
-
-
-# --- R7 safety correction: restore the creatorSummary-specific coverage ----
-# --- lost when tests/test_cache_only_summary_api.py (the now-deleted -------
-# --- get_creator_summary/get_organization_leaderboard endpoint tests) was --
-# --- removed -- creatorSummary:* itself is NOT retired (comparison_api.py --
-# --- still reads it), only that combined test file's own coverage of the --
-# --- since-deleted read_api.py endpoints was.
-
-
-def test_ranking_reducer_and_comparison_api_share_the_exact_same_creator_summary_cache_key_function():
-    """No duplicated/diverging definition between the writer
-    (ranking_reducer.persist_creator_summaries) and the one surviving real
-    reader (comparison_api.get_comparison_data) -- both must reference the
-    identical function object from trending_cache_keys, the same "shared
-    cache-key builder, never redefined per module" guarantee this codebase
-    already relies on elsewhere (see trending_cache_keys.py's own module
-    docstring)."""
-    from analytics import trending_cache_keys
-    from api import comparison_api
-
-    assert ranking_reducer.creator_summary_cache_key is trending_cache_keys.creator_summary_cache_key
-    assert comparison_api.creator_summary_cache_key is trending_cache_keys.creator_summary_cache_key
+    assert not any(key.startswith("creatorSummary:") for key in keys_written)
 
 
 def test_persist_rankings_archives_every_write_when_archive_put_is_given():
@@ -326,31 +192,6 @@ def test_persist_rankings_never_archives_when_archive_put_is_none():
     assert writes == 1
 
 
-def test_persist_creator_summaries_archives_every_write():
-    from analytics.history_ranking import CreatorPeriodPartial
-
-    creator_partials = {
-        "c1": {
-            "1d": CreatorPeriodPartial(
-                creator_id="c1", period="1d", view_sum=100, catalog_video_count=1, eligible_video_count=1, top_candidates=[]
-            )
-        }
-    }
-    archived_keys = []
-
-    writes = ranking_reducer.persist_creator_summaries(
-        creator_partials,
-        report_date=date(2026, 9, 9),
-        put_cached_trending=lambda key, payload, *, computed_at: None,
-        computed_at="2026-09-09T18:05:00+09:00",
-        wru_budget=_instant_budget(),
-        archive_put=lambda key, payload, *, computed_at: archived_keys.append(key),
-    )
-
-    assert writes == len(archived_keys)
-    assert "creatorSummary:c1:1d:2026-09-09" in archived_keys
-
-
 def test_lambda_handler_archives_every_cache_write_via_the_real_archive_store(monkeypatch):
     """End-to-end: lambda_handler must actually construct and wire in
     S3TrendingCacheArchiveStore.from_environment() -- not just have the
@@ -359,17 +200,9 @@ def test_lambda_handler_archives_every_cache_write_via_the_real_archive_store(mo
     client = _CountingS3Client()
     store = S3PartialRankingStore("test-bucket", s3_client=client)
     rankings = {("creator", "c1"): {"1d": [_ranked("v1", "c1", value=100, rank=1)]}}
-    creator_partials = {
-        "c1": {
-            "1d": CreatorPeriodPartial(
-                creator_id="c1", period="1d", view_sum=100, catalog_video_count=1, eligible_video_count=1,
-                top_candidates=[_ranked("v1", "c1", value=100, rank=1)],
-            )
-        }
-    }
-    store.write(report_date, 0, rankings, creator_partials)
+    store.write(report_date, 0, rankings)
     for shard in range(1, HISTORY_SHARD_COUNT):
-        store.write(report_date, shard, {}, {})
+        store.write(report_date, shard, {})
 
     monkeypatch.setattr(ranking_reducer, "S3PartialRankingStore", lambda bucket_name: store)
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", "test-bucket")
@@ -454,7 +287,7 @@ def test_lambda_handler_calls_load_creators_exactly_once(monkeypatch):
     client = _CountingS3Client()
     store = S3PartialRankingStore("test-bucket", s3_client=client)
     for shard in range(HISTORY_SHARD_COUNT):
-        store.write(report_date, shard, {}, {})
+        store.write(report_date, shard, {})
 
     monkeypatch.setattr(ranking_reducer, "S3PartialRankingStore", lambda bucket_name: store)
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", "test-bucket")
@@ -491,20 +324,35 @@ def test_lambda_handler_tolerates_a_mix_of_old_and_new_shaped_shard_objects(monk
     this repo are deployed independently, so this is a real production
     possibility during a rolling deploy, not just a hypothetical.
 
-    The current (post-R7) ranking_reducer.lambda_handler must process every
-    shard without raising: the old shard's extra topicPartials key is simply
-    ignored (Direction A), and its "branch"/"global" scope entries are still
+    The current (post-R7/R8B) ranking_reducer.lambda_handler must process
+    every shard without raising: the old shard's extra topicPartials AND
+    creatorPartials keys are simply ignored (Direction A -- new code reading
+    an old bundle), and its "branch"/"global" scope entries are still
     written to TrendingCache without a KeyError (ranking_reducer._scope_field
     still recognizes them, deliberately left in place for exactly this
-    transitional window)."""
+    transitional window). creatorPartials here is a real, non-empty array
+    (not just an empty list a bug could satisfy by accident) to prove it is
+    genuinely unread, not merely absent.
+
+    R8B (AWS Cost Recovery): the reverse direction (an old, not-yet-upgraded
+    reducer reading a *new* bundle that omits creatorPartials entirely) is
+    NOT covered here and is not safe from this repo alone -- unlike
+    topicPartials, which was always read tolerantly (`payload.get(...)`, see
+    that field's own original introduction), creatorPartials was a required
+    v2 key from the start, so an already-deployed pre-R8B reducer would
+    KeyError on a creatorPartials-less bundle. See ranking_partial_store.py's
+    own R8B note for the full explanation; closing that window is a
+    deploy-ordering concern (reducer before/with history_worker), not
+    something this diff can encode.
+    """
     report_date = date(2026, 9, 9)
     client = _CountingS3Client()
     store = S3PartialRankingStore("test-bucket", s3_client=client)
 
-    # Shard 0: simulates an old (pre-R7) history_worker Lambda's own output --
-    # written directly as raw bytes (the real old write() call no longer
-    # exists in this repo to invoke), old-shaped: creator+org+branch+global
-    # scopes, plus a real topicPartials array.
+    # Shard 0: simulates an old (pre-R7/R8B) history_worker Lambda's own
+    # output -- written directly as raw bytes (the real old write() call no
+    # longer exists in this repo to invoke), old-shaped: creator+org+branch+
+    # global scopes, plus real topicPartials/creatorPartials arrays.
     old_shaped_payload = {
         "schemaVersion": 2,
         "scopeRankings": [
@@ -518,15 +366,18 @@ def test_lambda_handler_tolerates_a_mix_of_old_and_new_shaped_shard_objects(monk
              "entries": [{"rank": 1, "videoId": "old_v1", "creatorId": "old_creator", "viewCount": 300,
                           "anchorViewCount": 0, "gain": 300, "observedAt": "2026-09-09T18:00:00+09:00"}]},
         ],
-        "creatorPartials": [],
+        "creatorPartials": [
+            {"creatorId": "old_creator", "period": "7d", "viewSum": 300, "catalogVideoCount": 1,
+             "eligibleVideoCount": 1, "topCandidates": []},
+        ],
         "topicPartials": [{"creatorId": "old_creator", "topic": "apex", "viewSum": 300, "videoCount": 1}],
     }
     client.objects[partial_ranking_key(report_date, 0)] = json.dumps(old_shaped_payload).encode("utf-8")
 
-    # Shards 1..15: normal, current-code writes (new-shaped, no topicPartials,
-    # creator/org scope only).
+    # Shards 1..15: normal, current-code writes (new-shaped, no topicPartials/
+    # creatorPartials, creator/org scope only).
     for shard in range(1, HISTORY_SHARD_COUNT):
-        store.write(report_date, shard, {}, {})
+        store.write(report_date, shard, {})
 
     monkeypatch.setattr(ranking_reducer, "S3PartialRankingStore", lambda bucket_name: store)
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", "test-bucket")
@@ -548,13 +399,14 @@ def test_lambda_handler_tolerates_a_mix_of_old_and_new_shaped_shard_objects(monk
     assert any(key.startswith("branch:vspo_jp:") for key in keys_written)
     assert any(key.startswith("global:global:") for key in keys_written)
     assert any(key.startswith("creator:old_creator:") for key in keys_written)
-    # ...and its topicPartials data produced no topicLeaderboard write at all
-    # (that whole write path was removed in the same pass).
+    # ...and its topicPartials/creatorPartials data produced no topicLeaderboard
+    # or creatorSummary write at all (both whole write paths were removed).
     assert not any(key.startswith("topicLeaderboard:") for key in keys_written)
+    assert not any(key.startswith("creatorSummary:") for key in keys_written)
     assert result["cacheWrites"] == len(cache_writes)
 
 
-# --- WruBudget pacing (shared across persist_rankings and persist_creator_summaries) --
+# --- WruBudget pacing (shared across every persist_rankings call one invocation makes) --
 
 
 def _fake_clock_and_sleeper():
@@ -635,17 +487,18 @@ def test_wru_budget_estimates_about_185_seconds_for_14816_wru_at_the_shared_targ
     assert total_paced_seconds + generously_estimated_other_steps_seconds < LAMBDA_TIMEOUT_SECONDS
 
 
-def test_wru_budget_is_shared_and_cumulative_across_both_persist_functions():
-    """persist_rankings and persist_creator_summaries must charge into the
-    *same* running total when given the same WruBudget -- proving a shared
-    budget, not two independent ones that could each stay under target
-    individually while blowing past it together."""
+def test_wru_budget_is_shared_and_cumulative_across_multiple_persist_calls():
+    """Two separate persist_rankings calls given the *same* WruBudget must
+    charge into the same running total -- proving a shared budget, not one
+    that resets or forks per call, which is what lets lambda_handler pace
+    every write it makes across a whole invocation against one real
+    table-wide cap."""
     clock, sleeper, slept = _fake_clock_and_sleeper()
     budget = ranking_reducer.WruBudget(target_wru_per_second=1_000_000, clock=clock, sleeper=sleeper)
 
-    rankings = {("creator", "c1"): {"7d": [_ranked("v1", "c1", value=100, rank=1)]}}
+    rankings_c1 = {("creator", "c1"): {"7d": [_ranked("v1", "c1", value=100, rank=1)]}}
     ranking_reducer.persist_rankings(
-        rankings,
+        rankings_c1,
         report_date=date(2026, 9, 9),
         creators={},
         get_video=lambda video_id: None,
@@ -653,15 +506,15 @@ def test_wru_budget_is_shared_and_cumulative_across_both_persist_functions():
         computed_at="2026-09-09T18:05:00+09:00",
         wru_budget=budget,
     )
-    wru_after_scope_writes = budget.total_wru
-    assert wru_after_scope_writes > 0
+    wru_after_first_call = budget.total_wru
+    assert wru_after_first_call > 0
 
-    creator_partials = {
-        "c1": {"7d": CreatorPeriodPartial(creator_id="c1", period="7d", view_sum=100, catalog_video_count=1, eligible_video_count=1, top_candidates=[])}
-    }
-    ranking_reducer.persist_creator_summaries(
-        creator_partials,
+    rankings_c2 = {("creator", "c2"): {"7d": [_ranked("v2", "c2", value=200, rank=1)]}}
+    ranking_reducer.persist_rankings(
+        rankings_c2,
         report_date=date(2026, 9, 9),
+        creators={},
+        get_video=lambda video_id: None,
         put_cached_trending=lambda key, payload, *, computed_at: None,
         computed_at="2026-09-09T18:05:00+09:00",
         wru_budget=budget,
@@ -669,7 +522,7 @@ def test_wru_budget_is_shared_and_cumulative_across_both_persist_functions():
 
     # The second call's writes must have been *added* to the first call's
     # running total, never a fresh/reset budget.
-    assert budget.total_wru > wru_after_scope_writes
+    assert budget.total_wru > wru_after_first_call
 
 
 # --- _dynamodb_item_bytes: the real item size, not just payload's own JSON size --

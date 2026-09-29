@@ -53,7 +53,6 @@ from typing import Any, Callable
 
 from api import client_credential_api
 from stores import client_credential_store
-from api import comparison_api
 from ops import config
 from api import dashboard_catalog_api
 from api import heartbeat_api
@@ -157,16 +156,8 @@ def _handle_get_chart_catalog(event: dict[str, Any]) -> dict[str, Any]:
     return dashboard_catalog_api.get_chart_catalog(_merged_params(event))
 
 
-def _handle_get_comparison_items(event: dict[str, Any]) -> dict[str, Any]:
-    return dashboard_catalog_api.get_comparison_items(_merged_params(event))
-
-
 def _handle_get_topics(event: dict[str, Any]) -> dict[str, Any]:
     return dashboard_catalog_api.get_topics(_merged_params(event))
-
-
-def _handle_get_comparison_data(event: dict[str, Any]) -> dict[str, Any]:
-    return comparison_api.get_comparison_data(_merged_params(event))
 
 
 def _handle_get_subscriber_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
@@ -313,8 +304,6 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /creators/{creatorId}/trending": _handle_get_creator_trending,
     "GET /organizations/{organization}/trending": _handle_get_organization_trending,
     "GET /dashboard/chart-catalog": _handle_get_chart_catalog,
-    "GET /dashboard/comparison-items": _handle_get_comparison_items,
-    "GET /dashboard/comparison-data": _handle_get_comparison_data,
     "GET /topics": _handle_get_topics,
     "GET /subscribers/leaderboard": _handle_get_subscriber_leaderboard,
     "POST /heartbeat": _handle_post_heartbeat,

@@ -7,21 +7,33 @@ from datetime import date
 
 from botocore.exceptions import ClientError
 
-from analytics.history_ranking import CreatorPeriodPartial, RankedGrowth, ScopeKey
+from analytics.history_ranking import RankedGrowth, ScopeKey
 from stores.history_store import HISTORY_SHARD_COUNT
 
 PARTIAL_RANKING_PREFIX = "rankings/partial"
 
 # v1 was a bare JSON array (scope rankings only, no wrapper object at all).
-# v2 added an explicit schemaVersion and wrapped both the original scope-
-# ranking array and the per-creator/per-period partial alongside it in the
-# same object. R7 (AWS Cost Recovery): the topicPartials field Topic Phase 3
-# had added here (an additive, optional v2 field, never a v3 bump) was
-# removed again once the topic leaderboard it fed had zero production
-# consumers -- both the writer (history_worker_handler.py) and the only
-# reader (ranking_reducer.py) were changed in the same pass, so there is no
-# version-skew concern to preserve for a field neither side still writes or
-# reads.
+# v2 added an explicit schemaVersion and wrapped the scope-ranking array in
+# an object, alongside a creatorPartials field that carried each shard's
+# per-creator/per-period partial. R7 (AWS Cost Recovery) had already removed
+# an earlier, similarly additive topicPartials v2 field once its consumer
+# reached zero. R8B (AWS Cost Recovery): creatorPartials itself is now
+# removed the same way -- creator_period_partials/CreatorPeriodPartial
+# (analytics.history_ranking) had no remaining production consumer once
+# persist_creator_summaries/creatorSummary:* (comparison_api.py, its last
+# reader) was retired -- both the writer (history_worker.py/
+# history_worker_handler.py) and the only reader (ranking_reducer.py) were
+# changed in the same pass. Unlike topicPartials, creatorPartials was never
+# read tolerantly (see the old `payload["creatorPartials"]` -- a required
+# key, not `.get()`) -- a reducer invocation still running the pre-R8B code
+# while history_worker's Lambda has already rolled forward would fail
+# reading a new, creatorPartials-less bundle. This diff cannot retroactively
+# make already-deployed old code tolerant; only a deploy order that updates
+# ranking_reducer before (or atomically with) history_worker closes that
+# window -- new code reading an *old* bundle that still carries a stray
+# creatorPartials key is unaffected either way, since it is simply never
+# looked at below. No schemaVersion bump: the object's remaining shape
+# (schemaVersion + scopeRankings) is unchanged.
 PARTIAL_RANKING_SCHEMA_VERSION = 2
 
 
@@ -38,11 +50,9 @@ def partial_ranking_key(collection_date: date, shard: int) -> str:
 class S3PartialRankingStore:
     """Idempotent temporary-object storage for reducer inputs.
 
-    One object per (collection_date, shard) carries both this shard's
-    bounded scope (creator/organization) Top-N video rankings and its
-    bounded per-creator/per-period partials (view sum, catalog/eligible
-    video counts, Top-N candidates) -- one write() call, one PutObject,
-    regardless of how much this payload carries.
+    One object per (collection_date, shard) carries this shard's bounded
+    scope (creator/organization) Top-N video rankings -- one write() call,
+    one PutObject, regardless of how much this payload carries.
     """
 
     def __init__(self, bucket_name: str, *, s3_client=None) -> None:
@@ -55,18 +65,11 @@ class S3PartialRankingStore:
         self.bucket_name = bucket_name
         self.s3_client = s3_client
 
-    def write(
-        self,
-        collection_date: date,
-        shard: int,
-        rankings,
-        creator_partials: dict[str, dict[str, CreatorPeriodPartial]],
-    ) -> str:
+    def write(self, collection_date: date, shard: int, rankings) -> str:
         key = partial_ranking_key(collection_date, shard)
         payload = {
             "schemaVersion": PARTIAL_RANKING_SCHEMA_VERSION,
             "scopeRankings": _scope_rankings_to_payload(rankings),
-            "creatorPartials": _creator_partials_to_payload(creator_partials),
         }
         body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         try:
@@ -81,41 +84,8 @@ class S3PartialRankingStore:
         return key
 
     def read(self, collection_date: date, shard: int) -> dict[ScopeKey, dict[str, list[RankedGrowth]]]:
-        """Return this shard's scope (video) rankings only.
-
-        Costs its own S3 GetObject — a caller that also needs creator
-        partials for the same shard should use read_bundle instead of
-        calling this and read_creator_partials() separately, which would
-        fetch and parse the same object twice. Kept only for a caller that
-        genuinely wants scope rankings alone.
-        """
+        """Return this shard's scope (video) rankings -- its own S3 GetObject."""
         return _from_payload(self._read_payload(collection_date, shard))["scopeRankings"]
-
-    def read_creator_partials(
-        self, collection_date: date, shard: int
-    ) -> dict[str, dict[str, CreatorPeriodPartial]]:
-        """Return this shard's per-creator/per-period partials.
-
-        Same caveat as read(): its own S3 GetObject. Use read_bundle when a
-        caller needs both halves of one shard's payload.
-        """
-        return _from_payload(self._read_payload(collection_date, shard))["creatorPartials"]
-
-    def read_bundle(self, collection_date: date, shard: int) -> tuple[
-        dict[ScopeKey, dict[str, list[RankedGrowth]]],
-        dict[str, dict[str, CreatorPeriodPartial]],
-    ]:
-        """Return (scope_rankings, creator_partials) for one shard from a
-        single S3 GetObject and a single JSON parse.
-
-        This is what a caller needing every part of one shard's payload
-        (e.g. ranking_reducer.py's incremental merge loop) should use —
-        calling read()/read_creator_partials() separately for the same shard
-        would cost two GetObject calls and two full JSON parses of the same
-        (potentially several-MB) object instead of one of each.
-        """
-        parsed = _from_payload(self._read_payload(collection_date, shard))
-        return parsed["scopeRankings"], parsed["creatorPartials"]
 
     def _read_payload(self, collection_date: date, shard: int) -> dict:
         key = partial_ranking_key(collection_date, shard)
@@ -138,24 +108,6 @@ def _scope_rankings_to_payload(rankings) -> list[dict]:
                     "scopeValue": scope_value,
                     "period": period,
                     "entries": [_ranked_growth_to_payload(entry) for entry in entries],
-                }
-            )
-    return payload
-
-
-def _creator_partials_to_payload(creator_partials: dict[str, dict[str, CreatorPeriodPartial]]) -> list[dict]:
-    payload = []
-    for creator_id, periods in sorted(creator_partials.items()):
-        for period, agg in sorted(periods.items()):
-            payload.append(
-                {
-                    "creatorId": creator_id,
-                    "period": period,
-                    "viewSum": agg.view_sum,
-                    "catalogVideoCount": agg.catalog_video_count,
-                    "eligibleVideoCount": agg.eligible_video_count,
-                    "isComplete": agg.is_complete,
-                    "topCandidates": [_ranked_growth_to_payload(entry) for entry in agg.top_candidates],
                 }
             )
     return payload
@@ -187,13 +139,16 @@ def _ranked_growth_from_payload(entry: dict, *, period: str) -> RankedGrowth:
 
 
 def _from_payload(payload: dict) -> dict:
-    """Parse a whole v2 payload object into {"scopeRankings": ..., "creatorPartials": ...}.
+    """Parse a whole v2 payload object into {"scopeRankings": ...}.
 
     Requires schemaVersion == PARTIAL_RANKING_SCHEMA_VERSION exactly — fails
     fast (rather than guessing at an older/newer shape) on anything else,
     the same "an obviously wrong shape must never be silently reinterpreted"
     principle tracking_manifest.py's own read-time validation already
-    applies.
+    applies. A payload written by a pre-R8B producer may still carry a
+    "creatorPartials" key -- deliberately never looked at here, so an old
+    bundle read by this new code is unaffected either way (see this
+    module's own R8B note above for the one direction that isn't safe).
     """
     try:
         if not isinstance(payload, dict) or payload.get("schemaVersion") != PARTIAL_RANKING_SCHEMA_VERSION:
@@ -207,21 +162,6 @@ def _from_payload(payload: dict) -> dict:
             scope_rankings.setdefault(scope, {})[period] = [
                 _ranked_growth_from_payload(entry, period=period) for entry in group["entries"]
             ]
-
-        creator_partials: dict[str, dict[str, CreatorPeriodPartial]] = {}
-        for group in payload["creatorPartials"]:
-            creator_id = group["creatorId"]
-            period = group["period"]
-            creator_partials.setdefault(creator_id, {})[period] = CreatorPeriodPartial(
-                creator_id=creator_id,
-                period=period,
-                view_sum=group["viewSum"],
-                catalog_video_count=group["catalogVideoCount"],
-                eligible_video_count=group["eligibleVideoCount"],
-                top_candidates=[
-                    _ranked_growth_from_payload(entry, period=period) for entry in group["topCandidates"]
-                ],
-            )
     except (KeyError, TypeError, ValueError) as exc:
         raise PartialRankingStoreError(f"Invalid partial ranking payload: {exc}") from exc
-    return {"scopeRankings": scope_rankings, "creatorPartials": creator_partials}
+    return {"scopeRankings": scope_rankings}

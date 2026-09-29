@@ -127,7 +127,6 @@ class _FakeCollectResult:
     history_key = "history/daily/date=2026-01-01/shard=03.parquet"
     rows: list = []
     rankings: dict = {}
-    creator_partials: dict = {}
     topic_by_video: dict = {}
 
 
@@ -135,7 +134,7 @@ class _FakePartialStore:
     def __init__(self, bucket_name):
         self.bucket_name = bucket_name
 
-    def write(self, collection_date, shard, rankings, creator_partials):
+    def write(self, collection_date, shard, rankings):
         return f"partial/{collection_date.isoformat()}/{shard}"
 
 
@@ -233,9 +232,9 @@ def test_shard_branch_never_reads_topics_via_the_full_catalog_dynamodb_batch_get
     captured_writes = []
 
     class _CapturingPartialStore(_FakePartialStore):
-        def write(self, collection_date, shard, rankings, creator_partials):
-            captured_writes.append((rankings, creator_partials))
-            return super().write(collection_date, shard, rankings, creator_partials)
+        def write(self, collection_date, shard, rankings):
+            captured_writes.append(rankings)
+            return super().write(collection_date, shard, rankings)
 
     monkeypatch.setattr(history_worker_handler, "S3PartialRankingStore", _CapturingPartialStore)
     monkeypatch.setattr(
@@ -268,17 +267,17 @@ def test_shard_branch_lets_execution_lock_lost_error_propagate_uncaught(monkeypa
 # --- ranking_reducer: normal reduce branch renews before reading shards ----
 
 
-def _wire_reducer_normal_branch(monkeypatch, *, read_bundle_spy=None):
+def _wire_reducer_normal_branch(monkeypatch, *, read_spy=None):
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", "test-bucket")
 
     class FakeStore:
         def __init__(self, bucket_name):
             pass
 
-        def read_bundle(self, report_date, shard):
-            if read_bundle_spy is not None:
-                read_bundle_spy(report_date=report_date, shard=shard)
-            return {}, {}
+        def read(self, report_date, shard):
+            if read_spy is not None:
+                read_spy(report_date=report_date, shard=shard)
+            return {}
 
     monkeypatch.setattr(ranking_reducer, "S3PartialRankingStore", FakeStore)
     monkeypatch.setattr(ranking_reducer, "load_creators", lambda: [])
@@ -292,7 +291,7 @@ def test_reducer_normal_branch_renews_the_lock_before_reading_any_shard(monkeypa
         execution_lock, "renew_execution_lock", lambda **kwargs: call_order.append(("renew", kwargs))
     )
     _wire_reducer_normal_branch(
-        monkeypatch, read_bundle_spy=lambda **kwargs: call_order.append(("read_bundle", kwargs))
+        monkeypatch, read_spy=lambda **kwargs: call_order.append(("read", kwargs))
     )
 
     ranking_reducer.lambda_handler({"reportDate": "2026-01-05", "ownerToken": "exec-9"}, None)
@@ -303,8 +302,8 @@ def test_reducer_normal_branch_renews_the_lock_before_reading_any_shard(monkeypa
     assert renew_kwargs["owner_token"] == "exec-9"
     assert renew_kwargs["phase"] == execution_lock.PHASE_REDUCING
     assert renew_kwargs["lease_seconds"] == execution_lock.REDUCER_RENEW_LEASE_SECONDS
-    # Every subsequent read_bundle call must use the same passed-in
-    # reportDate, never a value the reducer derived on its own.
+    # Every subsequent read call must use the same passed-in reportDate,
+    # never a value the reducer derived on its own.
     read_dates = {call[1]["report_date"] for call in call_order[1:]}
     assert read_dates == {date(2026, 1, 5)}
 
