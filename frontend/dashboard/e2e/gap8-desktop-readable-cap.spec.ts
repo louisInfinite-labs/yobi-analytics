@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test"
 import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { waitForStableDashboardGeometry } from "./helpers/dashboardStability"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -41,6 +42,7 @@ async function freshDashboard(page: Page, viewport: { width: number; height: num
   await page.evaluate(({ key, value }) => { localStorage.clear(); localStorage.setItem(key, JSON.stringify(value)) }, { key: STORAGE_KEY, value: seed })
   await page.reload()
   await expect(page.getByText("Daily Gain").first()).toBeVisible()
+  await waitForStableDashboardGeometry(page)
 }
 
 async function measure(page: Page) {
@@ -147,14 +149,15 @@ test.describe("GAP-8: desktop dynamic readable column cap", () => {
   })
 
   test("AC1/AC2: representative widths just above/below the 3-column threshold (exact thresholds are unit-tested)", async ({ page }) => {
-    // wrapper = viewport - 124 (below the 1440 page cap): 892 -> 768 (>= 768), 891 -> 767 (< 768)
-    await freshDashboard(page, { width: 892, height: 900 }, THREE_COLUMN_LAYOUT)
+    // wrapper = viewport - 224 (main navbar 160px + page padding; below the
+    // 1440 page cap): 992 -> 768 (>= 768), 991 -> 767 (< 768)
+    await freshDashboard(page, { width: 992, height: 900 }, THREE_COLUMN_LAYOUT)
     const above = await settled(page)
     expect(cap(above.wrapperWidth)).toBe(3)
     expect(Math.min(...above.rects.map((r) => r.width))).toBeGreaterThanOrEqual(MIN)
     await expect(editButton(page)).toBeVisible()
 
-    await page.setViewportSize({ width: 891, height: 900 })
+    await page.setViewportSize({ width: 991, height: 900 })
     await expect(editButton(page)).toHaveCount(0)
     const below = await settled(page)
     expect(cap(below.wrapperWidth)).toBe(2)
@@ -207,7 +210,7 @@ test.describe("GAP-8: desktop dynamic readable column cap", () => {
       ],
     }
     // wrapper 776 (cap 3): growing 2 -> 3 columns is readable and previews.
-    await freshDashboard(page, { width: 900, height: 1500 }, twoColumn)
+    await freshDashboard(page, { width: 1000, height: 1500 }, twoColumn)
     await editButton(page).click()
     await page.locator(".widget-tray").getByRole("button", { name: /KPI Summary/ }).click()
     await page.getByTestId("widget-insertion-row-0").getByRole("button").first().click()
@@ -217,7 +220,7 @@ test.describe("GAP-8: desktop dynamic readable column cap", () => {
     expect(Math.min(...preview.rects.map((r) => r.width))).toBeGreaterThanOrEqual(MIN)
 
     // wrapper 767 (cap 2): the same 2 -> 3 growth is over the cap and is rejected.
-    await freshDashboard(page, { width: 891, height: 1500 }, twoColumn)
+    await freshDashboard(page, { width: 991, height: 1500 }, twoColumn)
     await editButton(page).click()
     await page.locator(".widget-tray").getByRole("button", { name: /KPI Summary/ }).click()
     const before = await settled(page)
@@ -283,12 +286,12 @@ test.describe("GAP-8: desktop dynamic readable column cap", () => {
   })
 
   test("AC22/AC23: tablet dynamic cap still works with the corrected formula; mobile stays view-only", async ({ page }) => {
-    await freshDashboard(page, { width: 900, height: 1400 }, THREE_COLUMN_LAYOUT) // wrapper 776 >= 768
+    await freshDashboard(page, { width: 1000, height: 1400 }, THREE_COLUMN_LAYOUT) // wrapper 776 >= 768
     expect(cap((await settled(page)).wrapperWidth)).toBe(3)
     await expect(editButton(page)).toBeVisible()
-    // 891px -> wrapper 767 (< 768): the corrected formula no longer admits 3 columns
+    // 991px -> wrapper 767 (< 768): the corrected formula no longer admits 3 columns
     // (they would render at 239.67px), so the 3-column layout reflows and Edit is off.
-    await page.setViewportSize({ width: 891, height: 1400 })
+    await page.setViewportSize({ width: 991, height: 1400 })
     await expect(editButton(page)).toHaveCount(0)
     const narrow = await settled(page)
     expect(Math.min(...narrow.rects.map((r) => r.width))).toBeGreaterThanOrEqual(MIN)

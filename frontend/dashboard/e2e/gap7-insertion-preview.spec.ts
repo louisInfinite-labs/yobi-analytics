@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test"
 import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { waitForStableDashboardGeometry } from "./helpers/dashboardStability"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -43,6 +44,7 @@ async function freshDashboard(page: Page, viewport: { width: number; height: num
   )
   await page.reload()
   await expect(page.getByText("Daily Gain").first()).toBeVisible()
+  await waitForStableDashboardGeometry(page)
 }
 
 /** Absolute (viewport) border-boxes of every widget shell. */
@@ -357,7 +359,8 @@ test.describe("GAP-7: live insertion preview + widget-sized placeholder", () => 
   test("AC21/AC15: on tablet a readable preview works, and narrowing the viewport past the dynamic cap clears it without touching the draft", async ({
     page,
   }) => {
-    await freshDashboard(page, { width: 900, height: 1400 })
+    // wrapper = viewport - 224: needs to comfortably read cap 3 (>= 768)
+    await freshDashboard(page, { width: 1000, height: 1400 })
     const storageBefore = await readStorage(page)
     await startAdd(page)
     await slot(page, 1).click()

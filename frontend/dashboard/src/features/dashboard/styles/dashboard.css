@@ -1480,7 +1480,15 @@ button.video-table__title-cell {
   height: 100%;
 }
 
+/* Dashed edit guide (Guidelines Section 0.2/5.3: "the dashed widget guide ...
+ * must not add margin, padding, grid gap, width, or height"). `outline`
+ * never participates in the CSS box model regardless of its offset sign, so
+ * it cannot change a widget's border-box, GridStack track size, or the
+ * exact 16px neighbor gap; the negative offset only pulls the drawn line
+ * inward so it renders inside the existing border box instead of outside it. */
 .widget-shell--editing {
+  outline: 2px dashed var(--surface-border);
+  outline-offset: -2px;
   border-radius: var(--radius-sm);
 }
 

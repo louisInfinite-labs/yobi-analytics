@@ -71,6 +71,19 @@ export interface CanonicalGridProjection {
   widgets: GridWidgetInstance[]
   /** The GridStack `column` count this projection's geometry was computed for. */
   columns: number
+  /** The row count this projection's geometry was computed for --
+   * `DashboardGrid.tsx` needs this to size GridStack's own `maxRow`
+   * (confirmed: a reflowed display layout can need MORE rows than the
+   * canonical layout it was reflowed from, e.g. reflowing 3 widgets from a
+   * 3-column canonical layout down to 2 columns needs a 2nd row that
+   * doesn't exist canonically -- passing the canonical layout's own row
+   * count as `maxRow` there silently clipped the reflowed widget(s) that
+   * only fit in that extra row, which GridStack then fell back to
+   * overlapping an existing widget instead of rejecting outright). Each
+   * item's own `y`/`h` alone are not enough: they describe where a widget
+   * IS, not the ceiling GridStack should allow it to be placed at.
+   */
+  rows: number
   /** `widgetId`s present in `layout` but excluded from `widgets` because
    * their `widgetType` isn't a registered, renderable `WidgetTypeId`. */
   unrenderableWidgetIds: string[]
@@ -81,7 +94,7 @@ export interface CanonicalGridProjection {
  * excludes an unrenderable widget type, so a `CanonicalLayout` and a
  * `ResponsiveLayout` are projected identically, never by two diverging
  * implementations. */
-function projectWidgetsForGridStack(widgets: readonly DashboardWidget[], columns: number): CanonicalGridProjection {
+function projectWidgetsForGridStack(widgets: readonly DashboardWidget[], columns: number, rows: number): CanonicalGridProjection {
   const projected: GridWidgetInstance[] = []
   const unrenderableWidgetIds: string[] = []
 
@@ -107,21 +120,21 @@ function projectWidgetsForGridStack(widgets: readonly DashboardWidget[], columns
     })
   }
 
-  return { widgets: projected, columns, unrenderableWidgetIds }
+  return { widgets: projected, columns, rows, unrenderableWidgetIds }
 }
 
 /** Deterministic, one-way, non-persistent. Never mutates `layout` and never
  * produces anything callers could write back into canonical state. */
 export function projectCanonicalLayoutForGridStack(layout: CanonicalLayout): CanonicalGridProjection {
-  return projectWidgetsForGridStack(layout.widgets, layout.grid.columns)
+  return projectWidgetsForGridStack(layout.widgets, layout.grid.columns, layout.grid.rows)
 }
 
 /** The same projection for a breakpoint's read-only reflowed
  * display layout (tablet/mobile view mode, or a canonical layout wider than
- * the current breakpoint's editable column cap). `responsive.rows` is
- * unused here, exactly like `CanonicalLayout.grid.rows` above -- GridStack
- * only needs a `column` count; each item's own `y`/`h` already imply how
- * many rows exist. */
+ * the current breakpoint's editable column cap). Uses `responsive.rows`,
+ * not the source `CanonicalLayout.grid.rows` -- a reflow to fewer columns
+ * routinely needs MORE rows than the canonical layout it was reflowed
+ * from (see `CanonicalGridProjection.rows`'s own doc comment). */
 export function projectResponsiveLayoutForGridStack(responsive: ResponsiveLayout): CanonicalGridProjection {
-  return projectWidgetsForGridStack(responsive.widgets, responsive.columns)
+  return projectWidgetsForGridStack(responsive.widgets, responsive.columns, responsive.rows)
 }

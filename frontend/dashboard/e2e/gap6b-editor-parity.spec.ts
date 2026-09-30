@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test"
+import { waitForStableDashboardGeometry } from "./helpers/dashboardStability"
 
 /** GAP-6B "Live Editor Visual + ARIA Parity" browser evidence, against the
  * real production `/dashboard` route (never a fixture/harness) -- the same
@@ -59,6 +60,7 @@ async function freshDashboard(page: Page, viewport: { width: number; height: num
   )
   await page.reload()
   await expect(page.getByText("Daily Gain").first()).toBeVisible()
+  await waitForStableDashboardGeometry(page)
 }
 
 interface WidgetRect {
@@ -246,7 +248,10 @@ test.describe("GAP-6B: live editor visual + ARIA parity", () => {
     // The just-clicked tray button is later in DOM/tab order than
     // Reset/Cancel/Save (EditModeToolbar renders before WidgetTray) --
     // walk back to Restore Default first so a plain forward Tab sweep from
-    // here passes through every required control in order.
+    // here passes through every required control in order. Traced
+    // directly (one focusable control per Shift+Tab, logged): tray button
+    // -> "Members" -> Save -> Cancel -> Restore Default, 4 steps back, not 3.
+    await page.keyboard.press("Shift+Tab")
     await page.keyboard.press("Shift+Tab")
     await page.keyboard.press("Shift+Tab")
     await page.keyboard.press("Shift+Tab")

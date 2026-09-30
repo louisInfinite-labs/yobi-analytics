@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test"
 import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { waitForStableDashboardGeometry } from "./helpers/dashboardStability"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -64,6 +65,7 @@ async function seed(page: Page, viewport: { width: number; height: number }, raw
   await page.evaluate(({ key, value }) => { localStorage.clear(); if (value !== null) localStorage.setItem(key, value) }, { key: KEY, value: raw })
   await page.reload()
   await expect(page.getByText("Daily Gain").first()).toBeVisible()
+  await waitForStableDashboardGeometry(page)
 }
 
 const read = (page: Page, key: string) => page.evaluate((k) => localStorage.getItem(k), key)
@@ -151,6 +153,7 @@ test.describe("GAP-8D: legacy 4/5-column recovery", () => {
     // A reload shows the normal Dashboard, editable, with exact 16px gaps and readable widths.
     await page.reload()
     await expect(page.getByText("Daily Gain").first()).toBeVisible()
+    await waitForStableDashboardGeometry(page)
     await expect(banner(page)).toHaveCount(0)
     await expect(editButton(page)).toBeVisible()
     expect(await read(page, KEY)).toBe(primaryAfterConvert)
@@ -234,14 +237,15 @@ test.describe("GAP-8D: current 1x1-3x3 contract", () => {
   })
 
   test("Scenario 4: tablet keeps the 3-column maximum, reduces to 2 when only 2 are readable, and never shows 4 columns", async ({ page }) => {
-    await seed(page, { width: 900, height: 1400 }, JSON.stringify({ grid: { columns: 3, rows: 1 }, widgets: THREE_BY_TWO.widgets.slice(0, 3) })) // wrapper 776
+    // wrapper = viewport - 224 (main navbar 160px + page padding)
+    await seed(page, { width: 1000, height: 1400 }, JSON.stringify({ grid: { columns: 3, rows: 1 }, widgets: THREE_BY_TWO.widgets.slice(0, 3) })) // wrapper 776
     const wide = await settled(page)
     expect(distinctColumns(wide)).toBe(3)
     expect(Math.min(...wide.map((r) => r.width))).toBeGreaterThanOrEqual(MIN)
     await expect(editButton(page)).toBeVisible()
     for (const gap of gaps(wide)) expect(gap).toBe(16)
 
-    await page.setViewportSize({ width: 891, height: 1400 }) // wrapper 767: only 2 readable columns
+    await page.setViewportSize({ width: 991, height: 1400 }) // wrapper 767: only 2 readable columns
     await expect(editButton(page)).toHaveCount(0)
     const narrow = await settled(page)
     expect(distinctColumns(narrow)).toBe(2)

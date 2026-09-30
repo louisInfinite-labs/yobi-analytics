@@ -172,8 +172,38 @@ export function DashboardGrid({
   const syncGridToCurrentWidgets = useCallback(() => {
     const grid = gridRef.current
     if (!grid) return
-    if (grid.getColumn() !== columnsRef.current) grid.column(columnsRef.current)
-    grid.opts.maxRow = rowsRef.current * GRIDSTACK_ROW_SCALE
+    // Changing the column count while GridStack's engine still holds the
+    // PREVIOUS layout's nodes (each still at its old x/y, potentially now
+    // out of range for the new column count -- e.g. x=2 in what is about to
+    // become a 2-column grid) makes `column()`/the following `load()` each
+    // try to resolve collisions against those stale, out-of-range
+    // positions. For some column-count/node combinations (confirmed:
+    // reflowing this component's own widgets to fewer columns), that
+    // resolution drives GridStack's internal collision engine
+    // (`_fixCollisions`/`moveNode`) into infinite mutual-recursion --
+    // node A's move displaces node B, whose own resulting move displaces A
+    // again, forever -- crashing this entire component with an uncaught
+    // RangeError (GridStack's own "Infinite collide check" counter only
+    // guards looping *within* one `_fixCollisions` call, not this
+    // recursion across separate `moveNode`/`_fixCollisions` calls).
+    // Removing every node (DOM included -- `load()` immediately recreates
+    // each one fresh from this function's own `widgetsRef`, so nothing is
+    // ever actually lost) first means the column change and the reload
+    // below both start from a genuinely empty engine -- nothing stale left
+    // to collide with -- so this is not a workaround for a transient
+    // symptom, it removes the actual precondition (stale out-of-range
+    // nodes) the recursion depends on.
+    grid.removeAll(true)
+    // `updateOptions`, not a direct `grid.opts.maxRow = ...` assignment --
+    // GridStack's own engine keeps its own separate `maxRow` copy
+    // (confirmed: assigning `opts.maxRow` directly leaves `engine.maxRow`
+    // untouched, so the engine kept enforcing whichever `maxRow` was set at
+    // `GridStack.init` time, from this component's very first render,
+    // forever after). Every reflow that needs MORE rows than that stale
+    // value silently clipped the widget(s) that only fit in the extra
+    // row(s), which GridStack then placed by falling back to overlapping
+    // an existing widget instead of rejecting the placement outright.
+    grid.updateOptions({ maxRow: rowsRef.current * GRIDSTACK_ROW_SCALE })
 
     grid.load(
       widgetsRef.current.map((w) => {
@@ -186,6 +216,17 @@ export function DashboardGrid({
         return { id: w.instanceId, x: w.x, y: w.y, w: w.w, h: w.h, minH: minGridStackHeightForAllowedHeights(allowedHeights) }
       }),
     )
+    // Changing the column count AFTER `load()`, not before: every widget
+    // above was already loaded at its final x/y for `columnsRef.current`
+    // (the caller -- DashboardPage.tsx's projection -- already reflows
+    // widgets to fit whatever column count is coming), so by the time this
+    // runs every node already fits the new column count and 'none' has
+    // nothing to relayout. Doing this the other way around (`column()`
+    // then `load()`) fed `load()`'s own per-node placement through a grid
+    // already mid-transition to the new column count, which corrupted
+    // later nodes' positions (confirmed: a node's correct, non-overlapping
+    // `y` was silently dropped back to 0).
+    if (grid.getColumn() !== columnsRef.current) grid.column(columnsRef.current, "none")
 
     const nodes: Record<string, HTMLElement> = {}
     for (const widget of widgetsRef.current) {
