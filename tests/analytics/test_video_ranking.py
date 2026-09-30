@@ -8,9 +8,11 @@ from __future__ import annotations
 from datetime import date
 
 from analytics.video_ranking import (
+    CONTENT_TYPE_SCOPE_ALL,
     GROWTH_METRICS,
     TOPIC_SCOPE_ALL,
     TOTAL_METRIC,
+    VALID_CONTENT_TYPE_SCOPES,
     VALID_METRICS,
     VALID_TOPIC_SCOPES,
     build_creator_video_catalog,
@@ -135,6 +137,66 @@ def test_an_unrecognized_persisted_topic_also_falls_back_to_other():
     ranked = rank_video_rows(rows, metric="total", topic=TOPIC_SCOPE_ALL)
 
     assert ranked[0]["topic"] == "other"
+
+
+def test_module_exposes_the_expected_content_type_constants():
+    assert CONTENT_TYPE_SCOPE_ALL == "all"
+    assert VALID_CONTENT_TYPE_SCOPES == frozenset({"all", "live", "upload"})
+
+
+def test_content_type_all_includes_every_video_regardless_of_content_type():
+    today = [_row("a1", "creator_a", 100), _row("a2", "creator_a", 50), _row("a3", "creator_a", 10)]
+    rows = _canonical_dicts(
+        today, content_type_by_video={"a1": "live", "a2": "upload"}
+    )  # a3 has no entry at all -- stays None
+
+    ranked = rank_video_rows(rows, metric="total", topic=TOPIC_SCOPE_ALL, content_type=CONTENT_TYPE_SCOPE_ALL)
+
+    assert {row["videoId"] for row in ranked} == {"a1", "a2", "a3"}
+    assert {row["contentType"] for row in ranked} == {"live", "upload", None}
+
+
+def test_specific_content_type_filter_keeps_only_matching_videos_and_reranks():
+    today = [_row("a1", "creator_a", 300), _row("a2", "creator_a", 200), _row("a3", "creator_a", 100)]
+    rows = _canonical_dicts(today, content_type_by_video={"a1": "live", "a2": "upload", "a3": "live"})
+
+    live_only = rank_video_rows(rows, metric="total", topic=TOPIC_SCOPE_ALL, content_type="live")
+
+    assert [row["videoId"] for row in live_only] == ["a1", "a3"]
+    assert [row["rank"] for row in live_only] == [1, 2]  # re-numbered, not the original 1/3
+
+
+def test_content_type_and_topic_filter_independently_combine():
+    """Filtering both dimensions at once keeps only rows matching BOTH --
+    they are independent, not aliases of the same classification."""
+    today = [_row("a1", "creator_a", 300), _row("a2", "creator_a", 200), _row("a3", "creator_a", 100)]
+    topic_by_video = {"a1": "valorant", "a2": "valorant", "a3": "sf6"}
+    content_type_by_video = {"a1": "live", "a2": "upload", "a3": "live"}
+    rows = _canonical_dicts(today, topic_by_video=topic_by_video, content_type_by_video=content_type_by_video)
+
+    ranked = rank_video_rows(rows, metric="total", topic="valorant", content_type="live")
+
+    assert [row["videoId"] for row in ranked] == ["a1"]
+
+
+def test_a_video_with_no_manifest_content_type_reads_as_none_not_a_fallback_bucket():
+    """Unlike topic's OTHER_TOPIC bucket, an unclassified content_type has no
+    catch-all -- it stays None, distinguishable from a real "upload"."""
+    today = [_row("a1", "creator_a", 100)]
+    rows = _canonical_dicts(today, content_type_by_video={})
+
+    ranked = rank_video_rows(rows, metric="total", topic=TOPIC_SCOPE_ALL, content_type=CONTENT_TYPE_SCOPE_ALL)
+
+    assert ranked[0]["contentType"] is None
+
+
+def test_an_unrecognized_persisted_content_type_also_reads_as_none():
+    today = [_row("a1", "creator_a", 100)]
+    rows = _canonical_dicts(today, content_type_by_video={"a1": "not-a-real-content-type"})
+
+    ranked = rank_video_rows(rows, metric="total", topic=TOPIC_SCOPE_ALL, content_type=CONTENT_TYPE_SCOPE_ALL)
+
+    assert ranked[0]["contentType"] is None
 
 
 def test_total_orders_by_current_view_count_descending():

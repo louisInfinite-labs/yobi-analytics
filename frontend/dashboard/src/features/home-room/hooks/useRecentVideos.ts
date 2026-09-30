@@ -5,6 +5,7 @@ import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistr
 import { fetchUploadedVideosFromHolodex, type HolodexPage } from "../../../integrations/holodex/holodexClient"
 import { useLiveStreams } from "../../../shared/api/hooks/useLiveStreams"
 import type { LiveStreamDto } from "../../../shared/api/liveStreams"
+import { fetchArchivedLivestreams } from "../data/recentArchivedLivestreams"
 
 /** C6's real-fetch scope is intentionally still just gawr_gura -- the
  * original hand-picked local-testing case (this session's own request to
@@ -47,13 +48,13 @@ export interface VideoPage {
 
 type PageFetcher = (holodexChannelId: string, args: { offset: number }) => Promise<HolodexPage>
 
-/** One independently-paginated video pool — either "Latest Videos" (backed by
- * fetchUploadedVideosFromHolodex) or "Latest Live" (fetchArchivedStreamsFromHolodex).
- * Kept as two separate instances of this same hook (see useRecentVideos
- * below) rather than one merged pool, so scrolling one row's prefetch
- * never fires the other row's request (this session's own requirement:
- * scrolling the Latest Live row must only ever trigger more Latest Live
- * requests, never get misclassified as a Latest Videos request). */
+/** "Latest Videos" ' own independently-paginated pool (fetchUploadedVideosFromHolodex).
+ * "Latest Live"'s own archive pool is useArchivedLivestreamPool below (a
+ * separate, AWS-backed hook, not this one) -- kept as two separate pools so
+ * scrolling one row's prefetch never fires the other row's request (this
+ * session's own requirement: scrolling the Latest Live row must only ever
+ * trigger more Latest Live requests, never get misclassified as a Latest
+ * Videos request). */
 function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefined, fetcher: PageFetcher): VideoPage {
   const mockVideos = getRecentVideosForCreator(creatorId)
 
@@ -139,10 +140,9 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
 interface UseRecentVideosResult {
   /** "Latest Videos" — plain (non-stream) uploads only. */
   latestVideos: VideoPage
-  /** "Latest Live" — the creator's current live/upcoming stream, if any, from
-   * the shared /live-streams store. See useLiveStreamVideoPool's own
-   * docstring for why this intentionally no longer includes past/archived
-   * streams. */
+  /** "Latest Live" — the creator's current live/upcoming stream (if any, from
+   * the shared /live-streams store) plus their completed historical
+   * archives (AWS). See useLiveStreamVideoPool's own docstring. */
   streamVideos: VideoPage
 }
 
@@ -164,44 +164,113 @@ function toRecentVideo(dto: LiveStreamDto): RecentVideo {
   }
 }
 
-/** "Latest Live" real data source: the SAME shared /live-streams store Home's
- * Live Status/Oshi Status/player switching and Schedule already read --
- * never a second fetch, never holodex.net directly, never a Holodex API key
- * in this pool. selectLivestreamSlots (recentVideosSelection.ts) is
- * untouched and still decides what actually renders from whatever this
- * returns.
- *
- * INTENTIONAL LIMITATION, not a bug: /live-streams only ever contains live
- * and upcoming streams (no persistence layer backs it) -- so this pool
- * contains at most that one creator's current live/upcoming stream, never
- * anything past/archived. A creator with no live or upcoming stream right
- * now renders an empty "Latest Live" row. This replaces what used to be up
- * to ~5 slots (1 live + up to 4 recent archives, from either mock data or a
- * direct browser->holodex.net fetch for one hand-picked test creator) --
- * that reduction is accepted for this phase in exchange for removing the
- * insecure direct-Holodex dependency and its browser-exposed API key.
- *
- * Do NOT "fix" this by restoring a browser-direct Holodex archive request,
- * and do NOT add a new backend endpoint from this frontend branch. Historical
- * archives belong behind a future server-side endpoint (e.g. a new
- * `GET /recent-streams` or an extension of an existing one) built and owned
- * on the backend, once that work is actually scoped -- not by reaching back
- * out to Holodex directly from here. */
+/** The AWS-backed half of "Latest Live": one creator's own COMPLETED
+ * historical livestream archives (contentType=live&liveStatus=completed),
+ * newest first, from GET /creators/{creatorId}/videos/recent. Defaults to an
+ * empty page on any failure (no creator id, request error, or the ranking
+ * pipeline not having run yet for this creator/date) rather than falling
+ * back to mock data -- unlike usePaginatedVideos' "Latest Videos" pool, a
+ * failed archive fetch must never fabricate a video or hide the creator's
+ * real current/upcoming stream (that stream comes from a completely
+ * separate pool, useLiveStreams, and is merged in below regardless of this
+ * pool's own state). */
+function useArchivedLivestreamPool(canonicalCreatorId: string | undefined): VideoPage {
+  const [videos, setVideos] = useState<RecentVideo[]>([])
+  const [loading, setLoading] = useState(Boolean(canonicalCreatorId))
+  const [error, setError] = useState<Error | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const offsetRef = useRef(0)
+  const loadingMoreRef = useRef(false)
+  // Same "drop a stale in-flight request from the previous creator" guard as
+  // usePaginatedVideos' own generationRef -- see that hook's own comment.
+  const generationRef = useRef(0)
+
+  useEffect(() => {
+    const generation = ++generationRef.current
+    offsetRef.current = 0
+    loadingMoreRef.current = false
+
+    if (!canonicalCreatorId) {
+      setVideos([])
+      setLoading(false)
+      setError(null)
+      setHasMore(false)
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+
+    fetchArchivedLivestreams(canonicalCreatorId, { offset: 0 })
+      .then((page) => {
+        if (generation !== generationRef.current) return
+        setVideos(page.videos)
+        setHasMore(page.hasMore)
+        offsetRef.current = page.nextOffset
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (generation !== generationRef.current) return
+        setError(err instanceof Error ? err : new Error(String(err)))
+        setVideos([])
+        setHasMore(false)
+        setLoading(false)
+      })
+  }, [canonicalCreatorId])
+
+  const loadMore = useCallback(() => {
+    if (!canonicalCreatorId || loadingMoreRef.current) return
+    const generation = generationRef.current
+    loadingMoreRef.current = true
+
+    fetchArchivedLivestreams(canonicalCreatorId, { offset: offsetRef.current })
+      .then((page) => {
+        if (generation !== generationRef.current) return
+        setVideos((prev) => [...prev, ...page.videos])
+        setHasMore(page.hasMore)
+        offsetRef.current = page.nextOffset
+      })
+      .catch(() => {
+        if (generation === generationRef.current) setHasMore(false)
+      })
+      .finally(() => {
+        if (generation === generationRef.current) loadingMoreRef.current = false
+      })
+  }, [canonicalCreatorId])
+
+  return { videos, loading, error, loadMore, hasMore }
+}
+
+/** "Latest Live" = the creator's current live/upcoming stream (Holodex,
+ * priority) plus their completed historical archives (AWS), deduplicated by
+ * videoId with Holodex winning any collision -- see each source pool's own
+ * docstring below. selectLivestreamSlots (recentVideosSelection.ts) decides
+ * what actually renders from the merged pool this returns: at most one
+ * live_now/live_upcoming item first, then archives newest-first. */
 function useLiveStreamVideoPool(creatorId: string): VideoPage {
   const canonicalCreatorId = resolveCreatorKey(creatorId)?.creatorId
   const { streams, isLoading, error } = useLiveStreams()
+  const archivePool = useArchivedLivestreamPool(canonicalCreatorId)
 
-  const videos = useMemo(
-    () => (canonicalCreatorId ? streams.filter((stream) => stream.creatorId === canonicalCreatorId).map(toRecentVideo) : []),
-    [streams, canonicalCreatorId],
-  )
+  const videos = useMemo(() => {
+    if (!canonicalCreatorId) return []
+    const current = streams.filter((stream) => stream.creatorId === canonicalCreatorId).map(toRecentVideo)
+    const currentIds = new Set(current.map((video) => video.videoId))
+    // Defensive dedup: a stream that just ended could in principle appear in
+    // both pools on the same day (still in Holodex's own /live response
+    // briefly, and already re-observed as contentType=live/liveStatus=
+    // completed by the next collection run) -- Holodex's own current/
+    // upcoming entry always wins on a collision, never the archive copy.
+    const archives = archivePool.videos.filter((video) => !currentIds.has(video.videoId))
+    return [...current, ...archives]
+  }, [streams, canonicalCreatorId, archivePool.videos])
 
   return {
     videos,
-    loading: isLoading,
-    error: error ? new Error(error) : null,
-    loadMore: () => {},
-    hasMore: false,
+    loading: isLoading || archivePool.loading,
+    error: error ? new Error(error) : archivePool.error,
+    loadMore: archivePool.loadMore,
+    hasMore: archivePool.hasMore,
   }
 }
 

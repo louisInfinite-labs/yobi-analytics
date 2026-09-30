@@ -41,12 +41,14 @@ from api.holodex_normalization import normalize_holodex_archived_streams_respons
 from tracking.creator_master import Creator, is_creator_live_roster_eligible, load_creators
 from analytics.subscriber_ranking import GROWTH_PERIODS, VALID_SUBSCRIBER_ORGANIZATIONS
 from stores.subscriber_ranking_store import S3SubscriberRankingStore
+from analytics.video_ranking import CONTENT_TYPE_SCOPE_ALL as VIDEO_RANKING_CONTENT_TYPE_ALL
 from analytics.video_ranking import TOPIC_SCOPE_ALL as VIDEO_RANKING_TOPIC_ALL
+from analytics.video_ranking import VALID_CONTENT_TYPE_SCOPES as VALID_VIDEO_RANKING_CONTENT_TYPES
 from analytics.video_ranking import VALID_METRICS as VALID_VIDEO_RANKING_METRICS
 from analytics.video_ranking import VALID_TOPIC_SCOPES as VALID_VIDEO_RANKING_TOPICS
 from analytics.video_ranking import rank_video_rows
 from stores.video_ranking_store import S3VideoRankingStore
-from tracking.video_master import Video
+from tracking.video_master import VALID_LIVE_STATUSES, Video
 from analytics.view_growth_analytics import (
     COLLECTION_START_DATE,
     PERIOD_DAYS,
@@ -255,6 +257,23 @@ def parse_video_ranking_topic(raw: Any) -> str:
     raise ClientError(f"topic must be one of {sorted(VALID_VIDEO_RANKING_TOPICS)}, got {raw!r}")
 
 
+def parse_video_ranking_content_type(raw: Any) -> str:
+    """Validate an optional contentType filter for the per-creator video
+    ranking: "all" (default; case-insensitive) or one of the canonical
+    content-type ids (tracking.video_master.VALID_CONTENT_TYPES) -- mirrors
+    parse_video_ranking_topic's own closed-enum reasoning. A separate
+    parameter from `topic`: delivery format (live archive vs. upload) is an
+    independent dimension from game/genre, never folded into the same enum."""
+    if raw is None or raw == "":
+        return VIDEO_RANKING_CONTENT_TYPE_ALL
+    if not isinstance(raw, str):
+        raise ClientError(f"contentType must be a string, got {raw!r}")
+    normalized = raw.strip().lower()
+    if normalized in VALID_VIDEO_RANKING_CONTENT_TYPES:
+        return normalized
+    raise ClientError(f"contentType must be one of {sorted(VALID_VIDEO_RANKING_CONTENT_TYPES)}, got {raw!r}")
+
+
 # No real page of trending results is ever this deep (Roadmap 5.3's
 # "bounded reads only" for public routes) — a caller asking for more is
 # almost certainly a mistake or a probe, not a legitimate UI need.
@@ -435,11 +454,13 @@ def _filter_subscriber_ineligible(ineligible: dict[str, str], organization: str)
 
 def get_video_ranking(query: dict[str, Any]) -> dict[str, Any]:
     """Read-only view over the video-ranking Phase C per-creator S3 result:
-    total (lifetime view count) or 1d/7d/30d growth, optionally filtered to
-    one topic, all derived in memory from the ONE persisted canonical row
-    set for a creator/report date (Phase C storage correction: one row per
-    video, never four separately ranked/duplicated row sets). Mirrors
-    `GET /creators/{creatorId}/videos/ranking?metric=7d&topic=valorant`.
+    total (lifetime view count) or 1d/7d/30d growth, optionally filtered by
+    topic (game/genre) and/or contentType (live archive vs. upload -- an
+    independent dimension from topic), all derived in memory from the ONE
+    persisted canonical row set for a creator/report date (Phase C storage
+    correction: one row per video, never four separately ranked/duplicated
+    row sets). Mirrors
+    `GET /creators/{creatorId}/videos/ranking?metric=7d&topic=valorant&contentType=live`.
 
     Videos never rank across creators (video-ranking's own core product
     rule): this only ever reads the one S3 object already scoped to
@@ -465,6 +486,7 @@ def get_video_ranking(query: dict[str, Any]) -> dict[str, Any]:
     creator_id = parse_creator_id(query.get("creatorId"))
     metric = parse_video_ranking_metric(query.get("metric"))
     topic = parse_video_ranking_topic(query.get("topic"))
+    content_type = parse_video_ranking_content_type(query.get("contentType"))
     limit = parse_limit(query.get("limit")) or MAX_LIMIT
     report_dates = _leaderboard_report_dates(query.get("reportDate"))
 
@@ -482,10 +504,10 @@ def get_video_ranking(query: dict[str, Any]) -> dict[str, Any]:
     if result is None:
         raise RankingNotReadyError(
             f"Video ranking for creatorId={creator_id!r} metric={metric!r} topic={topic!r} "
-            f"reportDate={report_dates[0].isoformat()!r} is not yet computed"
+            f"contentType={content_type!r} reportDate={report_dates[0].isoformat()!r} is not yet computed"
         )
 
-    rows = rank_video_rows(result["videos"], metric=metric, topic=topic)[:limit]
+    rows = rank_video_rows(result["videos"], metric=metric, topic=topic, content_type=content_type)[:limit]
 
     return {
         "reportDate": result["reportDate"],
@@ -493,7 +515,176 @@ def get_video_ranking(query: dict[str, Any]) -> dict[str, Any]:
         "creatorId": creator_id,
         "metric": metric,
         "topic": topic,
+        "contentType": content_type,
         "rows": rows,
+    }
+
+
+# GET /creators/{creatorId}/videos/recent's own limit -- deliberately its own
+# constant, not parse_limit/MAX_LIMIT (that pair backs /videos/ranking's page
+# sizing, up to 100 rows of a metric-ranked list) and not RECENT_STREAMS_
+# DEFAULT_LIMIT/RECENT_STREAMS_MAX_LIMIT (that pair is GET /recent-streams'
+# own Holodex-sourced constant, an unrelated data source). Same product need
+# as /recent-streams though (Home's "Latest Live" archive row never needs
+# more than ~5 slots), so the same small bound.
+RECENT_CREATOR_VIDEOS_DEFAULT_LIMIT = 4
+RECENT_CREATOR_VIDEOS_MAX_LIMIT = 20
+
+
+def parse_recent_creator_videos_limit(raw: Any) -> int:
+    """Validate an optional limit query parameter for GET /creators/{creatorId}/videos/recent:
+    a positive integer at most RECENT_CREATOR_VIDEOS_MAX_LIMIT, defaulting to
+    RECENT_CREATOR_VIDEOS_DEFAULT_LIMIT when absent -- mirrors parse_recent_streams_limit's
+    own reasoning for the equivalent Holodex-sourced endpoint."""
+    if raw is None or raw == "":
+        return RECENT_CREATOR_VIDEOS_DEFAULT_LIMIT
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ClientError(f"limit must be a positive integer, got {raw!r}") from None
+    if isinstance(raw, bool) or value <= 0:
+        raise ClientError(f"limit must be a positive integer, got {raw!r}")
+    if value > RECENT_CREATOR_VIDEOS_MAX_LIMIT:
+        raise ClientError(f"limit must be at most {RECENT_CREATOR_VIDEOS_MAX_LIMIT}, got {value!r}")
+    return value
+
+
+# Same "all" + closed-enum shape as contentType/topic, but a further
+# breakdown WITHIN contentType="live" only -- see tracking.video_master.
+# VALID_LIVE_STATUSES. Deliberately its own filter, independent of
+# contentType and composable with it (contentType=live&liveStatus=completed
+# is exactly Home's own "archives only, never the active/upcoming stream"
+# need) -- never folded into VALID_VIDEO_RANKING_CONTENT_TYPES.
+LIVE_STATUS_SCOPE_ALL = "all"
+VALID_RECENT_CREATOR_VIDEOS_LIVE_STATUSES = frozenset({LIVE_STATUS_SCOPE_ALL}) | VALID_LIVE_STATUSES
+
+
+def parse_recent_creator_videos_live_status(raw: Any) -> str:
+    """Validate an optional liveStatus filter for GET /creators/{creatorId}/videos/recent:
+    "all" (default; case-insensitive) or one of "upcoming"/"live"/"completed"
+    (tracking.video_master.VALID_LIVE_STATUSES) -- mirrors parse_video_ranking_
+    content_type's own closed-enum reasoning."""
+    if raw is None or raw == "":
+        return LIVE_STATUS_SCOPE_ALL
+    if not isinstance(raw, str):
+        raise ClientError(f"liveStatus must be a string, got {raw!r}")
+    normalized = raw.strip().lower()
+    if normalized in VALID_RECENT_CREATOR_VIDEOS_LIVE_STATUSES:
+        return normalized
+    raise ClientError(
+        f"liveStatus must be one of {sorted(VALID_RECENT_CREATOR_VIDEOS_LIVE_STATUSES)}, got {raw!r}"
+    )
+
+
+def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
+    """`GET /creators/{creatorId}/videos/recent`: one creator's own videos,
+    newest-published first, optionally filtered by contentType -- the
+    counterpart to get_video_ranking (metric-ranked) over the exact same
+    persisted S3 video-ranking result, for a caller that wants recency
+    order instead of a ranking (Home's "Latest Live" archive row: contentType=
+    live, newest first -- get_video_ranking has no sort mode for this at all,
+    only metric-based ranking, and mixing a non-ranked "latest" mode into
+    that endpoint would blur what a "rank" on a response row even means).
+
+    Reads the S3 result only: no VideoMaster Scan, no per-creator-catalog
+    live query, no per-video DynamoDB enrichment, no Holodex/YouTube call --
+    identical read path and cost profile to get_video_ranking, since both
+    read the exact same one-object-per-creator-per-report-date S3 result
+    (stores.video_ranking_store keys by creator+date, never further
+    partitioned by contentType/topic). This means one full GetObject of the
+    creator's whole current catalog for that date either way -- filtering
+    and pagination both happen in memory afterward, the same bounded-to-one-
+    creator, single-request cost get_video_ranking already has today, not a
+    new or more expensive pattern.
+
+    contentType defaults to "all" (VIDEO_RANKING_CONTENT_TYPE_ALL), the same
+    closed enum and parser get_video_ranking uses -- a specific filter (e.g.
+    "live") excludes "upload" and a row with no persisted contentType at all
+    (legacy/unclassified), never treating "unknown" as a match.
+
+    liveStatus (also defaults to "all") is a SEPARATE, independent filter --
+    contentType="live" alone includes upcoming/live/completed all together
+    (it only reflects liveStreamingDetails presence, not lifecycle stage),
+    so Home's own archive-only need (never duplicating the creator's current
+    active/upcoming stream, which the Holodex-backed live path already owns)
+    must additionally pass liveStatus="completed". Composable with
+    contentType, never a replacement for it: contentType=live&liveStatus=
+    completed together are what an archive-only caller sends.
+
+    Ordering: publishedAt descending (ISO 8601 strings sort correctly as
+    plain strings), videoId ascending as a deterministic tie-break for equal
+    timestamps -- achieved by sorting twice and relying on Python's stable
+    sort (ascending by videoId first, then descending by publishedAt), the
+    same "assign order deterministically, never leave ties to insertion
+    order" spirit as get_video_ranking's own (-metric, videoId) sort keys. A
+    row with no publishedAt at all (should not happen for a real video, but
+    never trusted blindly) sorts last, never fabricated as newest.
+
+    hasMore is computed from the actual filtered+sorted set, not from the
+    returned page's own length (get_recent_streams' own hasMore works
+    differently because Holodex itself paginates upstream; here the whole
+    per-creator result is already in memory, so hasMore = there is at least
+    one more row after this page, computed directly rather than guessed from
+    len(page) >= limit, which would be wrong whenever limit doesn't evenly
+    divide the true remaining count).
+    """
+    creator_id = parse_creator_id(query.get("creatorId"))
+    content_type = parse_video_ranking_content_type(query.get("contentType"))
+    live_status = parse_recent_creator_videos_live_status(query.get("liveStatus"))
+    limit = parse_recent_creator_videos_limit(query.get("limit"))
+    offset = parse_offset(query.get("offset"))
+    report_dates = _leaderboard_report_dates(query.get("reportDate"))
+
+    creator = _find_creator(creator_id)
+    if creator is None:
+        raise ClientError(f"No creator found for creatorId {creator_id!r}")
+
+    store = S3VideoRankingStore.from_environment()
+    result = None
+    if store is not None:
+        for candidate_date in report_dates:
+            result = store.read_result(candidate_date, creator_id)
+            if result is not None:
+                break
+    if result is None:
+        raise RankingNotReadyError(
+            f"Recent videos for creatorId={creator_id!r} contentType={content_type!r} "
+            f"liveStatus={live_status!r} reportDate={report_dates[0].isoformat()!r} is not yet computed"
+        )
+
+    rows = result["videos"]
+    if content_type != VIDEO_RANKING_CONTENT_TYPE_ALL:
+        rows = [row for row in rows if row.get("contentType") == content_type]
+    if live_status != LIVE_STATUS_SCOPE_ALL:
+        rows = [row for row in rows if row.get("liveStatus") == live_status]
+    ordered = sorted(rows, key=lambda row: row["videoId"])
+    ordered = sorted(ordered, key=lambda row: row.get("publishedAt") or "", reverse=True)
+
+    page = ordered[offset : offset + limit]
+    videos = [
+        {
+            "videoId": row["videoId"],
+            "creatorId": row["creatorId"],
+            "topic": row["topic"],
+            "contentType": row.get("contentType"),
+            "liveStatus": row.get("liveStatus"),
+            "currentViewCount": row["currentViewCount"],
+            "title": row.get("title"),
+            "thumbnailUrl": row.get("thumbnailUrl"),
+            "publishedAt": row.get("publishedAt"),
+            "discoveredAt": row.get("discoveredAt"),
+        }
+        for row in page
+    ]
+
+    return {
+        "reportDate": result["reportDate"],
+        "generatedAt": result["generatedAt"],
+        "creatorId": creator_id,
+        "contentType": content_type,
+        "liveStatus": live_status,
+        "videos": videos,
+        "hasMore": offset + limit < len(ordered),
     }
 
 

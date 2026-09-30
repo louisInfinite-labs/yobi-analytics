@@ -35,6 +35,7 @@ locals {
     "GET /topics",
     "GET /subscribers/leaderboard",
     "GET /creators/{creatorId}/videos/ranking",
+    "GET /creators/{creatorId}/videos/recent",
     "GET /dashboard/chart-catalog",
     "POST /remote-config",
     "GET /admin/heartbeat-stats",

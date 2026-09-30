@@ -53,6 +53,8 @@ def test_builds_the_full_payload_shape_for_a_creator_with_eligible_videos():
         "videoId": "a1",
         "creatorId": "creator_a",
         "topic": "valorant",
+        "contentType": None,
+        "liveStatus": None,
         "currentViewCount": 200,
         "title": "A Title",
         "thumbnailUrl": "https://i.ytimg.com/vi/a1/maxresdefault.jpg",

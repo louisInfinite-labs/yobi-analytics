@@ -12,7 +12,7 @@ from botocore.exceptions import ClientError
 
 from analytics.history_ranking import UNKNOWN_DISCOVERED_DATE
 from stores.history_store import HISTORY_SHARD_COUNT, shard_for_video
-from tracking.video_master import VALID_ACTIVITY_STATES
+from tracking.video_master import VALID_ACTIVITY_STATES, VALID_CONTENT_TYPES, VALID_LIVE_STATUSES
 from tracking.video_topics import TOPIC_IDS
 
 MANIFEST_PREFIX = "catalog/current"
@@ -84,6 +84,19 @@ class ManifestEntry:
     # either from a separate lookup at this layer.
     title: str | None = None
     thumbnail_url: str | None = None
+    # `content_type` (mirrors Video.content_type: "live"/"upload" from
+    # liveStreamingDetails presence) follows the identical optional/nullable
+    # precedent as `topic` above -- a manifest object written before this
+    # field existed, or a video whose statistics collection hasn't yet
+    # observed liveStreamingDetails, reads as None. Unlike `topic`, there is
+    # no title-based reclassification fallback at any layer for this field --
+    # None here only ever means "not yet known", never "upload" by default.
+    content_type: str | None = None
+    # `live_status` (mirrors Video.live_status: "upcoming"/"live"/"completed",
+    # only meaningful when content_type=="live") follows the identical
+    # optional/nullable precedent -- None means "not applicable (an upload)
+    # or not yet known", never a guessed lifecycle stage.
+    live_status: str | None = None
 
 
 class TrackingManifestStore(Protocol):
@@ -140,6 +153,8 @@ def serialize_manifest(entries: list[ManifestEntry]) -> bytes:
             "topic": pa.array([entry.topic for entry in entries], type=pa.string()),
             "title": pa.array([entry.title for entry in entries], type=pa.string()),
             "thumbnailUrl": pa.array([entry.thumbnail_url for entry in entries], type=pa.string()),
+            "contentType": pa.array([entry.content_type for entry in entries], type=pa.string()),
+            "liveStatus": pa.array([entry.live_status for entry in entries], type=pa.string()),
         }
     )
     output = io.BytesIO()
@@ -182,6 +197,8 @@ def deserialize_manifest(payload: bytes) -> list[ManifestEntry]:
                 topic=entry.get("topic"),
                 title=entry.get("title"),
                 thumbnail_url=entry.get("thumbnailUrl"),
+                content_type=entry.get("contentType"),
+                live_status=entry.get("liveStatus"),
             )
             for entry in raw_entries
         ]
@@ -397,6 +414,8 @@ def publish_tracking_manifest(videos, store: TrackingManifestStore) -> list[str]
             topic=video.topic,
             title=video.title,
             thumbnail_url=video.thumbnail_url,
+            content_type=video.content_type,
+            live_status=video.live_status,
         )
         for video in videos
     ]
@@ -421,6 +440,10 @@ def _validate_entry(entry: ManifestEntry) -> None:
         raise TrackingManifestError(f"Manifest entry has invalid 'activityState': {entry!r}")
     if entry.topic is not None and entry.topic not in TOPIC_IDS:
         raise TrackingManifestError(f"Manifest entry has invalid 'topic': {entry!r}")
+    if entry.content_type is not None and entry.content_type not in VALID_CONTENT_TYPES:
+        raise TrackingManifestError(f"Manifest entry has invalid 'contentType': {entry!r}")
+    if entry.live_status is not None and entry.live_status not in VALID_LIVE_STATUSES:
+        raise TrackingManifestError(f"Manifest entry has invalid 'liveStatus': {entry!r}")
     if entry.title is not None and not entry.title:
         raise TrackingManifestError(f"Manifest entry has invalid 'title': {entry!r}")
 

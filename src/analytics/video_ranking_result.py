@@ -46,6 +46,8 @@ def _serialize_row(row: VideoRankingRow) -> dict[str, Any]:
         "videoId": row.video_id,
         "creatorId": row.creator_id,
         "topic": row.topic,
+        "contentType": row.content_type,
+        "liveStatus": row.live_status,
         "currentViewCount": row.current_view_count,
         "title": row.title,
         "thumbnailUrl": row.thumbnail_url,

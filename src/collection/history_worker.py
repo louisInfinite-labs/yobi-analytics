@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from stores.history_store import HISTORY_SHARD_COUNT, HistoryRow, HistoryStore, daily_history_key, shard_for_video
 from tracking.tracking_manifest import ManifestEntry, TrackingManifestStore, patch_shard
 from tracking.tracking_schedule import classify_after_observation, select_due_video_ids
-from tracking.video_master import Video, VideoMasterStore
+from tracking.video_master import VALID_CONTENT_TYPES, VALID_LIVE_STATUSES, Video, VideoMasterStore
 from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS
 from collection.youtube_client import get_video_statistics
 
@@ -25,6 +25,8 @@ class ShardCollectionResult:
     history_key: str
     rows: list[HistoryRow]
     topic_by_video: dict[str, str]
+    content_type_by_video: dict[str, str | None]
+    live_status_by_video: dict[str, str | None]
 
 
 def collect_history_shard(
@@ -150,6 +152,8 @@ def collect_history_shard(
                 view_count=video["viewCount"],
                 observed_at=observed_at,
                 availability_status="available",
+                content_type=video.get("contentType"),
+                live_status=video.get("liveStatus"),
             )
             for video in videos
         ]
@@ -171,7 +175,34 @@ def collect_history_shard(
         history_key=history_key,
         rows=rows,
         topic_by_video=_resolve_manifest_topics(active_entries),
+        content_type_by_video=_resolve_manifest_content_types(active_entries),
+        live_status_by_video=_resolve_manifest_live_statuses(active_entries),
     )
+
+
+def _resolve_manifest_content_types(entries) -> dict[str, str | None]:
+    """videoId -> content_type straight from the manifest's own persisted
+    contentType -- no DynamoDB read, mirroring _resolve_manifest_topics.
+
+    Unlike topic, an entry with no contentType (or an unrecognized one) has
+    no fallback bucket: None means "not yet observed with liveStreamingDetails",
+    never a fabricated "upload" default.
+    """
+    return {
+        entry.video_id: entry.content_type if entry.content_type in VALID_CONTENT_TYPES else None
+        for entry in entries
+    }
+
+
+def _resolve_manifest_live_statuses(entries) -> dict[str, str | None]:
+    """videoId -> live_status straight from the manifest's own persisted
+    liveStatus -- no DynamoDB read, mirroring _resolve_manifest_content_types.
+    No fallback bucket, same reasoning: None means "not applicable or not yet
+    observed", never a fabricated value."""
+    return {
+        entry.video_id: entry.live_status if entry.live_status in VALID_LIVE_STATUSES else None
+        for entry in entries
+    }
 
 
 def _resolve_manifest_topics(entries) -> dict[str, str]:
@@ -284,6 +315,8 @@ def _carry_forward_non_due_rows(
                     observed_at=existing.last_checked_at,
                     availability_status="available",
                     carried_forward=True,
+                    content_type=existing.content_type,
+                    live_status=existing.live_status,
                 )
             )
             continue
@@ -389,6 +422,12 @@ def _build_scheduler_updates(rows: list[HistoryRow], *, video_master_store: Vide
                 last_classification_reason=result.reason,
                 last_percent_growth_per_day=result.percent_per_day,
                 last_avg_views_per_day=result.avg_views_per_day,
+                # None only for a row read back from a shard written before
+                # this field existed (a shard_exists retry) -- preserve
+                # whatever Video Master already has rather than clobbering a
+                # real, previously-observed classification with an unknown.
+                content_type=row.content_type if row.content_type is not None else existing.content_type,
+                live_status=row.live_status if row.live_status is not None else existing.live_status,
             )
         )
     return updates
@@ -397,10 +436,24 @@ def _build_scheduler_updates(rows: list[HistoryRow], *, video_master_store: Vide
 def _patch_manifest_activity_states(
     manifest_store: TrackingManifestStore, *, shard: int, updates: list[Video]
 ) -> None:
-    """Patch this shard's own manifest entries' activity_state to match today's
-    scheduler-state updates, replacing discovery's old full-catalog daily
-    Scan+republish as the way the manifest ever learns about an
-    activity_state change (AWS Cost Recovery, third pass).
+    """Patch this shard's own manifest entries' activity_state (and
+    content_type/live_status, when this observation set them) to match
+    today's scheduler-state updates, replacing discovery's old full-catalog
+    daily Scan+republish as the way the manifest ever learns about any of
+    these changes (AWS Cost Recovery, third pass).
+
+    content_type/live_status have no other write path into the manifest at
+    all (unlike topic, which discovery time and the one-time topic backfill
+    can both still set): liveStreamingDetails is only ever observed here,
+    during statistics collection, so this is the sole route by which the
+    ranking pipeline's content_type_by_video/live_status_by_video
+    (ranking_reducer.py, sourced from the manifest, never Video Master
+    directly) ever learn about either. `updates` already carries each
+    video's fully-resolved, authoritative Video Master values for both
+    (_build_scheduler_updates already preserved each rather than clobbering
+    it with None on a pre-field shard retry) -- this function just mirrors
+    those same values onto the manifest, exactly as it already does for
+    activity_state.
 
     Every video in `updates` was read from -- and therefore belongs to --
     this exact shard's own manifest entries (`updates` is built from
@@ -426,12 +479,17 @@ def _patch_manifest_activity_states(
     _patch_manifest_with_new_videos_if_configured ever adds a brand-new
     manifest entry.
     """
-    activity_state_by_video = {video.video_id: video.activity_state for video in updates}
+    updates_by_video = {video.video_id: video for video in updates}
 
     def _apply(entries: list[ManifestEntry]) -> list[ManifestEntry]:
         return [
-            replace(entry, activity_state=activity_state_by_video[entry.video_id])
-            if entry.video_id in activity_state_by_video
+            replace(
+                entry,
+                activity_state=updates_by_video[entry.video_id].activity_state,
+                content_type=updates_by_video[entry.video_id].content_type,
+                live_status=updates_by_video[entry.video_id].live_status,
+            )
+            if entry.video_id in updates_by_video
             else entry
             for entry in entries
         ]

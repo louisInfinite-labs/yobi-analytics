@@ -34,6 +34,7 @@ from typing import Any, Mapping
 
 from analytics.history_ranking import exact_gains
 from stores.history_store import EXACT_ANCHOR_DAYS, HistoryRow
+from tracking.video_master import VALID_CONTENT_TYPES, VALID_LIVE_STATUSES
 from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS
 
 TOTAL_METRIC = "total"
@@ -45,6 +46,15 @@ VALID_METRICS = (TOTAL_METRIC,) + GROWTH_METRICS
 # shape analytics.subscriber_ranking/read_api already use for organization.
 TOPIC_SCOPE_ALL = "all"
 VALID_TOPIC_SCOPES = frozenset({TOPIC_SCOPE_ALL}) | TOPIC_IDS
+
+# Same "all" + closed-enum shape as topic above, but a genuinely separate
+# dimension: contentType ("live"/"upload", video_master.VALID_CONTENT_TYPES)
+# classifies delivery format (archived livestream vs. plain upload), never
+# game/genre -- a video can independently be contentType="live", topic=
+# "chatting". Deliberately its own scope keyword, never folded into
+# VALID_TOPIC_SCOPES/TOPIC_SCOPE_ALL.
+CONTENT_TYPE_SCOPE_ALL = "all"
+VALID_CONTENT_TYPE_SCOPES = frozenset({CONTENT_TYPE_SCOPE_ALL}) | VALID_CONTENT_TYPES
 
 
 @dataclass(frozen=True)
@@ -67,6 +77,15 @@ class VideoRankingRow:
     video_id: str
     creator_id: str
     topic: str
+    # "live"/"upload", or None when this video hasn't yet been observed with
+    # liveStreamingDetails (see tracking.video_master.Video.content_type) --
+    # unlike topic, there is no "other"-style fallback bucket: None here only
+    # ever means "not yet known".
+    content_type: str | None
+    # "upcoming"/"live"/"completed" for a content_type="live" video, None
+    # otherwise -- see tracking.video_master.Video.live_status. A further
+    # breakdown WITHIN content_type="live", never a replacement for it.
+    live_status: str | None
     current_view_count: int
     anchor_view_counts: Mapping[str, int | None]
     title: str | None = None
@@ -86,6 +105,21 @@ def _topic_for(video_id: str, topic_by_video: Mapping[str, str]) -> str:
     return topic if topic in TOPIC_IDS else OTHER_TOPIC
 
 
+def _content_type_for(video_id: str, content_type_by_video: Mapping[str, str | None]) -> str | None:
+    """A video with no manifest contentType yet, or an unrecognized one,
+    reads as None -- unlike _topic_for, there is no catch-all bucket to fall
+    back to: "not yet known" is the only honest answer."""
+    content_type = content_type_by_video.get(video_id)
+    return content_type if content_type in VALID_CONTENT_TYPES else None
+
+
+def _live_status_for(video_id: str, live_status_by_video: Mapping[str, str | None]) -> str | None:
+    """A video with no manifest liveStatus yet, or an unrecognized one, reads
+    as None -- mirrors _content_type_for, no catch-all bucket."""
+    live_status = live_status_by_video.get(video_id)
+    return live_status if live_status in VALID_LIVE_STATUSES else None
+
+
 def build_creator_video_catalog(
     today_rows: list[HistoryRow],
     anchor_rows_by_days: Mapping[int, list[HistoryRow]],
@@ -93,6 +127,8 @@ def build_creator_video_catalog(
     creator_id: str,
     report_date: date,
     topic_by_video: Mapping[str, str],
+    content_type_by_video: Mapping[str, str | None] | None = None,
+    live_status_by_video: Mapping[str, str | None] | None = None,
     discovered_date_by_video: Mapping[str, date] | None = None,
     title_by_video: Mapping[str, str] | None = None,
     thumbnail_by_video: Mapping[str, str] | None = None,
@@ -135,6 +171,8 @@ def build_creator_video_catalog(
         discovered_date_by_video=discovered_date_by_video,
     )
 
+    content_type_by_video = content_type_by_video or {}
+    live_status_by_video = live_status_by_video or {}
     title_by_video = title_by_video or {}
     thumbnail_by_video = thumbnail_by_video or {}
     published_at_by_video = published_at_by_video or {}
@@ -148,6 +186,8 @@ def build_creator_video_catalog(
                 video_id=row.video_id,
                 creator_id=creator_id,
                 topic=_topic_for(row.video_id, topic_by_video),
+                content_type=_content_type_for(row.video_id, content_type_by_video),
+                live_status=_live_status_for(row.video_id, live_status_by_video),
                 current_view_count=row.view_count,
                 anchor_view_counts=anchor_view_counts,
                 title=title_by_video.get(row.video_id),
@@ -181,7 +221,9 @@ def _anchor_field_name(metric: str) -> str:
     return f"anchor{metric}ViewCount"
 
 
-def rank_video_rows(rows: list[dict[str, Any]], *, metric: str, topic: str) -> list[dict[str, Any]]:
+def rank_video_rows(
+    rows: list[dict[str, Any]], *, metric: str, topic: str, content_type: str = CONTENT_TYPE_SCOPE_ALL
+) -> list[dict[str, Any]]:
     """Derive one metric/topic's ranked view from the one persisted canonical
     row set at READ time (Phase D) -- operates directly on the serialized
     JSON row dicts (stores.video_ranking_store's own persisted shape), the
@@ -204,10 +246,18 @@ def rank_video_rows(rows: list[dict[str, Any]], *, metric: str, topic: str) -> l
     Topic filtering (topic != TOPIC_SCOPE_ALL) happens first, before any
     sort/rank -- mirrors analytics.subscriber_ranking.filter_by_organization/
     api.read_api._filter_and_rerank_subscriber_rows' own "filter first, then
-    assign fresh ranks starting at 1" contract.
+    assign fresh ranks starting at 1" contract. contentType filtering
+    (content_type != CONTENT_TYPE_SCOPE_ALL) applies the identical rule,
+    independently of topic -- a request can filter by either, both, or
+    neither. A persisted row with no "contentType" key at all (written
+    before this field existed) never matches a specific content_type filter,
+    the same way a row with no anchor{metric}ViewCount never matches a
+    growth metric -- excluded, never fabricated as "upload".
     """
     if topic != TOPIC_SCOPE_ALL:
         rows = [row for row in rows if row.get("topic") == topic]
+    if content_type != CONTENT_TYPE_SCOPE_ALL:
+        rows = [row for row in rows if row.get("contentType") == content_type]
 
     if metric == TOTAL_METRIC:
         ordered = sorted(rows, key=lambda row: (-row["currentViewCount"], row["videoId"]))
@@ -228,6 +278,8 @@ def _total_output_row(rank: int, row: dict[str, Any]) -> dict[str, Any]:
         "videoId": row["videoId"],
         "creatorId": row["creatorId"],
         "topic": row["topic"],
+        "contentType": row.get("contentType"),
+        "liveStatus": row.get("liveStatus"),
         "currentViewCount": row["currentViewCount"],
         "title": row.get("title"),
         "thumbnailUrl": row.get("thumbnailUrl"),
@@ -243,6 +295,8 @@ def _growth_output_row(rank: int, row: dict[str, Any], anchor_field: str) -> dic
         "videoId": row["videoId"],
         "creatorId": row["creatorId"],
         "topic": row["topic"],
+        "contentType": row.get("contentType"),
+        "liveStatus": row.get("liveStatus"),
         "currentViewCount": row["currentViewCount"],
         "anchorViewCount": anchor_view_count,
         "absoluteGrowth": absolute_growth,

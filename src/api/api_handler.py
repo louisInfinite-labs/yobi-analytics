@@ -177,6 +177,10 @@ def _handle_get_video_ranking(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_video_ranking(_merged_params(event))
 
 
+def _handle_get_recent_creator_videos(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_recent_creator_videos(_merged_params(event))
+
+
 def _handle_get_live_streams(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_live_streams(_merged_params(event))
 
@@ -326,6 +330,7 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /topics": _handle_get_topics,
     "GET /subscribers/leaderboard": _handle_get_subscriber_leaderboard,
     "GET /creators/{creatorId}/videos/ranking": _handle_get_video_ranking,
+    "GET /creators/{creatorId}/videos/recent": _handle_get_recent_creator_videos,
     "GET /live-streams": _handle_get_live_streams,
     "GET /recent-streams": _handle_get_recent_streams,
     "POST /heartbeat": _handle_post_heartbeat,

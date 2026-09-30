@@ -25,7 +25,16 @@ REGION = "ap-northeast-1"
 REPORT_DATE = date(2026, 9, 29)
 
 
-def _video(video_id: str, creator_id: str, topic: str, *, title: str | None = None, thumbnail_url: str | None = None):
+def _video(
+    video_id: str,
+    creator_id: str,
+    topic: str,
+    *,
+    title: str | None = None,
+    thumbnail_url: str | None = None,
+    content_type: str | None = None,
+    live_status: str | None = None,
+):
     return SimpleNamespace(
         video_id=video_id,
         creator_id=creator_id,
@@ -35,6 +44,8 @@ def _video(video_id: str, creator_id: str, topic: str, *, title: str | None = No
         topic=topic,
         title=title,
         thumbnail_url=thumbnail_url,
+        content_type=content_type,
+        live_status=live_status,
     )
 
 
@@ -143,6 +154,23 @@ def test_topic_and_growth_are_present_in_the_persisted_result(wired_bucket):
 
     v1_growth = next(row for row in rank_video_rows(result["videos"], metric="7d", topic="all") if row["videoId"] == "v1")
     assert v1_growth["absoluteGrowth"] == 100  # 500 - 400
+
+
+def test_content_type_is_persisted_and_independently_filterable(wired_bucket):
+    """content_type flows Video-like object -> manifest -> persisted S3 row,
+    the same path as topic, and can be filtered independently of it."""
+    ranking_reducer._build_and_persist_video_rankings(report_date=REPORT_DATE, generated_at="2026-09-29T18:05:00+09:00")
+
+    store = S3VideoRankingStore(BUCKET, s3_client=wired_bucket)
+    result = store.read_result(REPORT_DATE, "creator_a")
+
+    # wired_bucket's videos were built with content_type=None (not set) --
+    # confirms the field round-trips as None, never fabricated as "upload".
+    v1_row = next(row for row in result["videos"] if row["videoId"] == "v1")
+    assert v1_row["contentType"] is None
+
+    live_only = rank_video_rows(result["videos"], metric="total", topic="all", content_type="live")
+    assert live_only == []
 
 
 def test_title_and_thumbnail_url_are_propagated_from_the_manifest(wired_bucket):

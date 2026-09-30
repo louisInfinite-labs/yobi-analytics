@@ -436,3 +436,67 @@ def test_upsert_rejects_an_unknown_topic_and_writes_nothing(tmp_path, bad_topic)
         upsert_videos([video], path)
 
     assert not path.exists()
+
+
+def test_content_type_is_serialized_and_deserialized(tmp_path):
+    """content_type round-trips through Video Master the same way topic does,
+    and is independent of topic -- a video can carry both at once."""
+    path = tmp_path / "video_master.json"
+    upsert_videos(
+        [
+            Video(
+                video_id="v1",
+                creator_id="c1",
+                title="A",
+                published_at="2026-08-20T00:00:00Z",
+                topic="chatting",
+                content_type="live",
+            )
+        ],
+        path,
+    )
+
+    raw = json.loads(path.read_text(encoding="utf-8"))[0]
+    assert raw["contentType"] == "live"
+    assert raw["topic"] == "chatting"
+    [video] = load_videos(path)
+    assert video.content_type == "live"
+    assert video.topic == "chatting"
+
+
+def test_old_record_without_content_type_stays_valid_and_keeps_its_shape(tmp_path):
+    record = {"videoId": "v1", "creatorId": "c1", "title": "A", "publishedAt": "2026-08-20T00:00:00Z"}
+    path = _video_json(tmp_path, [record])
+
+    [video] = load_videos(path)
+    assert video.content_type is None
+
+    upsert_videos([video], path)
+    assert "contentType" not in json.loads(path.read_text(encoding="utf-8"))[0]
+
+
+@pytest.mark.parametrize("bad_content_type", ["stream", "video", 5, ["live"]])
+def test_load_videos_rejects_an_unknown_content_type(tmp_path, bad_content_type):
+    record = {
+        "videoId": "v1",
+        "creatorId": "c1",
+        "title": "A",
+        "publishedAt": "2026-08-20T00:00:00Z",
+        "contentType": bad_content_type,
+    }
+
+    with pytest.raises(VideoMasterError):
+        load_videos(_video_json(tmp_path, [record]))
+
+
+@pytest.mark.parametrize("bad_content_type", ["stream", "video", 5, ["live"]])
+def test_upsert_rejects_an_unknown_content_type_and_writes_nothing(tmp_path, bad_content_type):
+    path = tmp_path / "video_master.json"
+    video = Video(
+        video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", content_type=bad_content_type
+    )
+
+    with pytest.raises(VideoMasterError):
+        upsert_videos([video], path)
+
+    assert not path.exists()

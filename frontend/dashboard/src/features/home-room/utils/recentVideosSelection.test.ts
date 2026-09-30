@@ -37,6 +37,20 @@ describe("selectLivestreamSlots", () => {
     const sparse: RecentVideo[] = [{ videoId: "only-archive", title: "t", publishedAt: "2026-09-01T00:00:00Z", contentFormat: "live_archive" }]
     expect(selectLivestreamSlots(sparse, 2).map((v) => v.videoId)).toEqual(["only-archive"])
   })
+
+  it("with no live-now but an upcoming entry, returns [upcoming, most recent archive] — not the 2nd archive", () => {
+    const withUpcoming: RecentVideo[] = [...videos, { videoId: "up1", title: "upcoming", publishedAt: "2026-09-05T00:00:00Z", contentFormat: "live_upcoming" }]
+    expect(selectLivestreamSlots(withUpcoming, 2).map((v) => v.videoId)).toEqual(["up1", "a1"])
+  })
+
+  it("live-now outranks an upcoming entry when both are present", () => {
+    const both: RecentVideo[] = [
+      ...videos,
+      { videoId: "live1", title: "live", publishedAt: "2026-09-05T00:00:00Z", contentFormat: "live_now" },
+      { videoId: "up1", title: "upcoming", publishedAt: "2026-09-06T00:00:00Z", contentFormat: "live_upcoming" },
+    ]
+    expect(selectLivestreamSlots(both, 2).map((v) => v.videoId)).toEqual(["live1", "a1"])
+  })
 })
 
 describe("selectAllVideos", () => {
