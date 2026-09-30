@@ -166,12 +166,35 @@ export function DashboardGrid({
   const onAnnounceRef = useRef(onAnnounce)
 
   /** Reloads every current widget's geometry from `widgetsRef`/`columnsRef`
-   * into GridStack and re-queries each widget's content portal target.
+   * into GridStack and re-queries each widget's content portal target. Does
+   * NOT reset the GridStack engine for an ordinary sync (see the
+   * `columnChanging` comment below) -- a widget whose id was already in the
+   * engine keeps its existing DOM/portal target, so its React subtree stays
+   * mounted (state, focus) across a sync its own geometry wasn't part of.
    * Stable identity ([] deps, reads only refs) so it can be called both from
    * the props-driven effect below and from a mount-once gesture handler. */
   const syncGridToCurrentWidgets = useCallback(() => {
     const grid = gridRef.current
     if (!grid) return
+    // Only reset the engine (removeAll) when the column count is actually
+    // changing. Read BEFORE load() -- load() never touches the engine's own
+    // column count, so this stays valid for the grid.column() call below too.
+    //
+    // GridStack's own load() (gridstack.js's `load()`) already diffs by id:
+    // for a node whose id is still present in `this.engine.nodes`, it calls
+    // `this.update(item.el, w)`, reusing that EXISTING DOM element (and so
+    // the React portal target already mounted into it) -- only a node whose
+    // id is NOT found goes through `addWidget()`, which creates a fresh one
+    // (confirmed by reading gridstack.js's own `load()` source, not
+    // assumed). `removeAll(true)` empties `engine.nodes` first, so every
+    // widget's id fails that lookup on the very next load() -- every widget,
+    // changed or not, gets a brand-new DOM/portal target, remounting its
+    // whole React subtree (resetting widget-local state, dropping focus from
+    // any control inside it). This was firing on EVERY sync, including ones
+    // where no widget's geometry actually changed (e.g. a responsive
+    // reprojection that keeps the same column count, or the resync after a
+    // gesture GridStack itself rejected).
+    //
     // Changing the column count while GridStack's engine still holds the
     // PREVIOUS layout's nodes (each still at its old x/y, potentially now
     // out of range for the new column count -- e.g. x=2 in what is about to
@@ -185,15 +208,20 @@ export function DashboardGrid({
     // again, forever -- crashing this entire component with an uncaught
     // RangeError (GridStack's own "Infinite collide check" counter only
     // guards looping *within* one `_fixCollisions` call, not this
-    // recursion across separate `moveNode`/`_fixCollisions` calls).
-    // Removing every node (DOM included -- `load()` immediately recreates
-    // each one fresh from this function's own `widgetsRef`, so nothing is
-    // ever actually lost) first means the column change and the reload
-    // below both start from a genuinely empty engine -- nothing stale left
-    // to collide with -- so this is not a workaround for a transient
-    // symptom, it removes the actual precondition (stale out-of-range
-    // nodes) the recursion depends on.
-    grid.removeAll(true)
+    // recursion across separate `moveNode`/`_fixCollisions` calls). That
+    // precondition (stale out-of-range positions) only exists when the
+    // column count is changing -- at an unchanged column count, every
+    // existing node's x/y is already valid, so load()'s own reuse path
+    // above is safe and this reset is not needed. Removing every node (DOM
+    // included -- `load()` immediately recreates each one fresh from this
+    // function's own `widgetsRef`, so nothing is ever actually lost) first
+    // means the column change and the reload below both start from a
+    // genuinely empty engine -- nothing stale left to collide with -- so
+    // this is not a workaround for a transient symptom, it removes the
+    // actual precondition (stale out-of-range nodes) the recursion depends
+    // on, scoped to only the case that precondition can occur in.
+    const columnChanging = grid.getColumn() !== columnsRef.current
+    if (columnChanging) grid.removeAll(true)
     // `updateOptions`, not a direct `grid.opts.maxRow = ...` assignment --
     // GridStack's own engine keeps its own separate `maxRow` copy
     // (confirmed: assigning `opts.maxRow` directly leaves `engine.maxRow`
@@ -225,8 +253,11 @@ export function DashboardGrid({
     // then `load()`) fed `load()`'s own per-node placement through a grid
     // already mid-transition to the new column count, which corrupted
     // later nodes' positions (confirmed: a node's correct, non-overlapping
-    // `y` was silently dropped back to 0).
-    if (grid.getColumn() !== columnsRef.current) grid.column(columnsRef.current, "none")
+    // `y` was silently dropped back to 0). Reuses `columnChanging` from
+    // above rather than re-reading `grid.getColumn()`: load() never changes
+    // the engine's own column count, so the value read before it still
+    // holds.
+    if (columnChanging) grid.column(columnsRef.current, "none")
 
     const nodes: Record<string, HTMLElement> = {}
     for (const widget of widgetsRef.current) {

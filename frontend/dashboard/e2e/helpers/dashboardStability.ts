@@ -38,4 +38,12 @@ export async function waitForStableDashboardGeometry(page: Page, options: { time
     if (current === previous && current !== "[]") return
     previous = current
   }
+  // Reaching the deadline without two consecutive identical (non-empty)
+  // snapshots means geometry never actually settled -- resolving
+  // successfully here anyway would defeat this helper's whole purpose: every
+  // caller awaits it specifically so their own geometry assertions never
+  // race the ResizeObserver-driven reflow described above, and a caller that
+  // proceeds against still-unsettled geometry would misattribute genuine
+  // instability to whatever it asserts next instead of to this timeout.
+  throw new Error(`Dashboard geometry did not stabilize within ${timeoutMs}ms`)
 }

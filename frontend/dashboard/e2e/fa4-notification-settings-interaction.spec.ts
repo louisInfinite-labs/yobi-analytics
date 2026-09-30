@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { pinEnglishLocale, trackPageErrors } from "./helpers/common"
+import { pinEnglishLocale, trackConsoleErrors, trackPageErrors } from "./helpers/common"
 
 /** FA4 -- Notification Settings interaction + persistence, against the
  * real app (never a fixture page). Exercises the EXISTING topic
@@ -32,6 +32,7 @@ async function openNotificationSettings(page: import("@playwright/test").Page) {
 
 test("the Live reminder time choice for a topic persists across a reload, with no console errors or unhandled rejections", async ({ page }) => {
   const errors = trackPageErrors(page)
+  const consoleErrors = trackConsoleErrors(page)
   await openNotificationSettings(page)
 
   // "All" is the first of the 5 permanent default topics, selected by
@@ -47,6 +48,7 @@ test("the Live reminder time choice for a topic persists across a reload, with n
 
   await expect(page.locator('[aria-label="Live reminder time All"] .ant-segmented-item-selected')).toHaveText("1 hour before")
   expect(errors).toEqual([])
+  expect(consoleErrors).toEqual([])
 })
 
 test("enabling Live for a creator in Manage Members, and their own reminder-time dropdown choice, both persist across a reload", async ({ page }) => {
