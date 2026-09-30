@@ -8,31 +8,31 @@ describe("resolveAddableWidgetTypes", () => {
   })
 
   it("includes a returned, frontend-supported chart definition (AC3)", () => {
-    const items: ChartCatalogItem[] = [{ chartDefinitionId: "kpi-summary", title: "KPI Summary" }]
-    expect(resolveAddableWidgetTypes(items)).toEqual(["kpi-summary"])
+    const items: ChartCatalogItem[] = [{ chartDefinitionId: "subscriber-leaderboard", title: "Subscriber Leaderboard" }]
+    expect(resolveAddableWidgetTypes(items)).toEqual(["subscriber-leaderboard"])
   })
 
   it("excludes a catalog item whose chartDefinitionId is not a known widget type (AC2/AC4)", () => {
     const items: ChartCatalogItem[] = [
-      { chartDefinitionId: "kpi-summary", title: "KPI Summary" },
+      { chartDefinitionId: "subscriber-leaderboard", title: "Subscriber Leaderboard" },
       { chartDefinitionId: "future-chart-not-yet-supported", title: "Future Chart" },
     ]
-    expect(resolveAddableWidgetTypes(items)).toEqual(["kpi-summary"])
+    expect(resolveAddableWidgetTypes(items)).toEqual(["subscriber-leaderboard"])
   })
 
   it("preserves catalog order", () => {
     const items: ChartCatalogItem[] = [
-      { chartDefinitionId: "ranking", title: "Ranking" },
-      { chartDefinitionId: "kpi-summary", title: "KPI Summary" },
+      { chartDefinitionId: "creator-video-ranking", title: "Creator Video Ranking" },
+      { chartDefinitionId: "subscriber-leaderboard", title: "Subscriber Leaderboard" },
     ]
-    expect(resolveAddableWidgetTypes(items)).toEqual(["ranking", "kpi-summary"])
+    expect(resolveAddableWidgetTypes(items)).toEqual(["creator-video-ranking", "subscriber-leaderboard"])
   })
 
   it("collapses a duplicate chartDefinitionId to one option", () => {
     const items: ChartCatalogItem[] = [
-      { chartDefinitionId: "kpi-summary", title: "KPI Summary" },
-      { chartDefinitionId: "kpi-summary", title: "KPI Summary (duplicate)" },
+      { chartDefinitionId: "subscriber-leaderboard", title: "Subscriber Leaderboard" },
+      { chartDefinitionId: "subscriber-leaderboard", title: "Subscriber Leaderboard (duplicate)" },
     ]
-    expect(resolveAddableWidgetTypes(items)).toEqual(["kpi-summary"])
+    expect(resolveAddableWidgetTypes(items)).toEqual(["subscriber-leaderboard"])
   })
 })

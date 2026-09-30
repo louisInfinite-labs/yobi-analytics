@@ -126,26 +126,15 @@ class _FakeCollectResult:
     skipped: dict = {}
     history_key = "history/daily/date=2026-01-01/shard=03.parquet"
     rows: list = []
-    rankings: dict = {}
-    creator_partials: dict = {}
-
-
-class _FakePartialStore:
-    def __init__(self, bucket_name):
-        self.bucket_name = bucket_name
-
-    def write(self, collection_date, shard, rankings, creator_partials, topic_partials=None):
-        return f"partial/{collection_date.isoformat()}/{shard}"
+    topic_by_video: dict = {}
 
 
 def _wire_shard_branch(monkeypatch, *, collect_spy=None):
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", "test-bucket")
     monkeypatch.setattr(history_worker_handler, "get_api_key", lambda: "key")
     monkeypatch.setattr(history_worker_handler, "build_youtube_client", lambda key: object())
-    monkeypatch.setattr(history_worker_handler, "load_creators", lambda: [])
     monkeypatch.setattr(history_worker_handler, "S3HistoryStore", lambda bucket_name: object())
     monkeypatch.setattr(history_worker_handler, "S3TrackingManifestStore", lambda bucket_name: object())
-    monkeypatch.setattr(history_worker_handler, "S3PartialRankingStore", _FakePartialStore)
 
     def fake_collect(
         *,
@@ -155,7 +144,6 @@ def _wire_shard_branch(monkeypatch, *, collect_spy=None):
         video_master_store,
         collection_date,
         shard,
-        dimensions_by_creator,
         observed_at,
     ):
         if collect_spy is not None:
@@ -197,6 +185,41 @@ def test_shard_branch_renews_the_lock_after_a_successful_collection(monkeypatch)
     assert call["lease_seconds"] == execution_lock.SHARD_RENEW_LEASE_SECONDS
 
 
+def test_shard_branch_never_reads_topics_via_the_full_catalog_dynamodb_batch_get(monkeypatch):
+    """AWS Cost Recovery second pass: the per-shard branch must never call
+    dynamodb_store.get_video_topics -- the full-catalog BatchGetItem
+    identified as the strongest code-grounded cause of the 2026-09-21
+    YobiVideoMaster read increase. result.topic_by_video is still computed
+    by collect_history_shard itself (manifest-sourced, no DynamoDB read at
+    all), it is just never read by this handler.
+    """
+    from stores.history_store import HistoryRow
+
+    _wire_shard_branch(monkeypatch)
+    monkeypatch.setattr(execution_lock, "renew_execution_lock", lambda **kwargs: None)
+
+    def _boom(video_ids):
+        raise AssertionError("get_video_topics must not be called by the per-shard branch")
+
+    monkeypatch.setattr(dynamodb_store, "get_video_topics", _boom)
+
+    class _FakeCollectResultWithTopics(_FakeCollectResult):
+        rows = [
+            HistoryRow(video_id="v1", creator_id="c1", view_count=100, observed_at="2026-01-01T18:00:00+09:00", availability_status="available"),
+        ]
+        topic_by_video = {"v1": "valorant"}
+
+    monkeypatch.setattr(
+        history_worker_handler,
+        "collect_history_shard",
+        lambda **kwargs: _FakeCollectResultWithTopics(),
+    )
+
+    result = history_worker_handler.lambda_handler({"shard": 3, "reportDate": "2026-01-01", "ownerToken": "exec-9"}, None)
+
+    assert result["historyKey"] == _FakeCollectResultWithTopics.history_key
+
+
 def test_shard_branch_lets_execution_lock_lost_error_propagate_uncaught(monkeypatch):
     """If this owner's lease was already reclaimed while the shard was being
     collected, the renew call raises ExecutionLockLostError -- this must
@@ -213,48 +236,33 @@ def test_shard_branch_lets_execution_lock_lost_error_propagate_uncaught(monkeypa
         history_worker_handler.lambda_handler({"shard": 3, "reportDate": "2026-01-01", "ownerToken": "exec-9"}, None)
 
 
-# --- ranking_reducer: normal reduce branch renews before reading shards ----
+# --- ranking_reducer: normal reduce branch renews before building video ranking ----
 
 
-def _wire_reducer_normal_branch(monkeypatch, *, read_bundle_spy=None):
-    monkeypatch.setenv("YOBI_HISTORY_BUCKET", "test-bucket")
-
-    class FakeStore:
-        def __init__(self, bucket_name):
-            pass
-
-        def read_bundle(self, report_date, shard):
-            if read_bundle_spy is not None:
-                read_bundle_spy(report_date=report_date, shard=shard)
-            return {}, {}, {}
-
-    monkeypatch.setattr(ranking_reducer, "S3PartialRankingStore", FakeStore)
-    monkeypatch.setattr(ranking_reducer, "load_creators", lambda: [])
-    monkeypatch.setattr(dynamodb_store, "get_video", lambda video_id: None)
-    monkeypatch.setattr(dynamodb_store, "put_cached_trending", lambda *a, **k: None)
+def _wire_reducer_normal_branch(monkeypatch):
+    """R9 (org-trending retirement): the reducer's only remaining work after
+    renewing the lock is _build_and_persist_video_rankings, which no-ops
+    immediately when YOBI_HISTORY_BUCKET isn't configured (S3VideoRankingStore.
+    from_environment() returns None) -- leaving it unset here is what lets
+    these tests isolate execution-lock wiring without needing a real/moto S3."""
+    monkeypatch.delenv("YOBI_HISTORY_BUCKET", raising=False)
 
 
-def test_reducer_normal_branch_renews_the_lock_before_reading_any_shard(monkeypatch):
-    call_order = []
+def test_reducer_normal_branch_renews_the_lock_with_the_passed_report_date(monkeypatch):
+    renew_calls = []
     monkeypatch.setattr(
-        execution_lock, "renew_execution_lock", lambda **kwargs: call_order.append(("renew", kwargs))
+        execution_lock, "renew_execution_lock", lambda **kwargs: renew_calls.append(kwargs)
     )
-    _wire_reducer_normal_branch(
-        monkeypatch, read_bundle_spy=lambda **kwargs: call_order.append(("read_bundle", kwargs))
-    )
+    _wire_reducer_normal_branch(monkeypatch)
 
     ranking_reducer.lambda_handler({"reportDate": "2026-01-05", "ownerToken": "exec-9"}, None)
 
-    assert call_order[0][0] == "renew"
-    renew_kwargs = call_order[0][1]
+    assert len(renew_calls) == 1
+    renew_kwargs = renew_calls[0]
     assert renew_kwargs["report_date"] == date(2026, 1, 5)
     assert renew_kwargs["owner_token"] == "exec-9"
     assert renew_kwargs["phase"] == execution_lock.PHASE_REDUCING
     assert renew_kwargs["lease_seconds"] == execution_lock.REDUCER_RENEW_LEASE_SECONDS
-    # Every subsequent read_bundle call must use the same passed-in
-    # reportDate, never a value the reducer derived on its own.
-    read_dates = {call[1]["report_date"] for call in call_order[1:]}
-    assert read_dates == {date(2026, 1, 5)}
 
 
 def test_reducer_normal_branch_returns_report_date_and_owner_token_for_mark_execution_complete(monkeypatch):

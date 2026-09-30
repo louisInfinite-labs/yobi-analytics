@@ -32,15 +32,23 @@ class QuotaExhaustedError(YouTubeAPIError):
     stop issuing new requests entirely rather than continue processing
     remaining work — retrying against exhausted quota only wastes more of it.
 
-    get_video_statistics enriches this with what was already collected
-    before the wall was hit, so a caller can still persist that real,
-    already-paid-for data instead of discarding it along with the exception:
-    - partial_results: statistics successfully fetched before the failure.
+    get_video_statistics (and, since 2026-09-29, get_channel_statistics)
+    enriches this with what was already collected before the wall was hit,
+    so a caller can still persist that real, already-paid-for data instead
+    of discarding it along with the exception:
+    - partial_results: statistics successfully fetched before the failure --
+      a list for get_video_statistics, a dict keyed by channel ID for
+      get_channel_statistics; this field is intentionally shape-agnostic
+      rather than split into two differently-named fields, since both
+      callers already know their own result shape and just want it back.
     - partial_skip_reasons: skip reasons already recorded before the failure
       (e.g. a malformed item in an earlier batch).
-    - remaining_video_ids: every video ID whose batch was never attempted —
-      known upfront since the full due-today list is computed before any
-      batch runs, not discovered as a side effect of the failure.
+    - remaining_video_ids: every ID (video or channel) whose batch was never
+      attempted — known upfront since the full due-today/roster list is
+      computed before any batch runs, not discovered as a side effect of the
+      failure. Kept under this video-specific name rather than a generic
+      `remaining_ids` purely to avoid touching collection.main.py's existing
+      `exc.remaining_video_ids` read for get_video_statistics.
     """
 
     def __init__(
@@ -241,6 +249,33 @@ def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[
 # highest-quality one actually present, never more than one stored.
 _AVATAR_THUMBNAIL_PREFERENCE = ("high", "medium", "default")
 
+# A video's own snippet.thumbnails (playlistItems.list/videos.list) carries
+# two additional, higher-resolution variants a channel's own avatar
+# thumbnails never do ("maxres"/"standard") -- preferred highest-quality
+# first, mirroring _AVATAR_THUMBNAIL_PREFERENCE's own "best available, never
+# more than one stored" reasoning.
+_VIDEO_THUMBNAIL_PREFERENCE = ("maxres", "standard", "high", "medium", "default")
+
+
+def select_video_thumbnail_url(thumbnails: object) -> str | None:
+    """Pick one canonical thumbnail URL from a video snippet's own
+    snippet.thumbnails value (already present in the same paid
+    playlistItems.list/videos.list response that already provides
+    title/publishedAt -- no separate request), preferring
+    maxres -> standard -> high -> medium -> default. Returns None (never
+    raises) if `thumbnails` isn't a dict, or no variant carries a usable
+    url -- mirrors select_channel_avatar_url's own contract for the
+    identical reason."""
+    if not isinstance(thumbnails, dict):
+        return None
+    for size in _VIDEO_THUMBNAIL_PREFERENCE:
+        variant = thumbnails.get(size)
+        if isinstance(variant, dict):
+            url = variant.get("url")
+            if isinstance(url, str) and url:
+                return url
+    return None
+
 
 def select_channel_avatar_url(thumbnails: object) -> str | None:
     """Pick one canonical avatar URL from a channels.list snippet.thumbnails
@@ -302,6 +337,134 @@ def get_channel_avatar_thumbnails(youtube: Resource, channel_ids: list[str]) -> 
             for channel_id in batch:
                 skip_reasons[channel_id] = f"YouTube API error: {exc}"
     return avatars, skip_reasons
+
+
+def get_channel_statistics(youtube: Resource, channel_ids: list[str]) -> tuple[dict[str, dict], dict[str, str]]:
+    """Fetch each channel's current subscriberCount via channels().list(part="statistics"),
+    batched up to MAX_IDS_PER_REQUEST ids per call (subscriber-history foundation).
+
+    Returns (result_by_channel_id, skip_reasons). Each successful result is
+    {"subscriberCount": int | None, "hiddenSubscriberCount": bool} --
+    subscriberCount is None exactly when hiddenSubscriberCount is True: YouTube
+    returns a fabricated "0" for a channel whose owner has hidden their
+    subscriber count, and that "0" must never be persisted or treated as a
+    real value (a hidden count is not a zero count -- see
+    _parse_channel_statistics_item's own docstring).
+
+    Mirrors get_channel_avatar_thumbnails's own batching/dedup/error-handling
+    shape (channel-keyed, not video-keyed): duplicate input channel ids are
+    deduplicated up front (a channel shared by two creators is never fetched
+    twice), and only QuotaExhaustedError propagates immediately (every
+    remaining batch would fail the same way) -- any other batch-level failure
+    is skipped with a reason so one bad batch doesn't sink the rest.
+
+    Mirrors get_video_statistics's own quota-enrichment exactly (2026-09-29
+    fix -- a bare `except QuotaExhaustedError: raise` here previously
+    discarded every already-succeeded batch's results the moment a LATER
+    batch in the same call hit quota, e.g. 100 successful channels lost
+    because the 3rd of 3 batches for a 118-channel roster ran out of quota):
+    the raised QuotaExhaustedError carries partial_results (a dict here,
+    unlike get_video_statistics's own list -- this field is reused as-is
+    rather than adding a channel-specific one, so no other caller of this
+    shared exception class needs to change) and partial_skip_reasons
+    (already-recorded reasons before the failure), plus remaining_video_ids
+    (despite the video-specific name -- reused rather than renamed, since
+    collection.main.py already reads this exact field name off the same
+    exception class for get_video_statistics and must not be disturbed):
+    every channel ID from the failing batch onward, never attempted.
+    """
+    deduped_ids = list(dict.fromkeys(channel_ids))
+    if not deduped_ids:
+        return {}, {}
+
+    results: dict[str, dict] = {}
+    skip_reasons: dict[str, str] = {}
+    for start in range(0, len(deduped_ids), MAX_IDS_PER_REQUEST):
+        batch = deduped_ids[start : start + MAX_IDS_PER_REQUEST]
+        try:
+            batch_results, batch_skip_reasons = _fetch_channel_statistics_batch(youtube, batch)
+            results.update(batch_results)
+            skip_reasons.update(batch_skip_reasons)
+        except QuotaExhaustedError as exc:
+            raise QuotaExhaustedError(
+                str(exc),
+                partial_results=results,
+                partial_skip_reasons=skip_reasons,
+                remaining_video_ids=deduped_ids[start:],
+            ) from exc
+        except YouTubeAPIError as exc:
+            print(f"Warning: skipping a batch of {len(batch)} channel ID(s) due to an API error: {exc}")
+            for channel_id in batch:
+                skip_reasons[channel_id] = f"YouTube API error: {exc}"
+    return results, skip_reasons
+
+
+def _fetch_channel_statistics_batch(youtube: Resource, batch: list[str]) -> tuple[dict[str, dict], dict[str, str]]:
+    """Fetch and parse one channels.list(part="statistics") batch, skipping
+    missing/malformed/unexpected items with a reason instead of letting one
+    bad item discard the whole batch's valid siblings (mirrors
+    _fetch_channel_avatar_batch's exact shape)."""
+    response = call_youtube_api(lambda: youtube.channels().list(part="statistics", id=",".join(batch)).execute())
+
+    items = response.get("items")
+    if items is None:
+        raise YouTubeAPIError("Malformed response from YouTube API: missing 'items'")
+    if not all(isinstance(item, dict) for item in items):
+        raise YouTubeAPIError("Malformed response from YouTube API: 'items' contains a non-object entry")
+
+    results: dict[str, dict] = {}
+    skip_reasons: dict[str, str] = {}
+    seen_ids: set[str] = set()
+
+    for item in items:
+        channel_id = item.get("id")
+        if not isinstance(channel_id, str) or not channel_id:
+            print("Warning: skipping a channels.list item with no usable 'id'")
+            continue
+        if channel_id not in batch:
+            print(f"Warning: ignoring unrequested channel id in response: {channel_id}")
+            continue
+        if channel_id in seen_ids:
+            print(f"Warning: duplicate channel id in response, keeping the first occurrence: {channel_id}")
+            continue
+        seen_ids.add(channel_id)
+
+        try:
+            results[channel_id] = _parse_channel_statistics_item(item)
+        except YouTubeAPIError as exc:
+            skip_reasons[channel_id] = str(exc)
+
+    missing_ids = [channel_id for channel_id in batch if channel_id not in seen_ids]
+    if missing_ids:
+        print(f"Warning: no data returned for channel ID(s): {', '.join(missing_ids)}")
+        for channel_id in missing_ids:
+            skip_reasons[channel_id] = "No data returned by YouTube API (channel may be deleted/private/invalid id)"
+
+    return results, skip_reasons
+
+
+def _parse_channel_statistics_item(item: dict) -> dict:
+    """Extract subscriberCount/hiddenSubscriberCount from one channels.list(part="statistics") item.
+
+    subscriberCount is None exactly when hiddenSubscriberCount is true --
+    YouTube's own documented behavior is to return a fabricated "0" for a
+    hidden count, which this never surfaces as a real value (see
+    get_channel_statistics's own docstring). A non-hidden item missing
+    'subscriberCount' entirely is malformed, not silently zero.
+    """
+    try:
+        statistics = item["statistics"]
+        hidden = bool(statistics.get("hiddenSubscriberCount", False))
+        if hidden:
+            subscriber_count = None
+        else:
+            raw_count = statistics.get("subscriberCount")
+            if raw_count is None:
+                raise YouTubeAPIError("Malformed channel item: missing 'subscriberCount' and not marked hidden")
+            subscriber_count = int(raw_count)
+        return {"subscriberCount": subscriber_count, "hiddenSubscriberCount": hidden}
+    except (KeyError, TypeError, ValueError) as exc:
+        raise YouTubeAPIError(f"Malformed channel item, missing field: {exc}") from exc
 
 
 def _fetch_channel_avatar_batch(youtube: Resource, batch: list[str]) -> tuple[dict[str, str], dict[str, str]]:

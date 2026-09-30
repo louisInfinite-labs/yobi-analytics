@@ -51,9 +51,8 @@ export function usePreviousVisit(): Date | null {
 }
 
 /** DEV-only: rewinds the stored visit so the existing mock unseen video
- * entries register as unseen again -- see DataSourceToggle.tsx for this
- * codebase's own established import.meta.env.DEV gating pattern. No-op
- * outside dev, matching that same precedent. */
+ * entries register as unseen again, gated the same way any other dev-only
+ * tool in this codebase is (`import.meta.env.DEV`). No-op outside dev. */
 export function resetPreviousVisit(): void {
   if (!import.meta.env.DEV) return
   previousVisitStore.set(new Date(Date.now() - RESET_LOOKBACK_MS))

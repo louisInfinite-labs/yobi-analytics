@@ -6,11 +6,17 @@ import { t, type Locale } from "../i18n/translations"
  * the backend already produced instead of a generic "request failed". */
 export class ApiError extends Error {
   readonly status: number
+  /** The backend's own machine-readable `code` field (e.g.
+   * "RANKING_NOT_READY", api_handler.py's `_json_response`), when present --
+   * lets a caller distinguish a specific, well-formed-but-not-ready
+   * response from a generic error at the same status code. */
+  readonly code?: string
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.name = "ApiError"
     this.status = status
+    this.code = code
   }
 }
 
@@ -81,7 +87,11 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
         payload !== null && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
           ? payload.error
           : `Request failed with status ${response.status}`
-      throw new ApiError(response.status, message)
+      const code =
+        payload !== null && typeof payload === "object" && "code" in payload && typeof payload.code === "string"
+          ? payload.code
+          : undefined
+      throw new ApiError(response.status, message, code)
     }
 
     return payload as T

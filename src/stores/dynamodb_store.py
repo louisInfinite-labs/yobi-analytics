@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import math
 import threading
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -51,7 +51,6 @@ from tracking.video_topics import TOPIC_IDS
 
 VIDEO_MASTER_TABLE = os.environ.get("YOBI_VIDEO_MASTER_TABLE") or "YobiVideoMaster"
 CREATOR_ID_INDEX = "creatorId-index"
-TRENDING_CACHE_TABLE = os.environ.get("YOBI_TRENDING_CACHE_TABLE") or "YobiTrendingCache"
 SNAPSHOTS_TABLE = os.environ.get("YOBI_SNAPSHOTS_TABLE") or "YobiSnapshots"
 RUN_SUMMARIES_TABLE = os.environ.get("YOBI_RUN_SUMMARIES_TABLE") or "YobiRunSummaries"
 
@@ -175,36 +174,6 @@ def get_videos_by_creator(creator_id: str) -> list[Video]:
     return [_item_to_video(item) for item in items]
 
 
-class TrendingCacheError(Exception):
-    """Raised when YobiTrendingCache can't be read or written."""
-
-
-def get_cached_trending(cache_key: str) -> dict[str, Any] | None:
-    """Return one precomputed trending response by its cache key, or None on a cache miss.
-
-    The stored `payload` attribute is the exact response dict trending_precompute.py
-    built for this scope/period/rankingType/reportDate/timeZone combination —
-    already ranked, already capped at MAX_LIMIT — serialized as a JSON string
-    so Decimal round-tripping is never a concern for arbitrary nested response
-    fields the way it is for Video Master's own typed attributes.
-    """
-    table = _resource().Table(TRENDING_CACHE_TABLE)
-    try:
-        item = table.get_item(Key={"cacheKey": cache_key}).get("Item")
-    except ClientError as exc:
-        raise TrendingCacheError(f"Failed to read {TRENDING_CACHE_TABLE}: {exc}") from exc
-    return json.loads(item["payload"]) if item else None
-
-
-def put_cached_trending(cache_key: str, payload: dict[str, Any], *, computed_at: str) -> None:
-    """Write (or overwrite) one precomputed trending response under cache_key."""
-    table = _resource().Table(TRENDING_CACHE_TABLE)
-    try:
-        table.put_item(Item={"cacheKey": cache_key, "payload": json.dumps(payload), "computedAt": computed_at})
-    except ClientError as exc:
-        raise TrendingCacheError(f"Failed to write {TRENDING_CACHE_TABLE}: {exc}") from exc
-
-
 def get_video(video_id: str) -> Video | None:
     """Return one video by ID, or None if it isn't in the Tracking Universe.
 
@@ -263,6 +232,50 @@ _BATCH_GET_ITEM_LIMIT = 100
 # throttling, but nothing here may loop forever on a chunk DynamoDB keeps
 # returning as unprocessed.
 _BATCH_GET_ITEM_MAX_ATTEMPTS = 5
+
+
+def get_videos(video_ids: list[str]) -> dict[str, Video]:
+    """Batch-read full, authoritative Video Master records for exactly these
+    ids, chunked to DynamoDB's 100-key BatchGetItem limit (AWS Cost Recovery,
+    third pass, Scope H).
+
+    The bounded fallback source for collection.history_worker.
+    _carry_forward_non_due_rows: a video missing from yesterday's own S3
+    daily shard (a genuine gap day, or a shard that was never written) used
+    to fall back to one GetItem per missing video -- fine on an ordinary day
+    (a handful of gaps), but if an entire previous shard is ever missing
+    (e.g. a real S3 outage), that becomes hundreds of sequential GetItem
+    calls per shard. This is the same bounded-chunk/retry shape as
+    get_video_topics, but returns the *full* Video (not a narrow topic-only
+    projection), since the caller needs last_view_count/last_checked_at.
+
+    Duplicate ids are deduplicated up front, matching get_video_topics.
+    Returns only the ids that actually exist, keyed by video_id -- a caller
+    distinguishes "missing" the same way get_video's own None already does.
+    """
+    if not video_ids:
+        return {}
+    resource = _resource()
+    items: list[dict[str, Any]] = []
+    unique_ids = sorted(set(video_ids))
+    for start in range(0, len(unique_ids), _BATCH_GET_ITEM_LIMIT):
+        keys_to_fetch = [{"videoId": video_id} for video_id in unique_ids[start : start + _BATCH_GET_ITEM_LIMIT]]
+        for attempt in range(1, _BATCH_GET_ITEM_MAX_ATTEMPTS + 1):
+            if not keys_to_fetch:
+                break
+            try:
+                response = resource.batch_get_item(RequestItems={VIDEO_MASTER_TABLE: {"Keys": keys_to_fetch}})
+            except ClientError as exc:
+                raise VideoMasterError(f"Failed to batch-read {VIDEO_MASTER_TABLE}: {exc}") from exc
+            items.extend(response.get("Responses", {}).get(VIDEO_MASTER_TABLE, []))
+            keys_to_fetch = response.get("UnprocessedKeys", {}).get(VIDEO_MASTER_TABLE, {}).get("Keys", [])
+            if keys_to_fetch and attempt == _BATCH_GET_ITEM_MAX_ATTEMPTS:
+                raise VideoMasterError(
+                    f"Failed to batch-read {VIDEO_MASTER_TABLE}: {len(keys_to_fetch)} key(s) still "
+                    f"unprocessed after {_BATCH_GET_ITEM_MAX_ATTEMPTS} attempts"
+                )
+    videos = [_item_to_video(item) for item in items]
+    return {video.video_id: video for video in videos}
 
 
 def get_video_topics(video_ids: list[str]) -> list[dict[str, Any]]:

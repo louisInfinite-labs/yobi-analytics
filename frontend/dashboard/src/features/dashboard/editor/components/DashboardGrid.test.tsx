@@ -6,23 +6,14 @@ import { projectCanonicalLayoutForGridStack } from "../utils/dashboardGridProjec
 import type { DashboardWidgetData } from "../utils/widgetRegistry"
 import type { CanonicalLayout } from "../model/dashboardLayout"
 
-const DATA: DashboardWidgetData = {
-  kpis: { totalViews: 0, totalDailyIncrease: 0, averageGrowthPercent: null, topPerformer: null },
-  contributions: [],
-  filteredStats: [],
-  insights: [],
-  byDay: [],
-  byChannel: [],
-  period: "1d",
-  timeZone: "UTC",
-}
+const DATA: DashboardWidgetData = { creatorId: null }
 
 const LAYOUT: CanonicalLayout = {
   grid: { columns: 3, rows: 1 },
   widgets: [
-    { widgetId: "a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 },
-    { widgetId: "candidate", widgetType: "ranking", x: 1, y: 0, width: 1, height: 1 },
-    { widgetId: "b", widgetType: "growth-bar-chart", x: 2, y: 0, width: 1, height: 1 },
+    { widgetId: "a", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+    { widgetId: "candidate", widgetType: "creator-video-ranking", x: 1, y: 0, width: 1, height: 1 },
+    { widgetId: "b", widgetType: "subscriber-leaderboard", x: 2, y: 0, width: 1, height: 1 },
   ],
 }
 
@@ -61,9 +52,9 @@ describe("DashboardGrid preview placeholder + lock (GAP-7)", () => {
     const placeholder = await screen.findByTestId("insertion-placeholder")
 
     expect(placeholder).toHaveAttribute("aria-hidden", "true")
-    expect(placeholder).toHaveTextContent("New Rankings (preview)")
+    expect(placeholder).toHaveTextContent("New Creator Video Ranking (preview)")
     expect(placeholder.closest("[gs-id]")).toHaveAttribute("gs-id", "candidate")
-    expect(screen.queryByRole("button", { name: "Remove Rankings" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Remove Creator Video Ranking" })).not.toBeInTheDocument()
     expect(screen.getAllByRole("button", { name: /^Remove / })).toHaveLength(2)
   })
 

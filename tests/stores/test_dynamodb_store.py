@@ -11,14 +11,12 @@ from stores.dynamodb_store import (
     KNOWN_INCOMPLETE_LEGACY_DATES,
     RUN_SUMMARIES_TABLE,
     SNAPSHOTS_TABLE,
-    TRENDING_CACHE_TABLE,
     VIDEO_MASTER_TABLE,
-    get_cached_trending,
     get_snapshot,
     get_video_topics,
+    get_videos,
     get_videos_by_creator,
     load_videos,
-    put_cached_trending,
     save_daily_collection,
     save_run_summary,
     scan_video_topic_items,
@@ -70,12 +68,6 @@ def dynamodb_tables(aws_credentials):
             TableName=RUN_SUMMARIES_TABLE,
             AttributeDefinitions=[{"AttributeName": "snapshotDate", "AttributeType": "S"}],
             KeySchema=[{"AttributeName": "snapshotDate", "KeyType": "HASH"}],
-            BillingMode="PAY_PER_REQUEST",
-        )
-        client.create_table(
-            TableName=TRENDING_CACHE_TABLE,
-            AttributeDefinitions=[{"AttributeName": "cacheKey", "AttributeType": "S"}],
-            KeySchema=[{"AttributeName": "cacheKey", "KeyType": "HASH"}],
             BillingMode="PAY_PER_REQUEST",
         )
         yield
@@ -148,6 +140,22 @@ def test_upsert_and_load_round_trips_bootstrap_defaults(dynamodb_tables):
     """A video with no scheduler state yet (all optional fields at their
     dataclass defaults, including the None velocity fields) round-trips too."""
     video = Video(video_id="v1", creator_id="aizawa_ema", title="A", published_at="2026-08-20T00:00:00Z")
+
+    upsert_videos([video])
+
+    assert load_videos() == [video]
+
+
+def test_upsert_and_load_round_trips_thumbnail_url(dynamodb_tables):
+    """thumbnail_url (video-ranking metadata propagation) round-trips through
+    DynamoDB the same way every other plain string Video field already does."""
+    video = Video(
+        video_id="v1",
+        creator_id="aizawa_ema",
+        title="A",
+        published_at="2026-08-20T00:00:00Z",
+        thumbnail_url="https://i.ytimg.com/vi/v1/maxresdefault.jpg",
+    )
 
     upsert_videos([video])
 
@@ -229,33 +237,6 @@ def test_get_videos_by_creator_returns_every_video_for_a_prolific_creator(dynamo
     result = get_videos_by_creator("prolific")
 
     assert len(result) == 550
-
-
-# --- Trending cache ---------------------------------------------------------
-
-
-def test_get_cached_trending_returns_none_for_a_missing_key(dynamodb_tables):
-    """An unpopulated cache key is a clean miss, not an error."""
-    assert get_cached_trending("no-such-key") is None
-
-
-def test_put_then_get_cached_trending_round_trips_the_payload(dynamodb_tables):
-    """A cached payload — including nested lists/dicts — survives the JSON round trip unchanged."""
-    payload = {"organization": "vspo", "results": [{"rank": 1, "videoId": "v1", "value": 12.5}]}
-
-    put_cached_trending("org:vspo:1d:daily_trending:2026-09-01:Asia/Tokyo", payload, computed_at="2026-09-01T18:00:00+09:00")
-
-    assert get_cached_trending("org:vspo:1d:daily_trending:2026-09-01:Asia/Tokyo") == payload
-
-
-def test_put_cached_trending_overwrites_an_existing_key(dynamodb_tables):
-    """Re-running the precompute job for the same key replaces yesterday's cached entry, not duplicates it."""
-    key = "creator:aizawa_ema:1d:daily_trending:2026-09-01:Asia/Tokyo"
-    put_cached_trending(key, {"results": ["old"]}, computed_at="2026-09-01T18:00:00+09:00")
-
-    put_cached_trending(key, {"results": ["new"]}, computed_at="2026-09-02T18:00:00+09:00")
-
-    assert get_cached_trending(key) == {"results": ["new"]}
 
 
 # --- Snapshots + run summaries --------------------------------------------
@@ -745,6 +726,103 @@ def test_scan_video_topic_items_returns_only_the_projected_fields(dynamodb_table
     items = sorted(scan_video_topic_items(), key=lambda item: item["videoId"])
 
     assert items == [{"videoId": "v1", "title": "A", "topic": "apex"}, {"videoId": "v2", "title": "B"}]
+
+
+# --- get_videos (AWS Cost Recovery third pass, Scope H: bounded carry-forward fallback) --
+
+
+def test_get_videos_returns_full_records_for_only_the_requested_ids(dynamodb_tables):
+    upsert_videos(
+        [
+            Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", last_view_count=100, last_checked_at="2026-09-01T18:00:00+09:00"),
+            Video(video_id="v2", creator_id="c1", title="B", published_at="2026-08-20T00:00:00Z"),
+        ]
+    )
+
+    videos = get_videos(["v1"])
+
+    assert set(videos) == {"v1"}
+    assert videos["v1"].last_view_count == 100
+    assert videos["v1"].last_checked_at == "2026-09-01T18:00:00+09:00"
+
+
+def test_get_videos_with_an_empty_list_makes_no_request(dynamodb_tables):
+    assert get_videos([]) == {}
+
+
+def test_get_videos_ignores_a_requested_id_that_does_not_exist(dynamodb_tables):
+    upsert_videos([Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z")])
+
+    videos = get_videos(["v1", "ghost_video"])
+
+    assert set(videos) == {"v1"}
+
+
+def test_get_videos_deduplicates_repeated_ids(dynamodb_tables):
+    upsert_videos([Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z")])
+
+    videos = get_videos(["v1", "v1", "v1"])
+
+    assert set(videos) == {"v1"}
+
+
+def test_get_videos_chunks_beyond_the_100_key_batch_get_item_limit(dynamodb_tables):
+    video_count = 150
+    upsert_videos(
+        [
+            Video(video_id=f"v{i}", creator_id="c1", title=f"title {i}", published_at="2026-08-20T00:00:00Z")
+            for i in range(video_count)
+        ]
+    )
+
+    videos = get_videos([f"v{i}" for i in range(video_count)])
+
+    assert len(videos) == video_count
+    assert set(videos) == {f"v{i}" for i in range(video_count)}
+
+
+def test_get_videos_raises_after_exhausting_retries_on_persistent_unprocessed_keys(monkeypatch):
+    import stores.dynamodb_store as dynamodb_store_module
+
+    call_count = {"n": 0}
+
+    class _AlwaysUnprocessedResource:
+        def batch_get_item(self, *, RequestItems):
+            call_count["n"] += 1
+            keys = RequestItems[dynamodb_store_module.VIDEO_MASTER_TABLE]["Keys"]
+            return {"Responses": {}, "UnprocessedKeys": {dynamodb_store_module.VIDEO_MASTER_TABLE: {"Keys": keys}}}
+
+    monkeypatch.setattr(dynamodb_store_module, "_resource", lambda: _AlwaysUnprocessedResource())
+
+    with pytest.raises(VideoMasterError):
+        dynamodb_store_module.get_videos(["v1"])
+
+    assert call_count["n"] == dynamodb_store_module._BATCH_GET_ITEM_MAX_ATTEMPTS
+
+
+def test_get_videos_recovers_once_unprocessed_keys_eventually_clear(monkeypatch):
+    import stores.dynamodb_store as dynamodb_store_module
+
+    call_count = {"n": 0}
+
+    class _RecoversOnSecondAttemptResource:
+        def batch_get_item(self, *, RequestItems):
+            call_count["n"] += 1
+            table = dynamodb_store_module.VIDEO_MASTER_TABLE
+            keys = RequestItems[table]["Keys"]
+            if call_count["n"] == 1:
+                return {"Responses": {}, "UnprocessedKeys": {table: {"Keys": keys}}}
+            return {
+                "Responses": {table: [{"videoId": "v1", "creatorId": "c1", "title": "A", "publishedAt": "2026-08-20T00:00:00Z", "activityState": "Unknown"}]},
+                "UnprocessedKeys": {},
+            }
+
+    monkeypatch.setattr(dynamodb_store_module, "_resource", lambda: _RecoversOnSecondAttemptResource())
+
+    videos = dynamodb_store_module.get_videos(["v1"])
+
+    assert set(videos) == {"v1"}
+    assert call_count["n"] == 2
 
 
 # --- get_video_topics (Topic Phase 3: bounded, per-shard analog of scan_video_topic_items) --

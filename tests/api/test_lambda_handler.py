@@ -21,110 +21,58 @@ def test_lambda_handler_raises_on_failure(monkeypatch):
         lambda_handler_module.lambda_handler({}, None)
 
 
-def test_lambda_handler_dispatches_to_trending_precompute_in_precompute_mode(monkeypatch):
-    """An event carrying mode=precompute_trending runs trending_precompute.run(), never main()."""
-    from analytics import trending_precompute
+# --- R7 safety correction: a retired/unrecognized mode must never silently --
+# --- fall through to the default collection job -----------------------------
+
+
+def test_lambda_handler_rejects_the_retired_precompute_trending_mode(monkeypatch):
+    """mode=precompute_trending used to dispatch to the now-deleted
+    analytics.trending_precompute module. It must NOT silently fall through
+    to the default collection job (that would mean a stale/manual event
+    carrying this old mode quietly runs a full YouTube-statistics collection
+    run instead of doing nothing) -- it must raise before either main() or
+    run_discovery() ever runs, and must never import the deleted module."""
+    import sys
+
+    assert "analytics.trending_precompute" not in sys.modules
 
     def _main_should_not_run():
-        raise AssertionError("main() must not run for a precompute-mode event")
+        raise AssertionError("main() must not run for a retired-mode event")
+
+    def _discovery_should_not_run():
+        raise AssertionError("run_discovery() must not run for a retired-mode event")
 
     monkeypatch.setattr(lambda_handler_module, "main", _main_should_not_run)
-    monkeypatch.setattr(
-        trending_precompute, "run", lambda report_date, periods, **kwargs: {"scopes_written": 5, "scopes_failed": 0}
-    )
+    monkeypatch.setattr(lambda_handler_module, "run_discovery", _discovery_should_not_run)
 
-    result = lambda_handler_module.lambda_handler({"mode": "precompute_trending"}, None)
+    with pytest.raises(lambda_handler_module.UnsupportedModeError, match="precompute_trending"):
+        lambda_handler_module.lambda_handler({"mode": "precompute_trending"}, None)
 
-    assert result == {"statusCode": 200, "body": {"scopes_written": 5, "scopes_failed": 0}}
-
-
-def test_lambda_handler_precompute_mode_still_returns_200_when_some_scopes_failed(monkeypatch):
-    """A partial precompute failure (best-effort per scope) is logged, not raised — most scopes
-    still getting a fresh cache entry is a successful invocation, not a failed one."""
-    from analytics import trending_precompute
-
-    monkeypatch.setattr(lambda_handler_module, "main", lambda: (_ for _ in ()).throw(AssertionError))
-    monkeypatch.setattr(
-        trending_precompute, "run", lambda report_date, periods, **kwargs: {"scopes_written": 4, "scopes_failed": 1}
-    )
-
-    result = lambda_handler_module.lambda_handler({"mode": "precompute_trending"}, None)
-
-    assert result["statusCode"] == 200
+    assert "analytics.trending_precompute" not in sys.modules
 
 
-def test_lambda_handler_precompute_mode_passes_through_a_single_period(monkeypatch):
-    """An event's own `period` field precomputes just that period, not all three — each of the
-    three EventBridge schedules passes its own period so no single invocation does all 342 scopes."""
-    from analytics import trending_precompute
+def test_lambda_handler_rejects_any_other_unrecognized_mode(monkeypatch):
+    """Not just the one retired name -- any explicit mode outside the known
+    set must raise, never silently default to the collection job."""
 
-    captured = {}
+    def _main_should_not_run():
+        raise AssertionError("main() must not run for an unrecognized-mode event")
 
-    def _fake_run(report_date, periods, **kwargs):
-        captured["periods"] = periods
-        return {"scopes_written": 1, "scopes_failed": 0}
+    monkeypatch.setattr(lambda_handler_module, "main", _main_should_not_run)
 
-    monkeypatch.setattr(trending_precompute, "run", _fake_run)
-
-    lambda_handler_module.lambda_handler({"mode": "precompute_trending", "period": "7d"}, None)
-
-    assert captured["periods"] == ("7d",)
+    with pytest.raises(lambda_handler_module.UnsupportedModeError):
+        lambda_handler_module.lambda_handler({"mode": "totally_made_up_mode"}, None)
 
 
-def test_lambda_handler_precompute_mode_defaults_to_every_period_when_absent(monkeypatch):
-    """Omitting `period` (e.g. a manual test invoke) still covers all three periods in one call."""
-    from analytics import trending_precompute
+def test_lambda_handler_omitted_mode_still_runs_the_default_collection_job(monkeypatch):
+    """The one legitimate case that must NOT raise: mode absent entirely
+    (the field's own None default) still means "run the default job", not
+    "unsupported"."""
+    monkeypatch.setattr(lambda_handler_module, "main", lambda: 0)
 
-    captured = {}
+    result = lambda_handler_module.lambda_handler({}, None)
 
-    def _fake_run(report_date, periods, **kwargs):
-        captured["periods"] = periods
-        return {"scopes_written": 1, "scopes_failed": 0}
-
-    monkeypatch.setattr(trending_precompute, "run", _fake_run)
-
-    lambda_handler_module.lambda_handler({"mode": "precompute_trending"}, None)
-
-    assert captured["periods"] == trending_precompute._PERIODS
-
-
-def test_lambda_handler_precompute_mode_passes_through_batch_fields(monkeypatch):
-    """batchIndex/batchCount/includeOrgScope reach trending_precompute.run() -- each of the
-    per-batch EventBridge schedules relies on these to only touch its own slice of creators."""
-    from analytics import trending_precompute
-
-    captured = {}
-
-    def _fake_run(report_date, periods, **kwargs):
-        captured.update(kwargs)
-        return {"scopes_written": 1, "scopes_failed": 0}
-
-    monkeypatch.setattr(trending_precompute, "run", _fake_run)
-
-    lambda_handler_module.lambda_handler(
-        {"mode": "precompute_trending", "period": "1d", "batchIndex": 2, "batchCount": 4, "includeOrgScope": False},
-        None,
-    )
-
-    assert captured == {"batch_index": 2, "batch_count": 4, "include_org_scope": False}
-
-
-def test_lambda_handler_precompute_mode_batch_fields_default_to_single_unbatched_run(monkeypatch):
-    """Omitting batchIndex/batchCount/includeOrgScope (local/manual invocation) behaves as
-    one unbatched run covering every creator plus org-scope, matching the pre-batching default."""
-    from analytics import trending_precompute
-
-    captured = {}
-
-    def _fake_run(report_date, periods, **kwargs):
-        captured.update(kwargs)
-        return {"scopes_written": 1, "scopes_failed": 0}
-
-    monkeypatch.setattr(trending_precompute, "run", _fake_run)
-
-    lambda_handler_module.lambda_handler({"mode": "precompute_trending"}, None)
-
-    assert captured == {"batch_index": 0, "batch_count": 1, "include_org_scope": True}
+    assert result == {"statusCode": 200}
 
 
 def test_lambda_handler_dispatches_to_discovery_only_in_discovery_only_mode(monkeypatch):

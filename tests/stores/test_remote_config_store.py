@@ -32,6 +32,13 @@ def remote_config_table(aws_credentials):
                 {"AttributeName": "clientId", "KeyType": "HASH"},
                 {"AttributeName": "configKey", "KeyType": "RANGE"},
             ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "configKey-index",
+                    "KeySchema": [{"AttributeName": "configKey", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                }
+            ],
             BillingMode="PAY_PER_REQUEST",
         )
         yield
@@ -117,6 +124,25 @@ def test_list_by_key_returns_every_clients_record_for_one_key(remote_config_tabl
 
 def test_list_by_key_returns_empty_list_when_no_client_has_that_key(remote_config_table):
     assert list_by_key("no_such_key") == []
+
+
+def test_list_by_key_never_scans_the_whole_table(remote_config_table, monkeypatch):
+    """AWS Cost Recovery: list_by_key must use the configKey-index Query, never a
+    table-wide Scan -- the exact O(total clients) failure class this GSI exists
+    to remove. Patching Table.scan to raise proves the Query path is what's
+    actually exercised, not merely that the result happens to look right."""
+    from stores import remote_config_store
+
+    put_remote_config(
+        {"clientId": "c1", "key": "notificationPreference", "value": {"enabled": True}, "updatedAt": "2026-09-03T00:00:00+00:00"}
+    )
+
+    table = remote_config_store._resource().Table(REMOTE_CONFIG_TABLE)
+    monkeypatch.setattr(table, "scan", lambda *a, **k: (_ for _ in ()).throw(AssertionError("list_by_key must not Scan")))
+
+    records = list_by_key("notificationPreference")
+
+    assert {record["clientId"] for record in records} == {"c1"}
 
 
 def test_delete_remote_config_removes_the_stored_record(remote_config_table):

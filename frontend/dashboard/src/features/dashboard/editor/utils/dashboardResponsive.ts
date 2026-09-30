@@ -40,8 +40,15 @@
  */
 import type { Breakpoint } from "../../../../shared/responsive/model/breakpoint"
 import type { CanonicalLayout, DashboardWidget } from "../model/dashboardLayout"
-import { sortWidgetsVisualOrder } from "../../comparison/utils/dashboardComparisonMapping"
 import { DASHBOARD_ELEMENT_GAP_PX } from "./dashboardSpacing"
+
+/** Row-major visual order: top to bottom, then left to right. Independent
+ * of `widgets`' own array order -- what makes "reloading at the same
+ * breakpoint must produce the same order" (Section 11) true regardless of
+ * how the canonical layout happens to store its widgets. */
+function sortWidgetsVisualOrder(widgets: readonly DashboardWidget[]): DashboardWidget[] {
+  return [...widgets].sort((a, b) => a.y - b.y || a.x - b.x)
+}
 
 /** The authoritative per-breakpoint column cap this microtask defines
  * (Section 11). Desktop keeps the canonical grid's own column count (up to

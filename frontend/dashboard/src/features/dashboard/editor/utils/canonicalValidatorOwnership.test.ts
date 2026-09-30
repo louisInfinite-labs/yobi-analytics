@@ -35,7 +35,6 @@ describe("canonical validateLayout ownership (production sources)", () => {
     ["editor draft validity and insertion preview", "/src/features/dashboard/editor/hooks/useDashboardEditor.ts"],
     ["save", "/src/features/dashboard/editor/utils/dashboardLayoutSave.ts"],
     ["load and legacy conversion", "/src/features/dashboard/editor/data/dashboardCanonicalLayoutStore.ts"],
-    ["Flow 2 mapping", "/src/features/dashboard/comparison/utils/dashboardComparisonMapping.ts"],
     ["legacy migration", "/src/features/dashboard/editor/utils/dashboardLayoutMigration.ts"],
   ])("%s calls the canonical validateLayout", (_path, file) => {
     expect(importsValidator(file)).toBe(true)

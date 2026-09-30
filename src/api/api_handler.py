@@ -53,7 +53,6 @@ from typing import Any, Callable
 
 from api import client_credential_api
 from stores import client_credential_store
-from api import comparison_api
 from ops import config
 from ops.config import MissingHolodexApiKeyError
 from api import dashboard_catalog_api
@@ -131,8 +130,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return _json_response(404, {"error": str(exc)})
     except read_api.ScopeNotFoundError as exc:
         return _json_response(404, {"error": str(exc)})
-    except read_api.TrendingNotReadyError as exc:
-        return _json_response(503, {"error": str(exc)})
     except read_api.RankingNotReadyError as exc:
         return _json_response(503, {"error": str(exc), "code": "RANKING_NOT_READY"})
     except (HolodexAPIError, HolodexNormalizationError, MissingHolodexApiKeyError) as exc:
@@ -164,44 +161,20 @@ def _handle_get_video_growth(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_video_growth(_merged_params(event))
 
 
-def _handle_get_creator_trending(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_creator_trending(_merged_params(event))
-
-
-def _handle_get_organization_trending(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_organization_trending(_merged_params(event))
-
-
 def _handle_get_chart_catalog(event: dict[str, Any]) -> dict[str, Any]:
     return dashboard_catalog_api.get_chart_catalog(_merged_params(event))
-
-
-def _handle_get_comparison_items(event: dict[str, Any]) -> dict[str, Any]:
-    return dashboard_catalog_api.get_comparison_items(_merged_params(event))
 
 
 def _handle_get_topics(event: dict[str, Any]) -> dict[str, Any]:
     return dashboard_catalog_api.get_topics(_merged_params(event))
 
 
-def _handle_get_comparison_data(event: dict[str, Any]) -> dict[str, Any]:
-    return comparison_api.get_comparison_data(_merged_params(event))
+def _handle_get_subscriber_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_subscriber_leaderboard(_merged_params(event))
 
 
-def _handle_get_creator_summary(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_creator_summary(_merged_params(event))
-
-
-def _handle_get_organization_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_organization_leaderboard(_merged_params(event))
-
-
-def _handle_get_global_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_global_leaderboard(_merged_params(event))
-
-
-def _handle_get_topic_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_topic_leaderboard(_merged_params(event))
+def _handle_get_video_ranking(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_video_ranking(_merged_params(event))
 
 
 def _handle_get_live_streams(event: dict[str, Any]) -> dict[str, Any]:
@@ -349,16 +322,10 @@ def _handle_get_admin_heartbeat_stats(event: dict[str, Any]) -> dict[str, Any]:
 
 _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /videos/{videoId}/growth": _handle_get_video_growth,
-    "GET /creators/{creatorId}/trending": _handle_get_creator_trending,
-    "GET /organizations/{organization}/trending": _handle_get_organization_trending,
     "GET /dashboard/chart-catalog": _handle_get_chart_catalog,
-    "GET /dashboard/comparison-items": _handle_get_comparison_items,
-    "GET /dashboard/comparison-data": _handle_get_comparison_data,
     "GET /topics": _handle_get_topics,
-    "GET /creators/{creatorId}/summary": _handle_get_creator_summary,
-    "GET /organizations/{organization}/leaderboard": _handle_get_organization_leaderboard,
-    "GET /leaderboard": _handle_get_global_leaderboard,
-    "GET /topics/{topic}/leaderboard": _handle_get_topic_leaderboard,
+    "GET /subscribers/leaderboard": _handle_get_subscriber_leaderboard,
+    "GET /creators/{creatorId}/videos/ranking": _handle_get_video_ranking,
     "GET /live-streams": _handle_get_live_streams,
     "GET /recent-streams": _handle_get_recent_streams,
     "POST /heartbeat": _handle_post_heartbeat,

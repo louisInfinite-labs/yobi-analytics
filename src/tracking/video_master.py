@@ -33,6 +33,13 @@ class Video:
     creator_id: str
     title: str
     published_at: str
+    # The canonical thumbnail URL from the same discovery-time playlistItems.list
+    # response that already provides `title`/`published_at` (part="snippet" —
+    # snippet.thumbnails is already present in that same paid response, just
+    # not previously parsed). None for a record written before this field
+    # existed, or for the rare discovered item whose snippet carried no usable
+    # thumbnail variant at all (see tracking.video_discovery._select_thumbnail_url).
+    thumbnail_url: str | None = None
     # Every newly discovered video bootstraps as "Unknown" regardless of
     # age/views; see tracking_schedule.classify_after_observation for how it
     # evolves after each statistics snapshot.
@@ -74,6 +81,15 @@ class VideoMasterStore(Protocol):
     functions already match this exact signature) is passed directly as a
     module object by history_worker_handler.lambda_handler, with no adapter
     class needed.
+
+    `get_videos` (AWS Cost Recovery, third pass, Scope H) is an *optional*
+    extension, not part of this Protocol's required shape -- duck-typed via
+    `getattr(store, "get_videos", None)` at the one call site that uses it
+    (collection.history_worker._carry_forward_non_due_rows), so an existing
+    caller/test double implementing only the two methods above keeps working
+    unchanged. A store that does provide it (dynamodb_store.get_videos) lets
+    that call site batch every video-master fallback lookup into one bounded
+    BatchGetItem call instead of one GetItem per video.
     """
 
     def get_video(self, video_id: str) -> Video | None:
@@ -152,6 +168,7 @@ def _parse_video(raw: dict) -> Video:
             creator_id=_require_str(raw, "creatorId"),
             title=_require_str(raw, "title"),
             published_at=_require_str(raw, "publishedAt"),
+            thumbnail_url=_optional_str(raw, "thumbnailUrl", video_id),
             activity_state=activity_state,
             last_checked_at=_optional_str(raw, "lastCheckedAt", video_id),
             last_view_count=_optional_int(raw, "lastViewCount", video_id),
@@ -271,6 +288,7 @@ def _to_raw(video: Video) -> dict:
         "creatorId": video.creator_id,
         "title": video.title,
         "publishedAt": video.published_at,
+        "thumbnailUrl": video.thumbnail_url,
         "activityState": video.activity_state,
         "lastCheckedAt": video.last_checked_at,
         "lastViewCount": video.last_view_count,

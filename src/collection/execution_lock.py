@@ -132,8 +132,8 @@ def canonicalize_report_date(
     """Compute this execution's reportDate exactly once.
 
     Every downstream state (CollectHistoryShards' Map, ReduceRankings, this
-    lock's own row, every trending_cache_keys.* cache key) must be handed
-    this same value explicitly afterward -- never re-derive it -- so an
+    lock's own row) must be handed this same value explicitly afterward --
+    never re-derive it -- so an
     execution that happens to straddle midnight Asia/Tokyo can't disagree
     with itself about which day it's collecting for.
 

@@ -24,14 +24,18 @@ export const DEFAULT_GRID: GridSize = { columns: 2, rows: 2 }
 
 /** Explicit default configuration (Section 3.1): fixed widget types,
  * positions, and order. Independent of the chart catalog (loaded later by
- * MT-04) and never reordered by backend response order. */
+ * MT-04) and never reordered by backend response order.
+ *
+ * R9 (org-trending retirement): replaced with a minimal layout built only
+ * from the two surviving ranking products -- subscriber-leaderboard needs no
+ * configuration to be useful out of the box; creator-video-ranking starts
+ * unconfigured (Phase 3's "0 creatorIds -> unconfigured state") until a
+ * creator is dropped onto it. */
 export const DEFAULT_WIDGET_CONFIG: ReadonlyArray<
   Pick<DashboardWidget, "widgetType" | "x" | "y" | "width" | "height">
 > = [
-  { widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 },
-  { widgetType: "growth-bar-chart", x: 1, y: 0, width: 1, height: 1 },
-  { widgetType: "contribution-ring", x: 0, y: 1, width: 1, height: 1 },
-  { widgetType: "ranking", x: 1, y: 1, width: 1, height: 1 },
+  { widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+  { widgetType: "creator-video-ranking", x: 1, y: 0, width: 1, height: 1 },
 ]
 
 /** Builds a fresh default layout with unique `widgetId`s, one per

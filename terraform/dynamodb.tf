@@ -129,6 +129,20 @@ resource "aws_dynamodb_table" "remote_config" {
     type = "S"
   }
 
+  # AWS Cost Recovery (production-path audit): remote_config_store.list_by_key
+  # used to be a table-wide Scan+FilterExpression to answer "every client that
+  # has ever stored this configKey" (e.g. the notification dispatcher's own
+  # "notificationPreference" lookup, every 15 minutes) -- O(total clients),
+  # the exact same failure class as VideoMaster's old full-catalog scan, just
+  # on a different scaling axis. This GSI makes that a bounded Query instead:
+  # RCU now scales with how many clients actually stored that one key, never
+  # with the whole table.
+  global_secondary_index {
+    name            = "configKey-index"
+    hash_key        = "configKey"
+    projection_type = "ALL"
+  }
+
   on_demand_throughput {
     max_read_request_units  = 200
     max_write_request_units = 100
@@ -191,27 +205,14 @@ resource "aws_dynamodb_table" "snapshots" {
   deletion_protection_enabled = true
 }
 
-resource "aws_dynamodb_table" "trending_cache" {
-  name         = "YobiTrendingCache"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "cacheKey"
-
-  attribute {
-    name = "cacheKey"
-    type = "S"
-  }
-
-  on_demand_throughput {
-    max_read_request_units  = 200
-    max_write_request_units = 100
-  }
-
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  deletion_protection_enabled = true
-}
+# R9 (org-trending retirement): aws_dynamodb_table.trending_cache
+# (YobiTrendingCache) was removed here -- its only writer
+# (analytics.ranking_reducer.persist_rankings) and only readers
+# (api.read_api.get_creator_trending/get_organization_trending) were both
+# retired. NOT YET APPLIED: this table has deletion_protection_enabled = true
+# in the real deployed resource, so an actual `terraform apply` of this
+# removal will fail until that protection is disabled on the live table
+# first (see this task's own final report for the exact manual step).
 
 resource "aws_dynamodb_table" "video_master" {
   name         = "YobiVideoMaster"

@@ -377,6 +377,37 @@ def test_topic_is_serialized_and_deserialized(tmp_path):
     assert load_videos(path)[0].topic == "sf6"
 
 
+def test_thumbnail_url_is_serialized_and_deserialized(tmp_path):
+    """thumbnail_url (video-ranking metadata propagation) round-trips through
+    Video Master the same way title/topic already do."""
+    path = tmp_path / "video_master.json"
+    upsert_videos(
+        [
+            Video(
+                video_id="v1",
+                creator_id="c1",
+                title="A",
+                published_at="2026-08-20T00:00:00Z",
+                thumbnail_url="https://i.ytimg.com/vi/v1/maxresdefault.jpg",
+            )
+        ],
+        path,
+    )
+
+    assert json.loads(path.read_text(encoding="utf-8"))[0]["thumbnailUrl"] == "https://i.ytimg.com/vi/v1/maxresdefault.jpg"
+    assert load_videos(path)[0].thumbnail_url == "https://i.ytimg.com/vi/v1/maxresdefault.jpg"
+
+
+def test_old_record_without_thumbnail_url_still_loads_as_none(tmp_path):
+    """A Video Master record written before thumbnail_url existed still
+    deserializes, with thumbnail_url read as None -- never a required field."""
+    record = {"videoId": "v1", "creatorId": "c1", "title": "A", "publishedAt": "2026-08-20T00:00:00Z"}
+    path = _video_json(tmp_path, [record])
+
+    [video] = load_videos(path)
+    assert video.thumbnail_url is None
+
+
 def test_old_record_without_topic_stays_valid_and_keeps_its_shape(tmp_path):
     record = {"videoId": "v1", "creatorId": "c1", "title": "A", "publishedAt": "2026-08-20T00:00:00Z"}
     path = _video_json(tmp_path, [record])

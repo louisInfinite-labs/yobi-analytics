@@ -173,6 +173,27 @@ def test_duplicate_display_order_across_roster_is_rejected(tmp_path):
         load_creators(path)
 
 
+def test_duplicate_youtube_channel_id_across_roster_is_rejected(tmp_path):
+    """PR #60 review fix: two creators sharing the same 'youtubeChannelId' must
+    fail to load, not silently collapse into one entry for any caller that builds
+    its own youtube_channel_id -> creator_id mapping from load_creators() directly
+    (e.g. collection.subscriber_snapshot.channel_id_by_creator) rather than going
+    through find_creator_by_youtube_channel_id's own duplicate check."""
+    path = tmp_path / "creators.json"
+    path.write_text(
+        json.dumps(
+            [
+                _base_record(creatorId="creator_a", youtubeChannelId="UC_SHARED", displayOrder=5),
+                _base_record(creatorId="creator_b", youtubeChannelId="UC_SHARED", displayOrder=6),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CreatorMasterError):
+        load_creators(path)
+
+
 @pytest.mark.parametrize("field", ["creatorId", "displayName", "organization", "youtubeChannelId"])
 def test_non_string_required_field_is_rejected(tmp_path, field):
     """A non-string (e.g. null or a number) required field is rejected, not silently accepted."""

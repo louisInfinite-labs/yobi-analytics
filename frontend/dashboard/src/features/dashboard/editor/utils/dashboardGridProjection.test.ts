@@ -6,7 +6,7 @@ import { getWidgetDefinition } from "./widgetRegistry"
 import type { CanonicalLayout, DashboardWidget } from "../model/dashboardLayout"
 
 function widget(overrides: Partial<DashboardWidget> = {}): DashboardWidget {
-  return { widgetId: "widget-a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1, ...overrides }
+  return { widgetId: "widget-a", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1, ...overrides }
 }
 
 function layout(overrides: Partial<CanonicalLayout> = {}): CanonicalLayout {
@@ -15,11 +15,11 @@ function layout(overrides: Partial<CanonicalLayout> = {}): CanonicalLayout {
 
 describe("projectCanonicalLayoutForGridStack", () => {
   it("projects widgetId to instanceId and widgetType to type", () => {
-    const result = projectCanonicalLayoutForGridStack(layout({ widgets: [widget({ widgetId: "w1", widgetType: "ranking" })] }))
+    const result = projectCanonicalLayoutForGridStack(layout({ widgets: [widget({ widgetId: "w1", widgetType: "creator-video-ranking" })] }))
 
     expect(result.widgets).toHaveLength(1)
     expect(result.widgets[0].instanceId).toBe("w1")
-    expect(result.widgets[0].type).toBe("ranking")
+    expect(result.widgets[0].type).toBe("creator-video-ranking")
   })
 
   it("passes the grid's column count through unchanged", () => {
@@ -38,8 +38,8 @@ describe("projectCanonicalLayoutForGridStack", () => {
   })
 
   it("sources schemaVersion and settings from the real widget registry, not fabricated values", () => {
-    const result = projectCanonicalLayoutForGridStack(layout({ widgets: [widget({ widgetType: "growth-bar-chart" })] }))
-    const definition = getWidgetDefinition("growth-bar-chart")
+    const result = projectCanonicalLayoutForGridStack(layout({ widgets: [widget({ widgetType: "subscriber-leaderboard" })] }))
+    const definition = getWidgetDefinition("subscriber-leaderboard")
 
     expect(result.widgets[0].schemaVersion).toBe(definition.schemaVersion)
     expect(result.widgets[0].settings).toBe(definition.defaultSettings)
@@ -59,7 +59,7 @@ describe("projectCanonicalLayoutForGridStack", () => {
     const result = projectCanonicalLayoutForGridStack(
       layout({
         widgets: [
-          widget({ widgetId: "known", widgetType: "kpi-summary" }),
+          widget({ widgetId: "known", widgetType: "subscriber-leaderboard" }),
           widget({ widgetId: "retired", widgetType: "retired-widget-type", x: 1 }),
         ],
       }),
@@ -67,19 +67,6 @@ describe("projectCanonicalLayoutForGridStack", () => {
 
     expect(result.widgets.map((w) => w.instanceId)).toEqual(["known"])
     expect(result.unrenderableWidgetIds).toEqual(["retired"])
-  })
-
-  it("GAP-9: projects a comparison widget under its own type instead of excluding it, keeping its canonical geometry", () => {
-    const result = projectCanonicalLayoutForGridStack(
-      layout({ widgets: [widget({ widgetId: "known" }), widget({ widgetId: "comparison", widgetType: "creator-comparison-chart", x: 1 })] }),
-    )
-
-    expect(result.widgets.map((w) => [w.instanceId, w.type])).toEqual([
-      ["known", "kpi-summary"],
-      ["comparison", "creator-comparison-chart"],
-    ])
-    expect(result.unrenderableWidgetIds).toEqual([])
-    expect(result.widgets[1].x).toBe(1)
   })
 
   it("never mutates the input layout", () => {
@@ -90,7 +77,7 @@ describe("projectCanonicalLayoutForGridStack", () => {
   })
 
   it("produces a type that resolves real sizeLimits via the existing registry lookup DashboardGrid already uses", () => {
-    const result = projectCanonicalLayoutForGridStack(layout({ widgets: [widget({ widgetType: "video-stats-table" })] }))
+    const result = projectCanonicalLayoutForGridStack(layout({ widgets: [widget({ widgetType: "creator-video-ranking" })] }))
     const { sizeLimits } = getWidgetDefinition(result.widgets[0].type as WidgetTypeId)
     expect(sizeLimits.minW).toBeGreaterThan(0)
     expect(sizeLimits.minH).toBeGreaterThan(0)
@@ -102,10 +89,10 @@ describe("projectResponsiveLayoutForGridStack (GAP-5B)", () => {
     const base = layout({
       grid: { columns: 2, rows: 2 },
       widgets: [
-        widget({ widgetId: "a", widgetType: "kpi-summary", x: 0, y: 0 }),
-        widget({ widgetId: "b", widgetType: "ranking", x: 1, y: 0 }),
-        widget({ widgetId: "c", widgetType: "contribution-ring", x: 0, y: 1 }),
-        widget({ widgetId: "d", widgetType: "insights", x: 1, y: 1 }),
+        widget({ widgetId: "a", widgetType: "subscriber-leaderboard", x: 0, y: 0 }),
+        widget({ widgetId: "b", widgetType: "creator-video-ranking", x: 1, y: 0 }),
+        widget({ widgetId: "c", widgetType: "subscriber-leaderboard", x: 0, y: 1 }),
+        widget({ widgetId: "d", widgetType: "creator-video-ranking", x: 1, y: 1 }),
       ],
     })
     const responsive = reflowLayoutForBreakpoint(base, "mobile")

@@ -18,9 +18,6 @@ const LAYOUT_KEY = "yobi-analytics-canonical-dashboard-layout"
 // internal scroll), so this suite's absolute-pixel drag/measurement
 // sequences need the whole page on screen without an incidental scroll.
 const VIEWPORT = { width: 1280, height: 2600 }
-const GROWTH = "daily-view-growth"
-const TOTAL = "total-views"
-const COMPARISON = "creator-comparison-chart"
 
 const evidence: Record<string, unknown> = {}
 
@@ -352,88 +349,23 @@ test.describe("MT-17: chart catalog source of truth", () => {
   })
 })
 
-const FLOW_LAYOUT = {
+// PR #60 review fix (F6): a real (non-retired) 2x2 fixture for the
+// draft/restore-default/cancel persistence test below -- it previously used
+// a FLOW_LAYOUT seeded with "creator-comparison-chart" widgets (the
+// comparison feature, retired in PR #60); those widgetIds ("cmp0"/"cmp1")
+// were what proved the draft/saved distinction, unrelated to comparison
+// behavior itself, so this fixture swaps in real widget types instead.
+const CUSTOM_SAVED_LAYOUT = {
   grid: { columns: 2, rows: 2 },
   widgets: [
-    { widgetId: "cmp0", widgetType: COMPARISON, x: 0, y: 0, width: 1, height: 1, comparison: { creatorIds: ["ch_gawr_gura"], comparisonItemIds: [GROWTH] } },
-    { widgetId: "cmp1", widgetType: COMPARISON, x: 1, y: 0, width: 1, height: 1, comparison: { creatorIds: ["ch_gawr_gura", "ch_usada_pekora"], comparisonItemIds: [TOTAL] } },
-    { widgetId: "kpi", widgetType: "kpi-summary", x: 0, y: 1, width: 1, height: 1 },
-    { widgetId: "rank", widgetType: "ranking", x: 1, y: 1, width: 1, height: 1 },
+    { widgetId: "custom-a", widgetType: "ranking", x: 0, y: 0, width: 1, height: 1 },
+    { widgetId: "custom-b", widgetType: "contribution-ring", x: 1, y: 0, width: 1, height: 1 },
+    { widgetId: "custom-c", widgetType: "kpi-summary", x: 0, y: 1, width: 1, height: 1 },
+    { widgetId: "custom-d", widgetType: "growth-bar-chart", x: 1, y: 1, width: 1, height: 1 },
   ],
 }
 
-async function expectTrapped(page: Page, dialog: Locator) {
-  await expect.poll(() => dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true)
-  for (let i = 0; i < 40; i++) {
-    await page.keyboard.press("Tab")
-    expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true)
-  }
-  for (let i = 0; i < 5; i++) {
-    await page.keyboard.press("Shift+Tab")
-    expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true)
-  }
-}
-
-test.describe("MT-17: production dialogs", () => {
-  test("Flow 2 dialog: focus moves in and is trapped, Escape closes without writing, focus returns to its trigger; items are exactly the backend's", async ({ page, request }) => {
-    const backendItems = await (await request.get(`${API}/dashboard/comparison-items`)).json()
-    expect(backendItems.comparisonItems.map((i: { comparisonItemId: string }) => i.comparisonItemId)).toEqual([GROWTH, TOTAL])
-
-    await openFresh(page, FLOW_LAYOUT)
-    const trigger = page.getByRole("button", { name: "Compare Creators" })
-    await trigger.focus()
-    await trigger.click()
-    const dialog = page.getByRole("dialog", { name: "Add Comparison Charts" })
-    await expect(dialog).toBeVisible()
-    await expectTrapped(page, dialog)
-
-    const itemLabels = (await dialog.getByRole("region", { name: "Comparison items" }).getByRole("button").allTextContents()).map((t) => t.trim())
-    expect(itemLabels).toEqual(backendItems.comparisonItems.map((i: { label: string }) => i.label))
-    for (const forbidden of ["Revenue", "Engagement", "Growth"]) expect(itemLabels).not.toContain(forbidden)
-    expect(callsOf(page, "/dashboard/comparison-items")).toHaveLength(1)
-
-    await page.keyboard.press("Escape")
-    await expect(dialog).toHaveCount(0)
-    await expect(trigger).toBeFocused()
-    expect(await layoutWrites(page)).toBe(0)
-    evidence.flow2Dialog = { itemLabels, focusReturnedToTrigger: true }
-  })
-
-  test("Flow 1 picker: focus moves in and is trapped, Escape cancels leaving the draft unchanged, focus returns to Select Creators", async ({ page }) => {
-    await openFresh(page, FLOW_LAYOUT)
-    await page.getByRole("button", { name: "Edit Layout" }).click()
-    const select = page.getByRole("button", { name: /Select Creators/ }).first()
-    await select.focus()
-    await select.click()
-    const dialog = page.getByRole("dialog", { name: "Select Creators" })
-    await expect(dialog).toBeVisible()
-    await expectTrapped(page, dialog)
-    await page.keyboard.press("Escape")
-    await expect(dialog).toHaveCount(0)
-    await expect(select).toBeFocused()
-    expect(await layoutWrites(page)).toBe(0)
-    await expect(page.locator('[gs-id="cmp0"]').getByTestId("comparison-widget-creators").locator("li")).toHaveCount(1)
-  })
-})
-
-test.describe("MT-17: real comparison backend contract", () => {
-  test("items come from the backend, an unsupported item is rejected with 400, and creator and item order are preserved", async ({ request }) => {
-    const items = await (await request.get(`${API}/dashboard/comparison-items`)).json()
-    expect(items).toEqual({ comparisonItems: [{ comparisonItemId: GROWTH, label: "Daily view growth" }, { comparisonItemId: TOTAL, label: "Total views" }] })
-
-    const unsupported = await request.get(`${API}/dashboard/comparison-data`, { params: { creatorIds: "gawr_gura,usada_pekora", comparisonItemIds: "revenue", reportDate: "2026-09-03", timeZone: "Asia/Tokyo" } })
-    expect(unsupported.status()).toBe(400)
-    const unsupportedBody = await unsupported.json()
-    expect(typeof unsupportedBody.error).toBe("string")
-
-    const ordered = await (await request.get(`${API}/dashboard/comparison-data`, { params: { creatorIds: "shirakami_fubuki,gawr_gura,usada_pekora", comparisonItemIds: `${TOTAL},${GROWTH}`, reportDate: "2026-09-03", timeZone: "Asia/Tokyo" } })).json()
-    expect(ordered.items.map((i: { comparisonItemId: string }) => i.comparisonItemId)).toEqual([TOTAL, GROWTH])
-    for (const item of ordered.items) expect(item.creators.map((c: { creatorId: string }) => c.creatorId)).toEqual(["shirakami_fubuki", "gawr_gura", "usada_pekora"])
-    evidence.backendContract = { items: items.comparisonItems, unsupportedStatus: unsupported.status(), unsupportedBody, orderedItemIds: ordered.items.map((i: { comparisonItemId: string }) => i.comparisonItemId) }
-  })
-})
-
-test.describe("MT-17: persistence failure, focus visibility, comparison edge cases", () => {
+test.describe("MT-17: persistence failure and focus visibility", () => {
   test("a failed Save leaves the stored layout byte-identical, keeps the draft, and a later Save succeeds", async ({ page }) => {
     await openFresh(page)
     await page.getByRole("button", { name: "Edit Layout" }).click()
@@ -461,7 +393,7 @@ test.describe("MT-17: persistence failure, focus visibility, comparison edge cas
   })
 
   test("Restore Default changes only the draft to the 2x2 default, sends no save until Save, and Cancel restores the saved layout", async ({ page }) => {
-    await openFresh(page, FLOW_LAYOUT)
+    await openFresh(page, CUSTOM_SAVED_LAYOUT)
     const saved = await readStorage(page)
     await page.getByRole("button", { name: "Edit Layout" }).click()
     await page.getByRole("button", { name: "Restore Default" }).click()
@@ -469,32 +401,25 @@ test.describe("MT-17: persistence failure, focus visibility, comparison edge cas
     const geometry = await gsGeometry(page)
     expect(geometry).toHaveLength(4)
     expect(geometry.map((g) => `${g.x},${g.y},${g.w},${g.h}`).sort()).toEqual(["0,0,1,2", "0,2,1,2", "1,0,1,2", "1,2,1,2"]) // GridStack rows: one 1X row = 2 rows
-    expect(geometry.some((g) => g.id === "cmp0")).toBe(false) // the draft was replaced by the default widgets
+    expect(geometry.some((g) => g.id === "custom-a")).toBe(false) // the draft was replaced by the default widgets
     expect(await readStorage(page)).toBe(saved)
     expect(await layoutWrites(page)).toBe(0)
 
     await page.getByRole("button", { name: "Cancel" }).click()
     expect(await readStorage(page)).toBe(saved)
     expect(await layoutWrites(page)).toBe(0)
-    expect((await gsGeometry(page)).map((g) => g.id).sort()).toEqual(["cmp0", "cmp1", "kpi", "rank"])
+    expect((await gsGeometry(page)).map((g) => g.id).sort()).toEqual(["custom-a", "custom-b", "custom-c", "custom-d"])
   })
 
   test("ordinary editor actions show a visible focus indicator on the real route", async ({ page }) => {
-    await openFresh(page, FLOW_LAYOUT)
-    const visible: Record<string, boolean> = {}
-    for (const [name, locator] of [
-      ["Edit Layout", page.getByRole("button", { name: "Edit Layout" })],
-      ["Compare Creators", page.getByRole("button", { name: "Compare Creators" })],
-    ] as const) {
-      await tabTo(page, locator)
-      visible[name] = await hasVisibleFocus(locator)
-    }
-    await page.getByRole("button", { name: "Edit Layout" }).click()
-    const select = page.getByRole("button", { name: /Select Creators/ }).first()
-    await tabTo(page, select)
-    visible["Select Creators"] = await hasVisibleFocus(select)
-    for (const [name, ok] of Object.entries(visible)) expect(ok, `${name} focus indicator`).toBe(true)
-    evidence.focusVisible = visible
+    // PR #60 review fix (F6): previously also checked "Compare Creators"/
+    // "Select Creators" (the retired comparison feature); "Edit Layout"
+    // itself is real-/dashboard-route coverage distinct from mt16-focus.
+    // spec.ts's isolated-harness checks, so it's kept, trimmed to just that.
+    await openFresh(page, CUSTOM_SAVED_LAYOUT)
+    const editLayout = page.getByRole("button", { name: "Edit Layout" })
+    await tabTo(page, editLayout)
+    expect(await hasVisibleFocus(editLayout)).toBe(true)
   })
 
   test("the catalog Retry control has a visible focus indicator", async ({ page }) => {
@@ -506,50 +431,6 @@ test.describe("MT-17: persistence failure, focus visibility, comparison edge cas
     const retry = page.locator(".widget-tray").getByRole("button", { name: "Retry" })
     await tabTo(page, retry)
     expect(await hasVisibleFocus(retry)).toBe(true)
-  })
-
-  test("Flow 1: Apply changes only the draft (no save, no catalog request), keeps creator order, and focus stays on a live control", async ({ page }) => {
-    await openFresh(page, FLOW_LAYOUT)
-    await page.getByRole("button", { name: "Edit Layout" }).click()
-    const before = await readStorage(page)
-    await page.getByRole("button", { name: /Select Creators/ }).first().click()
-    const dialog = page.getByRole("dialog", { name: "Select Creators" })
-    await dialog.getByRole("button", { name: "白上フブキ", exact: true }).click()
-    await dialog.getByRole("button", { name: "Apply" }).click()
-    await expect(dialog).toHaveCount(0)
-
-    const ids = await page.locator('[gs-id="cmp0"]').getByTestId("comparison-widget-creators").locator("li").evaluateAll((els) => els.map((el) => el.getAttribute("data-creator-id")))
-    expect(ids).toEqual(["ch_gawr_gura", "ch_shirakami_fubuki"])
-    expect(await readStorage(page)).toBe(before)
-    expect(await layoutWrites(page)).toBe(0)
-    expect(callsOf(page, "/dashboard/chart-catalog")).toHaveLength(1)
-    await expect.poll(() => callsOf(page, "/dashboard/comparison-data").some((c) => c.params.creatorIds === "gawr_gura,shirakami_fubuki")).toBe(true)
-    const focus = await page.evaluate(() => ({ tag: document.activeElement?.tagName, inBody: document.activeElement === document.body }))
-    evidence.flow1Apply = { creatorOrder: ids, focusAfterApply: focus }
-    expect(focus.inBody).toBe(false)
-  })
-
-  test("Flow 2 with more widgets than items assigns from the top-left widget and leaves every unassigned widget untouched", async ({ page }) => {
-    await openFresh(page, FLOW_LAYOUT)
-    const before = JSON.parse((await readStorage(page))!)
-    await page.getByRole("button", { name: "Compare Creators" }).click()
-    const dialog = page.getByRole("dialog", { name: "Add Comparison Charts" })
-    for (const name of ["Gawr Gura", "兎田ぺこら"]) await dialog.getByRole("button", { name, exact: true }).click()
-    for (const item of ["Total views", "Daily view growth"]) await dialog.getByRole("button", { name: item }).click()
-    await dialog.getByRole("button", { name: "Save" }).click()
-    await expect(dialog).toHaveCount(0)
-
-    expect(await layoutWrites(page)).toBe(1)
-    const after = JSON.parse((await readStorage(page))!)
-    expect(after.widgets).toHaveLength(4)
-    const byId = (layout: typeof after) => new Map(layout.widgets.map((w: { widgetId: string }) => [w.widgetId, w]))
-    const b = byId(before)
-    const a = byId(after)
-    expect(a.get("cmp0").comparison).toEqual({ creatorIds: ["ch_gawr_gura", "ch_usada_pekora"], comparisonItemIds: [TOTAL] })
-    expect(a.get("cmp1").comparison).toEqual({ creatorIds: ["ch_gawr_gura", "ch_usada_pekora"], comparisonItemIds: [GROWTH] })
-    expect(a.get("kpi")).toEqual(b.get("kpi"))
-    expect(a.get("rank")).toEqual(b.get("rank"))
-    for (const id of ["cmp0", "cmp1"]) expect(["x", "y", "width", "height"].map((k) => a.get(id)[k])).toEqual(["x", "y", "width", "height"].map((k) => b.get(id)[k]))
   })
 })
 

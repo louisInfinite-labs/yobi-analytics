@@ -40,6 +40,18 @@ class HistoryRow:
     view_count: int
     observed_at: str
     availability_status: str
+    # AWS Cost Recovery (due-scheduling): True when this row's view_count/
+    # observed_at were reused from an earlier day rather than genuinely
+    # observed on the day this row's own shard was written -- see
+    # collection.history_worker._carry_forward_non_due_rows. Defaults to
+    # False so every pre-existing call site/persisted shard (written before
+    # this field existed) reads as a genuine observation, matching this
+    # field's actual meaning for all of them. This is what lets a
+    # shard_exists retry recover exactly which rows in its own read-back
+    # shard were this run's real YouTube observations (never a carried-
+    # forward row) without depending on wall-clock-varying observed_at
+    # values lining up across separate invocations.
+    carried_forward: bool = False
 
 
 class HistoryStore(Protocol):
@@ -141,6 +153,7 @@ def serialize_history_rows(rows: list[HistoryRow]) -> bytes:
             "availabilityStatus": pa.array(
                 [row.availability_status for row in rows], type=pa.string()
             ),
+            "carriedForward": pa.array([row.carried_forward for row in rows], type=pa.bool_()),
         }
     )
     output = io.BytesIO()
@@ -160,6 +173,12 @@ def deserialize_history_rows(payload: bytes) -> list[HistoryRow]:
                 view_count=row["viewCount"],
                 observed_at=row["observedAt"],
                 availability_status=row["availabilityStatus"],
+                # .get(), not ["carriedForward"]: a shard written before this
+                # field existed still deserializes, with every one of its
+                # rows correctly read as a genuine (non-carried-forward)
+                # observation -- exactly what every row written before this
+                # field existed actually was.
+                carried_forward=row.get("carriedForward", False),
             )
             for row in raw_rows
         ]
@@ -249,6 +268,8 @@ def _validate_row(row: HistoryRow) -> None:
         raise HistoryStoreError(f"History row has an empty required field: {row!r}")
     if isinstance(row.view_count, bool) or not isinstance(row.view_count, int) or row.view_count < 0:
         raise HistoryStoreError(f"History row has invalid view_count: {row!r}")
+    if not isinstance(row.carried_forward, bool):
+        raise HistoryStoreError(f"History row has invalid carried_forward: {row!r}")
 
 
 def _pyarrow():

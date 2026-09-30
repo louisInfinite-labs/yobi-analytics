@@ -1,27 +1,18 @@
 import type { ReactNode } from "react"
-import type { DailyVideoStat, Period } from "../../../../entities/creator/model/domain"
 import type { WidgetDefinition, WidgetTypeId } from "../model/widget"
-import { ContributionBarChart } from "../../../analytics/charts/ContributionBarChart"
-import { CreatorAvatar } from "../../../analytics/charts/CreatorAvatar"
-import { GrowthBarChart, type GrowthBarChartPoint } from "../../../analytics/charts/GrowthBarChart"
-import { InsightCard } from "../../../analytics/charts/InsightCard"
-import { KpiCard } from "../../../analytics/charts/KpiCard"
-import { RankingCard } from "../../../analytics/charts/RankingCard"
-import { VideoStatsTable } from "../../../analytics/charts/VideoStatsTable"
-import type { DashboardKpis, ChannelContribution } from "../../../analytics/utils/deriveAnalytics"
+import { CreatorVideoRankingWidget } from "../../../analytics/charts/CreatorVideoRankingWidget"
+import { SubscriberLeaderboardWidget } from "../../../analytics/charts/SubscriberLeaderboardWidget"
 import { WIDGET_ALLOWED_HEIGHTS } from "./widgetHeightCapabilities"
 
-/** Every value a widget's renderer might need, already computed once by DashboardPage
- * and threaded through unchanged — Phase 7 wraps *placement*, not data computation. */
+/** R9 (org-trending retirement): every widget's data is now fetched by the
+ * widget itself (CreatorVideoRankingWidget/SubscriberLeaderboardWidget each
+ * own their own request, metric/topic/organization selection, and loading/
+ * error/not-ready states) -- the page no longer computes any shared
+ * kpis/contributions/filteredStats/insights up front. The only thing a page
+ * still needs to compute per widget is which single creator (if any) it's
+ * scoped to, from that widget's own `creatorScope.creatorIds[0]`. */
 export interface DashboardWidgetData {
-  kpis: DashboardKpis
-  contributions: ChannelContribution[]
-  filteredStats: DailyVideoStat[]
-  insights: string[]
-  byDay: GrowthBarChartPoint[]
-  byChannel: GrowthBarChartPoint[]
-  period: Period
-  timeZone: string
+  creatorId: string | null
 }
 
 interface WidgetRegistryEntry {
@@ -29,132 +20,42 @@ interface WidgetRegistryEntry {
   render: (data: DashboardWidgetData) => ReactNode
 }
 
-const KPI_SUMMARY: WidgetRegistryEntry = {
+const SUBSCRIBER_LEADERBOARD: WidgetRegistryEntry = {
   definition: {
-    type: "kpi-summary",
+    type: "subscriber-leaderboard",
     schemaVersion: 1,
-    title: "KPI Summary",
-    description: "Total views, daily gain, and top performer.",
-    sizeLimits: { minW: 4, minH: 1, defaultW: 12, defaultH: 1 },
-    allowedHeights: WIDGET_ALLOWED_HEIGHTS["kpi-summary"],
-    permissions: [],
-    supportsCreatorScope: false,
-    defaultSettings: {},
-  },
-  render: ({ kpis }) => (
-    <div className="card kpi-summary-grid">
-      <KpiCard
-        label="Top Performer"
-        value={kpis.topPerformer ? (
-          <span className="kpi-card__creator">
-            <CreatorAvatar channelId={kpis.topPerformer.channelId} channelName={kpis.topPerformer.channelName} size="medium" />
-            <span>{kpis.topPerformer.channelName}</span>
-          </span>
-        ) : "—"}
-        formatAsCompactNumber={false}
-        sub={kpis.topPerformer ? <span className="kpi-card__performer">{kpis.topPerformer.videoTitle}</span> : undefined}
-      />
-      <KpiCard label="Total Views" value={kpis.totalViews} />
-      <KpiCard label="Daily Gain" value={kpis.totalDailyIncrease} />
-    </div>
-  ),
-}
-
-const GROWTH_BAR_CHART: WidgetRegistryEntry = {
-  definition: {
-    type: "growth-bar-chart",
-    schemaVersion: 1,
-    title: "Growth Bar Chart",
-    description: "View growth by day or by channel.",
+    title: "Subscriber Leaderboard",
+    description: "Ranked subscriber totals and growth across VSPO/Hololive.",
     sizeLimits: { minW: 4, minH: 3, defaultW: 8, defaultH: 4 },
-    allowedHeights: WIDGET_ALLOWED_HEIGHTS["growth-bar-chart"],
-    permissions: [],
-    supportsCreatorScope: true,
-    defaultSettings: {},
-  },
-  render: ({ byDay, byChannel }) => (
-    <div className="card" style={{ height: "100%" }}>
-      <GrowthBarChart byDay={byDay} byChannel={byChannel} />
-    </div>
-  ),
-}
-
-const CONTRIBUTION_RING: WidgetRegistryEntry = {
-  definition: {
-    type: "contribution-ring",
-    schemaVersion: 1,
-    title: "Channel Contribution",
-    description: "Each channel's share of total growth, as labeled bars.",
-    sizeLimits: { minW: 3, minH: 3, defaultW: 4, defaultH: 4 },
-    allowedHeights: WIDGET_ALLOWED_HEIGHTS["contribution-ring"],
-    permissions: [],
-    supportsCreatorScope: true,
-    defaultSettings: {},
-  },
-  render: ({ contributions, period }) => <ContributionBarChart contributions={contributions} period={period} />,
-}
-
-const RANKING: WidgetRegistryEntry = {
-  definition: {
-    type: "ranking",
-    schemaVersion: 1,
-    title: "Rankings",
-    description: "Top-growing videos and channels.",
-    sizeLimits: { minW: 3, minH: 3, defaultW: 4, defaultH: 4 },
-    allowedHeights: WIDGET_ALLOWED_HEIGHTS["ranking"],
-    permissions: [],
-    supportsCreatorScope: true,
-    defaultSettings: {},
-  },
-  render: ({ filteredStats }) => <RankingCard stats={filteredStats} />,
-}
-
-const INSIGHTS: WidgetRegistryEntry = {
-  definition: {
-    type: "insights",
-    schemaVersion: 1,
-    title: "Insights",
-    description: "Short, data-focused observations about the current view.",
-    sizeLimits: { minW: 4, minH: 1, defaultW: 12, defaultH: 1 },
-    allowedHeights: WIDGET_ALLOWED_HEIGHTS["insights"],
+    allowedHeights: WIDGET_ALLOWED_HEIGHTS["subscriber-leaderboard"],
     permissions: [],
     supportsCreatorScope: false,
     defaultSettings: {},
   },
-  render: ({ insights }) =>
-    insights.length === 0 ? (
-      <InsightCard text="Not enough data yet for an insight in this view." />
-    ) : (
-      <>
-        {insights.map((text, i) => (
-          <InsightCard key={i} text={text} />
-        ))}
-      </>
-    ),
+  render: () => <SubscriberLeaderboardWidget />,
 }
 
-const VIDEO_STATS_TABLE: WidgetRegistryEntry = {
+const CREATOR_VIDEO_RANKING: WidgetRegistryEntry = {
   definition: {
-    type: "video-stats-table",
+    type: "creator-video-ranking",
     schemaVersion: 1,
-    title: "Video Stats Table",
-    description: "Detailed per-video statistics with search, filters, sorting, and pagination.",
-    sizeLimits: { minW: 6, minH: 4, defaultW: 12, defaultH: 6 },
-    allowedHeights: WIDGET_ALLOWED_HEIGHTS["video-stats-table"],
+    title: "Creator Video Ranking",
+    description: "One creator's own videos, ranked by views or growth.",
+    sizeLimits: { minW: 4, minH: 3, defaultW: 8, defaultH: 4 },
+    allowedHeights: WIDGET_ALLOWED_HEIGHTS["creator-video-ranking"],
     permissions: [],
     supportsCreatorScope: true,
+    // Phase 3's product invariant: one video-ranking widget = exactly one
+    // creator. Never a merged multi-creator ranking.
+    maxCreatorScopeCount: 1,
     defaultSettings: {},
   },
-  render: ({ filteredStats, timeZone }) => <VideoStatsTable stats={filteredStats} timeZone={timeZone} />,
+  render: ({ creatorId }) => <CreatorVideoRankingWidget creatorId={creatorId} />,
 }
 
 export const WIDGET_REGISTRY: Record<WidgetTypeId, WidgetRegistryEntry> = {
-  "kpi-summary": KPI_SUMMARY,
-  "growth-bar-chart": GROWTH_BAR_CHART,
-  "contribution-ring": CONTRIBUTION_RING,
-  ranking: RANKING,
-  insights: INSIGHTS,
-  "video-stats-table": VIDEO_STATS_TABLE,
+  "subscriber-leaderboard": SUBSCRIBER_LEADERBOARD,
+  "creator-video-ranking": CREATOR_VIDEO_RANKING,
 }
 
 export function getWidgetDefinition(type: WidgetTypeId): WidgetDefinition {
@@ -167,6 +68,17 @@ export function renderWidget(type: WidgetTypeId, data: DashboardWidgetData): Rea
 
 export function supportsCreatorScope(type: string): boolean {
   return isKnownWidgetType(type) && WIDGET_REGISTRY[type].definition.supportsCreatorScope
+}
+
+/** The maximum creatorIds this widget type's own creatorScope may ever hold
+ * -- Infinity when the type doesn't support creator scope at all (so a
+ * caller checking `count > max` never needs a separate supportsCreatorScope
+ * branch) or sets no cap of its own. */
+export function maxCreatorScopeCount(type: string): number {
+  if (!isKnownWidgetType(type)) return 0
+  const definition = WIDGET_REGISTRY[type].definition
+  if (!definition.supportsCreatorScope) return 0
+  return definition.maxCreatorScopeCount ?? Infinity
 }
 
 export const ALL_WIDGET_TYPES = Object.keys(WIDGET_REGISTRY) as WidgetTypeId[]

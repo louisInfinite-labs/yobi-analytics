@@ -8,7 +8,6 @@ import { useDroppable } from "@dnd-kit/core"
 import type { WidgetTypeId } from "../model/widget"
 import { renderWidget, supportsCreatorScope, type DashboardWidgetData } from "../utils/widgetRegistry"
 import { getGridWidgetMeta, type GridWidgetInstance, type GridWidgetType } from "../utils/gridWidgetMeta"
-import { COMPARISON_WIDGET_TYPE } from "../../comparison/utils/dashboardComparisonWidgets"
 import {
   GRIDSTACK_ROW_SCALE,
   gridStackNodeToCanonicalCandidate,
@@ -18,11 +17,6 @@ import type { WidgetHeight } from "../model/dashboardLayout"
 
 interface DashboardGridProps {
   widgets: GridWidgetInstance[]
-  /** Renders one comparison-type widget's content (its chart and its
-   * edit-mode actions), given its `widgetId`. Comparison widgets carry
-   * per-widget config the page-level `data` does not, so their content comes
-   * from the caller; when omitted a comparison widget renders empty. */
-  renderComparisonWidget?: (widgetId: string) => ReactNode
   /** The GridStack `column` count to render at -- the canonical
    * grid's own column count (1-3), never the legacy hardcoded `12`. GridStack
    * accepts any positive integer here; syncing it to the canonical grid is
@@ -79,15 +73,15 @@ interface DroppableShellProps {
 }
 
 /** Every widget shell is a `@dnd-kit/core` drop target
- * for a creator dragged out of the Creator List. A comparison chart or any
- * `supportsCreatorScope` widget is a compatible target ("active"); any other
- * widget shows a disabled target. The state is a visible label plus border
- * *style*, never color alone (Guidelines Section 0.2). The indicator is an
- * absolutely positioned overlay, so it adds no geometry. Outside a
- * `DndContext` (or when not editing) this is inert. */
+ * for a creator dragged out of the Creator List. Any `supportsCreatorScope`
+ * widget is a compatible target ("active"); any other widget shows a
+ * disabled target. The state is a visible label plus border *style*, never
+ * color alone (Guidelines Section 0.2). The indicator is an absolutely
+ * positioned overlay, so it adds no geometry. Outside a `DndContext` (or
+ * when not editing) this is inert. */
 function DroppableShell({ widgetId, type, editable, className, ariaInvalid, scopeLabels = [], children }: DroppableShellProps) {
   const { setNodeRef, isOver, active } = useDroppable({ id: widgetId })
-  const compatible = supportsCreatorScope(type) || type === COMPARISON_WIDGET_TYPE
+  const compatible = supportsCreatorScope(type)
   const dropState = editable && active ? (compatible ? (isOver ? "active" : "ready") : "disabled") : undefined
   return (
     <div ref={setNodeRef} className={className} aria-invalid={ariaInvalid ? "true" : undefined} data-drop-state={dropState}>
@@ -147,7 +141,6 @@ export function DashboardGrid({
   data,
   getWidgetData,
   getWidgetScopeLabels,
-  renderComparisonWidget,
   onCommitGeometry,
   onRemoveWidget,
   validateGesturePreview,
@@ -419,9 +412,7 @@ export function DashboardGrid({
               />
             )}
             <div className="widget-shell__body">
-              {widget.type === COMPARISON_WIDGET_TYPE
-                ? renderComparisonWidget?.(widget.instanceId)
-                : renderWidget(widget.type as WidgetTypeId, getWidgetData?.(widget.instanceId) ?? data)}
+              {renderWidget(widget.type as WidgetTypeId, getWidgetData?.(widget.instanceId) ?? data)}
             </div>
           </DroppableShell>,
           node,

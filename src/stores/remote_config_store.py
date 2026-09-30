@@ -30,6 +30,7 @@ from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 REMOTE_CONFIG_TABLE = os.environ.get("YOBI_REMOTE_CONFIG_TABLE") or "YobiRemoteConfig"
+CONFIG_KEY_INDEX = "configKey-index"
 
 
 class RemoteConfigStoreError(Exception):
@@ -122,28 +123,30 @@ def delete_remote_config(client_id: str, key: str) -> None:
 def list_by_key(key: str) -> list[dict[str, Any]]:
     """Return every stored record across all clients for one config key.
 
-    `configKey` is only the table's sort key, not a queryable index, so this
-    is a filtered Scan rather than a Query — acceptable at this store's
-    current small scale, the same tolerance dynamodb_store.py's own
-    full-table Scan of Video Master documents (Roadmap 2.3). Used by the
-    Roadmap 4.6 notification dispatcher to find every client that has ever
-    stored a "notificationPreference", since a clientId is otherwise only
-    reachable if you already know it.
+    AWS Cost Recovery (production-path audit): this used to be a table-wide
+    Scan+FilterExpression -- O(total clients), the same failure class as
+    VideoMaster's old full-catalog scan, just scaling with client count
+    instead of video count. Now a Query against `configKey-index`
+    (terraform/dynamodb.tf), so cost scales with how many clients actually
+    stored this one key, never with the whole table. Used by the Roadmap
+    4.6 notification dispatcher to find every client that has ever stored a
+    "notificationPreference", every 15 minutes, since a clientId is
+    otherwise only reachable if you already know it.
     """
     table = _resource().Table(REMOTE_CONFIG_TABLE)
     items: list[dict] = []
-    scan_kwargs = {
-        "FilterExpression": "configKey = :k",
-        "ExpressionAttributeValues": {":k": key},
-    }
     try:
-        response = table.scan(**scan_kwargs)
+        response = table.query(IndexName=CONFIG_KEY_INDEX, KeyConditionExpression=Key("configKey").eq(key))
         items.extend(response.get("Items", []))
         while "LastEvaluatedKey" in response:
-            response = table.scan(**scan_kwargs, ExclusiveStartKey=response["LastEvaluatedKey"])
+            response = table.query(
+                IndexName=CONFIG_KEY_INDEX,
+                KeyConditionExpression=Key("configKey").eq(key),
+                ExclusiveStartKey=response["LastEvaluatedKey"],
+            )
             items.extend(response.get("Items", []))
     except ClientError as exc:
-        raise RemoteConfigStoreError(f"Failed to scan {REMOTE_CONFIG_TABLE}: {exc}") from exc
+        raise RemoteConfigStoreError(f"Failed to query {REMOTE_CONFIG_TABLE} by configKey: {exc}") from exc
     return [_item_to_record(item) for item in items]
 
 

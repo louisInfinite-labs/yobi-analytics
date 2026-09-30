@@ -12,10 +12,11 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 from ops.config import MissingAPIKeyError, get_api_key
+from stores.history_store import HISTORY_SHARD_COUNT, shard_for_video
 from tracking.creator_master import Creator, get_active_creators
 from googleapiclient.discovery import Resource
 from stores.snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
-from tracking.tracking_manifest import S3TrackingManifestStore, publish_tracking_manifest
+from tracking.tracking_manifest import ManifestEntry, S3TrackingManifestStore, patch_shard, publish_tracking_manifest
 from tracking.tracking_schedule import select_due_video_ids
 from tracking.video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
 from tracking.video_master import Video, VideoMasterError, load_video_ids_for_creator
@@ -141,8 +142,9 @@ def main() -> int:
         _publish_manifest_if_configured([*known_videos, *newly_discovered])
 
         # Restored tiered due-selection (Roadmap 1.5, tracking_schedule.py):
-        # a video published within the last 30 days is always due; beyond
-        # that, activity_state (Hot/Warm/Cold/Unknown) governs the cadence.
+        # a video published within the last RECENT_MAX_AGE_DAYS days is
+        # always due; beyond that, activity_state (Hot/Warm/Cold/Unknown)
+        # governs the cadence.
         # The set prevents duplicate lookups if the catalog is malformed.
         # video_by_id covers every id tracking_universe can contain (already-
         # known videos plus this run's own newly_discovered ones); a video
@@ -289,12 +291,12 @@ def run_discovery() -> int:
 
     try:
         youtube = build_youtube_client(api_key)
-        known_videos = load_videos()
+        known_ids_by_creator = _known_ids_by_creator()
 
         for creator in active_creators:
             if not creator.discovery_enabled:
                 continue
-            known_ids = load_video_ids_for_creator(creator.creator_id, videos=known_videos)
+            known_ids = known_ids_by_creator.get(creator.creator_id, set())
             if not known_ids:
                 first_ingestion_creator_ids.add(creator.creator_id)
             try:
@@ -324,13 +326,104 @@ def run_discovery() -> int:
             return 1
         _record_new_video_events_best_effort(newly_discovered, first_ingestion_creator_ids, run_time)
 
-    _publish_manifest_if_configured([*known_videos, *newly_discovered])
+    _patch_manifest_with_new_videos_if_configured(newly_discovered)
 
     if quota_exhausted:
         return 1
 
     print(f"Discovery complete: {len(newly_discovered)} new video(s) found across {len(active_creators)} creator(s)")
     return 0
+
+
+def _known_ids_by_creator() -> dict[str, set[str]]:
+    """Every already-known video id, grouped by creator, from whichever source
+    this environment's own daily discovery actually depends on for that.
+
+    AWS Cost Recovery (third pass): when the S3 tracking manifest is
+    configured (YOBI_HISTORY_BUCKET set -- the real deployed Lambda
+    environment, where YOBI_STORAGE_BACKEND=dynamodb also holds), this reads
+    the manifest's own HISTORY_SHARD_COUNT shards (an O(shards) S3 read, a
+    fixed 16 GetObjects regardless of catalog size) instead of load_videos()
+    (an O(total catalog) DynamoDB Scan) -- the manifest already carries every
+    known video_id/creator_id pair, since discovery is the only writer that
+    ever adds a new one; history_worker's own scheduler-state patches
+    (collection.history_worker._patch_manifest_activity_state) only ever
+    change an existing entry's activity_state, never add or remove one.
+    A shard that doesn't exist yet (a brand-new environment, before the very
+    first video for that shard's own hash range was ever discovered) reads
+    back as empty via read_shard_for_patch, not an error.
+
+    Local/manual development (no YOBI_HISTORY_BUCKET) has no manifest to read
+    from at all and falls back to load_videos() unchanged -- there, it's a
+    free local-JSON-file read (or, with YOBI_STORAGE_BACKEND=dynamodb set
+    without a bucket, a real but not billed-in-production Scan), not the
+    recurring AWS cost this function exists to avoid.
+    """
+    bucket_name = os.environ.get("YOBI_HISTORY_BUCKET")
+    if not bucket_name:
+        result: dict[str, set[str]] = {}
+        for video in load_videos():
+            result.setdefault(video.creator_id, set()).add(video.video_id)
+        return result
+
+    store = S3TrackingManifestStore(bucket_name)
+    result: dict[str, set[str]] = {}
+    for shard in range(HISTORY_SHARD_COUNT):
+        entries, _version = store.read_shard_for_patch(shard)
+        for entry in entries:
+            result.setdefault(entry.creator_id, set()).add(entry.video_id)
+    return result
+
+
+def _patch_manifest_with_new_videos_if_configured(new_videos: list[Video]) -> None:
+    """Add exactly the newly discovered videos to the manifest, one bounded
+    read-modify-write per affected shard -- never a full-catalog Scan or a
+    full HISTORY_SHARD_COUNT-shard republish (AWS Cost Recovery, third pass).
+
+    Best-effort, same reasoning as _publish_manifest_if_configured's own
+    docstring: a failure here means history_worker's next run sees a
+    manifest missing today's new videos until a later successful patch
+    fixes it -- never a reason to fail discovery, which has already durably
+    written these videos to Video Master (upsert_videos, called before this).
+
+    Each affected shard's patch uses `dict.setdefault` (never unconditional
+    overwrite) keyed by video_id when merging in the "new" entries: if a
+    video_id already exists in that shard by the time this patch actually
+    applies (a genuine race -- e.g. an overlapping manual rerun's own
+    discovery already added it first), the *existing* entry always wins, so
+    a video already tracked (with real, evolved activity_state) can never be
+    regressed back to a freshly-discovered "Unknown" placeholder merely
+    because two discovery runs both believed it was new.
+    """
+    bucket_name = os.environ.get("YOBI_HISTORY_BUCKET")
+    if not bucket_name or not new_videos:
+        return
+    store = S3TrackingManifestStore(bucket_name)
+    by_shard: dict[int, dict[str, ManifestEntry]] = {}
+    for video in new_videos:
+        by_shard.setdefault(shard_for_video(video.video_id), {})[video.video_id] = ManifestEntry(
+            video_id=video.video_id,
+            creator_id=video.creator_id,
+            active=True,
+            discovered_at=video.discovered_at,
+            published_at=video.published_at,
+            activity_state=video.activity_state,
+            topic=video.topic,
+            title=video.title,
+            thumbnail_url=video.thumbnail_url,
+        )
+
+    for shard, new_entries_by_id in by_shard.items():
+        def _apply(entries: list[ManifestEntry], new_entries_by_id=new_entries_by_id) -> list[ManifestEntry]:
+            merged = {entry.video_id: entry for entry in entries}
+            for video_id, entry in new_entries_by_id.items():
+                merged.setdefault(video_id, entry)
+            return list(merged.values())
+
+        try:
+            patch_shard(store, shard, _apply)
+        except Exception as exc:
+            print(f"Warning: failed to patch tracking manifest shard {shard:02d} ({type(exc).__name__}): {exc}")
 
 
 def _record_new_video_events_best_effort(
@@ -369,6 +462,15 @@ def _is_recent(video: Video, run_time: datetime) -> bool:
 
 def _publish_manifest_if_configured(videos: list[Video]) -> None:
     """Publish the complete catalog only in the configured S3 architecture.
+
+    AWS Cost Recovery (third pass): only main()'s own unscheduled, manual
+    heavy-collection path still calls this full-rebuild function daily-shaped
+    -- but main() itself has no production schedule at all (see
+    terraform/eventbridge.tf; only run_discovery's lighter path is scheduled),
+    so this remains correct there without adding any real recurring AWS cost.
+    The scheduled `discovery_only` path (run_discovery) now uses
+    _patch_manifest_with_new_videos_if_configured instead, a bounded
+    incremental patch -- see that function's own docstring.
 
     Best-effort, same reasoning as _record_new_video_events_best_effort's
     own docstring: a failure here means history_worker's next run sees a
@@ -423,6 +525,7 @@ def _discover_creator(
             creator_id=creator.creator_id,
             title=item["title"],
             published_at=item["publishedAt"],
+            thumbnail_url=item.get("thumbnailUrl"),
             discovered_at=discovered_at,
             topic=classify_video_topic(item["title"]),
         )

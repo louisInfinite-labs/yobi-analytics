@@ -211,7 +211,8 @@ resource "aws_sfn_state_machine" "daily_history" {
         # Same reasoning as CollectHistoryShards' own ResultPath: preserves
         # $.reportDate/$.ownerToken for MarkExecutionComplete afterward,
         # rather than replacing the whole state input with this Task's own
-        # (unrelated-shaped) {"date":..., "cacheWrites":...} result.
+        # (unrelated-shaped) {"date":..., "reportDate":..., "ownerToken":...}
+        # result.
         ResultPath = "$.reduceResult"
         Catch = [{
           ErrorEquals = ["States.ALL"]
