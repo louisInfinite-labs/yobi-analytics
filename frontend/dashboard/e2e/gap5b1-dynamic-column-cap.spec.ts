@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test"
 import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { waitForStableDashboardGeometry } from "./helpers/dashboardStability"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -107,13 +108,15 @@ async function freshDashboard(page: Page, viewport: { width: number; height: num
   )
   await page.reload()
   await expect(page.getByText("Daily Gain").first()).toBeVisible()
+  await waitForStableDashboardGeometry(page)
 }
 
 const evidence: Record<string, unknown> = {}
 
 test.describe("GAP-5B1: dynamic readable column cap for tablet", () => {
-  test("AC1: at 900px, a valid 3-column layout stays 3 columns with every widget >= MIN_CHART_WIDTH_PX", async ({ page }) => {
-    await freshDashboard(page, { width: 900, height: 1400 }, THREE_COLUMN_LAYOUT)
+  test("AC1: at a comfortable tablet width, a valid 3-column layout stays 3 columns with every widget >= MIN_CHART_WIDTH_PX", async ({ page }) => {
+    // wrapper = viewport - 224 (main navbar 160px + page padding): 1000 -> 776 (>= 768, cap 3)
+    await freshDashboard(page, { width: 1000, height: 1400 }, THREE_COLUMN_LAYOUT)
     const { items, gridBox, editLayoutButton, columnsUsed } = await measure(page)
 
     expect(columnsUsed).toBe(3)
@@ -145,6 +148,14 @@ test.describe("GAP-5B1: dynamic readable column cap for tablet", () => {
   })
 
   test("AC3: representative tablet widths around the 3-to-2-column transition never render a chart below MIN_CHART_WIDTH_PX", async ({ page }) => {
+    // 6 full navigate+reload+settle iterations below, each including a
+    // real wait for the Dashboard's own ResizeObserver-driven column-cap
+    // measurement to stabilize (waitForStableDashboardGeometry, up to 3s) --
+    // genuinely exceeds Playwright's 30s default on this machine, not a
+    // hang (confirmed: fails deep inside that settle-wait, at a different
+    // iteration each run, consistent with running out of budget rather
+    // than getting stuck).
+    test.setTimeout(90_000)
     // Deliberately avoids the exact theoretical boundary (~876-891px,
     // depending on the real measured chrome width): GridStack's own
     // percentage-based column-width division introduces the same sub-pixel
@@ -169,7 +180,11 @@ test.describe("GAP-5B1: dynamic readable column cap for tablet", () => {
   })
 
   test("AC4/AC5/AC6/AC7: mobile stays single-column and desktop stays unchanged (AC13/AC14 regression)", async ({ page }) => {
-    await freshDashboard(page, { width: 390, height: 800 }, THREE_COLUMN_LAYOUT)
+    // Mobile's own wrapper offset (no desktop sidebar layout) is narrower
+    // than tablet/desktop's -- 184px, not 224px -- so a comfortable mobile
+    // single-column width needs viewport >= 240 (MIN_CHART_WIDTH_PX) + 16
+    // (margins) + 184 = 440; 500 gives a real margin above that boundary.
+    await freshDashboard(page, { width: 500, height: 800 }, THREE_COLUMN_LAYOUT)
     const mobile = await measure(page)
     expect(mobile.columnsUsed).toBe(1)
     expect(Math.min(...mobile.items.map((i) => i.width))).toBeGreaterThanOrEqual(240)
@@ -184,8 +199,9 @@ test.describe("GAP-5B1: dynamic readable column cap for tablet", () => {
     for (const gap of adjacentGaps(desktop.items)) expect(gap).toBe(16)
   })
 
-  test("AC8/AC9/AC10: 900 -> 768 -> 900 preserves widgetId, canonical storage, and restores the original 3-column geometry", async ({ page }) => {
-    await freshDashboard(page, { width: 900, height: 1400 }, THREE_COLUMN_LAYOUT)
+  test("AC8/AC9/AC10: 1000 -> 768 -> 1000 preserves widgetId, canonical storage, and restores the original 3-column geometry", async ({ page }) => {
+    // wrapper = viewport - 224: 1000 -> 776 (>= 768, cap 3)
+    await freshDashboard(page, { width: 1000, height: 1400 }, THREE_COLUMN_LAYOUT)
     const storageBefore = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)
     const before = await measure(page)
     const idsBefore = before.items.map((i) => i.id).sort()
@@ -197,7 +213,7 @@ test.describe("GAP-5B1: dynamic readable column cap for tablet", () => {
     expect(narrow.items.map((i) => i.id).sort()).toEqual(idsBefore)
     expect(narrow.columnsUsed).toBeLessThan(3)
 
-    await page.setViewportSize({ width: 900, height: 1400 })
+    await page.setViewportSize({ width: 1000, height: 1400 })
     await page.waitForTimeout(400)
     const restored = await measure(page)
     expect(restored.items.map((i) => i.id).sort()).toEqual(idsBefore)

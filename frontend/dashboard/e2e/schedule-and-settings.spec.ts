@@ -66,13 +66,17 @@ test.describe("Live Schedule page", () => {
     const grid = page.locator(".schedule-grid")
     await expect(grid).toBeVisible()
 
-    await grid.evaluate((node) => {
-      node.scrollTop = node.scrollHeight
-    })
+    // Schedule uses normal page/document scrolling, not an inner
+    // .schedule-grid scroll container (confirmed with the user -- see
+    // schedule.css's own comment on html.schedule-page-scroll, and
+    // ScheduleGrid.tsx's mount effect, which scrolls window/document, not
+    // the grid element itself). .schedule-grid has no overflow/scrollTop
+    // of its own to move.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
 
     await expect(page.locator(".schedule-day-header").first()).toBeInViewport()
     await expect(page.locator(".time-header")).toBeInViewport()
-    expect(await grid.evaluate((node) => node.scrollTop)).toBeGreaterThan(0)
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
   })
 
   test("pages between weeks with the Previous and Next buttons", async ({ page }) => {
@@ -211,13 +215,16 @@ test.describe("Settings sections", () => {
 
   // Each entry identifies its own section's content by whichever is
   // actually stable today: a page-level <h1> where one exists, or the
-  // page's own root container class where it doesn't (Notification
-  // Settings' redesign dropped its page-level heading -- section 39/
-  // AGENTS.md: not this task's place to add one back).
+  // page's own root container class where it doesn't. Notification
+  // Settings does render its own <h1> ("Push Notifications") these days,
+  // but keeps its own contentSelector form here too (".notification-
+  // settings-page", its current root class) rather than switching to a
+  // heading entry, since a future redesign could just as easily drop the
+  // heading again without changing the root class.
   const SETTINGS_SECTIONS = [
-    { navLabel: "Oshi Settings", heading: "MAIN OSHI SELECT" },
+    { navLabel: "Oshi Settings", heading: "Oshi Settings" },
     { navLabel: "Favorites List", heading: "My Favorites" },
-    { navLabel: "Live/Video Notifications", contentSelector: ".notification-settings" },
+    { navLabel: "Live/Video Notifications", contentSelector: ".notification-settings-page" },
     { navLabel: "Display", heading: "Display" },
   ] as const
 
@@ -252,12 +259,12 @@ test.describe("Settings sections", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Display" })).toBeVisible()
 
     await nav.getByRole("button", { name: "Live/Video Notifications" }).click()
-    await expect(page.locator(".notification-settings")).toBeVisible()
+    await expect(page.locator(".notification-settings-page")).toBeVisible()
 
     await page.goBack()
     await expect(page.getByRole("heading", { level: 1, name: "Display" })).toBeVisible()
 
     await page.goForward()
-    await expect(page.locator(".notification-settings")).toBeVisible()
+    await expect(page.locator(".notification-settings-page")).toBeVisible()
   })
 })

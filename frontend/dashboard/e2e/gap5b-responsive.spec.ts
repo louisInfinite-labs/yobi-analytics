@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test"
 import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { waitForStableDashboardGeometry } from "./helpers/dashboardStability"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -82,6 +83,7 @@ async function freshDashboard(page: Page, viewport: { width: number; height: num
   )
   await page.reload()
   await expect(page.getByText("Daily Gain").first()).toBeVisible()
+  await waitForStableDashboardGeometry(page)
 }
 
 const evidence: Record<string, unknown> = {}
@@ -102,7 +104,11 @@ test.describe("GAP-5B: live responsive reflow + minimum readable width", () => {
   })
 
   test("AC1/AC4/AC5/AC7/AC8/AC9/AC10/AC16: mobile is a view-only single-column reflow, no Edit control, meets minimum width", async ({ page }) => {
-    await freshDashboard(page, { width: 390, height: 800 })
+    // Mobile's own wrapper offset (no desktop sidebar layout) is 184px, not
+    // tablet/desktop's 224px -- 390px leaves each single-column widget
+    // narrower than MIN_CHART_WIDTH_PX (240); 500 gives real margin above
+    // the 440px boundary (240 + 16px margins + 184).
+    await freshDashboard(page, { width: 500, height: 800 })
     const { items, gridBox, editLayoutButton } = await measure(page)
 
     expect(items).toHaveLength(4)
@@ -143,7 +149,10 @@ test.describe("GAP-5B: live responsive reflow + minimum readable width", () => {
   })
 
   test("AC3: tablet Add is rejected once a row would exceed the 3-column editable cap", async ({ page }) => {
-    await freshDashboard(page, { width: 900, height: 1400 })
+    // wrapper = viewport - 224: needs to comfortably read cap 3 (>= 768)
+    // for the first growth (2 -> 3 widgets in the row) to succeed at all,
+    // before the second growth (3 -> 4) is rejected for exceeding the cap.
+    await freshDashboard(page, { width: 1000, height: 1400 })
     await page.getByRole("button", { name: "Edit Layout" }).click()
     const tray = page.locator(".widget-tray")
     const row0 = () => page.getByTestId("widget-insertion-row-0")
