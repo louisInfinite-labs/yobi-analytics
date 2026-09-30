@@ -11,15 +11,12 @@ from stores.dynamodb_store import (
     KNOWN_INCOMPLETE_LEGACY_DATES,
     RUN_SUMMARIES_TABLE,
     SNAPSHOTS_TABLE,
-    TRENDING_CACHE_TABLE,
     VIDEO_MASTER_TABLE,
-    get_cached_trending,
     get_snapshot,
     get_video_topics,
     get_videos,
     get_videos_by_creator,
     load_videos,
-    put_cached_trending,
     save_daily_collection,
     save_run_summary,
     scan_video_topic_items,
@@ -71,12 +68,6 @@ def dynamodb_tables(aws_credentials):
             TableName=RUN_SUMMARIES_TABLE,
             AttributeDefinitions=[{"AttributeName": "snapshotDate", "AttributeType": "S"}],
             KeySchema=[{"AttributeName": "snapshotDate", "KeyType": "HASH"}],
-            BillingMode="PAY_PER_REQUEST",
-        )
-        client.create_table(
-            TableName=TRENDING_CACHE_TABLE,
-            AttributeDefinitions=[{"AttributeName": "cacheKey", "AttributeType": "S"}],
-            KeySchema=[{"AttributeName": "cacheKey", "KeyType": "HASH"}],
             BillingMode="PAY_PER_REQUEST",
         )
         yield
@@ -149,6 +140,22 @@ def test_upsert_and_load_round_trips_bootstrap_defaults(dynamodb_tables):
     """A video with no scheduler state yet (all optional fields at their
     dataclass defaults, including the None velocity fields) round-trips too."""
     video = Video(video_id="v1", creator_id="aizawa_ema", title="A", published_at="2026-08-20T00:00:00Z")
+
+    upsert_videos([video])
+
+    assert load_videos() == [video]
+
+
+def test_upsert_and_load_round_trips_thumbnail_url(dynamodb_tables):
+    """thumbnail_url (video-ranking metadata propagation) round-trips through
+    DynamoDB the same way every other plain string Video field already does."""
+    video = Video(
+        video_id="v1",
+        creator_id="aizawa_ema",
+        title="A",
+        published_at="2026-08-20T00:00:00Z",
+        thumbnail_url="https://i.ytimg.com/vi/v1/maxresdefault.jpg",
+    )
 
     upsert_videos([video])
 
@@ -230,67 +237,6 @@ def test_get_videos_by_creator_returns_every_video_for_a_prolific_creator(dynamo
     result = get_videos_by_creator("prolific")
 
     assert len(result) == 550
-
-
-# --- Trending cache ---------------------------------------------------------
-
-
-def test_get_cached_trending_returns_none_for_a_missing_key(dynamodb_tables):
-    """An unpopulated cache key is a clean miss, not an error."""
-    assert get_cached_trending("no-such-key") is None
-
-
-def test_put_then_get_cached_trending_round_trips_the_payload(dynamodb_tables):
-    """A cached payload — including nested lists/dicts — survives the JSON round trip unchanged."""
-    payload = {"organization": "vspo", "results": [{"rank": 1, "videoId": "v1", "value": 12.5}]}
-
-    put_cached_trending("org:vspo:1d:daily_trending:2026-09-01:Asia/Tokyo", payload, computed_at="2026-09-01T18:00:00+09:00")
-
-    assert get_cached_trending("org:vspo:1d:daily_trending:2026-09-01:Asia/Tokyo") == payload
-
-
-def test_put_cached_trending_overwrites_an_existing_key(dynamodb_tables):
-    """Re-running the precompute job for the same key replaces yesterday's cached entry, not duplicates it."""
-    key = "creator:aizawa_ema:1d:daily_trending:2026-09-01:Asia/Tokyo"
-    put_cached_trending(key, {"results": ["old"]}, computed_at="2026-09-01T18:00:00+09:00")
-
-    put_cached_trending(key, {"results": ["new"]}, computed_at="2026-09-02T18:00:00+09:00")
-
-    assert get_cached_trending(key) == {"results": ["new"]}
-
-
-def test_put_cached_trending_sets_a_bounded_ttl(dynamodb_tables):
-    """AWS Cost Recovery (third pass, Scope F): YobiTrendingCache must be a
-    bounded hot cache, not an unbounded table growing one item per
-    (scope, period, reportDate) forever -- every write sets a real ttlAt
-    attribute TRENDING_CACHE_TTL_DAYS out from computed_at."""
-    from datetime import datetime, timedelta
-
-    from stores.dynamodb_store import TRENDING_CACHE_TTL_DAYS, _resource
-
-    key = "creator:aizawa_ema:1d:daily_trending:2026-09-01:Asia/Tokyo"
-    computed_at = "2026-09-01T18:00:00+09:00"
-
-    put_cached_trending(key, {"results": []}, computed_at=computed_at)
-
-    item = _resource().Table(TRENDING_CACHE_TABLE).get_item(Key={"cacheKey": key})["Item"]
-    expected_ttl = int(
-        (datetime.fromisoformat(computed_at) + timedelta(days=TRENDING_CACHE_TTL_DAYS)).timestamp()
-    )
-    assert int(item["ttlAt"]) == expected_ttl
-
-
-def test_put_cached_trending_ttl_handles_a_z_suffixed_computed_at(dynamodb_tables):
-    """computed_at can arrive either as an explicit-offset ISO timestamp
-    (ranking_reducer.py's own datetime.now(ZoneInfo(...)).isoformat()) or a
-    "Z"-suffixed UTC one -- _compute_ttl_at must parse both, not just one."""
-    from stores.dynamodb_store import _compute_ttl_at, _resource
-
-    key = "creator:aizawa_ema:1d:daily_trending:2026-09-01:Asia/Tokyo"
-    put_cached_trending(key, {"results": []}, computed_at="2026-09-01T09:00:00Z")
-
-    item = _resource().Table(TRENDING_CACHE_TABLE).get_item(Key={"cacheKey": key})["Item"]
-    assert int(item["ttlAt"]) == _compute_ttl_at("2026-09-01T09:00:00Z")
 
 
 # --- Snapshots + run summaries --------------------------------------------

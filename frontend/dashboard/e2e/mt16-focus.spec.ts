@@ -12,19 +12,18 @@ import { test, expect, type Locator, type Page } from "@playwright/test"
  * actually renders across its workflow -- verified against
  * `EditModeToolbar.tsx` and `DashboardCanonicalEditor.tsx`'s own JSX, not
  * assumed): "Edit Layout" (view mode), "Restore Default", "Cancel", "Save"
- * (all three from the edit-mode toolbar, MT-07 AC3), a widget's own
- * keyboard move/resize box (MT-16 AC6), and "Select Creators" (MT-11 Flow
- * 1) -- the last one only renders for a comparison-capable widget with a
- * `comparisonCreators` prop supplied, which `canonical-dashboard-harness.html`
- * deliberately doesn't have (its fixture is AC3's breakpoint-geometry
- * fixture and isn't touched here); its own test uses a second, separate
- * harness page instead (`canonical-dashboard-comparison-harness.html` /
- * `e2e/harness/mount-comparison.tsx`) built only to render that one
- * condition. `GridChangeConfirmationDialog`'s own Cancel/Continue-and-Save
- * are a different, dialog-scoped control set already covered under AC9
- * (jsdom); out of scope for this AC7-only correction. The canonical
- * Add-widget UI (GAP-2, unresolved per the tasks document) does not exist
- * in this codebase and is not tested here.
+ * (all three from the edit-mode toolbar, MT-07 AC3), and a widget's own
+ * keyboard move/resize box (MT-16 AC6). `GridChangeConfirmationDialog`'s own
+ * Cancel/Continue-and-Save are a different, dialog-scoped control set
+ * already covered under AC9 (jsdom); out of scope for this AC7-only
+ * correction. The canonical Add-widget UI (GAP-2, unresolved per the tasks
+ * document) does not exist in this codebase and is not tested here.
+ *
+ * PR #60 review fix (F6): this file previously also covered "Select
+ * Creators" (MT-11 Flow 1), conditional on a comparison-capable widget --
+ * removed along with the comparison feature itself (its dedicated harness,
+ * `canonical-dashboard-comparison-harness.html` / `e2e/harness/mount-
+ * comparison.tsx`, is also removed).
  */
 
 interface FocusStyleSnapshot {
@@ -135,19 +134,4 @@ test("MT-16 AC7: a keyboard-focused widget box (MT-16 AC6's own control) shows a
 
   const widgetA = page.locator('[data-testid="canonical-widget-box"][data-widget-id="a"]')
   await assertControlHasVisibleFocus(page, widgetA)
-})
-
-test("MT-16 AC7: Select Creators (MT-11 Flow 1, conditional on a comparison-capable widget) shows a real, rendered visible-focus change", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 800 })
-  await page.goto("/canonical-dashboard-comparison-harness.html")
-
-  await tabUntilFocused(page, page.getByRole("button", { name: "Edit Layout" }))
-  await page.keyboard.press("Enter")
-  await expect(page.getByRole("toolbar", { name: "Layout editing" })).toBeVisible()
-
-  const selectCreators = page.getByRole("button", { name: "Select Creators" })
-  await expect(selectCreators).toBeVisible()
-  await assertControlHasVisibleFocus(page, selectCreators)
 })

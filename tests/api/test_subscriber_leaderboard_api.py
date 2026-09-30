@@ -275,6 +275,25 @@ def test_missing_result_object_raises_ranking_not_ready(monkeypatch):
         read_api.get_subscriber_leaderboard(_query(reportDate="2026-09-29"))
 
 
+def test_unconfigured_history_bucket_raises_ranking_not_ready_not_500(monkeypatch):
+    """S3SubscriberRankingStore.from_environment() returns None (mirroring
+    S3TrendingCacheArchiveStore's own "not configured" contract) when
+    YOBI_HISTORY_BUCKET is unset -- this must surface as the same
+    RankingNotReadyError/503 every other cache-only endpoint here already
+    uses for "not yet computed", never an unhandled 500."""
+
+    class _UnconfiguredStoreClass:
+        @classmethod
+        def from_environment(cls, *, s3_client=None):
+            return None
+
+    monkeypatch.setattr(read_api, "S3SubscriberRankingStore", _UnconfiguredStoreClass)
+    monkeypatch.setattr(read_api, "load_creators", lambda: DEFAULT_CREATORS)
+
+    with pytest.raises(read_api.RankingNotReadyError):
+        read_api.get_subscriber_leaderboard(_query(reportDate="2026-09-29"))
+
+
 # --- 15/16. invalid organization/metric -> 400 --------------------------------
 
 
@@ -430,20 +449,6 @@ def test_api_lambda_shares_the_role_already_granted_s3_get_object_on_the_history
 
 
 # --- 19/20. no DynamoDB/TrendingCache access, no S3 write --------------------
-
-
-def test_no_dynamodb_or_trending_cache_access(monkeypatch):
-    from stores import dynamodb_store
-
-    calls = []
-    monkeypatch.setattr(dynamodb_store, "get_cached_trending", lambda *a, **k: calls.append("get") or None)
-    monkeypatch.setattr(dynamodb_store, "put_cached_trending", lambda *a, **k: calls.append("put"))
-    _wire_store(monkeypatch, {"2026-09-29": _payload()})
-    monkeypatch.setattr(read_api, "load_creators", lambda: DEFAULT_CREATORS)
-
-    read_api.get_subscriber_leaderboard(_query())
-
-    assert calls == []
 
 
 def test_no_s3_write_from_the_read_path(monkeypatch):

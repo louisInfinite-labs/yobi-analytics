@@ -205,41 +205,14 @@ resource "aws_dynamodb_table" "snapshots" {
   deletion_protection_enabled = true
 }
 
-resource "aws_dynamodb_table" "trending_cache" {
-  name         = "YobiTrendingCache"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "cacheKey"
-
-  attribute {
-    name = "cacheKey"
-    type = "S"
-  }
-
-  on_demand_throughput {
-    max_read_request_units  = 200
-    max_write_request_units = 100
-  }
-
-  # AWS Cost Recovery (third pass, Scope F): cacheKey includes reportDate
-  # (analytics/trending_cache_keys.py), so without a bound this table would
-  # accumulate one item per (scope, period, reportDate) forever -- the same
-  # O(total historical output) failure class as VideoMaster's old full-catalog
-  # Scan, just growing storage/PITR cost instead of RRU. ttlAt (epoch
-  # seconds, dynamodb_store.put_cached_trending) bounds it to
-  # TRENDING_CACHE_TTL_DAYS; a reportDate older than that is served from the
-  # durable S3 archive (stores.trending_cache_archive_store) instead, which
-  # every write here is also mirrored into.
-  ttl {
-    attribute_name = "ttlAt"
-    enabled        = true
-  }
-
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  deletion_protection_enabled = true
-}
+# R9 (org-trending retirement): aws_dynamodb_table.trending_cache
+# (YobiTrendingCache) was removed here -- its only writer
+# (analytics.ranking_reducer.persist_rankings) and only readers
+# (api.read_api.get_creator_trending/get_organization_trending) were both
+# retired. NOT YET APPLIED: this table has deletion_protection_enabled = true
+# in the real deployed resource, so an actual `terraform apply` of this
+# removal will fail until that protection is disabled on the live table
+# first (see this task's own final report for the exact manual step).
 
 resource "aws_dynamodb_table" "video_master" {
   name         = "YobiVideoMaster"

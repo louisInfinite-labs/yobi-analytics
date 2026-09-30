@@ -29,12 +29,16 @@ class ChartDefinition:
     title: str
 
 
+# R9 (org-trending retirement): the old cross-creator/org-wide widget set
+# (kpi-summary/growth-bar-chart/contribution-ring/ranking/insights/
+# video-stats-table) is retired along with GET /organizations/{organization}/
+# trending, its only data source. The Dashboard's Add UI now offers only the
+# two surviving ranking products.
+#
 # Deterministic order = the order the Add UI lists them.
 CHART_CATALOG: tuple[ChartDefinition, ...] = (
-    ChartDefinition("kpi-summary", "KPI Summary"),
-    ChartDefinition("growth-bar-chart", "Growth Bar Chart"),
-    ChartDefinition("contribution-ring", "Channel Contribution"),
-    ChartDefinition("ranking", "Rankings"),
+    ChartDefinition("subscriber-leaderboard", "Subscriber Leaderboard"),
+    ChartDefinition("creator-video-ranking", "Creator Video Ranking"),
 )
 
 

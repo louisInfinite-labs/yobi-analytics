@@ -46,6 +46,7 @@ import {
   type LegacyGridLayout,
 } from "../utils/dashboardLayoutMigration"
 import { resolveInitialLayout } from "../utils/dashboardDefaultLayout"
+import { isKnownWidgetType } from "../utils/widgetRegistry"
 import type { CanonicalLayout, LayoutValidationError } from "../model/dashboardLayout"
 
 const CANONICAL_LAYOUT_STORAGE_KEY = "yobi-analytics-canonical-dashboard-layout"
@@ -70,6 +71,20 @@ export type CanonicalLayoutLoadResult =
   | { status: "valid"; layout: CanonicalLayout }
   | ({ status: "legacy-grid" } & LegacyLayoutRecovery)
   | { status: "error"; reason: string }
+
+/** PR #60 review fix: a widget whose `widgetType` isn't currently registered
+ * (e.g. the retired "creator-comparison-chart" type, still present in a
+ * layout saved before that feature's removal) is dropped here, at the read
+ * boundary, before `validateLayout` or anything downstream ever sees it --
+ * otherwise it silently keeps reserving grid space (validateCollisions/
+ * validateColumnFill have no widgetType awareness) for a widget nothing can
+ * render or let the user remove. Only narrows the *effective* in-memory
+ * layout this function returns; the raw stored payload is left untouched
+ * (AC7: recovery never deletes stored data without an explicit save). */
+function dropUnregisteredWidgetTypes(layout: CanonicalLayout): CanonicalLayout {
+  const widgets = layout.widgets.filter((widget) => isKnownWidgetType(widget.widgetType))
+  return widgets.length === layout.widgets.length ? layout : { ...layout, widgets }
+}
 
 function attemptMigration(layout: CanonicalLayout, errors: LayoutValidationError[]): CanonicalLayout | null {
   const onlyDuplicateIds = errors.length > 0 && errors.every((error) => error.code === "DUPLICATE_WIDGET_ID")
@@ -101,14 +116,15 @@ export function readCanonicalLayout(storage?: Storage): CanonicalLayoutLoadResul
     return { status: "error", reason: "Saved layout data has an unrecognized shape." }
   }
 
-  const result = validateLayout(parsed)
-  if (result.valid) return { status: "valid", layout: parsed }
+  const normalized = dropUnregisteredWidgetTypes(parsed)
+  const result = validateLayout(normalized)
+  if (result.valid) return { status: "valid", layout: normalized }
 
   if (isLegacyGridPayload(parsed, result.errors)) {
     return { status: "legacy-grid", raw, parsed, proposed: proposeLegacyMigration(parsed) }
   }
 
-  const migrated = attemptMigration(parsed, result.errors)
+  const migrated = attemptMigration(normalized, result.errors)
   if (migrated) return { status: "valid", layout: migrated }
 
   return { status: "error", reason: result.errors.map((error) => error.message).join(" ") }

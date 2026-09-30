@@ -100,7 +100,30 @@ def load_creators(path: Path = DEFAULT_CREATORS_PATH) -> list[Creator]:
     raw_creators = load_json_list(path, store_name="Creator Master", error_class=CreatorMasterError)
     creators = [_parse_creator(raw) for raw in raw_creators]
     _require_unique_display_order(creators)
+    _require_unique_youtube_channel_id(creators)
     return creators
+
+
+def _require_unique_youtube_channel_id(creators: list[Creator]) -> None:
+    """Raise CreatorMasterError if two creators share the same youtubeChannelId.
+
+    PR #60 review fix: find_creator_by_youtube_channel_id (below) already
+    raised on this same condition, but only within its own lookup -- any
+    caller that instead builds its own youtube_channel_id -> creator_id
+    mapping from load_creators()/get_active_creators() directly (e.g.
+    collection.subscriber_snapshot.channel_id_by_creator) got no such guard,
+    so a real duplicate would silently collapse into one entry instead of
+    failing loudly. Enforced here, at load time, so every caller is
+    protected regardless of which lookup path it uses.
+    """
+    seen: dict[str, str] = {}
+    for creator in creators:
+        if creator.youtube_channel_id in seen:
+            raise CreatorMasterError(
+                f"Duplicate youtubeChannelId {creator.youtube_channel_id!r} in Creator Master: "
+                f"{seen[creator.youtube_channel_id]!r} and {creator.creator_id!r}"
+            )
+        seen[creator.youtube_channel_id] = creator.creator_id
 
 
 def _require_unique_display_order(creators: list[Creator]) -> None:

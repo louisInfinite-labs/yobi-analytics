@@ -22,10 +22,8 @@ def test_chart_catalog_returns_200_with_the_current_addable_charts_in_order():
     assert response["headers"]["Content-Type"] == "application/json"
     assert _body(response) == {
         "charts": [
-            {"chartDefinitionId": "kpi-summary", "title": "KPI Summary"},
-            {"chartDefinitionId": "growth-bar-chart", "title": "Growth Bar Chart"},
-            {"chartDefinitionId": "contribution-ring", "title": "Channel Contribution"},
-            {"chartDefinitionId": "ranking", "title": "Rankings"},
+            {"chartDefinitionId": "subscriber-leaderboard", "title": "Subscriber Leaderboard"},
+            {"chartDefinitionId": "creator-video-ranking", "title": "Creator Video Ranking"},
         ]
     }
 

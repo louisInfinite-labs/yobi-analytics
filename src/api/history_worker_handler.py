@@ -10,11 +10,9 @@ from zoneinfo import ZoneInfo
 from stores import dynamodb_store
 from collection import execution_lock
 from ops.config import get_api_key
-from tracking.creator_master import get_active_creators, load_creators
-from analytics.history_ranking import CreatorDimensions
+from tracking.creator_master import get_active_creators
 from stores.history_store import HISTORY_SHARD_COUNT, S3HistoryStore
 from collection.history_worker import collect_history_shard
-from stores.ranking_partial_store import S3PartialRankingStore
 from tracking.tracking_manifest import S3TrackingManifestStore
 from collection.youtube_client import QuotaExhaustedError, build_youtube_client
 from collection.subscriber_snapshot import collect_subscriber_snapshot_if_missing
@@ -27,7 +25,7 @@ COLLECTION_TIMEZONE = ZoneInfo("Asia/Tokyo")
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Collect one shard and persist its history plus bounded reducer input.
+    """Collect one shard and persist its history.
 
     Also doubles as terraform/history.tf's `ValidateShardsInput` state
     (`shards`, plural) and `AcquireExecutionLock` state (`validatedShards`)
@@ -67,13 +65,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     bucket_name = os.environ["YOBI_HISTORY_BUCKET"]
     history_store = S3HistoryStore(bucket_name)
     manifest_store = S3TrackingManifestStore(bucket_name)
-    dimensions = {
-        creator.creator_id: CreatorDimensions(
-            organization=creator.organization,
-            branch=creator.branch,
-        )
-        for creator in load_creators()
-    }
     result = collect_history_shard(
         youtube=build_youtube_client(get_api_key()),
         manifest_store=manifest_store,
@@ -81,10 +72,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         video_master_store=dynamodb_store,
         collection_date=report_date,
         shard=shard,
-        dimensions_by_creator=dimensions,
         observed_at=now.isoformat(),
     )
-    partial_key = S3PartialRankingStore(bucket_name).write(report_date, shard, result.rankings)
     # Renewed last, and unconditionally on every success path — including the
     # shard_exists idempotent-skip branch inside collect_history_shard, which
     # never touched YouTube but still fully completed this shard's own work.
@@ -112,7 +101,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "collectedCount": result.collected_count,
         "skippedCount": len(result.skipped),
         "historyKey": result.history_key,
-        "partialRankingKey": partial_key,
     }
 
 

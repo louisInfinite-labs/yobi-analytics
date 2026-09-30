@@ -10,14 +10,15 @@ def _make_channels_response(uploads_playlist_id):
     return {"items": [{"contentDetails": {"relatedPlaylists": {"uploads": uploads_playlist_id}}}]}
 
 
-def _make_playlist_item(video_id, title, published_at):
-    return {
-        "snippet": {
-            "resourceId": {"videoId": video_id},
-            "title": title,
-            "publishedAt": published_at,
-        }
+def _make_playlist_item(video_id, title, published_at, thumbnails=None):
+    snippet = {
+        "resourceId": {"videoId": video_id},
+        "title": title,
+        "publishedAt": published_at,
     }
+    if thumbnails is not None:
+        snippet["thumbnails"] = thumbnails
+    return {"snippet": snippet}
 
 
 def test_get_uploads_playlist_id_parses_response():
@@ -115,6 +116,44 @@ def test_non_string_field_is_skipped_not_crashed(capsys):
 
     assert [v["videoId"] for v in videos] == ["vid2"]
     assert "invalid" in capsys.readouterr().out
+
+
+def test_thumbnail_url_is_extracted_from_the_same_already_paid_response(capsys):
+    """video-ranking metadata propagation: thumbnailUrl is read from this
+    same playlistItems.list entry's own snippet.thumbnails -- no separate
+    YouTube request -- preferring the highest-quality variant present."""
+    youtube = MagicMock()
+    page_1 = {
+        "items": [
+            _make_playlist_item(
+                "vid1",
+                "Video 1",
+                "2026-08-20T00:00:00Z",
+                thumbnails={
+                    "default": {"url": "https://i.ytimg.com/vi/vid1/default.jpg"},
+                    "maxres": {"url": "https://i.ytimg.com/vi/vid1/maxresdefault.jpg"},
+                },
+            )
+        ]
+    }
+    youtube.playlistItems.return_value.list.return_value.execute.side_effect = [page_1]
+
+    [video] = discover_all_videos(youtube, "UU_TEST_UPLOADS")
+
+    assert video["thumbnailUrl"] == "https://i.ytimg.com/vi/vid1/maxresdefault.jpg"
+
+
+def test_missing_thumbnails_yields_none_not_an_error():
+    """A playlist item with no usable thumbnail variant is still fully
+    trackable from its title/publishedAt alone -- thumbnailUrl is simply
+    None, never a reason to skip the whole item."""
+    youtube = MagicMock()
+    page_1 = {"items": [_make_playlist_item("vid1", "Video 1", "2026-08-20T00:00:00Z")]}
+    youtube.playlistItems.return_value.list.return_value.execute.side_effect = [page_1]
+
+    [video] = discover_all_videos(youtube, "UU_TEST_UPLOADS")
+
+    assert video["thumbnailUrl"] is None
 
 
 def test_empty_string_field_is_skipped_not_crashed(capsys):

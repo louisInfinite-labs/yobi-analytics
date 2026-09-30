@@ -409,6 +409,8 @@ def _patch_manifest_with_new_videos_if_configured(new_videos: list[Video]) -> No
             published_at=video.published_at,
             activity_state=video.activity_state,
             topic=video.topic,
+            title=video.title,
+            thumbnail_url=video.thumbnail_url,
         )
 
     for shard, new_entries_by_id in by_shard.items():
@@ -523,6 +525,7 @@ def _discover_creator(
             creator_id=creator.creator_id,
             title=item["title"],
             published_at=item["publishedAt"],
+            thumbnail_url=item.get("thumbnailUrl"),
             discovered_at=discovered_at,
             topic=classify_video_topic(item["title"]),
         )

@@ -4,17 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
-from typing import Mapping
 
-from analytics.history_ranking import (
-    CreatorDimensions,
-    RankedGrowth,
-    ScopeKey,
-    load_exact_anchor_rows,
-    top_n_by_scope,
-)
 from stores.history_store import HISTORY_SHARD_COUNT, HistoryRow, HistoryStore, daily_history_key, shard_for_video
-from tracking.tracking_manifest import ManifestEntry, TrackingManifestStore, discovered_dates_by_video, patch_shard
+from tracking.tracking_manifest import ManifestEntry, TrackingManifestStore, patch_shard
 from tracking.tracking_schedule import classify_after_observation, select_due_video_ids
 from tracking.video_master import Video, VideoMasterStore
 from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS
@@ -32,7 +24,6 @@ class ShardCollectionResult:
     skipped: dict[str, str]
     history_key: str
     rows: list[HistoryRow]
-    rankings: dict[ScopeKey, dict[str, list[RankedGrowth]]]
     topic_by_video: dict[str, str]
 
 
@@ -45,19 +36,16 @@ def collect_history_shard(
     manifest_store: TrackingManifestStore,
     history_store: HistoryStore,
     video_master_store: VideoMasterStore | None = None,
-    dimensions_by_creator: Mapping[str, CreatorDimensions] | None = None,
-    top_n: int = 100,
 ) -> ShardCollectionResult:
     """Collect and persist exactly one manifest shard.
 
     Retrying calls this function with the failed shard only. Its deterministic
     PutObject key is replaced idempotently; no scan/delete rollback exists.
-    Today's rows remain in memory for ranking and are never read back from S3.
 
     AWS Cost Recovery: only videos `tracking_schedule.select_due_video_ids`
     considers due today ever reach YouTube or `_build_scheduler_updates`. A
-    non-due active video is still carried into today's row set (so ranking,
-    daily S3 history, and the D-1/D-7/D-30 anchors it feeds never gap) via
+    non-due active video is still carried into today's row set (so the
+    daily S3 history, and the D-1/D-7/D-30 anchors it feeds, never gap) via
     `_carry_forward_non_due_rows` -- reusing yesterday's own already-persisted
     shard (one extra S3 GetObject for the whole shard, not one DynamoDB read
     per non-due video) and falling back to Video Master's own last observation
@@ -75,8 +63,7 @@ def collect_history_shard(
     any video. And if `collection_date`'s shard was already written (a
     genuine retry, or the same shard number appearing twice in one Map's
     input), this never calls YouTube a second time for the same day — it
-    reads the already-persisted rows back and only recomputes the (free,
-    local) ranking from them.
+    reads the already-persisted rows back instead.
 
     Known limitation (not addressed here): this idempotency check is a
     plain read-then-act, not a claim/lock — two Step Functions executions
@@ -84,13 +71,6 @@ def collect_history_shard(
     observe "not collected yet" and both call YouTube. See
     HistoryStore.shard_exists's own docstring for why closing that race is
     deliberately out of scope for this change.
-
-    Each shard's own manifest entries carry discovered_at (published by
-    tracking_manifest.publish_tracking_manifest from Video Master), threaded
-    into top_n_by_scope as discovered_date_by_video — a video collected for
-    only a day or two still enters the 7d/30d ranking with its full latest
-    view count counted, instead of being silently excluded for lacking a
-    D-7/D-30 anchor it could never have. See history_ranking._period_value.
 
     `video_master_store` (Roadmap 1.5, currently bootstrap-only — see
     `_build_scheduler_updates`) is optional so every existing caller/test
@@ -182,16 +162,6 @@ def collect_history_shard(
         if scheduler_updates:
             video_master_store.upsert_videos(scheduler_updates)
             _patch_manifest_activity_states(manifest_store, shard=shard, updates=scheduler_updates)
-    anchors = load_exact_anchor_rows(history_store, report_date=collection_date, shard=shard)
-    discovered_date_by_video = discovered_dates_by_video(active_entries)
-    rankings = top_n_by_scope(
-        rows,
-        anchors,
-        report_date=collection_date,
-        discovered_date_by_video=discovered_date_by_video,
-        dimensions_by_creator=dimensions_by_creator,
-        limit=top_n,
-    )
     return ShardCollectionResult(
         collection_date=collection_date,
         shard=shard,
@@ -200,7 +170,6 @@ def collect_history_shard(
         skipped=skipped,
         history_key=history_key,
         rows=rows,
-        rankings=rankings,
         topic_by_video=_resolve_manifest_topics(active_entries),
     )
 

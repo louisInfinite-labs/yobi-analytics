@@ -76,6 +76,14 @@ class ManifestEntry:
     published_at: str | None = None
     activity_state: str | None = None
     topic: str | None = None
+    # `title`/`thumbnail_url` (video-ranking metadata propagation) mirror
+    # Video.title/Video.thumbnail_url, following the identical optional/
+    # nullable precedent as discovered_at/published_at/activity_state above:
+    # a manifest object written before this pair of fields existed still
+    # deserializes, with both read as None -- never a reason to re-derive
+    # either from a separate lookup at this layer.
+    title: str | None = None
+    thumbnail_url: str | None = None
 
 
 class TrackingManifestStore(Protocol):
@@ -130,6 +138,8 @@ def serialize_manifest(entries: list[ManifestEntry]) -> bytes:
             "publishedAt": pa.array([entry.published_at for entry in entries], type=pa.string()),
             "activityState": pa.array([entry.activity_state for entry in entries], type=pa.string()),
             "topic": pa.array([entry.topic for entry in entries], type=pa.string()),
+            "title": pa.array([entry.title for entry in entries], type=pa.string()),
+            "thumbnailUrl": pa.array([entry.thumbnail_url for entry in entries], type=pa.string()),
         }
     )
     output = io.BytesIO()
@@ -170,6 +180,8 @@ def deserialize_manifest(payload: bytes) -> list[ManifestEntry]:
                 published_at=entry.get("publishedAt"),
                 activity_state=entry.get("activityState"),
                 topic=entry.get("topic"),
+                title=entry.get("title"),
+                thumbnail_url=entry.get("thumbnailUrl"),
             )
             for entry in raw_entries
         ]
@@ -369,10 +381,10 @@ def publish_tracking_manifest(videos, store: TrackingManifestStore) -> list[str]
     abstraction to one metadata backend. All 16 keys are written, including
     empty shards, so removed/deactivated catalog entries cannot linger.
 
-    published_at/activity_state/topic are read directly off each Video-like
-    object (already the authoritative Video Master values) — no separate
-    lookup, since the caller already loaded them to build `videos` in the
-    first place.
+    published_at/activity_state/topic/title/thumbnail_url are read directly
+    off each Video-like object (already the authoritative Video Master
+    values) — no separate lookup, since the caller already loaded them to
+    build `videos` in the first place.
     """
     entries = [
         ManifestEntry(
@@ -383,6 +395,8 @@ def publish_tracking_manifest(videos, store: TrackingManifestStore) -> list[str]
             published_at=video.published_at,
             activity_state=video.activity_state,
             topic=video.topic,
+            title=video.title,
+            thumbnail_url=video.thumbnail_url,
         )
         for video in videos
     ]
@@ -407,6 +421,8 @@ def _validate_entry(entry: ManifestEntry) -> None:
         raise TrackingManifestError(f"Manifest entry has invalid 'activityState': {entry!r}")
     if entry.topic is not None and entry.topic not in TOPIC_IDS:
         raise TrackingManifestError(f"Manifest entry has invalid 'topic': {entry!r}")
+    if entry.title is not None and not entry.title:
+        raise TrackingManifestError(f"Manifest entry has invalid 'title': {entry!r}")
 
 
 def _reject_duplicate_video_ids(entries: list[ManifestEntry]) -> None:

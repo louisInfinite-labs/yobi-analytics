@@ -87,12 +87,13 @@ resource "aws_lambda_function" "ranking_reducer" {
   memory_size   = 2048
   filename      = local.lambda_placeholder_zip
 
+  # R9 (org-trending retirement): YOBI_STORAGE_BACKEND/YOBI_TRENDING_CACHE_
+  # TABLE/YOBI_VIDEO_MASTER_TABLE removed -- this Lambda's only remaining
+  # work (execution-lock renewal, video-ranking Phase C) is entirely
+  # S3-based (YOBI_HISTORY_BUCKET) and never touches DynamoDB.
   environment {
     variables = {
-      YOBI_HISTORY_BUCKET       = aws_s3_bucket.history.id
-      YOBI_STORAGE_BACKEND      = "dynamodb"
-      YOBI_TRENDING_CACHE_TABLE = aws_dynamodb_table.trending_cache.name
-      YOBI_VIDEO_MASTER_TABLE   = aws_dynamodb_table.video_master.name
+      YOBI_HISTORY_BUCKET = aws_s3_bucket.history.id
     }
   }
 
@@ -120,6 +121,12 @@ resource "aws_lambda_function" "api" {
       YOBI_ADMIN_API_KEY_SECRET_NAME = "yobi-analytics/admin-api-key"
       # YOBI_ADMIN_API_KEY_SSM_PARAMETER = local.ssm_parameter_prepared_not_applied.admin_api_key
       YOBI_STORAGE_BACKEND = "dynamodb"
+      # PR #60 review fix: get_subscriber_leaderboard (S3SubscriberRankingStore)
+      # and the trending-cache S3 archive fallback (S3TrendingCacheArchiveStore)
+      # both call `from_environment()`, which reads this var -- without it, the
+      # subscriber leaderboard endpoint 500s and archived (>35-day-old) trending
+      # rankings silently fail to fall back to S3.
+      YOBI_HISTORY_BUCKET = aws_s3_bucket.history.id
     }
   }
 

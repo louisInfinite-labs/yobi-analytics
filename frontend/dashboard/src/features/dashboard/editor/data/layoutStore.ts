@@ -35,22 +35,13 @@ export function buildDefaultLayout(profileId: string, breakpoint: Breakpoint): L
     profileId,
     profileName: "Default",
     breakpoint,
-    // Non-overlapping by construction: growth-bar-chart/contribution-ring
-    // (rows 1-5) share the row range but not columns; ranking (rows 5-9)
-    // starts only after contribution-ring, its own column's occupant, ends —
-    // the original y=3 put it 2 rows into contribution-ring's own space,
-    // same x range. insights/video-stats-table are full-width, so each
-    // starts only after every column above it (not just the widest one) has
-    // cleared. GridStack's own grid.load() collision resolution masks a
-    // wrong y at render time, so this doesn't fail visually — it's still
-    // wrong data to persist and diff against.
+    // R9 (org-trending retirement): the old six-widget default (fed entirely
+    // by the retired GET /organizations/{organization}/trending) is replaced
+    // by the two surviving ranking products, side by side (non-overlapping
+    // columns, same row).
     widgets: [
-      at("kpi-summary", 0, 0),
-      at("growth-bar-chart", 0, 1),
-      at("contribution-ring", 8, 1),
-      at("ranking", 8, 5),
-      at("insights", 0, 9),
-      at("video-stats-table", 0, 10),
+      at("subscriber-leaderboard", 0, 0),
+      at("creator-video-ranking", 8, 0),
     ],
   }
 }

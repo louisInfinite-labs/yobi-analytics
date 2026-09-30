@@ -107,48 +107,6 @@ def test_an_unexpected_exception_returns_500_without_leaking_details(monkeypatch
     assert "something internal broke" not in _body(response)["error"]
 
 
-# --- GET /creators/{creatorId}/trending & /organizations/{organization}/trending ----
-
-
-def test_get_creator_trending_returns_200(monkeypatch):
-    monkeypatch.setattr(read_api, "get_creator_trending", lambda query: {"creatorId": query["creatorId"]})
-
-    response = lambda_handler(
-        _event("GET /creators/{creatorId}/trending", query={"period": "7d"}, path={"creatorId": "c1"}), None
-    )
-
-    assert response["statusCode"] == 200
-    assert _body(response) == {"creatorId": "c1"}
-
-
-def test_get_organization_trending_returns_200(monkeypatch):
-    monkeypatch.setattr(read_api, "get_organization_trending", lambda query: {"organization": query["organization"]})
-
-    response = lambda_handler(
-        _event("GET /organizations/{organization}/trending", path={"organization": "vspo"}), None
-    )
-
-    assert response["statusCode"] == 200
-    assert _body(response) == {"organization": "vspo"}
-
-
-def test_get_creator_trending_maps_trending_not_ready_to_503(monkeypatch):
-    """An oversized cache-miss fallback (read_api.TrendingNotReadyError) is a 503, not a 400/500 —
-    the request is well-formed, the server is just refusing to compute it live right now."""
-
-    def _boom(query):
-        raise read_api.TrendingNotReadyError("too large to compute on demand")
-
-    monkeypatch.setattr(read_api, "get_creator_trending", _boom)
-
-    response = lambda_handler(
-        _event("GET /creators/{creatorId}/trending", query={"period": "7d"}, path={"creatorId": "c1"}), None
-    )
-
-    assert response["statusCode"] == 503
-    assert _body(response)["error"] == "too large to compute on demand"
-
-
 # --- POST /heartbeat ------------------------------------------------------
 
 

@@ -249,6 +249,33 @@ def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[
 # highest-quality one actually present, never more than one stored.
 _AVATAR_THUMBNAIL_PREFERENCE = ("high", "medium", "default")
 
+# A video's own snippet.thumbnails (playlistItems.list/videos.list) carries
+# two additional, higher-resolution variants a channel's own avatar
+# thumbnails never do ("maxres"/"standard") -- preferred highest-quality
+# first, mirroring _AVATAR_THUMBNAIL_PREFERENCE's own "best available, never
+# more than one stored" reasoning.
+_VIDEO_THUMBNAIL_PREFERENCE = ("maxres", "standard", "high", "medium", "default")
+
+
+def select_video_thumbnail_url(thumbnails: object) -> str | None:
+    """Pick one canonical thumbnail URL from a video snippet's own
+    snippet.thumbnails value (already present in the same paid
+    playlistItems.list/videos.list response that already provides
+    title/publishedAt -- no separate request), preferring
+    maxres -> standard -> high -> medium -> default. Returns None (never
+    raises) if `thumbnails` isn't a dict, or no variant carries a usable
+    url -- mirrors select_channel_avatar_url's own contract for the
+    identical reason."""
+    if not isinstance(thumbnails, dict):
+        return None
+    for size in _VIDEO_THUMBNAIL_PREFERENCE:
+        variant = thumbnails.get(size)
+        if isinstance(variant, dict):
+            url = variant.get("url")
+            if isinstance(url, str) and url:
+                return url
+    return None
+
 
 def select_channel_avatar_url(thumbnails: object) -> str | None:
     """Pick one canonical avatar URL from a channels.list snippet.thumbnails

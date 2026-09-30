@@ -29,13 +29,12 @@ resource "aws_apigatewayv2_stage" "default" {
 
 locals {
   api_routes = [
-    "GET /creators/{creatorId}/trending",
     "GET /remote-config",
     "POST /clients/{clientId}/credential",
     "POST /heartbeat",
-    "GET /organizations/{organization}/trending",
     "GET /topics",
     "GET /subscribers/leaderboard",
+    "GET /creators/{creatorId}/videos/ranking",
     "GET /dashboard/chart-catalog",
     "POST /remote-config",
     "GET /admin/heartbeat-stats",

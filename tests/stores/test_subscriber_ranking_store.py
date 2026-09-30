@@ -11,7 +11,6 @@ from moto import mock_aws
 
 from stores.subscriber_ranking_store import (
     S3SubscriberRankingStore,
-    SubscriberRankingStoreError,
     subscriber_ranking_key,
 )
 
@@ -64,8 +63,7 @@ def test_two_different_dates_are_independent_objects(s3_store):
     assert s3_store.read_result(other_day)["reportDate"] == "2026-09-28"
 
 
-def test_from_environment_requires_the_history_bucket_env_var(monkeypatch):
+def test_from_environment_returns_none_when_bucket_not_configured(monkeypatch):
     monkeypatch.delenv("YOBI_HISTORY_BUCKET", raising=False)
 
-    with pytest.raises(SubscriberRankingStoreError, match="YOBI_HISTORY_BUCKET"):
-        S3SubscriberRankingStore.from_environment()
+    assert S3SubscriberRankingStore.from_environment() is None

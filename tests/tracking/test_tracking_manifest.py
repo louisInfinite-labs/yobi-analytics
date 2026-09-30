@@ -99,6 +99,63 @@ def test_publish_tracking_manifest_maps_video_master_fields_directly():
     assert entry.activity_state == "Hot"
 
 
+def test_manifest_parquet_round_trip_carries_title_and_thumbnail_url():
+    """title/thumbnailUrl (video-ranking metadata propagation) round-trip
+    through Parquet the same way publishedAt/activityState already do."""
+    entries = [
+        ManifestEntry(
+            "v1",
+            "c1",
+            True,
+            title="A Video Title",
+            thumbnail_url="https://i.ytimg.com/vi/v1/maxresdefault.jpg",
+        )
+    ]
+
+    assert deserialize_manifest(serialize_manifest(entries)) == entries
+
+
+def test_deserialize_manifest_is_backward_compatible_with_no_title_or_thumbnail_columns():
+    """A manifest object written before title/thumbnailUrl existed still
+    deserializes, with both read as None."""
+    old_table = pa.table(
+        {
+            "videoId": pa.array(["v1"], type=pa.string()),
+            "creatorId": pa.array(["c1"], type=pa.string()),
+            "active": pa.array([True], type=pa.bool_()),
+        }
+    )
+    output = io.BytesIO()
+    import pyarrow.parquet as parquet
+
+    parquet.write_table(old_table, output)
+
+    entries = deserialize_manifest(output.getvalue())
+
+    assert entries[0].title is None
+    assert entries[0].thumbnail_url is None
+
+
+def test_publish_tracking_manifest_maps_title_and_thumbnail_url_directly():
+    """publish_tracking_manifest reads title/thumbnail_url straight off the
+    Video Master objects it's given, mirroring published_at/activity_state's
+    own no-extra-lookup contract."""
+    video = Video(
+        video_id="v1",
+        creator_id="c1",
+        title="A Video Title",
+        published_at="2026-08-01T00:00:00Z",
+        thumbnail_url="https://i.ytimg.com/vi/v1/maxresdefault.jpg",
+    )
+    store = _RecordingManifestStore()
+
+    publish_tracking_manifest([video], store)
+
+    entry = next(entry for entries in store.written.values() for entry in entries)
+    assert entry.title == "A Video Title"
+    assert entry.thumbnail_url == "https://i.ytimg.com/vi/v1/maxresdefault.jpg"
+
+
 def test_publish_tracking_manifest_preserves_default_unknown_activity_state():
     """A Video that has never been classified yet still bootstraps as "Unknown" --
     a genuine business value here, not the None used for a pre-migration manifest."""

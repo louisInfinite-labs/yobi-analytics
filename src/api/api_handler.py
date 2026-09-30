@@ -125,8 +125,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         result = handler(event)
     except read_api.VideoNotFoundError as exc:
         return _json_response(404, {"error": str(exc)})
-    except read_api.TrendingNotReadyError as exc:
-        return _json_response(503, {"error": str(exc)})
     except read_api.RankingNotReadyError as exc:
         return _json_response(503, {"error": str(exc), "code": "RANKING_NOT_READY"})
     except _ForbiddenError as exc:
@@ -144,14 +142,6 @@ def _handle_get_video_growth(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_video_growth(_merged_params(event))
 
 
-def _handle_get_creator_trending(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_creator_trending(_merged_params(event))
-
-
-def _handle_get_organization_trending(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_organization_trending(_merged_params(event))
-
-
 def _handle_get_chart_catalog(event: dict[str, Any]) -> dict[str, Any]:
     return dashboard_catalog_api.get_chart_catalog(_merged_params(event))
 
@@ -162,6 +152,10 @@ def _handle_get_topics(event: dict[str, Any]) -> dict[str, Any]:
 
 def _handle_get_subscriber_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_subscriber_leaderboard(_merged_params(event))
+
+
+def _handle_get_video_ranking(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_video_ranking(_merged_params(event))
 
 
 def _handle_post_heartbeat(event: dict[str, Any]) -> dict[str, Any]:
@@ -301,11 +295,10 @@ def _handle_get_admin_heartbeat_stats(event: dict[str, Any]) -> dict[str, Any]:
 
 _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /videos/{videoId}/growth": _handle_get_video_growth,
-    "GET /creators/{creatorId}/trending": _handle_get_creator_trending,
-    "GET /organizations/{organization}/trending": _handle_get_organization_trending,
     "GET /dashboard/chart-catalog": _handle_get_chart_catalog,
     "GET /topics": _handle_get_topics,
     "GET /subscribers/leaderboard": _handle_get_subscriber_leaderboard,
+    "GET /creators/{creatorId}/videos/ranking": _handle_get_video_ranking,
     "POST /heartbeat": _handle_post_heartbeat,
     "GET /heartbeat/{clientId}/status": _handle_get_heartbeat_status,
     "POST /clients/{clientId}/credential": _handle_post_client_credential,

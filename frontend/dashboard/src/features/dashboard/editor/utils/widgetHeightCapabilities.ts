@@ -19,12 +19,12 @@ import type { WidgetHeight } from "../model/dashboardLayout"
 import type { WidgetTypeId } from "../model/widget"
 
 export const WIDGET_ALLOWED_HEIGHTS: Record<WidgetTypeId, WidgetHeight[]> = {
-  "kpi-summary": [0.5, 1],
-  "growth-bar-chart": [1],
-  "contribution-ring": [1],
-  ranking: [0.5, 1],
-  insights: [0.5, 1],
-  "video-stats-table": [0.5, 1],
+  // Two rows of filter controls (organization + metric) before any ranked
+  // row is visible at all -- 0.5X leaves no usable room underneath them.
+  "subscriber-leaderboard": [1],
+  // Only one control row (metric); still usable cramped, same reasoning
+  // the old `ranking`/`insights` types had for allowing 0.5X.
+  "creator-video-ranking": [0.5, 1],
 }
 
 /** True when `widgetType` has no GAP-2D entry (unrestricted) or `height` is

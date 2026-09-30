@@ -1,252 +1,48 @@
-"""Merge shard-local Top-N results and persist small TrendingCache payloads."""
+"""ReduceRankings/MarkExecutionComplete/MarkExecutionFailed Lambda: renews the
+execution lock, builds and persists the per-creator video-ranking S3 result,
+and marks the daily execution complete/failed.
+
+R9 (org-trending retirement): this module used to also merge every shard's
+bounded Top-N creator/org growth partial (IncrementalRankingMerger) and
+persist it into YobiTrendingCache (persist_rankings/WruBudget/_paced_put/
+_scope_field/_cache_row), the write side of the old cross-creator/org-wide
+"trending" product (api.read_api.get_creator_trending/get_organization_
+trending, now removed along with their two API routes). That whole pipeline
+had zero remaining consumers once those two routes were retired -- see
+analytics.history_ranking's own module docstring for where the shared
+merge/ranking primitives it depended on went. This Lambda's only remaining
+job per invocation is what's below: execution-lock bookkeeping (shared with
+this same Lambda's markCompleteForDate/markFailedForDate branches) and video
+ranking (Phase C), an independent, already-scoped-per-creator product this
+retirement does not touch.
+"""
 
 from __future__ import annotations
 
-import json
-import math
 import os
-import time
-from datetime import date, datetime
-from typing import Any, Callable
+from datetime import date, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from collection import execution_lock
-from stores import dynamodb_store
-from tracking.creator_master import load_creators
-from analytics.history_ranking import IncrementalRankingMerger, RankedGrowth
-from stores.history_store import HISTORY_SHARD_COUNT
-from stores.ranking_partial_store import S3PartialRankingStore
-from stores.trending_cache_archive_store import S3TrendingCacheArchiveStore
-from analytics.trending_cache_keys import trending_cache_key
+from stores.history_store import EXACT_ANCHOR_DAYS, HISTORY_SHARD_COUNT, HistoryRow, S3HistoryStore
+from analytics.video_ranking import build_creator_video_catalog
+from analytics.video_ranking_result import build_video_ranking_result
+from stores.video_ranking_store import S3VideoRankingStore, VideoRankingStoreError
+from tracking.tracking_manifest import S3TrackingManifestStore, discovered_dates_by_video
+from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS
 
 _TIME_ZONE = "Asia/Tokyo"
-_RANKING_TYPE = {"1d": "daily_trending", "7d": "7d_trending", "30d": "30d_trending"}
-
-# YobiTrendingCache's own on_demand_throughput.max_write_request_units = 100
-# (terraform/dynamodb.tf) is a cap on the *table*, not per caller. Pacing to
-# a target below that real cap (not the cap itself) leaves headroom for the
-# pacing estimate's own imprecision (actual network latency, GC pauses,
-# etc.) and for any other concurrent writer to this table. This round does
-# not change the Terraform-declared 100 -- only how this reducer's own
-# writes are paced under it.
-TARGET_WRU_PER_SECOND = 80
-
-
-class WruBudget:
-    """Paces a sequence of DynamoDB writes to a shared target WRU/second rate.
-
-    One instance must be shared across *every* write a single reducer
-    invocation makes — YobiTrendingCache's throughput cap applies to the
-    table as a whole, not per caller. R8B (AWS Cost Recovery): persist_
-    rankings is now this invocation's only writer (persist_creator_summaries,
-    a second writer this budget also used to be shared with, was removed);
-    kept as an explicit shared-budget object anyway rather than folded away,
-    in case a future second writer needs to pace against the same cap again.
-
-    charge() computes WRU the same way DynamoDB itself does for a standard
-    write — ceil(item_bytes / 1024), a minimum of 1 KB-unit per item — and
-    sleeps first if issuing that many more WRU right now would put the
-    cumulative rate over `target_wru_per_second` since this budget was
-    created. Batching writes into fewer HTTP calls (e.g. BatchWriteItem)
-    would not change any of this: DynamoDB still bills the same total WRU
-    for the same total bytes regardless of how many API calls carry them,
-    so a caller batching writes must still call charge() once per logical
-    item and keep obeying the same shared budget — batching only ever
-    reduces call *count*, never the WRU this budget paces against.
-
-    `clock`/`sleeper` are injectable so a test can pace against a fake
-    clock and record (rather than actually perform) the sleep — real usage
-    always defaults to wall-clock time.monotonic/time.sleep.
-
-    KNOWN GAP, deliberately not addressed here: this budget only paces the
-    writes made by *this one* reducer invocation's own process. It has no
-    visibility into any other concurrent process writing to the same
-    table — two ranking_reducer invocations somehow running at once (e.g.
-    an operator-triggered manual rerun overlapping the scheduled one) would
-    each independently pace themselves to 80 WRU/s and could together
-    still issue up to ~160 WRU/s against a table capped at 100. Closing
-    that requires an execution-level lock/mutual-exclusion mechanism
-    across invocations (e.g. a DynamoDB conditional claim keyed by
-    report_date, mirroring the same kind of gap already documented for
-    concurrent history_worker executions in HistoryStore.shard_exists) —
-    deliberately out of scope for this round; this budget only solves the
-    single-invocation pacing problem.
-    """
-
-    def __init__(self, *, target_wru_per_second: float = TARGET_WRU_PER_SECOND, clock=time.monotonic, sleeper=time.sleep):
-        if target_wru_per_second <= 0:
-            raise ValueError(f"target_wru_per_second must be positive, got {target_wru_per_second!r}")
-        self._target = target_wru_per_second
-        self._clock = clock
-        self._sleep = sleeper
-        self._start = clock()
-        self.total_wru = 0
-
-    def charge(self, item_bytes: int) -> int:
-        """Account for one write of `item_bytes` bytes, sleeping first if
-        needed to keep the cumulative rate at or under the target. Returns
-        the WRU charged for this write."""
-        wru = math.ceil(item_bytes / 1024)
-        projected_total = self.total_wru + wru
-        ideal_elapsed = projected_total / self._target
-        actual_elapsed = self._clock() - self._start
-        if actual_elapsed < ideal_elapsed:
-            self._sleep(ideal_elapsed - actual_elapsed)
-        self.total_wru = projected_total
-        return wru
-
-
-def _dynamodb_item_bytes(*, cache_key: str, payload: dict, computed_at: str) -> int:
-    """The real DynamoDB item size dynamodb_store.put_cached_trending will
-    write — not just the payload's own JSON size.
-
-    dynamodb_store.put_cached_trending's actual wire format is
-    `Item={"cacheKey": cache_key, "payload": json.dumps(payload),
-    "computedAt": computed_at, "ttlAt": <epoch seconds>}` — three String
-    attributes plus one Number attribute (AWS Cost Recovery third pass, Scope
-    F: the bounded-retention `ttlAt` field). DynamoDB's own item-size rule
-    (AWS docs) is the sum of every attribute *name's* bytes plus every
-    attribute *value's* bytes, for every attribute in the item — so
-    undercounting to just the "payload" attribute's value (as an earlier
-    version of this function did) missed the "cacheKey"/"computedAt"
-    attributes entirely (both their names and values) and the "payload"
-    attribute's own name; omitting "ttlAt" from this count entirely, the
-    same way, would repeat that exact class of bug the moment that field was
-    added. All string attribute values are encoded UTF-8 before measuring,
-    since that's the actual wire encoding DynamoDB bills against — a
-    non-ASCII character (e.g. a Japanese channel name inside payload) can be
-    2-4 bytes in UTF-8 even though it is one Python character (one code
-    point) in `len(payload_json)`. DynamoDB bills a Number attribute's value
-    by the byte length of its decimal digit-string representation (AWS
-    docs), not Python's own int byte width.
-    """
-    payload_json = json.dumps(payload)
-    string_attributes = {"cacheKey": cache_key, "payload": payload_json, "computedAt": computed_at}
-    string_bytes = sum(len(name.encode("utf-8")) + len(value.encode("utf-8")) for name, value in string_attributes.items())
-    ttl_at = dynamodb_store._compute_ttl_at(computed_at)
-    ttl_bytes = len("ttlAt".encode("utf-8")) + len(str(ttl_at).encode("utf-8"))
-    return string_bytes + ttl_bytes
-
-
-def _paced_put(
-    put_cached_trending: Callable[..., None],
-    wru_budget: "WruBudget",
-    key: str,
-    payload: dict,
-    *,
-    computed_at: str,
-    archive_put: Callable[..., None] | None = None,
-) -> None:
-    """Charge wru_budget for this exact item's real DynamoDB size, then write it.
-
-    See _dynamodb_item_bytes for why this measures the whole item (cacheKey
-    + payload + computedAt + ttlAt attribute names and values), not just the
-    payload's own JSON size, so the WRU charged here matches what DynamoDB
-    will actually bill for this item.
-
-    AWS Cost Recovery (third pass, Scope F): `archive_put`, when given,
-    durably mirrors this same item into the S3 trending-cache archive right
-    after the DynamoDB write -- see stores.trending_cache_archive_store's own
-    docstring for why YobiTrendingCache's new bounded TTL needs this at all.
-    Defaults to None so every existing caller/test that doesn't care about
-    archiving is unaffected.
-    """
-    item_bytes = _dynamodb_item_bytes(cache_key=key, payload=payload, computed_at=computed_at)
-    wru_budget.charge(item_bytes)
-    put_cached_trending(key, payload, computed_at=computed_at)
-    if archive_put is not None:
-        archive_put(key, payload, computed_at=computed_at)
-
-
-def persist_rankings(
-    rankings,
-    *,
-    report_date: date,
-    creators: dict[str, Any],
-    get_video: Callable[[str], Any],
-    put_cached_trending: Callable[..., None],
-    computed_at: str,
-    wru_budget: WruBudget,
-    archive_put: Callable[..., None] | None = None,
-) -> int:
-    """Persist only bounded final results, enriched from master data.
-
-    `creators` (creatorId -> Creator) is supplied by the caller rather than
-    loaded here — lambda_handler loads Creator Master exactly once per
-    invocation and reuses that same result for this enrichment, rather than
-    each call site loading it separately.
-
-    `wru_budget` paces every write this invocation makes against
-    YobiTrendingCache's one table-wide throughput cap — see WruBudget's own
-    docstring. R8B (AWS Cost Recovery): this is now the only writer
-    lambda_handler calls per invocation (persist_creator_summaries, the
-    other former caller sharing this same budget, was removed).
-    """
-    video_ids = {
-        entry.video_id
-        for periods in rankings.values()
-        for entries in periods.values()
-        for entry in entries
-    }
-    videos = {video_id: get_video(video_id) for video_id in video_ids}
-    writes = 0
-    for (scope_type, scope_value), periods in rankings.items():
-        for period, entries in periods.items():
-            payload = {
-                "timeZone": _TIME_ZONE,
-                "reportDate": report_date.isoformat(),
-                "comparisonDate": _comparison_date(report_date, period).isoformat(),
-                "period": period,
-                "rankingType": _RANKING_TYPE[period],
-                "lastUpdatedAt": min(
-                    (entry.observed_at for entry in entries), default=None
-                ),
-                **_scope_field(scope_type, scope_value),
-                "results": [
-                    _cache_row(entry, videos.get(entry.video_id), creators)
-                    for entry in entries
-                ],
-            }
-            key = trending_cache_key(
-                scope_type=scope_type,
-                scope_value=scope_value,
-                period=period,
-                ranking_type=_RANKING_TYPE[period],
-                report_date=report_date,
-            )
-            _paced_put(put_cached_trending, wru_budget, key, payload, computed_at=computed_at, archive_put=archive_put)
-            writes += 1
-    return writes
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Merge all successful shard partials after the Step Functions Map.
+    """Renew the execution lock and build/persist this report date's video
+    ranking.
 
     Also doubles as terraform/history.tf's `MarkExecutionComplete`
     (`markCompleteForDate`) and `MarkExecutionFailed` (`markFailedForDate`)
     states — see `_mark_execution_complete`/`_mark_execution_failed` for why
     those are handled by this same Lambda rather than new ones.
-
-    Reads each shard exactly once (one S3 GetObject via read) and folds it
-    straight into IncrementalRankingMerger's bounded running accumulator, so
-    this never holds all HISTORY_SHARD_COUNT shards' own (potentially
-    several-MB each) payloads in memory simultaneously — only whichever one
-    shard's payload is currently being folded in, plus the bounded merge
-    state.
-
-    load_creators() is called exactly once here (a bundled local JSON file
-    read, not a DynamoDB table — creator_master.py's own module docstring)
-    and the same result is reused for persist_rankings' own scope-ranking
-    cache row enrichment — persist_rankings never loads Creator Master
-    itself. So this whole invocation costs exactly one local-file Creator
-    Master read total (not one per call site).
-
-    R8B (AWS Cost Recovery): this used to also call persist_creator_summaries
-    with the merger's own creator_partials() — removed along with
-    creatorSummary:*, its last production reader (comparison_api.py) gone.
-    persist_rankings is the only remaining WruBudget-paced writer this
-    invocation makes; WruBudget is still constructed the same way in case a
-    future second writer needs to share it again.
 
     `reportDate`/`ownerToken` arrive explicitly in the event (forwarded from
     AcquireExecutionLock's own output via ReduceRankings' Parameters) —
@@ -258,8 +54,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     if "markFailedForDate" in event:
         return _mark_execution_failed(event)
 
-    from stores.dynamodb_store import get_video, put_cached_trending
-
     now = datetime.now(ZoneInfo(_TIME_ZONE))
     report_date = date.fromisoformat(event["reportDate"])
     owner_token = event["ownerToken"]
@@ -270,36 +64,90 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         lease_seconds=execution_lock.REDUCER_RENEW_LEASE_SECONDS,
         phase=execution_lock.PHASE_REDUCING,
     )
-    store = S3PartialRankingStore(os.environ["YOBI_HISTORY_BUCKET"])
-    merger = IncrementalRankingMerger()
-    for shard in range(HISTORY_SHARD_COUNT):
-        merger.add_shard(store.read(report_date, shard))
-    rankings = merger.scope_rankings()
+    _build_and_persist_video_rankings(report_date=report_date, generated_at=now.isoformat())
+    return {"date": report_date.isoformat(), "reportDate": report_date.isoformat(), "ownerToken": owner_token}
 
-    all_creators = load_creators()
-    creators_by_id = {creator.creator_id: creator for creator in all_creators}
 
-    # AWS Cost Recovery (third pass, Scope F): YobiTrendingCache is now a
-    # bounded TTL cache (dynamodb_store.TRENDING_CACHE_TTL_DAYS), so every
-    # write this invocation makes is also durably mirrored to S3 --
-    # archive_store is None only when YOBI_HISTORY_BUCKET isn't configured
-    # (never true for this real Lambda; guarded anyway for any test/local
-    # caller).
-    archive_store = S3TrendingCacheArchiveStore.from_environment()
-    archive_put = archive_store.put if archive_store is not None else None
+def _build_and_persist_video_rankings(*, report_date: date, generated_at: str) -> None:
+    """Video-ranking Phase C: build and persist one own-video ranking result
+    per creator with at least one video observed today.
 
-    wru_budget = WruBudget(target_wru_per_second=TARGET_WRU_PER_SECOND)
-    writes = persist_rankings(
-        rankings,
-        report_date=report_date,
-        creators=creators_by_id,
-        get_video=get_video,
-        put_cached_trending=put_cached_trending,
-        computed_at=now.isoformat(),
-        wru_budget=wru_budget,
-        archive_put=archive_put,
-    )
-    return {"date": report_date.isoformat(), "reportDate": report_date.isoformat(), "ownerToken": owner_token, "cacheWrites": writes}
+    Reads raw per-video history (all HISTORY_SHARD_COUNT shards, today plus
+    the exact D-1/D-7/D-30 anchors) and the full tracking manifest (topic,
+    discovered_at) fresh, here.
+
+    A failure anywhere here is deliberately never allowed to propagate: this
+    is a separate, additive concern from the execution-lock renewal this
+    Lambda also performs, the same reasoning history_worker_handler.
+    _collect_subscriber_snapshot_if_configured already applies to R3/R4 --
+    a video-ranking-only problem must never fail the ReduceRankings task
+    (which would also abort MarkExecutionComplete).
+    """
+    try:
+        video_ranking_store = S3VideoRankingStore.from_environment()
+        if video_ranking_store is None:
+            return
+        bucket_name = os.environ["YOBI_HISTORY_BUCKET"]
+        history_store = S3HistoryStore(bucket_name)
+        manifest_store = S3TrackingManifestStore(bucket_name)
+
+        today_rows: list[HistoryRow] = []
+        anchor_rows_by_days: dict[int, list[HistoryRow]] = {days: [] for days in EXACT_ANCHOR_DAYS}
+        active_entries = []
+        for shard in range(HISTORY_SHARD_COUNT):
+            today_rows.extend(history_store.read_daily_shard(report_date, shard))
+            for days in EXACT_ANCHOR_DAYS:
+                anchor_rows_by_days[days].extend(
+                    history_store.read_daily_shard(report_date - timedelta(days=days), shard)
+                )
+            active_entries.extend(entry for entry in manifest_store.read_shard(shard) if entry.active)
+
+        topic_by_video = {
+            entry.video_id: (entry.topic if entry.topic in TOPIC_IDS else OTHER_TOPIC) for entry in active_entries
+        }
+        # Metadata propagation (video-ranking, Phase C correction): title/
+        # thumbnailUrl/publishedAt/discoveredAt are read straight from the
+        # tracking manifest's own already-persisted values (ultimately Video
+        # Master, populated at discovery time from the YouTube response
+        # already paid for) -- never a per-video DynamoDB read here.
+        title_by_video = {entry.video_id: entry.title for entry in active_entries if entry.title is not None}
+        thumbnail_by_video = {
+            entry.video_id: entry.thumbnail_url for entry in active_entries if entry.thumbnail_url is not None
+        }
+        published_at_by_video = {
+            entry.video_id: entry.published_at for entry in active_entries if entry.published_at is not None
+        }
+        discovered_at_by_video = {
+            entry.video_id: entry.discovered_at for entry in active_entries if entry.discovered_at is not None
+        }
+        discovered_date_by_video = discovered_dates_by_video(active_entries)
+
+        rows_by_creator: dict[str, list[HistoryRow]] = {}
+        for row in today_rows:
+            rows_by_creator.setdefault(row.creator_id, []).append(row)
+
+        for creator_id, creator_today_rows in rows_by_creator.items():
+            catalog_rows = build_creator_video_catalog(
+                creator_today_rows,
+                anchor_rows_by_days,
+                creator_id=creator_id,
+                report_date=report_date,
+                topic_by_video=topic_by_video,
+                discovered_date_by_video=discovered_date_by_video,
+                title_by_video=title_by_video,
+                thumbnail_by_video=thumbnail_by_video,
+                published_at_by_video=published_at_by_video,
+                discovered_at_by_video=discovered_at_by_video,
+            )
+            result = build_video_ranking_result(
+                report_date=report_date, creator_id=creator_id, generated_at=generated_at, rows=catalog_rows
+            )
+            if result is not None:
+                video_ranking_store.write_result(report_date, creator_id, result)
+    except VideoRankingStoreError as exc:
+        print(f"Warning: video ranking S3 write failed for reportDate={report_date.isoformat()}: {exc}")
+    except Exception as exc:  # noqa: BLE001 -- deliberate: see this function's own docstring
+        print(f"Warning: video ranking build/persist failed unexpectedly for reportDate={report_date.isoformat()}: {exc}")
 
 
 def _mark_execution_complete(event: dict[str, Any]) -> dict[str, Any]:
@@ -340,53 +188,3 @@ def _mark_execution_failed(event: dict[str, Any]) -> dict[str, Any]:
         error_message=str(error_message),
     )
     return {"date": report_date.isoformat(), "status": execution_lock.STATUS_FAILED}
-
-
-def _comparison_date(report_date: date, period: str) -> date:
-    from datetime import timedelta
-
-    return report_date - timedelta(days=int(period[:-1]))
-
-
-def _scope_field(scope_type: str, scope_value: str) -> dict[str, str]:
-    """Map a scope key to its own response payload field.
-
-    Keyed by scope_type exactly as history_ranking._scopes_for produces it
-    ("org", not "organization" -- V5.12) -- the payload's own field name
-    stays the descriptive "organization" regardless, since that's what an
-    API consumer reads, unrelated to the cache key namespace.
-    """
-    return {
-        "creator": {"creatorId": scope_value},
-        "org": {"organization": scope_value},
-        "branch": {"branch": scope_value},
-        "global": {"scope": "global"},
-    }[scope_type]
-
-
-def _cache_row(entry: RankedGrowth, video: Any, creators: dict[str, Any]) -> dict[str, Any]:
-    creator = creators.get(entry.creator_id)
-    growth_percent = (
-        entry.gain / entry.anchor_view_count * 100
-        if entry.anchor_view_count > 0
-        else None
-    )
-    return {
-        "rank": entry.rank,
-        "videoId": entry.video_id,
-        "value": entry.gain,
-        "title": video.title if video else None,
-        "creatorId": entry.creator_id,
-        "channelName": creator.display_name if creator else None,
-        "organization": creator.organization if creator else None,
-        "branch": creator.branch if creator else None,
-        "groupKey": creator.group_key if creator else None,
-        "channelType": creator.channel_type if creator else None,
-        "lifecycleStage": creator.lifecycle_stage if creator else None,
-        "themeColor": creator.theme_color if creator else None,
-        "latestViewCount": entry.view_count,
-        "lastUpdatedAt": entry.observed_at,
-        "growth": entry.gain,
-        "growthPercent": growth_percent,
-        "status": "ok",
-    }

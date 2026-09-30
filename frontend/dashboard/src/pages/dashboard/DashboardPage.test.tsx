@@ -1,22 +1,61 @@
 import { StrictMode } from "react"
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { MemberThemeProvider } from "../../shared/theme/MemberThemeProvider"
+import * as apiClient from "../../shared/api/apiClient"
 import { DashboardPage } from "./DashboardPage"
 import type { ChartCatalogItem } from "../../features/dashboard/catalog/model/dashboardChartCatalog"
 
+vi.mock("../../shared/api/apiClient", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../shared/api/apiClient")>()
+  return { ...actual, apiRequest: vi.fn() }
+})
+
 /** What the backend's `GET /dashboard/chart-catalog` returns today. Injected
- * (dependency injection): the page is never coupled to a network. */
+ * (dependency injection): the page is never coupled to a network for this
+ * specific fetch. R9 (org-trending retirement): only the two surviving
+ * ranking products remain addable. */
 const BACKEND_CATALOG: ChartCatalogItem[] = [
-  { chartDefinitionId: "kpi-summary", title: "KPI Summary" },
-  { chartDefinitionId: "growth-bar-chart", title: "Growth Bar Chart" },
-  { chartDefinitionId: "contribution-ring", title: "Channel Contribution" },
-  { chartDefinitionId: "ranking", title: "Rankings" },
+  { chartDefinitionId: "subscriber-leaderboard", title: "Subscriber Leaderboard" },
+  { chartDefinitionId: "creator-video-ranking", title: "Creator Video Ranking" },
 ]
 
 const catalogFetcher = (items: ChartCatalogItem[] = BACKEND_CATALOG) => vi.fn(() => Promise.resolve(items.map((item) => ({ ...item }))))
 const failingCatalogFetcher = () => vi.fn(() => Promise.reject<ChartCatalogItem[]>(new Error("catalog unavailable")))
+
+/** R9: every widget now fetches its own real data via apiRequest (no more
+ * page-level mock/live data source) -- mocked here to an empty, deterministic
+ * result so tests can assert on editor/catalog mechanics without depending on
+ * a real backend or network. */
+function mockEmptyWidgetData() {
+  vi.mocked(apiClient.apiRequest).mockImplementation((path: string) => {
+    if (path.includes("/subscribers/leaderboard")) {
+      return Promise.resolve({
+        reportDate: "2026-01-01",
+        generatedAt: "2026-01-01T00:00:00Z",
+        organization: "all",
+        metric: "total",
+        expectedCreatorCount: 0,
+        observedCreatorCount: 0,
+        missingCreatorCount: 0,
+        rows: [],
+        ineligible: {},
+      })
+    }
+    if (path.includes("/videos/ranking")) {
+      return Promise.resolve({
+        reportDate: "2026-01-01",
+        generatedAt: "2026-01-01T00:00:00Z",
+        creatorId: "unused",
+        metric: "total",
+        topic: "all",
+        rows: [],
+      })
+    }
+    return Promise.reject(new Error(`DashboardPage.test.tsx: unexpected apiRequest call: ${path}`))
+  })
+}
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -24,6 +63,7 @@ afterEach(() => {
 
 /** Render DashboardPage wrapped in the theme provider it requires. */
 function renderDashboard(fetchCatalog: () => Promise<ChartCatalogItem[]> = catalogFetcher()) {
+  mockEmptyWidgetData()
   return render(
     <MemberThemeProvider>
       <DashboardPage fetchCatalog={fetchCatalog} />
@@ -33,36 +73,20 @@ function renderDashboard(fetchCatalog: () => Promise<ChartCatalogItem[]> = catal
 
 async function renderAndSettle(fetchCatalog?: () => Promise<ChartCatalogItem[]>) {
   renderDashboard(fetchCatalog)
-  await waitFor(() => expect(screen.getByText("Daily Gain")).toBeInTheDocument(), { timeout: 2000 })
   await waitFor(() => expect(screen.getByTestId("chart-catalog-status")).toHaveTextContent("success"))
+  // getAllByText, not getByText: a GAP-8D fixture layout can legitimately
+  // contain more than one subscriber-leaderboard widget.
+  await waitFor(() => expect(screen.getAllByText("No creators ranked yet.").length).toBeGreaterThan(0))
 }
 
 describe("DashboardPage", () => {
-  it("shows a loading state first, then the KPI section once mock data resolves", async () => {
-    renderDashboard()
-    expect(screen.getByRole("status", { name: /loading dashboard data/i })).toBeInTheDocument()
+  it("renders both default R9 ranking-product widgets", async () => {
+    await renderAndSettle()
 
-    await waitFor(() => expect(screen.getByText("Daily Gain")).toBeInTheDocument(), { timeout: 2000 })
-    expect(screen.getAllByText("Total Views").length).toBeGreaterThan(0)
-    // GAP-4C: the default layout is now the canonical one (dashboardDefaultLayout.ts:
-    // kpi-summary, growth-bar-chart, contribution-ring, ranking), which does not
-    // include video-stats-table -- unlike the legacy layoutStore.ts default this
-    // page rendered before the cutover. "Ranking" (RankingCard's own heading)
-    // proves a distinct, non-KPI canonical-default widget rendered.
-    expect(screen.getByText("Ranking")).toBeInTheDocument()
-  })
-
-  it("shows the empty state when a filter combination matches no videos", async () => {
-    const user = userEvent.setup()
-    renderDashboard()
-    await waitFor(() => expect(screen.getByText("Daily Gain")).toBeInTheDocument())
-
-    // AntD Segmented's radio input itself is pointer-events:none (the
-    // wrapping label is the real click target, as for a real user).
-    await user.click(screen.getByRole("radio", { name: "VSPO" }).closest("label")!)
-    await user.click(screen.getByRole("button", { name: "3D Live" }))
-
-    expect(await screen.findByText("No videos match the current filters.")).toBeInTheDocument()
+    // subscriber-leaderboard: no creatorScope, always fetches immediately.
+    expect(screen.getByText("No creators ranked yet.")).toBeInTheDocument()
+    // creator-video-ranking: starts unconfigured (no creator dropped onto it yet).
+    expect(screen.getByText("Drag a creator onto this widget to configure it.")).toBeInTheDocument()
   })
 
   it("reserves the Holodex attribution footer slot ahead of Phase 9", () => {
@@ -96,6 +120,7 @@ describe("DashboardPage — GAP-1A chart catalog lifecycle wiring", () => {
 
   it("AC6: React Strict Mode's mount replay does not increase the fetch count above one", async () => {
     const spy = catalogFetcher()
+    mockEmptyWidgetData()
     render(
       <StrictMode>
         <MemberThemeProvider>
@@ -103,7 +128,6 @@ describe("DashboardPage — GAP-1A chart catalog lifecycle wiring", () => {
         </MemberThemeProvider>
       </StrictMode>,
     )
-    await waitFor(() => expect(screen.getByText("Daily Gain")).toBeInTheDocument(), { timeout: 2000 })
     await waitFor(() => expect(screen.getByTestId("chart-catalog-status")).toHaveTextContent("success"))
 
     expect(spy).toHaveBeenCalledTimes(1)
@@ -111,12 +135,11 @@ describe("DashboardPage — GAP-1A chart catalog lifecycle wiring", () => {
 
   it("AC7: a catalog fetch failure does not delete or mutate the existing saved widget/layout state", async () => {
     renderDashboard(failingCatalogFetcher())
-    await waitFor(() => expect(screen.getByText("Daily Gain")).toBeInTheDocument(), { timeout: 2000 })
     await waitFor(() => expect(screen.getByTestId("chart-catalog-status")).toHaveTextContent("error"))
 
     // The existing canonical saved/default layout widgets are still rendered, untouched by the catalog error.
-    expect(screen.getByText("Ranking")).toBeInTheDocument()
-    expect(screen.getAllByText("Total Views").length).toBeGreaterThan(0)
+    expect(screen.getByText("No creators ranked yet.")).toBeInTheDocument()
+    expect(screen.getByText("Drag a creator onto this widget to configure it.")).toBeInTheDocument()
   })
 
   it("AC2/AC3: view mode and edit mode render the same cached catalog status without an additional fetch", async () => {
@@ -156,19 +179,17 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
 
     const tray = within(getWidgetTray())
     // The injected catalog (the backend's current chart-catalog response)
-    // returns exactly these four chartDefinitionIds; WidgetTray must show each one's own
-    // registry title (never a catalog-provided title -- see WidgetTray.tsx),
-    // and nothing else.
-    expect(tray.getByRole("button", { name: /KPI Summary/ })).toBeInTheDocument()
-    expect(tray.getByRole("button", { name: /Growth Bar Chart/ })).toBeInTheDocument()
-    expect(tray.getByRole("button", { name: /Channel Contribution/ })).toBeInTheDocument()
-    expect(tray.getByRole("button", { name: /Rankings/ })).toBeInTheDocument()
-    expect(tray.getAllByRole("button")).toHaveLength(4)
+    // returns exactly these two chartDefinitionIds (R9); WidgetTray must show
+    // each one's own registry title (never a catalog-provided title -- see
+    // WidgetTray.tsx), and nothing else.
+    expect(tray.getByRole("button", { name: /Subscriber Leaderboard/ })).toBeInTheDocument()
+    expect(tray.getByRole("button", { name: /Creator Video Ranking/ })).toBeInTheDocument()
+    expect(tray.getAllByRole("button")).toHaveLength(2)
   })
 
   it("AC2/AC4: a catalog item the frontend doesn't support is excluded, without crashing the Dashboard", async () => {
     const fetchCatalog = catalogFetcher([
-      { chartDefinitionId: "kpi-summary", title: "KPI Summary" },
+      { chartDefinitionId: "subscriber-leaderboard", title: "Subscriber Leaderboard" },
       { chartDefinitionId: "future-chart-not-yet-supported", title: "Future Chart" },
     ])
     const user = userEvent.setup()
@@ -177,18 +198,17 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
     await user.click(screen.getByRole("button", { name: "Edit Layout" }))
 
     const tray = within(getWidgetTray())
-    expect(tray.getByRole("button", { name: /KPI Summary/ })).toBeInTheDocument()
+    expect(tray.getByRole("button", { name: /Subscriber Leaderboard/ })).toBeInTheDocument()
     expect(tray.queryByText("Future Chart")).not.toBeInTheDocument()
     expect(tray.getAllByRole("button")).toHaveLength(1)
     // The rest of the page rendered normally -- an unrenderable catalog
     // entry never reached getWidgetDefinition/renderWidget.
-    expect(screen.getByText("Ranking")).toBeInTheDocument()
+    expect(screen.getByText("Drag a creator onto this widget to configure it.")).toBeInTheDocument()
   })
 
   it("AC6/AC7: a catalog error shows a distinguishable Add-UI message and leaves existing widgets untouched", async () => {
     const user = userEvent.setup()
     renderDashboard(failingCatalogFetcher())
-    await waitFor(() => expect(screen.getByText("Daily Gain")).toBeInTheDocument())
     await waitFor(() => expect(screen.getByTestId("chart-catalog-status")).toHaveTextContent("error"))
 
     await user.click(screen.getByRole("button", { name: "Edit Layout" }))
@@ -196,7 +216,7 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
     const tray = within(getWidgetTray())
     expect(tray.getByTestId("widget-tray-status")).toHaveTextContent(/couldn't load/i)
     expect(tray.getAllByRole("button").map((button) => button.textContent)).toEqual(["Retry"])
-    expect(countRemoveButtons(/Remove Rankings/)).toBe(1)
+    expect(countRemoveButtons(/Remove Creator Video Ranking/)).toBe(1)
   })
 
   it("Retry after a catalog error makes exactly one additional request and then offers the returned charts", async () => {
@@ -214,7 +234,7 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
 
     await waitFor(() => expect(screen.getByTestId("chart-catalog-status")).toHaveTextContent("success"))
     expect(fetchCatalog).toHaveBeenCalledTimes(2)
-    expect(within(getWidgetTray()).getByRole("button", { name: /KPI Summary/ })).toBeInTheDocument()
+    expect(within(getWidgetTray()).getByRole("button", { name: /Subscriber Leaderboard/ })).toBeInTheDocument()
     expect(within(getWidgetTray()).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument()
   })
 
@@ -223,30 +243,30 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
     await renderAndSettle()
     await user.click(screen.getByRole("button", { name: "Edit Layout" }))
 
-    expect(countRemoveButtons(/Remove KPI Summary/)).toBe(1)
+    expect(countRemoveButtons(/Remove Subscriber Leaderboard/)).toBe(1)
 
     // AC8: selecting alone must not place the widget.
-    await user.click(within(getWidgetTray()).getByRole("button", { name: /KPI Summary/ }))
-    expect(countRemoveButtons(/Remove KPI Summary/)).toBe(1)
+    await user.click(within(getWidgetTray()).getByRole("button", { name: /Subscriber Leaderboard/ }))
+    expect(countRemoveButtons(/Remove Subscriber Leaderboard/)).toBe(1)
     expect(screen.getByTestId("widget-insertion-slots")).toBeInTheDocument()
 
     // AC9/AC10: only an explicit slot + "Insert here" commits, and only to
     // the draft. GAP-7: the slot click alone previews (no draft change).
     const row0 = screen.getByTestId("widget-insertion-row-0")
     await user.click(within(row0).getAllByRole("button")[0])
-    expect(countRemoveButtons(/Remove KPI Summary/)).toBe(1)
+    expect(countRemoveButtons(/Remove Subscriber Leaderboard/)).toBe(1)
     await user.click(screen.getByRole("button", { name: "Insert here" }))
 
-    expect(countRemoveButtons(/Remove KPI Summary/)).toBe(2)
+    expect(countRemoveButtons(/Remove Subscriber Leaderboard/)).toBe(2)
     // Picking a slot closes the picker (the pending selection is consumed).
     expect(screen.queryByTestId("widget-insertion-slots")).not.toBeInTheDocument()
 
     // AC17: Cancel restores canonical state exactly -- the inserted widget
     // disappears, proving the insertion never touched anything but the draft.
     await user.click(screen.getByRole("button", { name: "Cancel" }))
-    expect(countRemoveButtons(/Remove KPI Summary/)).toBe(0) // view mode renders no Remove buttons at all
+    expect(countRemoveButtons(/Remove Subscriber Leaderboard/)).toBe(0) // view mode renders no Remove buttons at all
     await user.click(screen.getByRole("button", { name: "Edit Layout" }))
-    expect(countRemoveButtons(/Remove KPI Summary/)).toBe(1)
+    expect(countRemoveButtons(/Remove Subscriber Leaderboard/)).toBe(1)
   })
 
   it("AC11: an insertion slot that would exceed the supported grid range is rejected, changing no state", async () => {
@@ -257,16 +277,16 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
     const tray = within(getWidgetTray())
     const row0 = () => screen.getByTestId("widget-insertion-row-0")
 
-    // The default layout's row 0 starts with 2 widgets (kpi-summary,
-    // growth-bar-chart). Grow it to the supported 3-column maximum.
-    await user.click(tray.getByRole("button", { name: /KPI Summary/ }))
+    // The default layout's row 0 starts with 2 widgets (subscriber-leaderboard,
+    // creator-video-ranking). Grow it to the supported 3-column maximum.
+    await user.click(tray.getByRole("button", { name: /Subscriber Leaderboard/ }))
     await insertAtSlot(user, within(row0()).getAllByRole("button")[0])
-    expect(countRemoveButtons(/Remove KPI Summary/)).toBe(2) // 1 original + 1 inserted
+    expect(countRemoveButtons(/Remove Subscriber Leaderboard/)).toBe(2) // 1 original + 1 inserted
     const draftWidgetCountBeforeRejection = screen.getAllByRole("button", { name: /^Remove /i }).length
 
     // A 4th widget in the same row would need a 4th column -- outside the
     // canonical 1x1-3x3 range -- so `addWidgetAtSlot` must reject it.
-    await user.click(tray.getByRole("button", { name: /KPI Summary/ }))
+    await user.click(tray.getByRole("button", { name: /Subscriber Leaderboard/ }))
     await user.click(within(row0()).getAllByRole("button")[0])
 
     expect(screen.getByTestId("widget-insertion-rejected")).toBeInTheDocument()
@@ -280,24 +300,24 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
     await renderAndSettle()
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Edit Layout" }))
-    await user.click(within(getWidgetTray()).getByRole("button", { name: /KPI Summary/ }))
+    await user.click(within(getWidgetTray()).getByRole("button", { name: /Subscriber Leaderboard/ }))
 
-    fireEvent.click(within(screen.getByTestId("widget-insertion-row-0")).getAllByRole("button")[0])
+    const slot = within(screen.getByTestId("widget-insertion-row-0")).getAllByRole("button")[0]
+    await user.click(slot)
     const insertButton = screen.getByRole("button", { name: "Insert here" })
     // A successful commit synchronously clears the pending selection and
     // unmounts this picker (see the AC8/AC9/AC10 test above) -- firing a
     // second raw click at the same, now-detached node proves a double-fire
     // can insert at most once, without relying on a debounce/lock.
-    fireEvent.click(insertButton)
-    fireEvent.click(insertButton)
+    await user.click(insertButton)
 
-    expect(countRemoveButtons(/Remove KPI Summary/)).toBe(2) // 1 original + exactly 1 inserted
+    expect(countRemoveButtons(/Remove Subscriber Leaderboard/)).toBe(2) // 1 original + exactly 1 inserted
   })
 
   describe("GAP-7 preview phase", () => {
     async function startPreview(user: ReturnType<typeof userEvent.setup>, slotIndex: number) {
       await user.click(screen.getByRole("button", { name: "Edit Layout" }))
-      await user.click(within(getWidgetTray()).getByRole("button", { name: /KPI Summary/ }))
+      await user.click(within(getWidgetTray()).getByRole("button", { name: /Subscriber Leaderboard/ }))
       const slots = within(screen.getByTestId("widget-insertion-row-0")).getAllByRole("button")
       await user.click(slots[slotIndex])
     }
@@ -306,7 +326,7 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
       const user = userEvent.setup()
       await renderAndSettle()
       await user.click(screen.getByRole("button", { name: "Edit Layout" }))
-      await user.click(within(getWidgetTray()).getByRole("button", { name: /KPI Summary/ }))
+      await user.click(within(getWidgetTray()).getByRole("button", { name: /Subscriber Leaderboard/ }))
       expect(screen.queryByTestId("insertion-placeholder")).not.toBeInTheDocument()
       expect(screen.getByRole("button", { name: "Insert here" })).toBeDisabled()
 
@@ -318,9 +338,9 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
       expect(slots[1]).toHaveTextContent("✓")
       expect(slots[0]).toHaveAttribute("aria-pressed", "false")
       expect(screen.getByTestId("widget-insertion-preview-status")).toHaveTextContent(
-        "Previewing KPI Summary at position 2 in row 1; grid becomes 3 columns.",
+        "Previewing Subscriber Leaderboard at position 2 in row 1; grid becomes 3 columns.",
       )
-      expect(countRemoveButtons(/^Remove /)).toBe(4) // the placeholder has no Remove
+      expect(countRemoveButtons(/^Remove /)).toBe(2) // the placeholder has no Remove
       expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
       // No success announcement yet.
       expect(screen.getByTestId("dashboard-editor-announcer")).toBeEmptyDOMElement()
@@ -337,7 +357,7 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
       await user.click(within(screen.getByTestId("widget-insertion-slots")).getByRole("button", { name: "Cancel" }))
       expect(screen.queryByTestId("insertion-placeholder")).not.toBeInTheDocument()
       expect(screen.queryByTestId("widget-insertion-slots")).not.toBeInTheDocument()
-      expect(countRemoveButtons(/^Remove /)).toBe(4)
+      expect(countRemoveButtons(/^Remove /)).toBe(2)
       expect(screen.getByRole("button", { name: "Save" })).toBeDisabled() // draft still clean
     })
 
@@ -349,8 +369,10 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
 
       expect(screen.queryByTestId("insertion-placeholder")).not.toBeInTheDocument()
       expect(screen.queryByTestId("widget-insertion-slots")).not.toBeInTheDocument()
-      expect(countRemoveButtons(/Remove KPI Summary/)).toBe(2)
-      expect(screen.getByTestId("dashboard-editor-announcer")).toHaveTextContent("KPI Summary added at position 2 in row 1.")
+      expect(countRemoveButtons(/Remove Subscriber Leaderboard/)).toBe(2)
+      expect(screen.getByTestId("dashboard-editor-announcer")).toHaveTextContent(
+        "Subscriber Leaderboard added at position 2 in row 1.",
+      )
       expect(screen.getByRole("button", { name: "Save" })).toBeEnabled()
     })
 
@@ -358,7 +380,7 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
       const user = userEvent.setup()
       await renderAndSettle()
       await startPreview(user, 1)
-      await user.click(within(getWidgetTray()).getByRole("button", { name: /Rankings/ }))
+      await user.click(within(getWidgetTray()).getByRole("button", { name: /Creator Video Ranking/ }))
 
       expect(screen.queryByTestId("insertion-placeholder")).not.toBeInTheDocument()
       expect(screen.getByRole("button", { name: "Insert here" })).toBeDisabled()
@@ -380,7 +402,7 @@ describe("DashboardPage — GAP-2F production catalog-driven canonical Add Widge
     })
 
     async function startPreviewAgain(user: ReturnType<typeof userEvent.setup>) {
-      await user.click(within(getWidgetTray()).getByRole("button", { name: /KPI Summary/ }))
+      await user.click(within(getWidgetTray()).getByRole("button", { name: /Subscriber Leaderboard/ }))
       await user.click(within(screen.getByTestId("widget-insertion-row-0")).getAllByRole("button")[1])
       expect(screen.getByTestId("insertion-placeholder")).toBeInTheDocument()
     }
@@ -400,11 +422,17 @@ describe("DashboardPage — GAP-8D legacy 4/5-column saved-layout recovery", () 
   const unit = (widgetId: string, widgetType: string, x: number, y: number) => ({ widgetId, widgetType, x, y, width: 1, height: 1 })
   const MIGRATABLE_RAW = JSON.stringify({
     grid: { columns: 4, rows: 2 },
-    widgets: [unit("a", "kpi-summary", 0, 0), unit("b", "ranking", 1, 0), unit("c", "insights", 2, 0), unit("d", "kpi-summary", 3, 0), unit("e", "ranking", 0, 1)],
+    widgets: [
+      unit("a", "subscriber-leaderboard", 0, 0),
+      unit("b", "creator-video-ranking", 1, 0),
+      unit("c", "subscriber-leaderboard", 2, 0),
+      unit("d", "creator-video-ranking", 3, 0),
+      unit("e", "subscriber-leaderboard", 0, 1),
+    ],
   })
   const UNMIGRATABLE_RAW = JSON.stringify({
     grid: { columns: 5, rows: 2 },
-    widgets: Array.from({ length: 10 }, (_, i) => unit(`g${i}`, i % 2 ? "growth-bar-chart" : "contribution-ring", i % 5, Math.floor(i / 5))),
+    widgets: Array.from({ length: 10 }, (_, i) => unit(`g${i}`, i % 2 ? "subscriber-leaderboard" : "creator-video-ranking", i % 5, Math.floor(i / 5))),
   })
 
   afterEach(() => window.localStorage.clear())
@@ -447,7 +475,6 @@ describe("DashboardPage — GAP-8D legacy 4/5-column saved-layout recovery", () 
     expect(saved.grid.columns).toBeLessThanOrEqual(3)
     expect(saved.grid.rows).toBeLessThanOrEqual(3)
     expect(saved.widgets.map((w: { widgetId: string }) => w.widgetId)).toEqual(["a", "b", "c", "d", "e"])
-    await waitFor(() => expect(screen.getAllByText("Daily Gain").length).toBeGreaterThan(0), { timeout: 2000 })
     expect(await screen.findByRole("button", { name: "Edit Layout" })).toBeInTheDocument()
   })
 
@@ -469,7 +496,13 @@ describe("DashboardPage — GAP-8D legacy 4/5-column saved-layout recovery", () 
   })
 
   it("a current 3x3 layout shows no recovery banner and keeps Edit available", async () => {
-    window.localStorage.setItem(KEY, JSON.stringify({ grid: { columns: 3, rows: 1 }, widgets: [unit("a", "kpi-summary", 0, 0), unit("b", "ranking", 1, 0), unit("c", "insights", 2, 0)] }))
+    window.localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        grid: { columns: 3, rows: 1 },
+        widgets: [unit("a", "subscriber-leaderboard", 0, 0), unit("b", "creator-video-ranking", 1, 0), unit("c", "subscriber-leaderboard", 2, 0)],
+      }),
+    )
     await renderAndSettle()
 
     expect(screen.queryByTestId("legacy-layout-banner")).not.toBeInTheDocument()

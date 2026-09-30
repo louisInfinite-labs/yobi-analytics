@@ -16,8 +16,8 @@ import type { CanonicalLayout } from "../model/dashboardLayout"
 const LAYOUT: CanonicalLayout = {
   grid: { columns: 2, rows: 2 },
   widgets: [
-    { widgetId: "a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 },
-    { widgetId: "b", widgetType: "ranking", x: 1, y: 0, width: 1, height: 1 },
+    { widgetId: "a", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+    { widgetId: "b", widgetType: "creator-video-ranking", x: 1, y: 0, width: 1, height: 1 },
   ],
 }
 
@@ -133,8 +133,8 @@ describe("DashboardCanonicalEditor — Restore Default (AC11, AC12)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit Layout" }))
     fireEvent.click(screen.getByRole("button", { name: "Restore Default" }))
 
-    // Draft became MT-03's fresh 2x2 default (four default widgets), still in edit mode.
-    expect(screen.getAllByTestId("canonical-widget-box")).toHaveLength(4)
+    // Draft became MT-03's fresh 2x2 default (two default widgets, R9), still in edit mode.
+    expect(screen.getAllByTestId("canonical-widget-box")).toHaveLength(2)
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument()
     expect(apiRequestSpy).not.toHaveBeenCalled()
 
@@ -183,7 +183,7 @@ describe("MT-09 — direct Save through the real production component (no existi
     expect(submitSave).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Edit Layout" })).toBeInTheDocument() // back to view mode
-    expect(screen.getAllByTestId("canonical-widget-box")).toHaveLength(4) // MT-03's default widget count
+    expect(screen.getAllByTestId("canonical-widget-box")).toHaveLength(2) // MT-03's default widget count (R9: two products)
   })
 
   // NOTE: the confirmation-triggering path (AC1: "a draft that changes
@@ -207,8 +207,8 @@ describe("MT-08 — insertion-slot preview (rendered against the real production
   const ROW: CanonicalLayout = {
     grid: { columns: 2, rows: 1 },
     widgets: [
-      { widgetId: "a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 },
-      { widgetId: "b", widgetType: "ranking", x: 1, y: 0, width: 1, height: 1 },
+      { widgetId: "a", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+      { widgetId: "b", widgetType: "creator-video-ranking", x: 1, y: 0, width: 1, height: 1 },
     ],
   }
 

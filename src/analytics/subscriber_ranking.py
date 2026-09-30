@@ -56,8 +56,7 @@ VALID_SUBSCRIBER_ORGANIZATIONS = frozenset({"vspo", "hololive"})
 
 @dataclass(frozen=True)
 class CreatorSubscriberDimensions:
-    """Small master-data projection needed to attach organization to a row --
-    mirrors history_ranking.CreatorDimensions' own shape, subscriber-scoped."""
+    """Small master-data projection needed to attach organization to a row."""
 
     organization: str | None = None
 
@@ -98,8 +97,7 @@ class SubscriberLeaderboards:
 
 
 def load_exact_anchor_subscriber_rows(store, *, report_date: date) -> dict[int, list[SubscriberRow]]:
-    """Read exactly D-1, D-7 and D-30's snapshots, never nearby dates --
-    mirrors history_ranking.load_exact_anchor_rows' own contract."""
+    """Read exactly D-1, D-7 and D-30's snapshots, never nearby dates."""
     return {
         days: store.read_daily_snapshot(report_date - timedelta(days=days))
         for days in SUBSCRIBER_EXACT_ANCHOR_DAYS

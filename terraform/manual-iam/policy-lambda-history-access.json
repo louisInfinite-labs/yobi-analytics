@@ -23,8 +23,7 @@
         "dynamodb:PutItem"
       ],
       "Resource": [
-        "arn:aws:dynamodb:ap-northeast-1:189461315571:table/YobiVideoMaster",
-        "arn:aws:dynamodb:ap-northeast-1:189461315571:table/YobiTrendingCache"
+        "arn:aws:dynamodb:ap-northeast-1:189461315571:table/YobiVideoMaster"
       ]
     },
     {

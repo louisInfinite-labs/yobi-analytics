@@ -8,8 +8,8 @@ const ROWS: InsertableRow[] = [
   {
     y: 0,
     widgets: [
-      { widgetId: "a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 },
-      { widgetId: "b", widgetType: "ranking", x: 1, y: 0, width: 1, height: 1 },
+      { widgetId: "a", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+      { widgetId: "b", widgetType: "creator-video-ranking", x: 1, y: 0, width: 1, height: 1 },
     ],
   },
 ]
@@ -34,7 +34,7 @@ function renderSlots(overrides: Partial<React.ComponentProps<typeof WidgetInsert
 describe("WidgetInsertionSlots (GAP-7)", () => {
   it("activating a slot reports the row, slot index and row number without committing", async () => {
     const props = renderSlots()
-    await userEvent.click(screen.getByRole("button", { name: "Insert KPI Summary after KPI Summary in row 1" }))
+    await userEvent.click(screen.getByRole("button", { name: "Insert KPI Summary after Subscriber Leaderboard in row 1" }))
 
     expect(props.onSelectSlot).toHaveBeenCalledWith(ROWS[0].widgets, 1, 1)
     expect(props.onInsert).not.toHaveBeenCalled()

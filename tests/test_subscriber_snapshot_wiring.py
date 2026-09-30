@@ -82,17 +82,7 @@ class _FakeCollectResult:
     skipped: dict = {}
     history_key = "history/daily/date=2026-09-29/shard=00.parquet"
     rows: list = []
-    rankings: dict = {}
-    creator_partials: dict = {}
     topic_by_video: dict = {}
-
-
-class _FakePartialStore:
-    def __init__(self, bucket_name):
-        self.bucket_name = bucket_name
-
-    def write(self, collection_date, shard, rankings, creator_partials, topic_partials=None):
-        return f"partial/{collection_date.isoformat()}/{shard}"
 
 
 def _wire_shard_branch(monkeypatch):
@@ -102,10 +92,8 @@ def _wire_shard_branch(monkeypatch):
     monkeypatch.setenv("YOBI_HISTORY_BUCKET", BUCKET)
     monkeypatch.setattr(history_worker_handler, "get_api_key", lambda: "key")
     monkeypatch.setattr(history_worker_handler, "build_youtube_client", lambda key: object())
-    monkeypatch.setattr(history_worker_handler, "load_creators", lambda: [])
     monkeypatch.setattr(history_worker_handler, "S3HistoryStore", lambda bucket_name: object())
     monkeypatch.setattr(history_worker_handler, "S3TrackingManifestStore", lambda bucket_name: object())
-    monkeypatch.setattr(history_worker_handler, "S3PartialRankingStore", _FakePartialStore)
     monkeypatch.setattr(history_worker_handler, "collect_history_shard", lambda **kwargs: _FakeCollectResult())
     monkeypatch.setattr(execution_lock, "renew_execution_lock", lambda **kwargs: None)
 
@@ -615,13 +603,15 @@ def test_r4_ranking_failure_does_not_abort_the_acquire_branch(monkeypatch, s3_bu
 
 
 def test_r4_no_new_dynamodb_table_or_gsi_or_trending_cache_write(monkeypatch, s3_bucket):
-    """R4's own explicit scope: S3 only. Confirm the real acquire-branch
-    invocation never touches dynamodb_store.put_cached_trending or any
-    DynamoDB call at all."""
+    """R4's own explicit scope: S3 only. R9 (org-trending retirement) removed
+    dynamodb_store.put_cached_trending/YobiTrendingCache entirely -- a
+    DynamoDB-backed trending-cache write is now structurally impossible, not
+    merely unexercised, for both the retired old-trending pipeline and this
+    still-live subscriber-ranking build."""
     from stores import dynamodb_store
 
-    calls = []
-    monkeypatch.setattr(dynamodb_store, "put_cached_trending", lambda *a, **k: calls.append(1))
+    assert not hasattr(dynamodb_store, "put_cached_trending")
+    assert not hasattr(dynamodb_store, "get_cached_trending")
     _wire_acquire_and_ranking(
         monkeypatch,
         creators=[_creator("creator_a", "UC_a")],
@@ -629,8 +619,6 @@ def test_r4_no_new_dynamodb_table_or_gsi_or_trending_cache_write(monkeypatch, s3
     )
 
     history_worker_handler.lambda_handler(_acquire_event(), None)
-
-    assert calls == []
 
 
 def test_r4_no_new_terraform_resource_was_introduced():

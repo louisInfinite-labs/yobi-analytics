@@ -5,13 +5,12 @@
 import type { Breakpoint } from "../../../../shared/responsive/model/breakpoint"
 import type { WidgetHeight } from "./dashboardLayout"
 
-export type WidgetTypeId =
-  | "kpi-summary"
-  | "growth-bar-chart"
-  | "contribution-ring"
-  | "ranking"
-  | "insights"
-  | "video-stats-table"
+// R9 (org-trending retirement): the old cross-creator/org-wide widget set
+// (kpi-summary/growth-bar-chart/contribution-ring/ranking/insights/
+// video-stats-table), fed entirely by GET /organizations/{organization}/
+// trending, is retired along with that endpoint. The Dashboard's only
+// products now are the two surviving ranking endpoints.
+export type WidgetTypeId = "subscriber-leaderboard" | "creator-video-ranking"
 
 export interface WidgetSizeLimits {
   minW: number
@@ -39,6 +38,12 @@ export interface WidgetDefinition<TSettings = Record<string, never>> {
   permissions: readonly string[]
   /** Whether this widget can independently filter its data by creator IDs. */
   supportsCreatorScope: boolean
+  /** Maximum number of creatorIds this widget's own creatorScope may ever
+   * hold, when supportsCreatorScope is true. Undefined means no
+   * widget-type-specific cap beyond supportsCreatorScope's own true/false.
+   * creator-video-ranking's product invariant ("one widget = exactly one
+   * creator") is enforced via this field, in dashboardCreatorDrop.ts. */
+  maxCreatorScopeCount?: number
   defaultSettings: TSettings
   /** Upgrades a persisted settings object from an older schemaVersion; absent means the shape never changed. */
   migrateSettings?: (settings: unknown, fromVersion: number) => TSettings
@@ -69,12 +74,5 @@ export interface LayoutProfile {
 
 /** A widget whose type is missing from the registry (retired, or from a newer build) — rendered as a safe placeholder rather than crashing the page. */
 export function isKnownWidgetType(type: string): type is WidgetTypeId {
-  return (
-    type === "kpi-summary" ||
-    type === "growth-bar-chart" ||
-    type === "contribution-ring" ||
-    type === "ranking" ||
-    type === "insights" ||
-    type === "video-stats-table"
-  )
+  return type === "subscriber-leaderboard" || type === "creator-video-ranking"
 }

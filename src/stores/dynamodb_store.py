@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import math
 import threading
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -51,7 +51,6 @@ from tracking.video_topics import TOPIC_IDS
 
 VIDEO_MASTER_TABLE = os.environ.get("YOBI_VIDEO_MASTER_TABLE") or "YobiVideoMaster"
 CREATOR_ID_INDEX = "creatorId-index"
-TRENDING_CACHE_TABLE = os.environ.get("YOBI_TRENDING_CACHE_TABLE") or "YobiTrendingCache"
 SNAPSHOTS_TABLE = os.environ.get("YOBI_SNAPSHOTS_TABLE") or "YobiSnapshots"
 RUN_SUMMARIES_TABLE = os.environ.get("YOBI_RUN_SUMMARIES_TABLE") or "YobiRunSummaries"
 
@@ -173,73 +172,6 @@ def get_videos_by_creator(creator_id: str) -> list[Video]:
     except ClientError as exc:
         raise VideoMasterError(f"Failed to query {VIDEO_MASTER_TABLE} by creatorId: {exc}") from exc
     return [_item_to_video(item) for item in items]
-
-
-class TrendingCacheError(Exception):
-    """Raised when YobiTrendingCache can't be read or written."""
-
-
-# AWS Cost Recovery (third pass, Scope F): YobiTrendingCache's cacheKey
-# includes reportDate (trending_cache_keys.py), so without a bound this table
-# would accumulate one item per (scope, period, reportDate) forever -- an
-# O(total historical ranking output) DynamoDB table, the same failure class
-# as VideoMaster's old full-catalog Scan, just growing storage/PITR cost
-# instead of RRU. 35 days comfortably covers EXACT_ANCHOR_DAYS' own longest
-# window (30 days) plus a safety margin; a read past this window falls back
-# to the durable S3 archive (stores.trending_cache_archive_store), which every
-# write here is also mirrored into by ranking_reducer.py -- so no historical
-# ranking output is actually lost, only moved out of the hot table once
-# DynamoDB's own background TTL sweep reclaims it.
-TRENDING_CACHE_TTL_DAYS = 35
-
-
-def _compute_ttl_at(computed_at: str) -> int:
-    """Epoch seconds TRENDING_CACHE_TTL_DAYS after `computed_at` -- DynamoDB's
-    own TTL attribute must be a Number of epoch seconds, not an ISO string."""
-    parsed = datetime.fromisoformat(computed_at.replace("Z", "+00:00"))
-    return int((parsed + timedelta(days=TRENDING_CACHE_TTL_DAYS)).timestamp())
-
-
-def get_cached_trending(cache_key: str) -> dict[str, Any] | None:
-    """Return one precomputed trending response by its cache key, or None on a cache miss.
-
-    The stored `payload` attribute is the exact response dict ranking_reducer.py
-    built for this scope/period/rankingType/reportDate/timeZone combination —
-    already ranked, already capped at MAX_LIMIT — serialized as a JSON string
-    so Decimal round-tripping is never a concern for arbitrary nested response
-    fields the way it is for Video Master's own typed attributes.
-    """
-    table = _resource().Table(TRENDING_CACHE_TABLE)
-    try:
-        item = table.get_item(Key={"cacheKey": cache_key}).get("Item")
-    except ClientError as exc:
-        raise TrendingCacheError(f"Failed to read {TRENDING_CACHE_TABLE}: {exc}") from exc
-    return json.loads(item["payload"]) if item else None
-
-
-def put_cached_trending(cache_key: str, payload: dict[str, Any], *, computed_at: str) -> None:
-    """Write (or overwrite) one precomputed trending response under cache_key.
-
-    Also sets `ttlAt` (TRENDING_CACHE_TTL_DAYS out from computed_at) -- see
-    TRENDING_CACHE_TTL_DAYS' own docstring for why this table needs one at
-    all. DynamoDB's TTL sweep is not instantaneous at exactly the boundary
-    (AWS documents it can lag up to 48 hours past ttlAt), which is harmless
-    here: the S3 archive already has a durable copy of this same item by the
-    time this write completes, so a briefly-lingering expired item is not a
-    correctness issue, only a cost one this margin already accounts for.
-    """
-    table = _resource().Table(TRENDING_CACHE_TABLE)
-    try:
-        table.put_item(
-            Item={
-                "cacheKey": cache_key,
-                "payload": json.dumps(payload),
-                "computedAt": computed_at,
-                "ttlAt": _compute_ttl_at(computed_at),
-            }
-        )
-    except ClientError as exc:
-        raise TrendingCacheError(f"Failed to write {TRENDING_CACHE_TABLE}: {exc}") from exc
 
 
 def get_video(video_id: str) -> Video | None:

@@ -48,7 +48,7 @@ describe("useEditableLayout", () => {
     rerender({ breakpoint: "mobile" })
     const mobileWidgetCountBeforeAdd = result.current.layout.widgets.length
     act(() => {
-      result.current.addWidget("kpi-summary")
+      result.current.addWidget("subscriber-leaderboard")
     })
     act(() => {
       result.current.save()

@@ -25,9 +25,8 @@ YouTube-statistics collection run. `mode is None` (the field omitted
 entirely) is the one case that legitimately means "run the default job";
 any other value not in `_VALID_MODES` raises UnsupportedModeError instead,
 following this codebase's own existing convention for an unsupported enum
-value (analytics.trending.rank_videos' InvalidRankingTypeError, analytics.
-view_growth_analytics.comparison_date's InvalidPeriodError): raise a named
-ValueError subclass rather than silently coercing or defaulting.
+value (analytics.view_growth_analytics.comparison_date's InvalidPeriodError):
+raise a named ValueError subclass rather than silently coercing or defaulting.
 
 See docs/aws-setup.zh-TW.md for the actual configured schedule.
 """

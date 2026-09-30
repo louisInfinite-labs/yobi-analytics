@@ -78,14 +78,12 @@ test("a catalog failure leaves the existing widgets in place and says Add is una
   await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(4)
 })
 
-test("the plain dev server ships no hard-coded catalog, no mock comparison source and no test switches", async ({ request }) => {
+test("the plain dev server ships no hard-coded catalog and no test switches", async ({ request }) => {
+  // PR #60 review fix (F6): previously also fetched the comparison feature's
+  // data-source files (defaultComparisonSource.ts etc.), which this PR
+  // deletes along with the rest of that feature.
   const catalog = await (await request.get("/src/features/dashboard/catalog/data/dashboardChartCatalogSource.ts")).text()
   expect(catalog).toContain("/dashboard/chart-catalog")
   expect(catalog).not.toMatch(/kpi-summary|growth-bar-chart|contribution-ring/)
-  const wiring = await (await request.get("/src/features/dashboard/comparison/data/defaultComparisonSource.ts")).text()
-  expect(wiring).toContain("createBackendComparisonSource")
-  for (const file of ["/src/features/dashboard/comparison/data/backendComparisonSource.ts", "/src/features/dashboard/comparison/data/dashboardComparisonSource.ts", "/src/features/dashboard/comparison/data/defaultComparisonSource.ts", "/src/features/dashboard/catalog/data/dashboardChartCatalogSource.ts"]) {
-    const text = await (await request.get(file)).text()
-    expect(text, file).not.toMatch(/localStorage|__yobi|__e2e|fakeComparisonSource|MOCK_COMPARISON/)
-  }
+  expect(catalog).not.toMatch(/localStorage|__yobi|__e2e|fakeComparisonSource|MOCK_COMPARISON/)
 })

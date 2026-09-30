@@ -1,16 +1,24 @@
 """Read API request handling (Roadmap 3.4/4.1): validate a query, compute
-growth or ranked trending, normalize a response.
+growth, subscriber leaderboard, or video ranking, normalize a response.
 
 Pure request-handling logic, wired to real storage — but with no AWS Lambda
 or API Gateway dependency of its own, matching lambda_handler.py's pattern
 (Roadmap 2.2): this module is the part that's fully testable locally, and an
 actual Lambda entry point/API Gateway route in front of it is a deployment
 step, not additional logic. `get_video_growth` mirrors a single-video growth
-lookup; `get_creator_trending`/`get_organization_trending` mirror Roadmap
-4.1's `GET /creators/{creatorId}/trending` and
-`GET /organizations/{organization}/trending`, wiring 3.2/3.3's `trending.py`
-ranking logic (previously untested/unwired from this module) to real
-storage the same way `get_video_growth` already does.
+lookup.
+
+R9 (org-trending retirement): `get_creator_trending`/`get_organization_
+trending` (the old cross-creator/org-wide "trending" product, `GET
+/creators/{creatorId}/trending`/`GET /organizations/{organization}/trending`)
+and their supporting helpers (`_cached_trending`/`_cached_or_archived`,
+`parse_organization`/`parse_ranking_type`, the already-dead `_compute_growth_
+results`/`_load_videos_for_creators`/`_trending_response`/`_ranked_entry_to_
+dict`/`_aggregate_last_updated_at`, `TrendingNotReadyError`) were removed
+here once their production frontend consumer was migrated to the two
+surviving ranking products (`get_subscriber_leaderboard`, `get_video_
+ranking`) and the routes themselves were retired from api_handler.py/
+terraform/api_gateway.tf.
 
 `earliest_available_date` uses each video's own Video.discovered_at (Roadmap
 1.5/2.3) when present, falling back to the global
@@ -24,23 +32,18 @@ before its own onboarding, rather than the less precise `pending`.
 from __future__ import annotations
 
 import os
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from tracking.creator_master import Creator, load_creators
-from analytics.trending import (
-    DAILY_TRENDING,
-    RANKING_TYPES,
-    SEVEN_DAY_TRENDING,
-    THIRTY_DAY_TRENDING,
-    RankedEntry,
-)
-from analytics.trending_cache_keys import CANONICAL_CACHE_TIME_ZONE, trending_cache_key
-from stores.trending_cache_archive_store import get_archived_trending
 from analytics.subscriber_ranking import GROWTH_PERIODS, VALID_SUBSCRIBER_ORGANIZATIONS
 from stores.subscriber_ranking_store import S3SubscriberRankingStore
+from analytics.video_ranking import TOPIC_SCOPE_ALL as VIDEO_RANKING_TOPIC_ALL
+from analytics.video_ranking import VALID_METRICS as VALID_VIDEO_RANKING_METRICS
+from analytics.video_ranking import VALID_TOPIC_SCOPES as VALID_VIDEO_RANKING_TOPICS
+from analytics.video_ranking import rank_video_rows
+from stores.video_ranking_store import S3VideoRankingStore
 from tracking.video_master import Video
 from analytics.view_growth_analytics import (
     COLLECTION_START_DATE,
@@ -53,23 +56,16 @@ from analytics.view_growth_analytics import (
 )
 
 if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
-    from stores.dynamodb_store import get_cached_trending, get_snapshot, get_video, get_videos_by_creator
+    from stores.dynamodb_store import get_snapshot, get_video
 else:
     from stores.snapshot_store import get_snapshot
-    from tracking.video_master import get_video, get_videos_by_creator
+    from tracking.video_master import get_video
 
-    get_cached_trending = None  # no cache table in local/JSON dev, and no live fallback (V5.9) —
-    # get_creator_trending/get_organization_trending always raise RankingNotReadyError here
-
-# Reverse of trending.py's private period->ranking-type map (Roadmap 3.2/3.3):
-# a period-trending ranking type only ranks GrowthResults computed for its
-# matching period, since rank_videos filters by result.period internally.
-_RANKING_TYPE_REQUIRED_PERIOD = {
-    DAILY_TRENDING: "1d",
-    SEVEN_DAY_TRENDING: "7d",
-    THIRTY_DAY_TRENDING: "30d",
-}
-_PERIOD_DEFAULT_RANKING_TYPE = {period: ranking_type for ranking_type, period in _RANKING_TYPE_REQUIRED_PERIOD.items()}
+# The scheduled collection/ranking pipeline (history_worker.py/
+# ranking_reducer.py) only ever computes/persists results for this time
+# zone's own day boundary -- an omitted reportDate (get_subscriber_
+# leaderboard/get_video_ranking) resolves "today" against this zone.
+CANONICAL_CACHE_TIME_ZONE = "Asia/Tokyo"
 
 
 class ClientError(ValueError):
@@ -88,54 +84,18 @@ class VideoNotFoundError(ClientError):
     """Raised when the requested videoId does not exist in Video Master."""
 
 
-class TrendingNotReadyError(Exception):
-    """No longer raised by any code path (V5.9): the request-time live
-    ranking fallback and its oversized-catalog guard were removed once the
-    public trending API became cache-only (see RankingNotReadyError, which
-    a genuine cache miss raises instead). Kept only because api_handler.py
-    still maps it defensively to a 503, in case a future caller needs this
-    distinct "well-formed but refused" shape again.
-    """
-
-
 class RankingNotReadyError(Exception):
-    """Raised by a cache-only endpoint (get_creator_trending/get_organization_
-    trending/get_subscriber_leaderboard) on a genuine cache/result miss for
-    an otherwise valid, existing scope/period/reportDate.
+    """Raised by a cache-only endpoint (get_subscriber_leaderboard/get_video_
+    ranking) on a genuine result miss for an otherwise valid, existing
+    scope/period/reportDate.
 
-    Deliberately not a ClientError subclass, the same reasoning as
-    TrendingNotReadyError: the request is well-formed and the scope is
-    real — the server just hasn't computed today's ranking for it yet (or
-    this reportDate is outside the pipeline's own retention). Never a
-    signal to fall back to live computation — these endpoints have no live
-    fallback at all. api_handler.py maps this to a 503 with a
-    machine-readable "code": "RANKING_NOT_READY", distinct from
-    TrendingNotReadyError's own plain 503 (a different endpoint family
-    with a different meaning: "too large to compute on demand" there,
-    "not computed yet" here).
+    Deliberately not a ClientError subclass: the request is well-formed and
+    the scope is real — the server just hasn't computed today's ranking for
+    it yet (or this reportDate is outside the pipeline's own retention).
+    Never a signal to fall back to live computation — these endpoints have
+    no live fallback at all. api_handler.py maps this to a 503 with a
+    machine-readable "code": "RANKING_NOT_READY".
     """
-
-
-def _cached_or_archived(key: str) -> dict[str, Any] | None:
-    """Read one YobiTrendingCache item by key, falling back to the durable S3
-    archive on a miss (AWS Cost Recovery, third pass, Scope F).
-
-    YobiTrendingCache now bounds itself with a TTL (dynamodb_store.
-    TRENDING_CACHE_TTL_DAYS) -- a reportDate older than that window is no
-    longer in the hot table, but this codebase's own API contract explicitly
-    supports querying an arbitrary historical reportDate (get_creator_
-    trending/get_organization_trending both accept one with no artificial
-    limit), so a miss here must not be treated as "never computed" without
-    also checking the archive every write is mirrored into.
-    get_archived_trending itself returns None (never raises) when
-    YOBI_HISTORY_BUCKET isn't configured, so this needs no extra branching
-    for local/dev or a non-S3 environment.
-    """
-    if get_cached_trending is not None:
-        cached = get_cached_trending(key)
-        if cached is not None:
-            return cached
-    return get_archived_trending(key)
 
 
 def parse_report_date(raw: Any) -> date:
@@ -210,20 +170,6 @@ def parse_creator_id(raw: Any) -> str:
     return raw
 
 
-def parse_organization(raw: Any) -> str:
-    """Validate an organization query parameter is a non-empty string of a plausible length.
-
-    Not validated against a hardcoded {"hololive", "vspo"} set (Roadmap
-    1.3: organizations are data, not business logic) — an organization with
-    no matching Creator Master records is rejected by the caller instead.
-    """
-    if not isinstance(raw, str) or not raw:
-        raise ClientError("organization is required and must be a non-empty string")
-    if len(raw) > MAX_IDENTIFIER_LENGTH:
-        raise ClientError(f"organization must be at most {MAX_IDENTIFIER_LENGTH} characters, got {len(raw)}")
-    return raw
-
-
 # R5: the subscriber leaderboard's own metric enum, distinct from
 # parse_period's video-ranking 1d/7d/30d (no shared validator) -- "total"
 # has no video-ranking analog at all.
@@ -255,12 +201,9 @@ def parse_subscriber_organization(raw: Any) -> str:
     """Validate an optional organization filter for the subscriber
     leaderboard: "all" (default; case-insensitive) or one of R2's own
     VALID_SUBSCRIBER_ORGANIZATIONS ("vspo"/"hololive") -- never a silently
-    coerced or invented third value. Case-insensitive (unlike
-    parse_organization's own video-ranking `organization` parameter, which
-    is arbitrary Creator-Master-driven data, not a closed enum) because
-    this is a closed set of exactly three spellable values, the same
-    reasoning parse_period/parse_ranking_type already apply to their own
-    fixed enums.
+    coerced or invented third value. Case-insensitive because this is a
+    closed set of exactly three spellable values, the same reasoning
+    parse_period already applies to its own fixed enum.
     """
     if raw is None or raw == "":
         return SUBSCRIBER_ORGANIZATION_ALL
@@ -275,25 +218,29 @@ def parse_subscriber_organization(raw: Any) -> str:
     )
 
 
-def parse_ranking_type(raw: Any, *, period: str) -> str:
-    """Validate an optional rankingType query parameter, defaulting per period.
-
-    Absent/empty defaults to the period-trending type matching `period`
-    (Roadmap 4.1's `?period=7d` trending examples carry no separate ranking
-    selector — the period itself implies "the 7-day growth trending list").
-    An explicitly-passed value must be one of trending.RANKING_TYPES, and if
-    it's a period-trending type it must match the requested `period` —
-    otherwise it can never rank anything, since rank_videos only keeps
-    results whose own `period` equals the type's expected period.
-    """
-    if raw is None or raw == "":
-        return _PERIOD_DEFAULT_RANKING_TYPE[period]
-    if not isinstance(raw, str) or raw not in RANKING_TYPES:
-        raise ClientError(f"rankingType must be one of {sorted(RANKING_TYPES)}, got {raw!r}")
-    required_period = _RANKING_TYPE_REQUIRED_PERIOD.get(raw)
-    if required_period is not None and required_period != period:
-        raise ClientError(f"rankingType {raw!r} requires period={required_period!r}, got period={period!r}")
+def parse_video_ranking_metric(raw: Any) -> str:
+    """Validate a required metric query parameter for the per-creator video
+    ranking: exactly one of "total"/"1d"/"7d"/"30d" -- mirrors
+    parse_subscriber_metric's own reasoning (the literal canonical-result
+    key, no separate mapping table needed)."""
+    if not isinstance(raw, str) or raw not in VALID_VIDEO_RANKING_METRICS:
+        raise ClientError(f"metric must be one of {sorted(VALID_VIDEO_RANKING_METRICS)}, got {raw!r}")
     return raw
+
+
+def parse_video_ranking_topic(raw: Any) -> str:
+    """Validate an optional topic filter for the per-creator video ranking:
+    "all" (default; case-insensitive) or one of the canonical topic ids
+    (tracking.video_topics.TOPIC_IDS) -- mirrors parse_subscriber_
+    organization's own closed-enum reasoning."""
+    if raw is None or raw == "":
+        return VIDEO_RANKING_TOPIC_ALL
+    if not isinstance(raw, str):
+        raise ClientError(f"topic must be a string, got {raw!r}")
+    normalized = raw.strip().lower()
+    if normalized in VALID_VIDEO_RANKING_TOPICS:
+        return normalized
+    raise ClientError(f"topic must be one of {sorted(VALID_VIDEO_RANKING_TOPICS)}, got {raw!r}")
 
 
 # No real page of trending results is ever this deep (Roadmap 5.3's
@@ -346,129 +293,6 @@ def get_video_growth(query: dict[str, Any]) -> dict[str, Any]:
     )
 
     return _to_response(result, video=video, creator=_find_creator(video.creator_id), time_zone=time_zone)
-
-
-def _cached_trending(
-    *, scope_type: str, scope_value: str, report_date: date, time_zone: str, period: str, ranking_type: str, limit: int | None
-) -> dict[str, Any] | None:
-    """Return a cached trending response if one exists for this exact scope/period/
-    rankingType/reportDate, else None (a genuine miss — the public trending
-    API is cache-only as of V5.9, with no live fallback to fall through to).
-
-    Only ever attempted in the canonical cache time zone —
-    trending_precompute.py/ranking_reducer.py only ever write for
-    CANONICAL_CACHE_TIME_ZONE's own day boundary, so a request in any other
-    time zone can never be satisfied by this cache and is treated as a miss
-    without even building a key. An omitted `limit` no longer bypasses the
-    cache: it still looks up the same canonical entry and returns it bounded
-    by MAX_LIMIT, the same cap the writer itself already enforces (so this
-    is a no-op slice in practice, never a truncation of real data) — never a
-    live recomputation. An explicit `limit` slices the same cached rows to
-    fewer.
-    """
-    if time_zone != CANONICAL_CACHE_TIME_ZONE:
-        return None
-    key = trending_cache_key(
-        scope_type=scope_type, scope_value=scope_value, period=period, ranking_type=ranking_type, report_date=report_date
-    )
-    cached = _cached_or_archived(key)
-    if cached is None:
-        return None
-    effective_limit = limit if limit is not None else MAX_LIMIT
-    # The cached payload's own top-level lastUpdatedAt is the oldest
-    # timestamp across all MAX_LIMIT cached rows — after truncating to the
-    # effective limit, that aggregate can point at a row no longer in
-    # results, so it must be recomputed from just the rows actually
-    # returned.
-    results = cached["results"][:effective_limit]
-    timestamps = [row["lastUpdatedAt"] for row in results if row.get("lastUpdatedAt") is not None]
-    return {
-        **cached,
-        "results": results,
-        "lastUpdatedAt": min(timestamps, key=datetime.fromisoformat) if timestamps else None,
-    }
-
-
-def get_creator_trending(query: dict[str, Any]) -> dict[str, Any]:
-    """Validate a trending query for one creator and return a ranked Roadmap 4.1/3.2 response.
-
-    `query` needs at least `creatorId`, `reportDate`, `timeZone`, and
-    `period`; `rankingType` and `limit` are optional. Mirrors
-    `GET /creators/{creatorId}/trending?period=7d`.
-
-    Cache-only (V5.9): reads YobiTrendingCache via `_cached_trending` and
-    nothing else — cost never scales with this creator's own catalog size.
-    A genuine cache miss raises RankingNotReadyError (503,
-    code="RANKING_NOT_READY") instead of computing anything live.
-    """
-    creator_id = parse_creator_id(query.get("creatorId"))
-    report_date = parse_report_date(query.get("reportDate"))
-    time_zone = parse_time_zone(query.get("timeZone"))
-    period = parse_period(query.get("period"))
-    ranking_type = parse_ranking_type(query.get("rankingType"), period=period)
-    limit = parse_limit(query.get("limit"))
-
-    creator = _find_creator(creator_id)
-    if creator is None:
-        raise ClientError(f"No creator found for creatorId {creator_id!r}")
-
-    cached = _cached_trending(
-        scope_type="creator",
-        scope_value=creator_id,
-        report_date=report_date,
-        time_zone=time_zone,
-        period=period,
-        ranking_type=ranking_type,
-        limit=limit,
-    )
-    if cached is not None:
-        return cached
-
-    raise RankingNotReadyError(
-        f"Trending for creatorId={creator_id!r} period={period!r} rankingType={ranking_type!r} "
-        f"reportDate={report_date.isoformat()!r} is not yet computed"
-    )
-
-
-def get_organization_trending(query: dict[str, Any]) -> dict[str, Any]:
-    """Validate a trending query across one organization and return a ranked Roadmap 4.1/3.3 response.
-
-    `query` needs at least `organization`, `reportDate`, `timeZone`, and
-    `period`; `rankingType` and `limit` are optional. Mirrors
-    `GET /organizations/{organization}/trending?period=1d`.
-
-    Cache-only (V5.9): reads YobiTrendingCache via `_cached_trending` and
-    nothing else — cost never scales with the organization's member/catalog
-    size. A genuine cache miss raises RankingNotReadyError (503,
-    code="RANKING_NOT_READY") instead of computing anything live.
-    """
-    organization = parse_organization(query.get("organization"))
-    report_date = parse_report_date(query.get("reportDate"))
-    time_zone = parse_time_zone(query.get("timeZone"))
-    period = parse_period(query.get("period"))
-    ranking_type = parse_ranking_type(query.get("rankingType"), period=period)
-    limit = parse_limit(query.get("limit"))
-
-    creator_ids = {creator.creator_id for creator in load_creators() if creator.organization == organization}
-    if not creator_ids:
-        raise ClientError(f"No creators found for organization {organization!r}")
-
-    cached = _cached_trending(
-        scope_type="org",
-        scope_value=organization,
-        report_date=report_date,
-        time_zone=time_zone,
-        period=period,
-        ranking_type=ranking_type,
-        limit=limit,
-    )
-    if cached is not None:
-        return cached
-
-    raise RankingNotReadyError(
-        f"Trending for organization={organization!r} period={period!r} rankingType={ranking_type!r} "
-        f"reportDate={report_date.isoformat()!r} is not yet computed"
-    )
 
 
 def _today_in_canonical_time_zone() -> date:
@@ -536,10 +360,11 @@ def get_subscriber_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
 
     store = S3SubscriberRankingStore.from_environment()
     result = None
-    for candidate_date in report_dates:
-        result = store.read_result(candidate_date)
-        if result is not None:
-            break
+    if store is not None:
+        for candidate_date in report_dates:
+            result = store.read_result(candidate_date)
+            if result is not None:
+                break
     if result is None:
         raise RankingNotReadyError(
             f"Subscriber leaderboard for metric={metric!r} organization={organization!r} "
@@ -596,6 +421,70 @@ def _filter_subscriber_ineligible(ineligible: dict[str, str], organization: str)
     return filtered
 
 
+def get_video_ranking(query: dict[str, Any]) -> dict[str, Any]:
+    """Read-only view over the video-ranking Phase C per-creator S3 result:
+    total (lifetime view count) or 1d/7d/30d growth, optionally filtered to
+    one topic, all derived in memory from the ONE persisted canonical row
+    set for a creator/report date (Phase C storage correction: one row per
+    video, never four separately ranked/duplicated row sets). Mirrors
+    `GET /creators/{creatorId}/videos/ranking?metric=7d&topic=valorant`.
+
+    Videos never rank across creators (video-ranking's own core product
+    rule): this only ever reads the one S3 object already scoped to
+    `creatorId` (stores.video_ranking_store keys by creator), never another
+    creator's own result.
+
+    An explicit reportDate is an exact-date lookup only, no fallback — same
+    contract as get_subscriber_leaderboard. An omitted reportDate reuses
+    that same function's own bounded latest-result lookback
+    (_leaderboard_report_dates/LATEST_REPORT_LOOKBACK_DAYS), not a second
+    mechanism.
+
+    A missing result for every candidate date is RankingNotReadyError (503,
+    code="RANKING_NOT_READY") — the same shape every other cache-only
+    endpoint in this module already uses for "not yet computed".
+
+    Reads the S3 result only: no VideoMaster Scan, no per-creator-catalog
+    live query, no per-video DynamoDB enrichment, no write-on-request. Topic
+    filtering, metric selection, and ranking/sorting are all performed here,
+    at read time, over the one persisted canonical row set — see
+    analytics.video_ranking.rank_video_rows.
+    """
+    creator_id = parse_creator_id(query.get("creatorId"))
+    metric = parse_video_ranking_metric(query.get("metric"))
+    topic = parse_video_ranking_topic(query.get("topic"))
+    limit = parse_limit(query.get("limit")) or MAX_LIMIT
+    report_dates = _leaderboard_report_dates(query.get("reportDate"))
+
+    creator = _find_creator(creator_id)
+    if creator is None:
+        raise ClientError(f"No creator found for creatorId {creator_id!r}")
+
+    store = S3VideoRankingStore.from_environment()
+    result = None
+    if store is not None:
+        for candidate_date in report_dates:
+            result = store.read_result(candidate_date, creator_id)
+            if result is not None:
+                break
+    if result is None:
+        raise RankingNotReadyError(
+            f"Video ranking for creatorId={creator_id!r} metric={metric!r} topic={topic!r} "
+            f"reportDate={report_dates[0].isoformat()!r} is not yet computed"
+        )
+
+    rows = rank_video_rows(result["videos"], metric=metric, topic=topic)[:limit]
+
+    return {
+        "reportDate": result["reportDate"],
+        "generatedAt": result["generatedAt"],
+        "creatorId": creator_id,
+        "metric": metric,
+        "topic": topic,
+        "rows": rows,
+    }
+
+
 # The daily pipeline finishes around 18:00 JST, so an omitted reportDate would
 # otherwise miss until then; it serves the newest report found in this window.
 LATEST_REPORT_LOOKBACK_DAYS = 3
@@ -606,75 +495,6 @@ def _leaderboard_report_dates(raw_report_date: Any) -> list[date]:
         return [parse_report_date(raw_report_date)]
     today = _today_in_canonical_time_zone()
     return [today - timedelta(days=offset) for offset in range(LATEST_REPORT_LOOKBACK_DAYS)]
-
-
-def _load_videos_for_creators(creator_ids: set[str]) -> list[Video]:
-    """Return every tracked video for the creators, one GSI query per creator."""
-    videos: list[Video] = []
-    for creator_id in creator_ids:
-        videos.extend(get_videos_by_creator(creator_id))
-    return videos
-
-
-# Bounds how many concurrent legacy DynamoDB GetItem calls _compute_growth_results
-# fans out for one trending request. Each video needs two independent
-# snapshot lookups (report_date, comparison_date) with no ordering
-# dependency between them — fetching sequentially for an organization with
-# thousands of videos is what previously made a real production-scale
-# trending request exceed API Gateway's fixed 29-second integration
-# timeout; a bounded thread pool (I/O-bound network calls, not CPU-bound
-# work, so the GIL is not a limiting factor here) brings that well under it
-# without needing a schema change to Video Master.
-#
-_SNAPSHOT_FETCH_WORKERS = 100
-def _compute_growth_results(
-    videos: list[Video], *, report_date: date, period: str, executor: ThreadPoolExecutor | None = None
-) -> list[GrowthResult]:
-    """Compute one GrowthResult per candidate video for the same (report_date, period) comparison window.
-
-    This legacy fallback considers every supplied video. The scheduled S3
-    pipeline performs the same exact-anchor calculation shard-by-shard and
-    bounds only its final Top-N output.
-
-    `executor`: a live request handler (get_creator_trending/
-    get_organization_trending) calls this once per request and leaves this
-    None, so a fresh, self-managed pool is created and torn down here.
-    trending_precompute.py's run() calls this hundreds of times in one
-    Lambda invocation and passes its own single shared executor instead —
-    2026-09-05: creating a fresh 100-worker ThreadPoolExecutor (each worker
-    lazily creating its own thread-local boto3 DynamoDB resource and
-    connection pool, dynamodb_store._resource) on every one of ~342 calls,
-    then tearing it all down, accumulated enough abandoned thread/connection
-    state across the run to exhaust the Lambda's own 1024MB and still time
-    out at 900s — reusing one pool for the whole run keeps that resource
-    creation bounded by worker count, not by call count.
-    """
-    # Architecture reset: exact ranking considers every successfully
-    # collected tracked video. Hot/Warm/Cold and approximate candidate caps
-    # no longer determine participation.
-    candidates = list(videos)
-    comp_date = comparison_date(report_date, period)
-
-    def _fetch_snapshot_pair(video: Video) -> tuple[Any, Any]:
-        return get_snapshot(video.video_id, report_date), get_snapshot(video.video_id, comp_date)
-
-    if executor is not None:
-        snapshot_pairs = list(executor.map(_fetch_snapshot_pair, candidates))
-    else:
-        with ThreadPoolExecutor(max_workers=_SNAPSHOT_FETCH_WORKERS) as owned_executor:
-            snapshot_pairs = list(owned_executor.map(_fetch_snapshot_pair, candidates))
-
-    return [
-        calculate_growth(
-            video_id=video.video_id,
-            report_date=report_date,
-            period=period,
-            latest_snapshot=latest_snapshot,
-            comparison_snapshot=comparison_snapshot,
-            earliest_available_date=_earliest_available_date_for(video),
-        )
-        for video, (latest_snapshot, comparison_snapshot) in zip(candidates, snapshot_pairs)
-    ]
 
 
 def _earliest_available_date_for(video: Video) -> date:
@@ -689,72 +509,6 @@ def _earliest_available_date_for(video: Video) -> date:
     if video.discovered_at is None:
         return COLLECTION_START_DATE
     return datetime.fromisoformat(video.discovered_at).date()
-
-
-def _trending_response(
-    ranked: list[RankedEntry],
-    *,
-    scope: dict[str, str],
-    report_date: date,
-    period: str,
-    ranking_type: str,
-    time_zone: str,
-) -> dict[str, Any]:
-    """Build the normalized Roadmap 4.1/3.2/3.3 trending response dict from a ranked entry list."""
-    return {
-        "timeZone": time_zone,
-        "reportDate": report_date.isoformat(),
-        "comparisonDate": comparison_date(report_date, period).isoformat(),
-        "period": period,
-        "rankingType": ranking_type,
-        "lastUpdatedAt": _aggregate_last_updated_at(ranked),
-        **scope,
-        "results": [_ranked_entry_to_dict(entry) for entry in ranked],
-    }
-
-
-def _aggregate_last_updated_at(ranked: list[RankedEntry]) -> str | None:
-    """The trending list's own freshness: the oldest lastUpdatedAt among its results.
-
-    A list is only as fresh as its stalest entry — reporting the newest
-    entry's timestamp would overstate how current the rest of the list is.
-    None (Roadmap 3.4's own "no value" convention) when ranked is empty or
-    no entry carries a timestamp, rather than fabricating one.
-    """
-    timestamps = [entry.result.last_updated_at for entry in ranked if entry.result.last_updated_at is not None]
-    if not timestamps:
-        return None
-    # Compare by actual instant, not by string value: two offset-bearing
-    # ISO 8601 timestamps with different UTC offsets (e.g. "+09:00" vs
-    # "+00:00") don't sort the same lexicographically as they do
-    # chronologically. Returns the earliest entry's original string rather
-    # than a reformatted one.
-    return min(timestamps, key=datetime.fromisoformat)
-
-
-def _ranked_entry_to_dict(entry: RankedEntry) -> dict[str, Any]:
-    """Build one trending response row from a RankedEntry, joining Video/Creator Master for display fields."""
-    video = get_video(entry.video_id)
-    creator = _find_creator(video.creator_id) if video else None
-    return {
-        "rank": entry.rank,
-        "videoId": entry.video_id,
-        "value": entry.value,
-        "title": video.title if video else None,
-        "creatorId": video.creator_id if video else None,
-        "channelName": creator.display_name if creator else None,
-        "organization": creator.organization if creator else None,
-        "branch": creator.branch if creator else None,
-        "groupKey": creator.group_key if creator else None,
-        "channelType": creator.channel_type if creator else None,
-        "lifecycleStage": creator.lifecycle_stage if creator else None,
-        "themeColor": creator.theme_color if creator else None,
-        "latestViewCount": entry.result.latest.view_count,
-        "lastUpdatedAt": entry.result.last_updated_at,
-        "growth": entry.result.growth,
-        "growthPercent": entry.result.growth_percent,
-        "status": entry.result.status,
-    }
 
 
 def _find_creator(creator_id: str) -> Creator | None:

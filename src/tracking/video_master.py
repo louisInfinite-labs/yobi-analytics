@@ -33,6 +33,13 @@ class Video:
     creator_id: str
     title: str
     published_at: str
+    # The canonical thumbnail URL from the same discovery-time playlistItems.list
+    # response that already provides `title`/`published_at` (part="snippet" —
+    # snippet.thumbnails is already present in that same paid response, just
+    # not previously parsed). None for a record written before this field
+    # existed, or for the rare discovered item whose snippet carried no usable
+    # thumbnail variant at all (see tracking.video_discovery._select_thumbnail_url).
+    thumbnail_url: str | None = None
     # Every newly discovered video bootstraps as "Unknown" regardless of
     # age/views; see tracking_schedule.classify_after_observation for how it
     # evolves after each statistics snapshot.
@@ -161,6 +168,7 @@ def _parse_video(raw: dict) -> Video:
             creator_id=_require_str(raw, "creatorId"),
             title=_require_str(raw, "title"),
             published_at=_require_str(raw, "publishedAt"),
+            thumbnail_url=_optional_str(raw, "thumbnailUrl", video_id),
             activity_state=activity_state,
             last_checked_at=_optional_str(raw, "lastCheckedAt", video_id),
             last_view_count=_optional_int(raw, "lastViewCount", video_id),
@@ -280,6 +288,7 @@ def _to_raw(video: Video) -> dict:
         "creatorId": video.creator_id,
         "title": video.title,
         "publishedAt": video.published_at,
+        "thumbnailUrl": video.thumbnail_url,
         "activityState": video.activity_state,
         "lastCheckedAt": video.last_checked_at,
         "lastViewCount": video.last_view_count,

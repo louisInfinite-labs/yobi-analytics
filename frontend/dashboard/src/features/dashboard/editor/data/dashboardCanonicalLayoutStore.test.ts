@@ -30,24 +30,24 @@ function memoryStorage(): Storage {
 const VALID_LAYOUT: CanonicalLayout = {
   grid: { columns: 2, rows: 1 },
   widgets: [
-    { widgetId: "widget-a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 },
-    { widgetId: "widget-b", widgetType: "ranking", x: 1, y: 0, width: 1, height: 1 },
+    { widgetId: "widget-a", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+    { widgetId: "widget-b", widgetType: "creator-video-ranking", x: 1, y: 0, width: 1, height: 1 },
   ],
 }
 
 const OVERLAPPING_LAYOUT_RAW = JSON.stringify({
   grid: { columns: 1, rows: 1 },
   widgets: [
-    { widgetId: "widget-a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 },
-    { widgetId: "widget-b", widgetType: "ranking", x: 0, y: 0, width: 1, height: 1 },
+    { widgetId: "widget-a", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+    { widgetId: "widget-b", widgetType: "creator-video-ranking", x: 0, y: 0, width: 1, height: 1 },
   ],
 })
 
 const DUPLICATE_ID_LAYOUT_RAW = JSON.stringify({
   grid: { columns: 2, rows: 1 },
   widgets: [
-    { widgetId: "dup-id", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 },
-    { widgetId: "dup-id", widgetType: "ranking", x: 1, y: 0, width: 1, height: 1 },
+    { widgetId: "dup-id", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+    { widgetId: "dup-id", widgetType: "creator-video-ranking", x: 1, y: 0, width: 1, height: 1 },
   ],
 })
 
@@ -78,9 +78,15 @@ describe("readCanonicalLayout", () => {
     expect(reloaded).toEqual({ status: "valid", layout: VALID_LAYOUT })
   })
 
-  it("MT-17 AC8: ordered creatorIds on a comparison widget survive the same save/reload path as widget geometry", () => {
+  it("PR #60 review fix (F5): a retired comparison widget from an old save is dropped on reload, not preserved", () => {
+    // Formerly "MT-17 AC8: ordered creatorIds on a comparison widget survive
+    // the same save/reload path as widget geometry" -- the comparison
+    // feature (and its "creator-comparison-chart" widget type) was retired
+    // in PR #60, and a persisted widget of that type must no longer round-
+    // trip: it silently reserved its old grid slot forever (nothing could
+    // render or remove it). It's now dropped at the read boundary instead.
     const storage = memoryStorage()
-    const layoutWithComparison: CanonicalLayout = {
+    const layoutWithRetiredComparisonWidget: CanonicalLayout = {
       grid: { columns: 1, rows: 1 },
       widgets: [
         {
@@ -94,13 +100,11 @@ describe("readCanonicalLayout", () => {
         },
       ],
     }
-    writeCanonicalLayout(layoutWithComparison, storage)
+    writeCanonicalLayout(layoutWithRetiredComparisonWidget, storage)
 
     const reloaded = readCanonicalLayout(storage)
 
-    expect(reloaded).toEqual({ status: "valid", layout: layoutWithComparison })
-    if (reloaded.status !== "valid") throw new Error("unreachable")
-    expect(reloaded.layout.widgets[0].comparison?.creatorIds).toEqual(["creator-a", "creator-b", "creator-c"])
+    expect(reloaded).toEqual({ status: "valid", layout: { grid: { columns: 1, rows: 1 }, widgets: [] } })
   })
 
   it("MT-15 AC3: duplicate-ID legacy data loads as a migrated layout with no duplicate widgets", () => {
@@ -142,6 +146,72 @@ describe("readCanonicalLayout", () => {
   })
 })
 
+describe("PR #60 review fix (F5): retired comparison widgets no longer reserve grid space", () => {
+  const RETIRED_WIDGET_RAW_LAYOUT = JSON.stringify({
+    grid: { columns: 2, rows: 1 },
+    widgets: [
+      { widgetId: "old-comparison", widgetType: "creator-comparison-chart", x: 0, y: 0, width: 1, height: 1 },
+      { widgetId: "widget-b", widgetType: "creator-video-ranking", x: 1, y: 0, width: 1, height: 1 },
+    ],
+  })
+
+  it("1/2. a persisted layout with an old comparison widget loads with it dropped (not rendered)", () => {
+    const storage = memoryStorage()
+    storage.setItem("yobi-analytics-canonical-dashboard-layout", RETIRED_WIDGET_RAW_LAYOUT)
+
+    const result = readCanonicalLayout(storage)
+
+    expect(result.status).toBe("valid")
+    if (result.status !== "valid") throw new Error("unreachable")
+    expect(result.layout.widgets.map((widget) => widget.widgetId)).toEqual(["widget-b"])
+  })
+
+  it("3. the retired widget's former slot is free: a new widget can be placed there with no collision/column-fill error", () => {
+    const storage = memoryStorage()
+    storage.setItem("yobi-analytics-canonical-dashboard-layout", RETIRED_WIDGET_RAW_LAYOUT)
+    const result = readCanonicalLayout(storage)
+    if (result.status !== "valid") throw new Error("unreachable")
+
+    const withNewWidgetInTheOldSlot: CanonicalLayout = {
+      ...result.layout,
+      widgets: [
+        ...result.layout.widgets,
+        { widgetId: "new-widget", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+      ],
+    }
+
+    expect(validateLayout(withNewWidgetInTheOldSlot)).toEqual({ valid: true, errors: [] })
+  })
+
+  it("4. the surviving widget's geometry is unchanged and deterministic", () => {
+    const storage = memoryStorage()
+    storage.setItem("yobi-analytics-canonical-dashboard-layout", RETIRED_WIDGET_RAW_LAYOUT)
+
+    const result = readCanonicalLayout(storage)
+
+    if (result.status !== "valid") throw new Error("unreachable")
+    expect(result.layout.widgets[0]).toEqual({
+      widgetId: "widget-b",
+      widgetType: "creator-video-ranking",
+      x: 1,
+      y: 0,
+      width: 1,
+      height: 1,
+    })
+  })
+
+  it("5. reload is stable: repeated reads return the same normalized layout, and the raw stored payload is untouched", () => {
+    const storage = memoryStorage()
+    storage.setItem("yobi-analytics-canonical-dashboard-layout", RETIRED_WIDGET_RAW_LAYOUT)
+
+    const first = readCanonicalLayout(storage)
+    const second = readCanonicalLayout(storage)
+
+    expect(first).toEqual(second)
+    expect(storage.getItem("yobi-analytics-canonical-dashboard-layout")).toBe(RETIRED_WIDGET_RAW_LAYOUT)
+  })
+})
+
 describe("createLocalCanonicalLayoutSubmit + submitLayoutSave", () => {
   it("MT-15 AC8: a failed save leaves the last persisted canonical layout in place", async () => {
     const storage = memoryStorage()
@@ -157,8 +227,8 @@ describe("createLocalCanonicalLayoutSubmit + submitLayoutSave", () => {
     const draft: CanonicalLayout = {
       grid: { columns: 2, rows: 1 },
       widgets: [
-        { widgetId: "widget-a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 },
-        { widgetId: "widget-c", widgetType: "insights", x: 1, y: 0, width: 1, height: 1 },
+        { widgetId: "widget-a", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+        { widgetId: "widget-c", widgetType: "subscriber-leaderboard", x: 1, y: 0, width: 1, height: 1 },
       ],
     }
     const outcome = await submitLayoutSave(draft, failingSubmit)
@@ -186,19 +256,19 @@ const unit = (widgetId: string, widgetType: string, x: number, y: number, extra:
 const LEGACY_4x2_RAW = JSON.stringify({
   grid: { columns: 4, rows: 2 },
   widgets: [
-    unit("a", "kpi-summary", 0, 0),
-    unit("b", "ranking", 1, 0),
-    unit("c", "growth-bar-chart", 2, 0),
-    unit("d", "contribution-ring", 3, 0, { comparison: { creatorIds: ["c1", "c2"], comparisonItemIds: ["revenue"] } }),
-    unit("e", "insights", 0, 1),
-    unit("f", "video-stats-table", 1, 1),
+    unit("a", "subscriber-leaderboard", 0, 0),
+    unit("b", "creator-video-ranking", 1, 0),
+    unit("c", "subscriber-leaderboard", 2, 0),
+    unit("d", "creator-video-ranking", 3, 0, { comparison: { creatorIds: ["c1", "c2"], comparisonItemIds: ["revenue"] } }),
+    unit("e", "subscriber-leaderboard", 0, 1),
+    unit("f", "creator-video-ranking", 1, 1),
   ],
 })
-const LEGACY_5x1_RAW = JSON.stringify({ grid: { columns: 5, rows: 1 }, widgets: [0, 1, 2, 3, 4].map((i) => unit(`w${i}`, "kpi-summary", i, 0)) })
-const LEGACY_4x3_TRIM_RAW = JSON.stringify({ grid: { columns: 4, rows: 3 }, widgets: [unit("a", "kpi-summary", 0, 0), unit("b", "ranking", 1, 0)] })
+const LEGACY_5x1_RAW = JSON.stringify({ grid: { columns: 5, rows: 1 }, widgets: [0, 1, 2, 3, 4].map((i) => unit(`w${i}`, "subscriber-leaderboard", i, 0)) })
+const LEGACY_4x3_TRIM_RAW = JSON.stringify({ grid: { columns: 4, rows: 3 }, widgets: [unit("a", "subscriber-leaderboard", 0, 0), unit("b", "creator-video-ranking", 1, 0)] })
 const LEGACY_5x2_UNMIGRATABLE_RAW = JSON.stringify({
   grid: { columns: 5, rows: 2 },
-  widgets: Array.from({ length: 10 }, (_, i) => unit(`g${i}`, i % 2 ? "growth-bar-chart" : "contribution-ring", i % 5, Math.floor(i / 5))),
+  widgets: Array.from({ length: 10 }, (_, i) => unit(`g${i}`, i % 2 ? "subscriber-leaderboard" : "creator-video-ranking", i % 5, Math.floor(i / 5))),
 })
 
 function seeded(raw: string): Storage {
@@ -269,15 +339,15 @@ describe("legacy 4/5-grid recovery (GAP-8D)", () => {
   })
 
   it.each([
-    ["overlapping 4x2", JSON.stringify({ grid: { columns: 4, rows: 2 }, widgets: [unit("a", "kpi-summary", 0, 0), unit("b", "ranking", 0, 0)] })],
-    ["invalid-height 4x2", JSON.stringify({ grid: { columns: 4, rows: 2 }, widgets: [{ ...unit("a", "kpi-summary", 0, 0), height: 0.75 }] })],
-    ["out-of-old-range 6x3", JSON.stringify({ grid: { columns: 6, rows: 3 }, widgets: [unit("a", "kpi-summary", 0, 0)] })],
+    ["overlapping 4x2", JSON.stringify({ grid: { columns: 4, rows: 2 }, widgets: [unit("a", "subscriber-leaderboard", 0, 0), unit("b", "creator-video-ranking", 0, 0)] })],
+    ["invalid-height 4x2", JSON.stringify({ grid: { columns: 4, rows: 2 }, widgets: [{ ...unit("a", "subscriber-leaderboard", 0, 0), height: 0.75 }] })],
+    ["out-of-old-range 6x3", JSON.stringify({ grid: { columns: 6, rows: 3 }, widgets: [unit("a", "subscriber-leaderboard", 0, 0)] })],
   ])("ordinary corrupt data (%s) is a plain error, not a legacy migration", (_name, raw) => {
     expect(readCanonicalLayout(seeded(raw)).status).toBe("error")
   })
 
   it("legacy data that also has duplicate ids is legacy with no proposal (ids cannot be both preserved and unique)", () => {
-    const raw = JSON.stringify({ grid: { columns: 4, rows: 1 }, widgets: [unit("x", "kpi-summary", 0, 0), unit("x", "ranking", 1, 0)] })
+    const raw = JSON.stringify({ grid: { columns: 4, rows: 1 }, widgets: [unit("x", "subscriber-leaderboard", 0, 0), unit("x", "creator-video-ranking", 1, 0)] })
     const result = readCanonicalLayout(seeded(raw))
     expect(result.status).toBe("legacy-grid")
     if (result.status !== "legacy-grid") throw new Error("unreachable")

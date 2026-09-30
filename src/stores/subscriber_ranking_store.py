@@ -52,10 +52,15 @@ class S3SubscriberRankingStore:
         self.s3_client = s3_client
 
     @classmethod
-    def from_environment(cls, *, s3_client=None) -> "S3SubscriberRankingStore":
+    def from_environment(cls, *, s3_client=None) -> "S3SubscriberRankingStore | None":
+        """Return an instance if YOBI_HISTORY_BUCKET is configured, else None
+        -- this method previously raised instead, which meant an
+        unconfigured environment surfaced as an unhandled 500 rather than
+        the same RankingNotReadyError/503 every other cache-only endpoint in
+        read_api.py already produces for "not yet computed")."""
         bucket_name = os.environ.get("YOBI_HISTORY_BUCKET")
         if not bucket_name:
-            raise SubscriberRankingStoreError("YOBI_HISTORY_BUCKET is not configured")
+            return None
         return cls(bucket_name, s3_client=s3_client)
 
     def write_result(self, report_date: date, payload: dict[str, Any]) -> str:

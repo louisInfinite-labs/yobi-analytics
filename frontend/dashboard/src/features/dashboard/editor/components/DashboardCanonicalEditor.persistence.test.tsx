@@ -23,8 +23,8 @@ import type { CanonicalLayout } from "../model/dashboardLayout"
 const SAVED_LAYOUT: CanonicalLayout = {
   grid: { columns: 2, rows: 1 },
   widgets: [
-    { widgetId: "widget-a", widgetType: "kpi-summary", x: 0, y: 0, width: 1, height: 1 },
-    { widgetId: "widget-b", widgetType: "ranking", x: 1, y: 0, width: 1, height: 1 },
+    { widgetId: "widget-a", widgetType: "subscriber-leaderboard", x: 0, y: 0, width: 1, height: 1 },
+    { widgetId: "widget-b", widgetType: "creator-video-ranking", x: 1, y: 0, width: 1, height: 1 },
   ],
 }
 

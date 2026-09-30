@@ -8,13 +8,7 @@ from botocore.exceptions import ClientError
 
 from collection import history_worker
 from api import history_worker_handler
-from analytics.history_ranking import (
-    CreatorDimensions,
-    exact_gains,
-    load_exact_anchor_rows,
-    merge_partial_rankings,
-    top_n_by_scope,
-)
+from analytics.history_ranking import exact_gains
 from stores.history_store import (
     HISTORY_SHARD_COUNT,
     HistoryRow,
@@ -197,7 +191,6 @@ def test_missing_anchors_are_not_fabricated():
     today = [_row("v1", 150)]
     gains = exact_gains(today, {1: [], 7: [], 30: []}, report_date=date(2026, 9, 9))
     assert gains["v1"] == {1: None, 7: None, 30: None}
-    assert top_n_by_scope(today, {1: [], 7: [], 30: []}, report_date=date(2026, 9, 9)) == {}
 
 
 def test_exact_one_seven_and_thirty_day_growth():
@@ -208,52 +201,6 @@ def test_exact_one_seven_and_thirty_day_growth():
         report_date=date(2026, 9, 9),
     )
     assert gains["v1"] == {1: 100, 7: 300, 30: 900}
-
-
-def test_exact_anchor_loader_reads_only_fixed_dates():
-    class FakeStore:
-        def __init__(self):
-            self.reads = []
-
-        def read_daily_shard(self, collection_date, shard):
-            self.reads.append((collection_date, shard))
-            return []
-
-    store = FakeStore()
-    load_exact_anchor_rows(store, report_date=date(2026, 9, 9), shard=4)
-    assert store.reads == [
-        (date(2026, 9, 8), 4),
-        (date(2026, 9, 2), 4),
-        (date(2026, 8, 10), 4),
-    ]
-
-
-def test_top_n_ordering_and_scopes_consider_every_video():
-    """R7 (AWS Cost Recovery) removed the "global"/"branch" scopes -- zero
-    production consumer -- leaving only "creator"/"org"."""
-    today = [_row("v1", 110, "c1"), _row("v2", 500, "c1"), _row("v3", 250, "c2")]
-    anchors = {
-        1: [_row("v1", 100, "c1"), _row("v2", 100, "c1"), _row("v3", 100, "c2")],
-        7: [],
-        30: [],
-    }
-    dimensions = {
-        "c1": CreatorDimensions("org", "branch-a"),
-        "c2": CreatorDimensions("org", "branch-b"),
-    }
-    result = top_n_by_scope(today, anchors, report_date=date(2026, 9, 9), dimensions_by_creator=dimensions, limit=2)
-    assert set(result) == {("creator", "c1"), ("creator", "c2"), ("org", "org")}
-    assert [entry.video_id for entry in result[("creator", "c1")]["1d"]] == ["v2", "v1"]
-    assert [entry.video_id for entry in result[("org", "org")]["1d"]] == ["v2", "v3"]
-
-
-def test_partial_top_n_merge_preserves_global_order():
-    """R7 (AWS Cost Recovery): "global" scope removed -- merge ordering is
-    now checked on "creator" scope instead, same underlying merge logic."""
-    first = top_n_by_scope([_row("a", 200, "c1")], {1: [_row("a", 100, "c1")]}, report_date=date(2026, 9, 9), limit=1)
-    second = top_n_by_scope([_row("b", 500, "c1")], {1: [_row("b", 100, "c1")]}, report_date=date(2026, 9, 9), limit=1)
-    merged = merge_partial_rankings([first, second], limit=1)
-    assert [entry.video_id for entry in merged[("creator", "c1")]["1d"]] == ["b"]
 
 
 def test_failed_shard_does_not_rollback_a_successful_shard(monkeypatch):
@@ -498,13 +445,6 @@ def test_collect_history_shard_skips_youtube_when_the_shard_is_already_collected
 
     assert result.rows == existing_rows
     assert result.history_key == daily_history_key(date(2026, 9, 9), shard)
-    # The idempotent-skip path must still produce a real ranking result for
-    # this shard — the only place that computes it for the day — not omit it
-    # just because YouTube itself was skipped. FakeHistory.read_daily_shard
-    # returns existing_rows for every date, including the D-1/D-7/D-30 anchor
-    # reads load_exact_anchor_rows makes, so every exact period sees a real
-    # (zero) gain here, not a missing anchor.
-    assert result.rankings[("creator", "c1")]["7d"][0].view_count == 500
 
 
 def test_collect_history_shard_skips_youtube_for_a_shard_that_legitimately_collected_zero_rows(monkeypatch):
@@ -544,82 +484,6 @@ def test_collect_history_shard_skips_youtube_for_a_shard_that_legitimately_colle
     )
 
     assert result.rows == []
-    assert result.rankings == {}
-
-
-def test_collect_history_shard_idempotent_skip_produces_the_same_ranking_as_a_fresh_compute(monkeypatch):
-    """A retry that skips YouTube (because the shard already exists) must
-    produce byte-for-byte the same ranking a fresh compute over the same
-    underlying rows would — the reducer's later merge must never see a gap
-    just because a particular invocation happened to skip YouTube."""
-    shard = 7
-    video_id = _video_for_shard(shard)
-
-    class FreshManifest:
-        def read_shard(self, shard):
-            return [ManifestEntry(video_id, "c1", True)]
-
-    class FreshHistory:
-        def shard_exists(self, collection_date, shard):
-            return False
-
-        def read_daily_shard(self, collection_date, shard):
-            return []
-
-        def write_daily_shard(self, collection_date, shard, rows):
-            return daily_history_key(collection_date, shard)
-
-    def fake_statistics(youtube, video_ids):
-        return (
-            [{"videoId": video_id, "title": "t", "publishedAt": "2026-01-01T00:00:00Z", "viewCount": 777}],
-            {},
-        )
-
-    monkeypatch.setattr(history_worker, "get_video_statistics", fake_statistics)
-
-    fresh_result = collect_history_shard(
-        youtube=object(),
-        manifest_store=FreshManifest(),
-        history_store=FreshHistory(),
-        collection_date=date(2026, 9, 9),
-        shard=shard,
-        observed_at="2026-09-09T18:00:00+09:00",
-    )
-
-    class SkipManifest:
-        def read_shard(self, shard):
-            return [ManifestEntry(video_id, "c1", True)]
-
-    class SkipHistory:
-        def shard_exists(self, collection_date, shard):
-            return True
-
-        def read_daily_shard(self, collection_date, shard):
-            # load_exact_anchor_rows calls this same method for D-1/D-7/D-30
-            # too -- only "today" should return the pre-collected rows,
-            # matching FreshHistory's own (empty) anchors below.
-            if collection_date == date(2026, 9, 9):
-                return fresh_result.rows
-            return []
-
-        def write_daily_shard(self, collection_date, shard, rows):
-            raise AssertionError("an already-collected shard must not be rewritten")
-
-    def _boom_statistics(youtube, video_ids):
-        raise AssertionError("YouTube must not be called for an already-collected shard")
-
-    monkeypatch.setattr(history_worker, "get_video_statistics", _boom_statistics)
-
-    skip_result = collect_history_shard(
-        youtube=object(),
-        manifest_store=SkipManifest(),
-        history_store=SkipHistory(),
-        collection_date=date(2026, 9, 9),
-        shard=shard,
-        observed_at="2026-09-09T18:00:00+09:00",
-    )
-
-    assert skip_result.rankings == fresh_result.rankings
 
 
 # --- manifest fail-fast validation (Roadmap 5.3 cost/abuse containment) ----

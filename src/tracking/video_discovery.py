@@ -11,7 +11,7 @@ from typing import Iterator
 
 from googleapiclient.discovery import Resource
 
-from collection.youtube_client import YouTubeAPIError, call_youtube_api
+from collection.youtube_client import YouTubeAPIError, call_youtube_api, select_video_thumbnail_url
 
 PLAYLIST_PAGE_SIZE = 50
 
@@ -88,7 +88,17 @@ def _iter_playlist_pages(youtube: Resource, playlist_id: str) -> Iterator[list[d
 
 
 def _parse_playlist_item(item: dict) -> dict:
-    """Extract videoId/title/publishedAt from a single playlistItems.list entry."""
+    """Extract videoId/title/publishedAt/thumbnailUrl from a single
+    playlistItems.list entry.
+
+    thumbnailUrl (video-ranking metadata propagation) is read from this same
+    entry's own snippet.thumbnails -- already present in this same paid
+    part="snippet" response, no separate YouTube request. select_video_
+    thumbnail_url returns None (never raises) for an item with no usable
+    thumbnail variant, which is a legitimate, if rare, discovery outcome --
+    never a reason to skip the whole item over what title/publishedAt
+    already make trackable.
+    """
     try:
         snippet = item["snippet"]
         video_id = snippet["resourceId"]["videoId"]
@@ -101,4 +111,5 @@ def _parse_playlist_item(item: dict) -> dict:
         if not isinstance(value, str) or not value:
             raise YouTubeAPIError(f"Malformed playlist item, invalid {field_name!r}: {value!r}")
 
-    return {"videoId": video_id, "title": title, "publishedAt": published_at}
+    thumbnail_url = select_video_thumbnail_url(snippet.get("thumbnails"))
+    return {"videoId": video_id, "title": title, "publishedAt": published_at, "thumbnailUrl": thumbnail_url}
