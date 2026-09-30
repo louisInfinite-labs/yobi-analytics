@@ -38,13 +38,13 @@ describe("selectLiveEmbedVideo", () => {
     expect(selectLiveEmbedVideo({ kind: "offline" }, [liveNow], now)).toBeNull()
   })
 
-  it("still checks the recent-archive fallback for an upcoming status (not live yet)", () => {
+  it("loads the upcoming stream's own videoId rather than falling back to a recent archive", () => {
     const result = selectLiveEmbedVideo(
       { kind: "upcoming", videoId: "v2", title: "t2", scheduledStart: now.toISOString() },
       [archive(1)],
       now,
     )
-    expect(result?.videoId).toBe("archive_1")
+    expect(result).toEqual({ videoId: "v2", title: "t2" })
   })
 
   it("treats undefined status (no data yet) the same as offline", () => {

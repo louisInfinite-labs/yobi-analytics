@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Modal } from "antd"
-import { getCreatorAvatarVisual } from "../../analytics/charts/CreatorAvatar"
+import { getScheduleCreatorAvatarVisual } from "../utils/creatorAvatar"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { resolvePlaybackVideoId } from "../../home-room/data/mockRecentVideos"
 import { shouldShowLiveBadge, type ScheduledStream } from "../model/scheduledStream"
@@ -52,7 +52,7 @@ function StreamThumbnail({ stream, locale }: { stream: ScheduledStream; locale: 
 export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream }: StreamDetailModalProps) {
   if (!stream) return null
   const creator = creatorsById.get(stream.channelId)
-  const visual = getCreatorAvatarVisual(stream.channelId, creator?.channelName ?? stream.channelId)
+  const visual = getScheduleCreatorAvatarVisual(stream.channelId, creator?.channelName ?? stream.channelId)
   const showLiveBadge = shouldShowLiveBadge(stream.status, stream.scheduledStartMs, now.getTime())
   const started = startedTimeText(stream, locale, now.getTime())
 

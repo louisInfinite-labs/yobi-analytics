@@ -9,8 +9,11 @@ export interface LiveEmbedVideo {
 }
 
 /** The video (if any) that should render as a real, playable YouTube embed
- * in Home's scene frame: the creator's current live broadcast, or -- once
- * they've gone offline -- whichever archived stream ended most recently,
+ * in Home's scene frame: the creator's current live broadcast, their next
+ * scheduled/upcoming stream (YouTube's own embed shows its real waiting-room/
+ * "Premieres in..." state for a videoId that hasn't gone live yet -- no
+ * separate fake waiting screen needed here), or -- once they've gone offline
+ * with nothing scheduled -- whichever archived stream ended most recently,
  * but only when that was within the last 24 hours. Anything older (or no
  * stream history at all) returns null; the scene frame then falls back to
  * its existing empty/status-line-only rendering -- that fallback's own
@@ -21,6 +24,7 @@ export function selectLiveEmbedVideo(
   now: Date,
 ): LiveEmbedVideo | null {
   if (status?.kind === "live") return { videoId: status.videoId, title: status.title }
+  if (status?.kind === "upcoming") return { videoId: status.videoId, title: status.title }
 
   const mostRecentArchive = streamVideos
     .filter((video) => video.contentFormat === "live_archive")
