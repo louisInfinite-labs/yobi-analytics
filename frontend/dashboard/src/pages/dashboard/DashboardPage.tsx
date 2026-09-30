@@ -576,7 +576,7 @@ function DashboardPageContent({
         <DashboardGrid
           widgets={projection.widgets}
           columns={projection.columns}
-          rows={layoutForDisplay.grid.rows}
+          rows={projection.rows}
           editable={gridEditable}
           data={{ creatorId: null }}
           getWidgetData={getWidgetData}
