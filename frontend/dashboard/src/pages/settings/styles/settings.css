@@ -1222,6 +1222,49 @@
     overflow-y: auto;
     overflow-x: hidden;
   }
+
+  /* Geometry-only fix: this panel's own column is fluid (minmax(320px,
+     1fr) in .notification-settings-main), unlike the topic list's fixed
+     414px card width -- there is no natural slack an inner content
+     wrapper could sit inside to absorb the shared hidden-at-rest/thin-
+     on-hover scrollbar's 0px-to-7px WIDTH growth the way
+     .notification-topic-list-scroll/-content does (that pattern needs a
+     content box reliably narrower than the scroller even at the
+     scrollbar's max width, which a fluid column can't promise). Reserve
+     the scrollbar's own track at a CONSTANT 7px instead, only in this
+     band where the panel is confirmed to actually scroll, and switch
+     just its colors between rest (transparent, so it still reads as "no
+     scrollbar") and hover (the shared --oshi-* tokens) -- same visual
+     result as the shared rule above, but width never changes on hover,
+     so detail content and titles never shift. */
+  .notification-detail-panel {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .notification-detail-panel:hover {
+    scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
+  }
+
+  .notification-detail-panel::-webkit-scrollbar {
+    width: 7px;
+    background: transparent;
+  }
+
+  .notification-detail-panel::-webkit-scrollbar-track {
+    background: transparent;
+    border: 0;
+    outline: 0;
+    box-shadow: none;
+  }
+
+  .notification-detail-panel::-webkit-scrollbar-thumb {
+    background: transparent;
+    border: 0;
+    outline: 0;
+    box-shadow: none;
+    border-radius: 999px;
+  }
 }
 
 /* One cutover, not the two the settings shell's own fixed-width secondary
@@ -1529,10 +1572,12 @@
    correcting an earlier version of this control that gave every item its
    own bordered box in a grid, which read as 6 separate buttons). ---- */
 
+/* Background/border/radius/padding come from the shared .shared-filter-
+   segmented class (shared/styles/segmentedFilter.css) -- this rule only
+   adds what's specific to this control: filling the full detail-panel
+   width and the single-row overflow fallback below. */
 .notification-reminder-options.ant-segmented {
   width: 100%;
-  background: var(--notification-surface-2);
-  border: 1px solid var(--notification-border);
   /* Single-row only (confirmed with the user): Ant Design's MotionThumb
      only animates a horizontal left/width offset, so a wrapped 2nd row
      would make the sliding-highlight animation land in the wrong place
@@ -1549,8 +1594,9 @@
   gap: 4px;
 }
 
+/* min-height/color/font-size/font-weight come from .shared-filter-segmented
+   -- this rule only adds this control's own item-distribution layout. */
 .notification-reminder-options .ant-segmented-item {
-  min-height: 36px;
   /* flex-grow so items still stretch to fill a wide panel (1920/1600px),
      flex-shrink:0 so a narrower panel never compresses/clips a label --
      the font-size/padding steps below do that job instead, in the order
@@ -1562,10 +1608,6 @@
   justify-content: center;
   text-align: center;
   white-space: nowrap;
-
-  color: #ddd7e2;
-  font-size: 14px;
-  font-weight: 500;
 }
 
 /* Around 1440px (measured: ~462px available for a ~494px-wide row at the
@@ -1602,38 +1644,39 @@
   }
 }
 
-/* 1:1 with .notification-type-control below (confirmed with the user,
-   removing an earlier version of this control's own hover color, selected
-   background/box-shadow-ring, and transparent-thumb override -- reminder
-   time must use the exact same Ant Design Segmented moving-thumb
-   mechanism as notification type, not a lookalike built from a hidden
-   thumb plus a hand-painted "selected" box). No .ant-segmented-thumb rule
-   here at all, same as notification-type: both now render antd's real,
-   visible thumb, driven by the same shared ConfigProvider Segmented theme
-   tokens (itemSelectedBg/itemHoverColor/etc., see the ConfigProvider in
-   NotificationSettings.tsx). The one display:none pitfall from earlier
-   in this control's history doesn't apply here: we are not setting
-   display:none on anything, so the thumb's own transitionend still fires
-   normally and thumbShow still resets correctly, exactly as it always has
-   for notification-type. */
-.notification-reminder-options .ant-segmented-item-selected {
-  background: var(--notification-selected-bg-hover);
-  color: var(--notification-text-primary);
-}
+/* Selected-item background/color, and hover color, now come from the
+   shared .shared-filter-segmented class (also used by Favorites' and Live
+   Status' own All/Favorites toggle -- shared/styles/segmentedFilter.css),
+   not a rule of this control's own. No .ant-segmented-thumb rule here at
+   all: this control renders antd's real, visible thumb -- the one
+   display:none pitfall from earlier in this control's history doesn't
+   apply here, so the thumb's own transitionend still fires normally and
+   thumbShow still resets correctly. */
 
-/* Disabled (newVideo-only topic): the control stays visible rather than
-   the whole section disappearing, dimmed via opacity so its existing
-   neutral colors (including the selected item's own background)
-   read as "unavailable" without introducing a separate disabled palette
-   -- scoped to the control itself, not .notification-detail-section, so
-   the section's own title/helper text next to it stays fully readable. */
-.notification-reminder-options.ant-segmented-disabled {
+/* Disabled (newVideo-only topic): the ENTIRE section (title, helper text,
+   and the control) dims together, confirmed with the user -- correcting an
+   earlier version that dimmed only the control and left the title/helper
+   text fully readable, which read as inconsistent. opacity alone doesn't
+   stop the browser from still matching :hover on a disabled Ant Design
+   Segmented item -- that let antd's own default disabled-item hover color
+   (a near-black rgba meant for a light theme) flash in against this dark
+   theme, reading as an unwanted "darken on hover" glitch. pointer-events:
+   none on the control itself is the fix: the browser then never considers
+   the pointer "over" the control or its items at all, so no :hover rule
+   (ours or antd's own) can ever match -- completely static, not just
+   visually dimmed. The real antd `disabled` prop (Segmented's own
+   disabled={disabled} prop, still set below) remains the actual source of
+   truth for click/keyboard disabling; this only removes stray hover-driven
+   visual feedback on top of it. cursor: not-allowed lives on the section
+   itself (not the now-pointer-events:none control) so it still renders
+   consistently while hovering anywhere over the disabled area. */
+.notification-reminder-section--disabled {
   opacity: 0.48;
   cursor: not-allowed;
 }
 
-.notification-reminder-options.ant-segmented-disabled .ant-segmented-item {
-  cursor: not-allowed;
+.notification-reminder-section--disabled .notification-reminder-options {
+  pointer-events: none;
 }
 
 /* ---- Notification type ---- */

@@ -220,11 +220,15 @@ export function LiveScheduleDock() {
             </div>
 
             <div className="live-status-filter-row">
-              {/* Ant Design Segmented, same dark-token pattern as Settings >
-               * Oshi Settings' own All/Favorites control and Home > Oshi
-               * Videos' tag bar -- itemSelectedBg is the only token tied to
-               * --creator-main (a low color-mix, not a solid fill), so
-               * switching currentOshi tints just the selected segment. */}
+              {/* Visual style (background/border/radius/item height/font/
+               * colors/hover) comes from the shared .shared-filter-segmented
+               * class below, matching Live Reminder Time and Favorites' own
+               * All/Favorites toggle 1:1 (confirmed with the user) -- this
+               * ConfigProvider's own Segmented tokens (incl. the
+               * --creator-main-tinted itemSelectedBg this control used to
+               * render with) are now superseded by that shared class, not
+               * removed outright, in case a future control in this same
+               * subtree still wants them. */}
               <ConfigProvider
                 theme={{
                   components: {
@@ -243,10 +247,8 @@ export function LiveScheduleDock() {
                 }}
               >
                 <Segmented<ViewMode>
-                  size="small"
                   classNames={{
-                    root: "live-status-view-segmented",
-                    item: "live-status-view-segment-item",
+                    root: "live-status-view-segmented shared-filter-segmented",
                     label: "live-status-view-segment-label",
                   }}
                   value={viewMode}

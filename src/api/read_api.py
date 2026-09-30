@@ -32,11 +32,13 @@ before its own onboarding, rather than the less precise `pending`.
 from __future__ import annotations
 
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from tracking.creator_master import Creator, load_creators
+from api.holodex_client import holodex_get
+from api.holodex_normalization import normalize_holodex_archived_streams_response, normalize_holodex_live_response
+from tracking.creator_master import Creator, is_creator_live_roster_eligible, load_creators
 from analytics.subscriber_ranking import GROWTH_PERIODS, VALID_SUBSCRIBER_ORGANIZATIONS
 from stores.subscriber_ranking_store import S3SubscriberRankingStore
 from analytics.video_ranking import TOPIC_SCOPE_ALL as VIDEO_RANKING_TOPIC_ALL
@@ -82,6 +84,16 @@ class ClientError(ValueError):
 
 class VideoNotFoundError(ClientError):
     """Raised when the requested videoId does not exist in Video Master."""
+
+
+class ScopeNotFoundError(ClientError):
+    """Raised when a requested creatorId doesn't resolve to a real, live-roster-
+    eligible creator -- get_recent_streams/get_live_streams check this against
+    Creator Master (is_creator_live_roster_eligible) before ever calling
+    Holodex, so an unknown or ineligible creatorId gets a clean 404 instead of
+    an empty result indistinguishable from "this real creator just has no
+    archives right now."
+    """
 
 
 class RankingNotReadyError(Exception):
@@ -483,6 +495,236 @@ def get_video_ranking(query: dict[str, Any]) -> dict[str, Any]:
         "topic": topic,
         "rows": rows,
     }
+
+
+# Yobi's own approved Holodex Live/Upcoming lookahead window: 7 days, not
+# Holodex's own 48-hour /live default (docs.holodex.net) -- a product
+# decision made ahead of this integration, confirmed with the user.
+#
+# Enforced locally (see _is_within_lookahead below), not sent to Holodex as a
+# request parameter: /users/live -- the endpoint this function actually
+# calls, see its docstring -- does not document max_upcoming_hours, and a
+# live probe against the real API (2026-09-29, using the already-configured
+# Secrets Manager key) confirmed it has no effect there: an identical request
+# with and without max_upcoming_hours=168 returned byte-identical results,
+# including upcoming entries scheduled over 700 days out. /users/live simply
+# returns everything upcoming for the requested channels with no time-window
+# truncation of its own, which is exactly what makes local enforcement safe
+# here -- nothing within the 7-day window is ever missing from the response.
+_HOLODEX_MAX_UPCOMING_HOURS = 24 * 7
+
+
+def _is_within_lookahead(scheduled_start: str | None, *, now: datetime) -> bool:
+    """Whether an "upcoming" stream's scheduled_start falls within Yobi's lookahead window.
+
+    scheduled_start is already an absolute, offset-aware UTC ISO-8601 string
+    when present (holodex_normalization._parse_utc_timestamp's contract) --
+    re-parsing it here can only fail if that contract is somehow violated,
+    which is treated the same as a missing timestamp: excluded rather than
+    raised, matching normalize_holodex_stream's own "degrade the item, never
+    take down the batch" posture for anything Holodex-sourced. An "upcoming"
+    item this project cannot confirm is due within the window must not be
+    shown as if it were -- silently guessing a default would misrepresent it.
+    """
+    if scheduled_start is None:
+        return False
+    try:
+        scheduled_at = datetime.fromisoformat(scheduled_start)
+    except ValueError:
+        return False
+    return scheduled_at <= now + timedelta(hours=_HOLODEX_MAX_UPCOMING_HOURS)
+
+
+def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
+    """`GET /live-streams`: current live/upcoming streams for Yobi's supported creators, sourced from Holodex.
+
+    One aggregate Holodex `/users/live` request for every live-roster-eligible
+    creator's channel at once (`channels=<comma-separated ids>`) — never one
+    request per creator. `/users/live`, not `/live`: Holodex only documents
+    the `channels` (plural, comma-separated) filter for `/users/live` --
+    `/live` documents just `channel_id` (singular). A live probe against the
+    real API (2026-09-29) confirmed this isn't pedantic: the same `channels=`
+    request against `/live` returned 806 distinct channels across 1,272 items
+    (i.e. `/live` silently ignores an undocumented `channels` filter and
+    returns platform-wide results), while `/users/live` returned exactly this
+    project's own 97 requested channels (79 with current activity). `/live`'s
+    result staying correct at all currently depends entirely on this
+    function's own defensive channel_index filter below rather than on
+    Holodex actually scoping the request -- and that same local filter cannot
+    recover an eligible stream that never made it into `/live`'s response in
+    the first place if its (undocumented, platform-wide) result was ever
+    truncated. `/users/live` is genuinely channel-scoped instead, so no such
+    risk applies. Holodex is queried directly here rather than through any
+    persisted store (DynamoDB/S3/cache): this is read-path integration only,
+    matching TrendingNotReadyError's "no live fallback" precedent in reverse
+    -- here Holodex itself *is* the live source, with no persistence layer in
+    front of it yet.
+
+    Eligibility reuses Creator Master's own is_creator_live_roster_eligible
+    (tracking/creator_master.py) -- the same rule already governing Live
+    Status/Live Schedule elsewhere -- rather than inventing a second
+    supported-creator definition here. A normalized stream whose channel
+    isn't in that eligible set (Holodex returning something unrequested,
+    e.g. a collab guest) is dropped defensively, the same "never guess"
+    posture normalize_holodex_stream itself already takes per-field.
+
+    An "upcoming" stream is additionally kept only when _is_within_lookahead
+    says its scheduled_start is within _HOLODEX_MAX_UPCOMING_HOURS from now
+    -- see that function's own docstring for why this must be enforced
+    locally rather than requested from Holodex. A "live" stream is always
+    kept regardless of scheduled_start; it's already happening.
+
+    Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError
+    on any Holodex failure rather than returning a fabricated empty result --
+    api_handler.py's dispatch maps these to 503, the same "external
+    dependency temporarily unavailable" treatment as TrendingNotReadyError.
+    """
+    eligible_creators = [creator for creator in load_creators() if is_creator_live_roster_eligible(creator)]
+    channel_index = {creator.youtube_channel_id: creator for creator in eligible_creators}
+    if not channel_index:
+        return {"streams": []}
+
+    raw_payload = holodex_get("/users/live", {"channels": ",".join(channel_index)})
+    normalized_streams = normalize_holodex_live_response(raw_payload)
+
+    now = datetime.now(timezone.utc)
+    streams = []
+    for stream in normalized_streams:
+        creator = channel_index.get(stream.youtube_channel_id)
+        if creator is None:
+            continue
+        if stream.status == "upcoming" and not _is_within_lookahead(stream.scheduled_start, now=now):
+            continue
+        streams.append(
+            {
+                "videoId": stream.video_id,
+                "creatorId": creator.creator_id,
+                "channelName": stream.channel_name or creator.display_name,
+                "title": stream.title,
+                "status": stream.status,
+                "scheduledStart": stream.scheduled_start,
+                "actualStart": stream.actual_start,
+                "thumbnailUrl": stream.thumbnail_url,
+            }
+        )
+    return {"streams": streams}
+
+
+# GET /recent-streams' own limit -- deliberately its own constant, not
+# MAX_LIMIT/parse_limit above (that pair backs the /trending family's
+# page sizing, up to 100 rows of already-cheap cached data). A `Latest Live`
+# archive row only ever needed up to ~5 slots even before this endpoint
+# existed (recentVideosSelection.ts's selectLivestreamSlots, frontend) --
+# 20 is a small, safe upper bound comfortably above that real need, not an
+# invitation to page deep into one creator's full upload history through a
+# request-time Holodex call.
+RECENT_STREAMS_DEFAULT_LIMIT = 4
+RECENT_STREAMS_MAX_LIMIT = 20
+
+
+def parse_recent_streams_limit(raw: Any) -> int:
+    """Validate an optional limit query parameter for GET /recent-streams:
+    a positive integer at most RECENT_STREAMS_MAX_LIMIT, defaulting to
+    RECENT_STREAMS_DEFAULT_LIMIT when absent (unlike parse_limit above,
+    whose absence means "caller decides", this endpoint always sends some
+    limit to Holodex)."""
+    if raw is None or raw == "":
+        return RECENT_STREAMS_DEFAULT_LIMIT
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ClientError(f"limit must be a positive integer, got {raw!r}") from None
+    if isinstance(raw, bool) or value <= 0:
+        raise ClientError(f"limit must be a positive integer, got {raw!r}")
+    if value > RECENT_STREAMS_MAX_LIMIT:
+        raise ClientError(f"limit must be at most {RECENT_STREAMS_MAX_LIMIT}, got {value!r}")
+    return value
+
+
+def parse_offset(raw: Any) -> int:
+    """Validate an optional offset query parameter: a non-negative integer, defaulting to 0."""
+    if raw is None or raw == "":
+        return 0
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ClientError(f"offset must be a non-negative integer, got {raw!r}") from None
+    if isinstance(raw, bool) or value < 0:
+        raise ClientError(f"offset must be a non-negative integer, got {raw!r}")
+    return value
+
+
+def get_recent_streams(query: dict[str, Any]) -> dict[str, Any]:
+    """`GET /recent-streams`: one creator's most recent ENDED livestreams (archives
+    only), paginated, sourced from Holodex -- the counterpart to get_live_streams
+    above, which owns current live/upcoming instead. Together:
+
+      /live-streams   -> current LIVE / UPCOMING, every eligible creator, no pagination
+      /recent-streams -> one creator's ended archives, paginated, no live/upcoming
+
+    Never merges the two -- a caller that wants both (the frontend's "Latest
+    Live" row) combines them client-side, the same way it already combines
+    live-now + archives locally (recentVideosSelection.ts's
+    selectLivestreamSlots, unchanged by this endpoint).
+
+    creatorId is resolved and eligibility-checked against Creator Master
+    (is_creator_live_roster_eligible -- the same rule get_live_streams already
+    applies) *before* ever calling Holodex, so an unknown or ineligible
+    creatorId gets a clean 404 (ScopeNotFoundError) rather than an empty
+    result indistinguishable from "this real creator just has no archives."
+
+    Holodex request: GET /videos?channel_id=<real channel>&type=stream&
+    status=past&sort=available_at&order=desc&limit=<limit>&offset=<offset> --
+    exactly the query semantics the frontend's own now-retired
+    fetchArchivedStreamsFromHolodex used for its archive page (never
+    live/upcoming; that request stays entirely inside get_live_streams).
+
+    hasMore is derived from the raw Holodex page count against `limit`
+    (`len(raw_payload) >= limit`), so normalization and channel filtering
+    do not affect pagination. It is independent of /live-streams, which
+    this endpoint never touches.
+
+    Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError
+    on any Holodex failure -- api_handler.py's existing dispatch already maps
+    these to a safe 503 (HOLODEX_UNAVAILABLE), the identical handling
+    get_live_streams' own callers already go through; no separate error
+    path is added for this endpoint.
+    """
+    creator_id = parse_creator_id(query.get("creatorId"))
+    limit = parse_recent_streams_limit(query.get("limit"))
+    offset = parse_offset(query.get("offset"))
+
+    creator = _find_creator(creator_id)
+    if creator is None or not is_creator_live_roster_eligible(creator):
+        raise ScopeNotFoundError(f"No creator found for creatorId {creator_id!r}")
+
+    raw_payload = holodex_get(
+        "/videos",
+        {
+            "channel_id": creator.youtube_channel_id,
+            "type": "stream",
+            "status": "past",
+            "sort": "available_at",
+            "order": "desc",
+            "limit": str(limit),
+            "offset": str(offset),
+        },
+    )
+    archived = normalize_holodex_archived_streams_response(raw_payload)
+
+    streams = [
+        {
+            "videoId": item.video_id,
+            "creatorId": creator.creator_id,
+            "channelName": item.channel_name or creator.display_name,
+            "title": item.title,
+            "thumbnailUrl": item.thumbnail_url,
+            "publishedAt": item.published_at,
+        }
+        for item in archived
+        if item.youtube_channel_id == creator.youtube_channel_id
+    ]
+    return {"creatorId": creator.creator_id, "streams": streams, "hasMore": len(raw_payload) >= limit}
 
 
 # The daily pipeline finishes around 18:00 JST, so an omitted reportDate would

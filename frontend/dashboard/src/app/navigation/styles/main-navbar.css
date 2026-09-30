@@ -5,13 +5,15 @@
    -- its .aside/.mainLink/.logo, specifically (the icon-only rail;
    .main/.title/.link is SettingsSecondaryNavbar's own, see settings.css).
    Values below are copied as literally as possible (colors, sizes,
-   radius, spacing) from that component's own dark-mode rendering (the
-   demo site's default color scheme; measured via computed styles, since
-   this app has no light/dark toggle of its own to switch these with
-   `light-dark()` against). The only two things swapped for our own
-   branding are the icon in .main-navbar__logo (this app's cat mark
-   instead of Mantine's own logo) and the document <title> (index.html's
-   own "OshiYobi") -- not anything rendered in this file. */
+   spacing) from that component's own dark-mode rendering (the demo
+   site's default color scheme; measured via computed styles, since this
+   app has no light/dark toggle of its own to switch these with
+   `light-dark()` against). Swapped for our own needs: the icon in
+   .main-navbar__logo (this app's cat mark instead of Mantine's own logo),
+   the document <title> (index.html's own "OshiYobi"), and
+   .main-navbar__link's border-radius (0, not Mantine's rounded pill --
+   confirmed with the user: this app's own primary rail uses a full-width
+   rectangular row instead). */
 :root {
   --main-navbar-width: 160px;
 }
@@ -55,7 +57,6 @@
   align-items: center;
   justify-content: center;
   padding-top: 16px;
-  margin-bottom: 32px;
   border-bottom: 1px solid var(--mantine-dark-7);
 }
 
@@ -74,7 +75,7 @@
   width: 100%;
   height: 44px;
   flex: 0 0 44px;
-  border-radius: 8px;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: flex-start;

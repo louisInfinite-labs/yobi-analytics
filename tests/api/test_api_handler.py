@@ -8,8 +8,11 @@ from api import client_credential_api
 from stores import client_credential_store
 from api import heartbeat_api
 from stores import heartbeat_store
+from api.holodex_client import HolodexAPIError
+from api.holodex_normalization import HolodexNormalizationError
 from notifications import notification_dispatch
 from notifications import push_sender
+from ops.config import MissingHolodexApiKeyError
 from api import read_api
 from api import remote_config_api
 from stores import remote_config_store
@@ -702,3 +705,153 @@ def test_get_admin_heartbeat_stats_without_admin_key_returns_403(monkeypatch, ad
     response = lambda_handler(_event("GET /admin/heartbeat-stats"), None)
 
     assert response["statusCode"] == 403
+
+
+# --- GET /live-streams -----------------------------------------------------
+
+
+def test_get_live_streams_returns_200(monkeypatch):
+    monkeypatch.setattr(read_api, "get_live_streams", lambda query: {"streams": []})
+
+    response = lambda_handler(_event("GET /live-streams"), None)
+
+    assert response["statusCode"] == 200
+    assert _body(response) == {"streams": []}
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        HolodexAPIError("Holodex API request to '/live' timed out"),
+        HolodexNormalizationError("Expected a list from Holodex's /live response, got dict"),
+        MissingHolodexApiKeyError("Neither HOLODEX_SECRET_NAME nor HOLODEX_API_KEY is set."),
+    ],
+    ids=["client_failure", "normalization_failure", "missing_api_key"],
+)
+def test_get_live_streams_maps_every_holodex_failure_to_503_not_a_fabricated_result(monkeypatch, capsys, exc):
+    def _boom(query):
+        raise exc
+
+    monkeypatch.setattr(read_api, "get_live_streams", _boom)
+
+    response = lambda_handler(_event("GET /live-streams"), None)
+
+    assert response["statusCode"] == 503
+    assert _body(response)["code"] == "HOLODEX_UNAVAILABLE"
+    assert _body(response)["error"] == "Live stream data is temporarily unavailable"
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        HolodexAPIError("Holodex API request to '/users/live' timed out"),
+        HolodexNormalizationError("Expected a list from Holodex's /users/live response, got dict"),
+        MissingHolodexApiKeyError("Neither HOLODEX_SECRET_NAME nor HOLODEX_API_KEY is set."),
+    ],
+    ids=["client_failure", "normalization_failure", "missing_api_key"],
+)
+def test_get_live_streams_failure_never_leaks_exception_details_to_the_client(monkeypatch, capsys, exc):
+    """The raw exception -- which can carry Holodex's own response text or
+    Secrets Manager failure details -- must never reach the HTTP response,
+    even though it's still logged server-side for diagnosis."""
+
+    def _boom(query):
+        raise exc
+
+    monkeypatch.setattr(read_api, "get_live_streams", _boom)
+
+    response = lambda_handler(_event("GET /live-streams"), None)
+
+    assert str(exc) not in response["body"]
+    assert str(exc) in capsys.readouterr().out
+
+
+def test_get_live_streams_calls_read_api_rather_than_duplicating_http_logic(monkeypatch):
+    """api_handler must delegate to read_api.get_live_streams, not call
+    holodex_client/holodex_normalization directly itself."""
+    captured = {}
+
+    def fake_get_live_streams(query):
+        captured["query"] = query
+        return {"streams": []}
+
+    monkeypatch.setattr(read_api, "get_live_streams", fake_get_live_streams)
+
+    response = lambda_handler(_event("GET /live-streams", query={"foo": "bar"}), None)
+
+    assert response["statusCode"] == 200
+    assert captured["query"] == {"foo": "bar"}
+
+
+def test_get_recent_streams_returns_200(monkeypatch):
+    monkeypatch.setattr(read_api, "get_recent_streams", lambda query: {"creatorId": "aizawa_ema", "streams": [], "hasMore": False})
+
+    response = lambda_handler(_event("GET /recent-streams", query={"creatorId": "aizawa_ema"}), None)
+
+    assert response["statusCode"] == 200
+    assert _body(response) == {"creatorId": "aizawa_ema", "streams": [], "hasMore": False}
+
+
+def test_get_recent_streams_calls_read_api_rather_than_duplicating_http_logic(monkeypatch):
+    captured = {}
+
+    def fake_get_recent_streams(query):
+        captured["query"] = query
+        return {"creatorId": "aizawa_ema", "streams": [], "hasMore": False}
+
+    monkeypatch.setattr(read_api, "get_recent_streams", fake_get_recent_streams)
+
+    response = lambda_handler(_event("GET /recent-streams", query={"creatorId": "aizawa_ema", "limit": "2"}), None)
+
+    assert response["statusCode"] == 200
+    assert captured["query"] == {"creatorId": "aizawa_ema", "limit": "2"}
+
+
+def test_get_recent_streams_unknown_creator_returns_404(monkeypatch):
+    def _boom(query):
+        raise read_api.ScopeNotFoundError("No creator found for creatorId 'does_not_exist'")
+
+    monkeypatch.setattr(read_api, "get_recent_streams", _boom)
+
+    response = lambda_handler(_event("GET /recent-streams", query={"creatorId": "does_not_exist"}), None)
+
+    assert response["statusCode"] == 404
+
+
+def test_get_recent_streams_bad_limit_returns_400(monkeypatch):
+    def _boom(query):
+        raise read_api.ClientError("limit must be at most 20, got 999")
+
+    monkeypatch.setattr(read_api, "get_recent_streams", _boom)
+
+    response = lambda_handler(_event("GET /recent-streams", query={"creatorId": "aizawa_ema", "limit": "999"}), None)
+
+    assert response["statusCode"] == 400
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        HolodexAPIError("Holodex API request to '/videos' timed out"),
+        HolodexNormalizationError("Expected a list from Holodex's /videos response, got dict"),
+        MissingHolodexApiKeyError("Neither HOLODEX_SECRET_NAME nor HOLODEX_API_KEY is set."),
+    ],
+    ids=["client_failure", "normalization_failure", "missing_api_key"],
+)
+def test_get_recent_streams_maps_every_holodex_failure_to_a_safe_503(monkeypatch, capsys, exc):
+    """Reuses the exact same dispatch-level Holodex exception handling
+    get_live_streams already goes through -- no separate error path was
+    added for this route. str(exc) must never reach the client."""
+
+    def _boom(query):
+        raise exc
+
+    monkeypatch.setattr(read_api, "get_recent_streams", _boom)
+
+    response = lambda_handler(_event("GET /recent-streams", query={"creatorId": "aizawa_ema"}), None)
+
+    assert response["statusCode"] == 503
+    assert _body(response)["code"] == "HOLODEX_UNAVAILABLE"
+    assert _body(response)["error"] == "Live stream data is temporarily unavailable"
+    assert str(exc) not in response["body"]
+    assert str(exc) in capsys.readouterr().out

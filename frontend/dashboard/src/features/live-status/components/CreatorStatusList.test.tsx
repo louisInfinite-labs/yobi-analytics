@@ -435,6 +435,40 @@ describe("CreatorStatusList MAIN vs CURRENT Oshi semantics", () => {
 
     expect(emaButton().style.getPropertyValue("--member-theme-color")).toBe(accentBefore)
   })
+
+  // Upcoming-time text (home.css's .live-status-member__status[data-status=
+  // "upcoming"]) must read identically for every row -- never this row's own
+  // creator.themeColor, never --creator-main (currentOshi's accent). Unlike
+  // the MAIN badge/creator-button above, this element carries no inline
+  // style of its own at all (confirmed by reading CreatorRow's own JSX:
+  // no style prop, unlike .live-status-member__creator-button's
+  // creatorNameAccentStyle), so its color comes only from one shared
+  // [data-status="upcoming"] selector -- proven here structurally (same
+  // class, no inline style, regardless of the two creators' own very
+  // different themeColor values), the same "assert the structural source,
+  // not jsdom's unapplied external stylesheet" approach as the MAIN badge
+  // test above.
+  it("upcoming-time status button is not bound to either creator's own themeColor", () => {
+    // aizawa_ema: themeColor #B4F1F9, shirakami_fubuki: themeColor #2BCDFF --
+    // deliberately different (mockCreators.ts), so a leaked per-creator color
+    // would show up as a real difference here.
+    const { container } = renderList({
+      statuses: {
+        ...allOffline,
+        ch_aizawa_ema: { kind: "upcoming", videoId: "v1", title: "t1", scheduledStart: "2026-09-09T13:00:00.000Z" },
+        ch_shirakami_fubuki: { kind: "upcoming", videoId: "v2", title: "t2", scheduledStart: "2026-09-09T14:00:00.000Z" },
+      },
+    })
+
+    const emaStatus = findRow(container, "藍沢エマ").querySelector('.live-status-member__status[data-status="upcoming"]') as HTMLElement
+    const fubukiStatus = findRow(container, "白上フブキ").querySelector('.live-status-member__status[data-status="upcoming"]') as HTMLElement
+
+    expect(emaStatus).toBeInTheDocument()
+    expect(fubukiStatus).toBeInTheDocument()
+    expect(emaStatus.className).toBe(fubukiStatus.className)
+    expect(emaStatus.getAttribute("style")).toBeNull()
+    expect(fubukiStatus.getAttribute("style")).toBeNull()
+  })
 })
 
 describe("countLiveAndOffline", () => {

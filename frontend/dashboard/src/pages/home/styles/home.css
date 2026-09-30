@@ -1405,18 +1405,19 @@
 }
 
 /* The Ant Design Segmented control replacing the former two independent
-   All/Favorites buttons -- colors/radius come from the ConfigProvider
-   component tokens in LiveScheduleDock.tsx (theme-bound, incl.
-   --creator-main on the selected segment); this block fixes the compact
-   toolbar dimensions (same approach as Oshi Videos' own
-   .oshi-videos__segmented block) AND makes it a full-width, exactly-50/50
-   ALL/Favorites control instead of a content-width chip pair -- unlike Oshi
-   Videos' own scrollable multi-tag bar, there are always exactly two options
-   here, so an equal flex split reads as one continuous 2-column control. */
+   All/Favorites buttons -- visual style (background/border/radius/padding/
+   item height/font/colors/hover) now comes from the shared
+   .shared-filter-segmented class (shared/styles/segmentedFilter.css, also
+   used by Live Reminder Time and Favorites' own All/Favorites toggle), not
+   the ConfigProvider component tokens above (kept in place but now
+   superseded -- confirmed with the user: only the base visual style is
+   shared, not the drawer/header layout). This block only makes it a
+   full-width, exactly-50/50 ALL/Favorites control instead of a
+   content-width chip pair -- unlike Oshi Videos' own scrollable multi-tag
+   bar, there are always exactly two options here, so an equal flex split
+   reads as one continuous 2-column control. */
 .live-status-view-segmented.ant-segmented {
   width: 100%;
-
-  font-size: 11px;
 }
 
 .live-status-filter-row .ant-segmented-group {
@@ -1430,22 +1431,21 @@
   min-width: 0;
 }
 
-.live-status-view-segment-item {
-  min-height: 26px;
-}
-
+/* width: 100% + its own flex/justify-content fill and horizontally center
+   the label within this control's stretched 50/50 item (external layout,
+   not visual skin) -- padding/font/color/line-height all come from the
+   shared .shared-filter-segmented class (or Ant Design's own untouched
+   defaults, confirmed identical to the source control by measurement); a
+   padding declaration here used to attempt 10px but never actually applied
+   (Ant Design's own same-specificity default always won), so it's removed
+   rather than kept as dead, misleading CSS. */
 .live-status-view-segment-label {
   width: 100%;
-  min-height: 26px;
 
   display: flex;
   align-items: center;
   justify-content: center;
 
-  padding: 0 10px;
-
-  font-size: 11px;
-  font-weight: 650;
   text-align: center;
 
   white-space: nowrap;
@@ -1807,8 +1807,14 @@
   color: #ff6f7d;
 }
 
+/* Fixed neutral text, never --creator-main (currentOshi's own accent) or
+   any per-row creator accent (--member-theme-color) -- confirmed with the
+   user: upcoming time must read identically for every row regardless of
+   that row's own creator or whichever creator is currently selected as
+   Oshi. --oshi-text-1 is this app's own existing standard near-white
+   primary text token (home.css's own :root block), not a new value. */
 .live-status-member__status[data-status="upcoming"] {
-  color: var(--creator-main);
+  color: var(--oshi-text-1);
 }
 
 .live-status-member__status[data-status="offline"] {

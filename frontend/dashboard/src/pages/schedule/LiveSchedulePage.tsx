@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ScheduleGrid } from "../../features/live-schedule/components/ScheduleGrid"
 import { ScheduleToolbar } from "../../features/live-schedule/components/ScheduleToolbar"
 import { StreamDetailModal } from "../../features/live-schedule/components/StreamDetailModal"
@@ -18,6 +18,16 @@ export function LiveSchedulePage() {
   const { weekStart, days, now, goToPreviousWeek, goToNextWeek } = useWeeklySchedule()
   const [selectedStream, setSelectedStream] = useState<ScheduledStream | null>(null)
   const [embed, setEmbed] = useState<{ videoId: string; title: string } | null>(null)
+
+  // Scopes the document scrollbar's reference-matched style (schedule.css's
+  // html.schedule-page-scroll rules) to only while this page is mounted --
+  // <html> is shared across every page, so this must come off on unmount
+  // rather than staying applied to Settings/Dashboard's own (unstyled)
+  // document scrollbar afterward.
+  useEffect(() => {
+    document.documentElement.classList.add("schedule-page-scroll")
+    return () => document.documentElement.classList.remove("schedule-page-scroll")
+  }, [])
 
   return (
     <div className="schedule-page">

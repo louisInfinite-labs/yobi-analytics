@@ -73,14 +73,16 @@ function ReminderTimeSection({ topicId, topicLabel, disabled }: { topicId: Topic
   const reminderMode = getReminderMode(topicId)
 
   return (
-    <section className="notification-detail-section">
+    <section
+      className={`notification-detail-section notification-reminder-section${disabled ? " notification-reminder-section--disabled" : ""}`}
+    >
       <h3 className="notification-detail-section__title">{t(locale, "notificationSettings.defaultReminderLabel")}</h3>
       <p className="notification-detail-section__description">
         {t(locale, disabled ? "notificationSettings.reminderSectionHelpDisabledNewVideo" : "notificationSettings.reminderSectionHelp")}
       </p>
       <Segmented
         name={`notification-reminder-${topicId}`}
-        className="notification-reminder-options"
+        className="notification-reminder-options shared-filter-segmented"
         value={reminderMode}
         options={options}
         disabled={disabled}

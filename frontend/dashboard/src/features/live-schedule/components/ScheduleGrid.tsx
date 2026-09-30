@@ -65,7 +65,10 @@ export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStre
   const hasScrolledRef = useRef(false)
 
   // Once on mount only -- later `days`/`now` refreshes must never move a
-  // viewport the user may already be scrolling by hand.
+  // viewport the user may already be scrolling by hand. Scrolls the
+  // document (window.scrollTo), not the grid itself: the grid no longer
+  // owns its own scroll (Schedule uses normal page scrolling; see
+  // schedule.css's own comment on .schedule-page).
   useLayoutEffect(() => {
     if (hasScrolledRef.current) return
     hasScrolledRef.current = true
@@ -75,7 +78,8 @@ export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStre
     const row = grid.querySelector(".time-body")?.children[slotIndex]
     if (!row) return
     const headerHeight = grid.querySelector<HTMLElement>(".schedule-day-header")?.offsetHeight ?? 0
-    grid.scrollTop += row.getBoundingClientRect().top - grid.getBoundingClientRect().top - headerHeight
+    const rowTop = row.getBoundingClientRect().top + window.scrollY
+    window.scrollTo(0, rowTop - headerHeight)
   }, [days, now])
 
   return (
