@@ -324,17 +324,26 @@ def get_video_topics(video_ids: list[str]) -> list[dict[str, Any]]:
     return items
 
 
-def set_video_topic(video_id: str, topic: str, *, overwrite: bool) -> bool:
+def set_video_topic(video_id: str, topic: str, *, overwrite: bool, expected_topic: str | None = None) -> bool:
     """Set only the `topic` attribute of an existing video, leaving every other field untouched.
 
     A targeted UpdateItem rather than upsert_videos' whole-item put, so a topic
     write can never clobber scheduler state another writer just updated.
     Returns False when the condition rejects the write: the video no longer
-    exists, or (overwrite=False) it already has a topic.
+    exists, or (overwrite=False) it already has a topic, or (overwrite=True
+    with `expected_topic`) its topic is no longer the value the caller read --
+    a compare-and-set, so a concurrent newer value is never silently overwritten.
     """
     if topic not in TOPIC_IDS:
         raise ValueError(f"Unknown topic id: {topic!r}")
-    condition = "attribute_exists(videoId)" if overwrite else "attribute_exists(videoId) AND attribute_not_exists(#topic)"
+    values = {":topic": topic}
+    if not overwrite:
+        condition = "attribute_exists(videoId) AND attribute_not_exists(#topic)"
+    elif expected_topic is not None:
+        condition = "attribute_exists(videoId) AND #topic = :expected"
+        values[":expected"] = expected_topic
+    else:
+        condition = "attribute_exists(videoId)"
     table = _resource().Table(VIDEO_MASTER_TABLE)
     try:
         table.update_item(
@@ -342,7 +351,7 @@ def set_video_topic(video_id: str, topic: str, *, overwrite: bool) -> bool:
             UpdateExpression="SET #topic = :topic",
             ConditionExpression=condition,
             ExpressionAttributeNames={"#topic": "topic"},
-            ExpressionAttributeValues={":topic": topic},
+            ExpressionAttributeValues=values,
         )
     except ClientError as exc:
         if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":

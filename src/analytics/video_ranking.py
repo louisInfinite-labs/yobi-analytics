@@ -56,6 +56,27 @@ VALID_TOPIC_SCOPES = frozenset({TOPIC_SCOPE_ALL}) | TOPIC_IDS
 CONTENT_TYPE_SCOPE_ALL = "all"
 VALID_CONTENT_TYPE_SCOPES = frozenset({CONTENT_TYPE_SCOPE_ALL}) | VALID_CONTENT_TYPES
 
+# liveStatus scope ("upcoming"/"live"/"completed", video_master.VALID_LIVE_STATUSES) --
+# a further, independent filter WITHIN contentType="live". Two keywords on top of the real
+# statuses: "all" (no filter) and "archived" = everything except a stream that is still
+# upcoming or live right now. "archived" is what Home's Oshi Videos archive shelf sends: it
+# keeps plain uploads (no liveStatus) AND completed livestreams, and drops the creator's
+# current/upcoming stream (that is GET /live-streams' and the Schedule page's job).
+LIVE_STATUS_SCOPE_ALL = "all"
+LIVE_STATUS_SCOPE_ARCHIVED = "archived"
+VALID_LIVE_STATUS_SCOPES = frozenset({LIVE_STATUS_SCOPE_ALL, LIVE_STATUS_SCOPE_ARCHIVED}) | VALID_LIVE_STATUSES
+_ACTIVE_LIVE_STATUSES = frozenset({"upcoming", "live"})
+
+
+def row_matches_live_status(row: dict[str, Any], scope: str) -> bool:
+    """Whether a persisted canonical row passes a liveStatus scope (see LIVE_STATUS_SCOPE_ARCHIVED)."""
+    if scope == LIVE_STATUS_SCOPE_ALL:
+        return True
+    status = row.get("liveStatus")
+    if scope == LIVE_STATUS_SCOPE_ARCHIVED:
+        return status not in _ACTIVE_LIVE_STATUSES
+    return status == scope
+
 
 @dataclass(frozen=True)
 class VideoRankingRow:
@@ -222,7 +243,12 @@ def _anchor_field_name(metric: str) -> str:
 
 
 def rank_video_rows(
-    rows: list[dict[str, Any]], *, metric: str, topic: str, content_type: str = CONTENT_TYPE_SCOPE_ALL
+    rows: list[dict[str, Any]],
+    *,
+    metric: str,
+    topic: str,
+    content_type: str = CONTENT_TYPE_SCOPE_ALL,
+    live_status: str = LIVE_STATUS_SCOPE_ALL,
 ) -> list[dict[str, Any]]:
     """Derive one metric/topic's ranked view from the one persisted canonical
     row set at READ time (Phase D) -- operates directly on the serialized
@@ -258,6 +284,10 @@ def rank_video_rows(
         rows = [row for row in rows if row.get("topic") == topic]
     if content_type != CONTENT_TYPE_SCOPE_ALL:
         rows = [row for row in rows if row.get("contentType") == content_type]
+    if live_status != LIVE_STATUS_SCOPE_ALL:
+        # Independent of contentType and applied BEFORE ranking, like topic/contentType, so a
+        # row dropped here never takes a rank or a slot in the caller's limit.
+        rows = [row for row in rows if row_matches_live_status(row, live_status)]
 
     if metric == TOTAL_METRIC:
         ordered = sorted(rows, key=lambda row: (-row["currentViewCount"], row["videoId"]))
@@ -283,6 +313,7 @@ def _total_output_row(rank: int, row: dict[str, Any]) -> dict[str, Any]:
         "currentViewCount": row["currentViewCount"],
         "title": row.get("title"),
         "thumbnailUrl": row.get("thumbnailUrl"),
+        "publishedAt": row.get("publishedAt"),
     }
 
 
@@ -303,4 +334,5 @@ def _growth_output_row(rank: int, row: dict[str, Any], anchor_field: str) -> dic
         "percentageGrowth": percentage_growth,
         "title": row.get("title"),
         "thumbnailUrl": row.get("thumbnailUrl"),
+        "publishedAt": row.get("publishedAt"),
     }

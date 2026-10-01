@@ -705,6 +705,17 @@ def test_set_video_topic_without_overwrite_keeps_an_existing_topic(dynamodb_tabl
     assert load_videos()[0].topic == "apex"
 
 
+def test_set_video_topic_expected_topic_is_a_compare_and_set(dynamodb_tables):
+    upsert_videos([Video(video_id="v1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic="sf6")])
+
+    # Someone changed it since the caller read "chatting": the stale overwrite is rejected, not applied.
+    assert set_video_topic("v1", "apex", overwrite=True, expected_topic="chatting") is False
+    assert load_videos()[0].topic == "sf6"
+    # The value the caller actually read still matches: the overwrite goes through.
+    assert set_video_topic("v1", "apex", overwrite=True, expected_topic="sf6") is True
+    assert load_videos()[0].topic == "apex"
+
+
 def test_set_video_topic_never_creates_a_missing_video(dynamodb_tables):
     assert set_video_topic("ghost", "sf6", overwrite=True) is False
     assert load_videos() == []

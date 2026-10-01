@@ -387,10 +387,13 @@ def publish_tracking_manifest(videos, store: TrackingManifestStore) -> list[str]
     This full-rebuild function still exists, deliberately, for the cases that
     genuinely need one: seeding the very first manifest for a new environment,
     manual disaster recovery if a shard becomes corrupted, and re-syncing the
-    manifest once after a one-time backfill/migration script bulk-edits Video
-    Master fields the manifest carries (published_at/activity_state/topic) --
-    see backfill_video_topics.py's own call to this at the end of an --execute
-    run. An occasional, deliberately-triggered full rebuild like these is the
+    manifest once after a one-time migration bulk-edits Video Master fields
+    the manifest carries (published_at/activity_state). Not used by the topic/
+    title backfills (backfill_video_topics.py, backfill_manifest_titles.py):
+    this is an unconditional full rebuild (resets every entry to active=True,
+    drops manifest-only entries, overwrites concurrent patches), which those
+    scripts avoid by patching just their own field via patch_shard. An
+    occasional, deliberately-triggered full rebuild like these is the
     proportionate response to a bulk change, unlike paying its cost every day
     for no corresponding daily change.
 
