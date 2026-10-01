@@ -1,10 +1,11 @@
-import { renderHook, waitFor } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import { useRecentVideos } from "./useRecentVideos"
 import * as useLiveStreamsModule from "../../../shared/api/hooks/useLiveStreams"
 import * as recentArchivedLivestreamsModule from "../data/recentArchivedLivestreams"
 import type { LiveStreamDto } from "../../../shared/api/liveStreams"
 import type { ArchivedLivestreamPage } from "../data/recentArchivedLivestreams"
+import { getCreators } from "../../../entities/creator/data/creatorRegistry"
 
 vi.mock("../../../shared/api/hooks/useLiveStreams", () => ({ useLiveStreams: vi.fn() }))
 vi.mock("../data/recentArchivedLivestreams", () => ({ fetchArchivedLivestreams: vi.fn() }))
@@ -173,5 +174,92 @@ describe("useRecentVideos streamVideos (Latest Live: Holodex current + AWS archi
 
     expect(result.current.streamVideos.loading).toBe(true)
     expect(result.current.streamVideos.error?.message).toBe("network down")
+  })
+})
+
+
+const [CREATOR_A, CREATOR_B] = getCreators()
+
+function archivePage(ids: string[], hasMore: boolean): ArchivedLivestreamPage {
+  return {
+    videos: ids.map((videoId) => ({ videoId, title: videoId, publishedAt: "2026-09-01T00:00:00Z", contentFormat: "live_archive" as const })),
+    nextOffset: ids.length,
+    hasMore,
+  }
+}
+
+function deferredPage() {
+  let resolve!: (page: ArchivedLivestreamPage) => void
+  const promise = new Promise<ArchivedLivestreamPage>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
+describe("useRecentVideos archive pool: creator switching and pagination guards", () => {
+  const fetchMock = () => vi.mocked(recentArchivedLivestreamsModule.fetchArchivedLivestreams)
+
+  it("drops the previous creator's archives and hasMore as soon as the creator changes, before the new request resolves", async () => {
+    mockStreams([])
+    const b = deferredPage()
+    fetchMock().mockReset()
+    fetchMock().mockResolvedValueOnce(archivePage(["a1"], true)).mockReturnValueOnce(b.promise)
+    const { result, rerender } = renderHook(({ id }) => useRecentVideos(id), { initialProps: { id: CREATOR_A.creatorId } })
+    await waitFor(() => expect(result.current.streamVideos.videos.map((v) => v.videoId)).toEqual(["a1"]))
+    expect(result.current.streamVideos.hasMore).toBe(true)
+
+    rerender({ id: CREATOR_B.creatorId })
+
+    await waitFor(() => expect(fetchMock()).toHaveBeenCalledWith(CREATOR_B.creatorId, { offset: 0 }))
+    expect(result.current.streamVideos.videos).toEqual([]) // A's archive never shows under B while B loads
+    expect(result.current.streamVideos.hasMore).toBe(false)
+    await act(async () => b.resolve(archivePage(["b1"], false)))
+    expect(result.current.streamVideos.videos.map((v) => v.videoId)).toEqual(["b1"])
+  })
+
+  it("loadMore() is ignored while the initial request is still loading", async () => {
+    mockStreams([])
+    const initial = deferredPage()
+    fetchMock().mockReset()
+    fetchMock().mockReturnValueOnce(initial.promise)
+    const { result } = renderHook(() => useRecentVideos(CREATOR_A.creatorId))
+    await waitFor(() => expect(fetchMock()).toHaveBeenCalledTimes(1))
+
+    act(() => result.current.streamVideos.loadMore())
+    await act(async () => initial.resolve(archivePage(["a1", "a2"], true)))
+
+    expect(fetchMock()).toHaveBeenCalledTimes(1) // no second offset-0 request that would append a duplicate page
+    expect(result.current.streamVideos.videos.map((v) => v.videoId)).toEqual(["a1", "a2"])
+  })
+
+  it("loadMore() is a no-op once hasMore is false", async () => {
+    mockStreams([])
+    fetchMock().mockReset()
+    fetchMock().mockResolvedValue(archivePage(["a1"], false))
+    const { result } = renderHook(() => useRecentVideos(CREATOR_A.creatorId))
+    await waitFor(() => expect(result.current.streamVideos.loading).toBe(false))
+
+    act(() => result.current.streamVideos.loadMore())
+    act(() => result.current.streamVideos.loadMore())
+
+    expect(fetchMock()).toHaveBeenCalledTimes(1)
+  })
+
+  it("loadMore() still fetches the next page from the server's offset when more exist, and ignores an overlapping call", async () => {
+    mockStreams([])
+    const more = deferredPage()
+    fetchMock().mockReset()
+    fetchMock().mockResolvedValueOnce(archivePage(["a1", "a2"], true)).mockReturnValueOnce(more.promise)
+    const { result } = renderHook(() => useRecentVideos(CREATOR_A.creatorId))
+    await waitFor(() => expect(result.current.streamVideos.hasMore).toBe(true))
+
+    act(() => result.current.streamVideos.loadMore())
+    act(() => result.current.streamVideos.loadMore()) // overlapping -- ignored
+    await act(async () => more.resolve(archivePage(["a3"], false)))
+
+    expect(fetchMock()).toHaveBeenCalledTimes(2)
+    expect(fetchMock()).toHaveBeenLastCalledWith(CREATOR_A.creatorId, { offset: 2 })
+    expect(result.current.streamVideos.videos.map((v) => v.videoId)).toEqual(["a1", "a2", "a3"])
+    expect(result.current.streamVideos.hasMore).toBe(false)
   })
 })

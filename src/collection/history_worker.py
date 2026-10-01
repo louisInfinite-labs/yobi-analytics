@@ -427,7 +427,10 @@ def _build_scheduler_updates(rows: list[HistoryRow], *, video_master_store: Vide
                 # whatever Video Master already has rather than clobbering a
                 # real, previously-observed classification with an unknown.
                 content_type=row.content_type if row.content_type is not None else existing.content_type,
-                live_status=row.live_status if row.live_status is not None else existing.live_status,
+                # live_status stays coupled to content_type: a row with a known content type owns BOTH,
+                # even a None live_status (a plain upload that used to be an upcoming/live stream must
+                # not keep the stale status and fall out of the "archived" scope).
+                live_status=row.live_status if row.content_type is not None else existing.live_status,
             )
         )
     return updates

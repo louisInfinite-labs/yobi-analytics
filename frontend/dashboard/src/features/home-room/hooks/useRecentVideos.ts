@@ -64,6 +64,9 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
   const [hasMore, setHasMore] = useState(false)
   const offsetRef = useRef(0)
   const loadingMoreRef = useRef(false)
+  // Mirrors `hasMore` for loadMore()'s guard without a stale closure. False from the moment a new
+  // initial request starts until it resolves, so it also blocks loadMore() during initial loading.
+  const hasMoreRef = useRef(false)
   // Bumped every time the initial-load effect below re-runs (i.e. creatorId
   // or holodexChannelId changed). loadMore() captures the generation active
   // when it was called and checks it again before touching state, so a
@@ -77,12 +80,15 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
     const generation = ++generationRef.current
     offsetRef.current = 0
     loadingMoreRef.current = false
+    hasMoreRef.current = false
+    // Reset to the NEW creator's own starting page right away (what a fresh mount shows), so the
+    // previous creator's rows never show while this creator's initial request is pending.
+    setVideos(mockVideos)
+    setHasMore(false)
 
     if (!holodexChannelId) {
-      setVideos(mockVideos)
       setLoading(false)
       setError(null)
-      setHasMore(false)
       return
     }
 
@@ -94,6 +100,7 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
         if (generation !== generationRef.current) return
         setVideos(result.videos)
         setHasMore(result.hasMore)
+        hasMoreRef.current = result.hasMore
         offsetRef.current = result.nextOffset
         setLoading(false)
       })
@@ -102,6 +109,7 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
         setError(err instanceof Error ? err : new Error(String(err)))
         setVideos(mockVideos)
         setHasMore(false)
+        hasMoreRef.current = false
         setLoading(false)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mockVideos is
@@ -112,7 +120,8 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
   }, [creatorId, holodexChannelId, fetcher])
 
   const loadMore = useCallback(() => {
-    if (!holodexChannelId || loadingMoreRef.current) return
+    // No-op during the initial request and once the channel's history is exhausted (hasMoreRef is false in both).
+    if (!holodexChannelId || loadingMoreRef.current || !hasMoreRef.current) return
     const generation = generationRef.current
     loadingMoreRef.current = true
 
@@ -121,13 +130,17 @@ function usePaginatedVideos(creatorId: string, holodexChannelId: string | undefi
         if (generation !== generationRef.current) return
         setVideos((prev) => [...prev, ...result.videos])
         setHasMore(result.hasMore)
+        hasMoreRef.current = result.hasMore
         offsetRef.current = result.nextOffset
       })
       .catch(() => {
         // A failed prefetch just means no more videos load on this scroll
         // — the ones already shown stay put rather than surfacing an error
         // for a background fetch the user didn't directly trigger.
-        if (generation === generationRef.current) setHasMore(false)
+        if (generation === generationRef.current) {
+          setHasMore(false)
+          hasMoreRef.current = false
+        }
       })
       .finally(() => {
         if (generation === generationRef.current) loadingMoreRef.current = false
@@ -181,6 +194,9 @@ function useArchivedLivestreamPool(canonicalCreatorId: string | undefined): Vide
   const [hasMore, setHasMore] = useState(false)
   const offsetRef = useRef(0)
   const loadingMoreRef = useRef(false)
+  // Mirrors `hasMore` for loadMore()'s guard without a stale closure. False from the moment a new
+  // initial request starts until it resolves, so it also blocks loadMore() during initial loading.
+  const hasMoreRef = useRef(false)
   // Same "drop a stale in-flight request from the previous creator" guard as
   // usePaginatedVideos' own generationRef -- see that hook's own comment.
   const generationRef = useRef(0)
@@ -189,12 +205,14 @@ function useArchivedLivestreamPool(canonicalCreatorId: string | undefined): Vide
     const generation = ++generationRef.current
     offsetRef.current = 0
     loadingMoreRef.current = false
+    hasMoreRef.current = false
+    // Clear the previous creator's page right away, so it never shows under the new creator.
+    setVideos([])
+    setHasMore(false)
 
     if (!canonicalCreatorId) {
-      setVideos([])
       setLoading(false)
       setError(null)
-      setHasMore(false)
       return
     }
 
@@ -206,6 +224,7 @@ function useArchivedLivestreamPool(canonicalCreatorId: string | undefined): Vide
         if (generation !== generationRef.current) return
         setVideos(page.videos)
         setHasMore(page.hasMore)
+        hasMoreRef.current = page.hasMore
         offsetRef.current = page.nextOffset
         setLoading(false)
       })
@@ -214,12 +233,14 @@ function useArchivedLivestreamPool(canonicalCreatorId: string | undefined): Vide
         setError(err instanceof Error ? err : new Error(String(err)))
         setVideos([])
         setHasMore(false)
+        hasMoreRef.current = false
         setLoading(false)
       })
   }, [canonicalCreatorId])
 
   const loadMore = useCallback(() => {
-    if (!canonicalCreatorId || loadingMoreRef.current) return
+    // No-op during the initial request and once the archive is exhausted (hasMoreRef is false in both).
+    if (!canonicalCreatorId || loadingMoreRef.current || !hasMoreRef.current) return
     const generation = generationRef.current
     loadingMoreRef.current = true
 
@@ -228,10 +249,14 @@ function useArchivedLivestreamPool(canonicalCreatorId: string | undefined): Vide
         if (generation !== generationRef.current) return
         setVideos((prev) => [...prev, ...page.videos])
         setHasMore(page.hasMore)
+        hasMoreRef.current = page.hasMore
         offsetRef.current = page.nextOffset
       })
       .catch(() => {
-        if (generation === generationRef.current) setHasMore(false)
+        if (generation === generationRef.current) {
+          setHasMore(false)
+          hasMoreRef.current = false
+        }
       })
       .finally(() => {
         if (generation === generationRef.current) loadingMoreRef.current = false

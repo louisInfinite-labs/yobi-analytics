@@ -337,6 +337,69 @@ def test_existing_content_type_survives_a_shard_exists_retry_without_the_new_col
     assert updated.content_type == "live"
 
 
+def test_a_known_content_type_takes_its_live_status_even_when_that_is_none(monkeypatch):
+    """A video Video Master had as an upcoming stream that YouTube now reports as a plain
+    upload (liveStatus None) must not keep the stale "upcoming" -- row_matches_live_status's
+    "archived" scope would otherwise drop this upload from Home's archive shelf."""
+    existing = Video(
+        video_id="v1", creator_id="c1", title="A", published_at="2020-05-01T00:00:00Z",
+        content_type="live", live_status="upcoming",
+    )
+    video_master = _FakeVideoMaster([existing])
+    monkeypatch.setattr(
+        history_worker,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [{"videoId": "v1", "title": "A", "publishedAt": "2020-05-01T00:00:00Z", "viewCount": 500, "contentType": "upload"}],
+            {},
+        ),
+    )
+
+    collect_history_shard(
+        shard=history_worker.shard_for_video("v1"),
+        **_kwargs(
+            manifest=_FakeManifest([ManifestEntry("v1", "c1", True)]),
+            history=_FakeHistory(),
+            video_master=video_master,
+        ),
+    )
+
+    [updated] = video_master.upsert_calls[0]
+    assert (updated.content_type, updated.live_status) == ("upload", None)
+
+
+def test_existing_content_type_and_live_status_both_survive_a_row_with_no_content_type(monkeypatch):
+    """Only a row with NO content type (a shard from before the column existed) preserves the
+    existing live_status -- the two fields stay coupled, never mixed from old and new."""
+    existing = Video(
+        video_id="v1", creator_id="c1", title="A", published_at="2020-05-01T00:00:00Z",
+        content_type="live", live_status="completed",
+    )
+    video_master = _FakeVideoMaster([existing])
+    history = _FakeHistory()
+    history.objects[(date(2026, 9, 15), history_worker.shard_for_video("v1"))] = [
+        HistoryRow(
+            video_id="v1",
+            creator_id="c1",
+            view_count=500,
+            observed_at="2026-09-15T18:00:00+09:00",
+            availability_status="available",
+        )
+    ]
+
+    collect_history_shard(
+        shard=history_worker.shard_for_video("v1"),
+        **_kwargs(
+            manifest=_FakeManifest([ManifestEntry("v1", "c1", True)]),
+            history=history,
+            video_master=video_master,
+        ),
+    )
+
+    [updated] = video_master.upsert_calls[0]
+    assert (updated.content_type, updated.live_status) == ("live", "completed")
+
+
 def test_failed_statistics_observation_does_not_update_scheduler_state(monkeypatch):
     """A video that was due but got no usable statistics this run (a skipped/failed
     fetch) is not classified and its Video Master row is left completely untouched."""
