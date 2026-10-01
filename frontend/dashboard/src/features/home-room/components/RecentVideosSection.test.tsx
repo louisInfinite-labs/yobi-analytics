@@ -106,7 +106,7 @@ describe("RecentVideosSection video selection", () => {
 
 describe("RecentVideosSection View All", () => {
   it("renders, is disabled, and has no click handler wired", async () => {
-    renderSection()
+    await renderSection()
     const viewAll = screen.getByRole("button", { name: /View All/ })
 
     expect(viewAll).toBeDisabled()
@@ -121,7 +121,7 @@ describe("RecentVideosSection View All", () => {
   })
 
   it("cannot be activated with the keyboard (disabled elements are not tab-focusable)", async () => {
-    renderSection()
+    await renderSection()
     const viewAll = screen.getByRole("button", { name: /View All/ })
 
     viewAll.focus()
@@ -129,7 +129,7 @@ describe("RecentVideosSection View All", () => {
   })
 
   it("does not shift the Segmented/Sort cluster's own position when rendered", async () => {
-    renderSection()
+    await renderSection()
     const header = document.querySelector(".oshi-videos__header") as HTMLElement
     const viewAll = screen.getByRole("button", { name: /View All/ })
 
