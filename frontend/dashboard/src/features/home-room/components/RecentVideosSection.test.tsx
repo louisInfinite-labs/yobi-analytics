@@ -1,9 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { RecentVideosSection } from "./RecentVideosSection"
+import { fetchOshiVideos } from "../data/oshiVideos"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
-import type { VideoPage } from "../hooks/useRecentVideos"
+
+// Every tag (the quick filters included) is a real backend query now; this file is about
+// selection/drag/View All, so the fetch layer is mocked and handed one video per query.
+vi.mock("../data/oshiVideos", () => ({ fetchOshiVideos: vi.fn() }))
 
 // jsdom has no Pointer Capture implementation; VideoTrack's own drag-to-scroll
 // (unrelated to this task, kept as-is) calls these during a real drag.
@@ -18,26 +22,34 @@ const video: RecentVideo = {
   contentFormat: "normal_video",
 }
 
-function makePage(videos: RecentVideo[]): VideoPage {
-  return { videos, loading: false, error: null, loadMore: vi.fn(), hasMore: false }
+const streamVideo: RecentVideo = {
+  videoId: "video_2",
+  title: "Stream video title",
+  publishedAt: "2026-09-09T12:00:00+09:00",
+  contentFormat: "live_archive",
 }
 
-function renderSection(onSelectVideo = vi.fn()) {
-  render(
-    <RecentVideosSection
-      creatorId="ch_aizawa_ema"
-      latestVideos={makePage([video])}
-      streamVideos={makePage([])}
-      onSelectVideo={onSelectVideo}
-    />,
-  )
+beforeEach(() => {
+  // 最新影片 (the default tag) asks for uploads and 最新直播 for live archives: one distinct video each.
+  vi.mocked(fetchOshiVideos).mockReset()
+  vi.mocked(fetchOshiVideos).mockImplementation(async (query) => ({
+    videos: query.contentType === "live" ? [streamVideo] : [video],
+    nextOffset: 1,
+    hasMore: false,
+  }))
+})
+
+/** Renders the section and waits for the default tag's card to arrive from the (mocked) backend. */
+async function renderSection(onSelectVideo = vi.fn()) {
+  render(<RecentVideosSection creatorId="ch_aizawa_ema" onSelectVideo={onSelectVideo} />)
+  await screen.findByRole("button", { name: /Test video title/ })
   return onSelectVideo
 }
 
 describe("RecentVideosSection video selection", () => {
   it("a normal card click calls the shared onSelectVideo path, not a modal", async () => {
     const user = userEvent.setup()
-    const onSelectVideo = renderSection()
+    const onSelectVideo = await renderSection()
 
     await user.click(screen.getByRole("button", { name: /Test video title/ }))
 
@@ -45,8 +57,8 @@ describe("RecentVideosSection video selection", () => {
     expect(document.querySelector(".video-player-modal__backdrop")).toBeNull()
   })
 
-  it("does not select a video when the pointer moved past the drag threshold first", () => {
-    const onSelectVideo = renderSection()
+  it("does not select a video when the pointer moved past the drag threshold first", async () => {
+    const onSelectVideo = await renderSection()
     const viewport = document.querySelector(".oshi-videos__viewport") as HTMLElement
 
     fireEvent.pointerDown(viewport, { pointerId: 1, button: 0, pointerType: "mouse", clientX: 0 })
@@ -57,8 +69,8 @@ describe("RecentVideosSection video selection", () => {
     expect(onSelectVideo).not.toHaveBeenCalled()
   })
 
-  it("does not start a drag from a stale pointerId once the button is no longer held (button released outside the viewport, before crossing the threshold)", () => {
-    const onSelectVideo = renderSection()
+  it("does not start a drag from a stale pointerId once the button is no longer held (button released outside the viewport, before crossing the threshold)", async () => {
+    const onSelectVideo = await renderSection()
     const viewport = document.querySelector(".oshi-videos__viewport") as HTMLElement
 
     fireEvent.pointerDown(viewport, { pointerId: 1, button: 0, pointerType: "mouse", clientX: 0 })
@@ -79,8 +91,8 @@ describe("RecentVideosSection video selection", () => {
     expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "video_1", title: "Test video title" })
   })
 
-  it("still selects a video for a click with no meaningful pointer movement", () => {
-    const onSelectVideo = renderSection()
+  it("still selects a video for a click with no meaningful pointer movement", async () => {
+    const onSelectVideo = await renderSection()
     const viewport = document.querySelector(".oshi-videos__viewport") as HTMLElement
 
     fireEvent.pointerDown(viewport, { pointerId: 1, button: 0, pointerType: "mouse", clientX: 0 })
@@ -108,7 +120,7 @@ describe("RecentVideosSection View All", () => {
     expect(clickSpy).not.toHaveBeenCalled()
   })
 
-  it("cannot be activated with the keyboard (disabled elements are not tab-focusable)", () => {
+  it("cannot be activated with the keyboard (disabled elements are not tab-focusable)", async () => {
     renderSection()
     const viewAll = screen.getByRole("button", { name: /View All/ })
 
@@ -116,7 +128,7 @@ describe("RecentVideosSection View All", () => {
     expect(document.activeElement).not.toBe(viewAll)
   })
 
-  it("does not shift the Segmented/Sort cluster's own position when rendered", () => {
+  it("does not shift the Segmented/Sort cluster's own position when rendered", async () => {
     renderSection()
     const header = document.querySelector(".oshi-videos__header") as HTMLElement
     const viewAll = screen.getByRole("button", { name: /View All/ })
@@ -129,39 +141,27 @@ describe("RecentVideosSection View All", () => {
   })
 })
 
-describe("RecentVideosSection category filtering and sort, unaffected by the View All change", () => {
-  it("switching the Segmented tag still changes which videos are shown", async () => {
-    const streamVideo: RecentVideo = {
-      videoId: "video_2",
-      title: "Stream video title",
-      publishedAt: "2026-09-09T12:00:00+09:00",
-      contentFormat: "live_archive",
-    }
-    render(
-      <RecentVideosSection
-        creatorId="ch_aizawa_ema"
-        latestVideos={makePage([video])}
-        streamVideos={makePage([streamVideo])}
-        onSelectVideo={vi.fn()}
-      />,
-    )
-    expect(screen.getByRole("button", { name: /Test video title/ })).toBeInTheDocument()
+describe("RecentVideosSection quick filters and controls", () => {
+  it("switching the quick filter changes which backend result is shown (最新直播 = completed live archives)", async () => {
+    await renderSection()
     expect(screen.queryByRole("button", { name: /Stream video title/ })).not.toBeInTheDocument()
 
     const user = userEvent.setup()
     await user.click(screen.getByText("Latest Live"))
 
-    expect(screen.getByRole("button", { name: /Stream video title/ })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: /Stream video title/ })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Test video title/ })).not.toBeInTheDocument()
   })
 
-  it("the Sort dropdown is hidden for the default latest-videos tag and appears once a category tag is selected", async () => {
-    renderSection()
+  it("the Content type, Sort and period dropdowns are hidden for the quick filters and appear once a topic tag is selected", async () => {
+    await renderSection()
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
 
     const user = userEvent.setup()
     await user.click(screen.getByText("ALL"))
 
-    expect(screen.getByRole("combobox")).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Sort videos" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Content type" })).toBeInTheDocument()
+    expect(screen.queryByRole("combobox", { name: "Period" })).not.toBeInTheDocument() // only for most viewed
   })
 })

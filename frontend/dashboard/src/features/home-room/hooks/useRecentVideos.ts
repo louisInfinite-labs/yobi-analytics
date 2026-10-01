@@ -272,7 +272,7 @@ function useArchivedLivestreamPool(canonicalCreatorId: string | undefined): Vide
  * docstring below. selectLivestreamSlots (recentVideosSelection.ts) decides
  * what actually renders from the merged pool this returns: at most one
  * live_now/live_upcoming item first, then archives newest-first. */
-function useLiveStreamVideoPool(creatorId: string): VideoPage {
+export function useLiveStreamVideoPool(creatorId: string): VideoPage {
   const canonicalCreatorId = resolveCreatorKey(creatorId)?.creatorId
   const { streams, isLoading, error } = useLiveStreams()
   const archivePool = useArchivedLivestreamPool(canonicalCreatorId)

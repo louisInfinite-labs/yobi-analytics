@@ -5,7 +5,7 @@ import { useBreakpoint } from "../../shared/hooks/useBreakpoint"
 import { useCreatorStatuses } from "../../features/live-status/hooks/useCreatorStatuses"
 import { useLiveDockExpanded } from "../../features/live-status/hooks/useLiveDockExpanded"
 import { selectHomeVideo, useHomeSelectedVideo } from "../../features/home-room/hooks/useHomeSelectedVideo"
-import { useRecentVideos } from "../../features/home-room/hooks/useRecentVideos"
+import { useLiveStreamVideoPool } from "../../features/home-room/hooks/useRecentVideos"
 import { useSelectedCreator } from "../../features/oshi/hooks/useSelectedCreator"
 import { selectLiveEmbedVideo } from "../../features/media-player/utils/liveEmbed"
 import { OshiStatusPanel } from "../../features/oshi-status/components/OshiStatusPanel"
@@ -51,7 +51,9 @@ export function HomePage() {
   // internally (see that helper's own docstring).
   const currentCreator = mockCreators.find((entry) => entry.channelId === creatorId)
   const { statuses, now } = useCreatorStatuses()
-  const { latestVideos, streamVideos } = useRecentVideos(creatorId)
+  // Only the player's auto-selected video (live now / a just-ended archive) reads this pool. The Oshi Videos
+  // shelf and Oshi Status fetch their own backend data for the current creator.
+  const streamVideos = useLiveStreamVideoPool(creatorId)
   const breakpoint = useBreakpoint()
   const liveStatusOpen = useLiveDockExpanded()
   const status = statuses[creatorId] ?? { kind: "offline" as const }
@@ -85,8 +87,6 @@ export function HomePage() {
 
         <RecentVideosSection
           creatorId={creatorId}
-          latestVideos={latestVideos}
-          streamVideos={streamVideos}
           onSelectVideo={(video) => selectHomeVideo(video, creatorId)}
         />
 
@@ -94,9 +94,6 @@ export function HomePage() {
           creatorId={creatorId}
           status={status}
           now={now}
-          uploads={latestVideos.videos}
-          streams={streamVideos.videos}
-          loading={latestVideos.loading || streamVideos.loading}
           onSelectVideo={(video) => selectHomeVideo(video, creatorId)}
           nowPlayingTitle={embed?.title ?? null}
         />
