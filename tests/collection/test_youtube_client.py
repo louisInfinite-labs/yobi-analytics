@@ -207,9 +207,118 @@ def test_returns_structured_data_for_valid_video():
             "title": "藍沢エマ Test Video",
             "publishedAt": "2026-08-25T12:00:00Z",
             "viewCount": 125000,
+            "contentType": "upload",
+            "liveStatus": None,
         }
     ]
     assert skip_reasons == {}
+
+
+def test_completed_livestream_is_classified_as_live_and_completed():
+    """actualEndTime present -> contentType="live", liveStatus="completed" --
+    the presence of liveStreamingDetails alone is the contentType signal, but
+    actualEndTime specifically is what identifies a genuinely ended archive."""
+    response = {
+        "items": [
+            {
+                "id": "stream1",
+                "snippet": {"title": "Archived Stream", "publishedAt": "2026-08-25T12:00:00Z"},
+                "statistics": {"viewCount": "5000"},
+                "liveStreamingDetails": {
+                    "actualStartTime": "2026-08-25T12:00:00Z",
+                    "actualEndTime": "2026-08-25T14:00:00Z",
+                },
+            }
+        ]
+    }
+    youtube = _make_youtube_client(response)
+
+    result, skip_reasons = get_video_statistics(youtube, ["stream1"])
+
+    assert result == [
+        {
+            "videoId": "stream1",
+            "title": "Archived Stream",
+            "publishedAt": "2026-08-25T12:00:00Z",
+            "viewCount": 5000,
+            "contentType": "live",
+            "liveStatus": "completed",
+        }
+    ]
+    assert skip_reasons == {}
+
+
+def test_currently_live_stream_has_actual_start_but_no_actual_end():
+    """actualStartTime present, actualEndTime absent -> liveStatus="live" --
+    the broadcast has started but YouTube hasn't recorded an end yet."""
+    response = {
+        "items": [
+            {
+                "id": "stream2",
+                "snippet": {"title": "Live Now", "publishedAt": "2026-08-25T12:00:00Z"},
+                "statistics": {"viewCount": "1000"},
+                "liveStreamingDetails": {"actualStartTime": "2026-08-25T12:00:00Z"},
+            }
+        ]
+    }
+    youtube = _make_youtube_client(response)
+
+    [result] = get_video_statistics(youtube, ["stream2"])[0]
+
+    assert result["contentType"] == "live"
+    assert result["liveStatus"] == "live"
+
+
+def test_upcoming_stream_has_neither_actual_start_nor_actual_end():
+    """Neither actualStartTime nor actualEndTime present -> liveStatus=
+    "upcoming" -- scheduled but not yet started."""
+    response = {
+        "items": [
+            {
+                "id": "stream3",
+                "snippet": {"title": "Upcoming Premiere", "publishedAt": "2026-08-25T12:00:00Z"},
+                "statistics": {"viewCount": "0"},
+                "liveStreamingDetails": {"scheduledStartTime": "2026-08-26T12:00:00Z"},
+            }
+        ]
+    }
+    youtube = _make_youtube_client(response)
+
+    [result] = get_video_statistics(youtube, ["stream3"])[0]
+
+    assert result["contentType"] == "live"
+    assert result["liveStatus"] == "upcoming"
+
+
+def test_plain_upload_has_no_live_status():
+    response = {
+        "items": [
+            {
+                "id": "upload1",
+                "snippet": {"title": "Normal Upload", "publishedAt": "2026-08-25T12:00:00Z"},
+                "statistics": {"viewCount": "10"},
+            }
+        ]
+    }
+    youtube = _make_youtube_client(response)
+
+    [result] = get_video_statistics(youtube, ["upload1"])[0]
+
+    assert result["contentType"] == "upload"
+    assert result["liveStatus"] is None
+
+
+def test_videos_list_requests_live_streaming_details_part():
+    """The batched videos.list call always requests liveStreamingDetails
+    alongside snippet/statistics -- no separate per-video request."""
+    response = {"items": []}
+    youtube = _make_youtube_client(response)
+
+    get_video_statistics(youtube, ["abc123"])
+
+    youtube.videos.return_value.list.assert_called_once_with(
+        part="snippet,statistics,liveStreamingDetails", id="abc123"
+    )
 
 
 def test_empty_video_ids_returns_empty_list_without_calling_api():

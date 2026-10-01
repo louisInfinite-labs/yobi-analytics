@@ -17,6 +17,8 @@ from typing import Protocol
 
 from botocore.exceptions import ClientError
 
+from tracking.video_master import VALID_CONTENT_TYPES, VALID_LIVE_STATUSES
+
 HISTORY_SHARD_COUNT = 16
 HISTORY_PREFIX = "history/daily"
 MONTHLY_HISTORY_PREFIX = "history/monthly"
@@ -52,6 +54,21 @@ class HistoryRow:
     # forward row) without depending on wall-clock-varying observed_at
     # values lining up across separate invocations.
     carried_forward: bool = False
+    # "live"/"upload" from this same observation's videos.list response
+    # (collection.youtube_client.get_video_statistics), or None for a
+    # carried-forward row, a shard written before this field existed, or an
+    # observation whose content type could not be determined. Threaded
+    # through HistoryRow (rather than written straight to Video Master, the
+    # way `topic` is) purely so it survives a shard_exists retry the same
+    # retry-safe way view_count/availability_status already do -- see
+    # collection.history_worker.collect_history_shard's own docstring on why
+    # scheduler-state updates are always applied from `rows`, never from a
+    # freshly-refetched `videos` list that a retry never recomputes.
+    content_type: str | None = None
+    # "upcoming"/"live"/"completed" for a content_type="live" observation,
+    # None otherwise -- same retry-safety reasoning as content_type above
+    # (threaded through HistoryRow so it survives a shard_exists retry).
+    live_status: str | None = None
 
 
 class HistoryStore(Protocol):
@@ -154,6 +171,8 @@ def serialize_history_rows(rows: list[HistoryRow]) -> bytes:
                 [row.availability_status for row in rows], type=pa.string()
             ),
             "carriedForward": pa.array([row.carried_forward for row in rows], type=pa.bool_()),
+            "contentType": pa.array([row.content_type for row in rows], type=pa.string()),
+            "liveStatus": pa.array([row.live_status for row in rows], type=pa.string()),
         }
     )
     output = io.BytesIO()
@@ -179,6 +198,12 @@ def deserialize_history_rows(payload: bytes) -> list[HistoryRow]:
                 # observation -- exactly what every row written before this
                 # field existed actually was.
                 carried_forward=row.get("carriedForward", False),
+                # .get(), not ["contentType"]: a shard written before this
+                # field existed still deserializes, with every one of its
+                # rows read as content_type=None -- "not yet known" rather
+                # than a fabricated classification.
+                content_type=row.get("contentType"),
+                live_status=row.get("liveStatus"),
             )
             for row in raw_rows
         ]
@@ -270,6 +295,10 @@ def _validate_row(row: HistoryRow) -> None:
         raise HistoryStoreError(f"History row has invalid view_count: {row!r}")
     if not isinstance(row.carried_forward, bool):
         raise HistoryStoreError(f"History row has invalid carried_forward: {row!r}")
+    if row.content_type is not None and row.content_type not in VALID_CONTENT_TYPES:
+        raise HistoryStoreError(f"History row has invalid content_type: {row!r}")
+    if row.live_status is not None and row.live_status not in VALID_LIVE_STATUSES:
+        raise HistoryStoreError(f"History row has invalid live_status: {row!r}")
 
 
 def _pyarrow():

@@ -89,7 +89,62 @@ def test_history_parquet_round_trip_uses_minimal_schema():
         "observedAt",
         "availabilityStatus",
         "carriedForward",
+        "contentType",
+        "liveStatus",
     ]
+
+
+def test_content_type_round_trips_through_parquet_including_none():
+    """A real content_type value and an absent one (None) both survive a
+    Parquet round-trip, matching every other nullable HistoryRow field."""
+    rows = [
+        HistoryRow(
+            video_id="v1",
+            creator_id="c1",
+            view_count=10,
+            observed_at="2026-09-09T18:00:00+09:00",
+            availability_status="available",
+            content_type="live",
+        ),
+        _row("v2", 20),  # content_type defaults to None
+    ]
+
+    restored = deserialize_history_rows(serialize_history_rows(rows))
+
+    assert restored[0].content_type == "live"
+    assert restored[1].content_type is None
+
+
+def test_old_shard_without_content_type_column_still_deserializes():
+    """A shard written before content_type existed still deserializes, with
+    every row read as content_type=None -- not a fabricated classification."""
+    import pyarrow as pa
+    import pyarrow.parquet as parquet
+    import io
+
+    table = pa.table(
+        {
+            "videoId": pa.array(["v1"], type=pa.string()),
+            "creatorId": pa.array(["c1"], type=pa.string()),
+            "viewCount": pa.array([10], type=pa.int64()),
+            "observedAt": pa.array(["2026-09-09T18:00:00+09:00"], type=pa.string()),
+            "availabilityStatus": pa.array(["available"], type=pa.string()),
+            "carriedForward": pa.array([False], type=pa.bool_()),
+        }
+    )
+    output = io.BytesIO()
+    parquet.write_table(table, output, compression="snappy")
+
+    [row] = deserialize_history_rows(output.getvalue())
+    assert row.content_type is None
+
+
+def test_serialize_rejects_an_unknown_content_type():
+    row = _row("v1", 10)
+    bad_row = HistoryRow(**{**row.__dict__, "content_type": "not_a_content_type"})
+
+    with pytest.raises(HistoryStoreError):
+        serialize_history_rows([bad_row])
 
 
 def test_manifest_parquet_round_trip():

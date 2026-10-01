@@ -168,7 +168,7 @@ def _backoff_seconds(attempt: int) -> float:
 
 
 def get_video_statistics(youtube: Resource, video_ids: list[str]) -> tuple[list[dict], dict[str, str]]:
-    """Fetch videoId/title/publishedAt/viewCount for the given video IDs.
+    """Fetch videoId/title/publishedAt/viewCount/contentType/liveStatus for the given video IDs.
 
     Requests are batched (up to MAX_IDS_PER_REQUEST ids per call) to keep
     quota usage low. A batch that fails outright is skipped with a warning
@@ -215,7 +215,7 @@ def get_video_statistics(youtube: Resource, video_ids: list[str]) -> tuple[list[
 def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[str, str]]:
     """Fetch and parse one videos.list batch, skipping missing/malformed items with a reason."""
     response = call_youtube_api(
-        lambda: youtube.videos().list(part="snippet,statistics", id=",".join(batch)).execute()
+        lambda: youtube.videos().list(part="snippet,statistics,liveStreamingDetails", id=",".join(batch)).execute()
     )
 
     items = response.get("items")
@@ -516,15 +516,54 @@ def _fetch_channel_avatar_batch(youtube: Resource, batch: list[str]) -> tuple[di
 
 
 def _parse_video_item(item: dict) -> dict:
-    """Extract videoId/title/publishedAt/viewCount from one videos.list response item."""
+    """Extract videoId/title/publishedAt/viewCount/contentType/liveStatus from one videos.list response item.
+
+    contentType ("live" vs "upload") is derived from `liveStreamingDetails`
+    presence on this same paid response (part="snippet,statistics,
+    liveStreamingDetails" -- no separate request): YouTube includes this
+    object for any video that is or was associated with a broadcast,
+    including a completed/archived livestream, and omits it entirely for a
+    plain upload. Deliberately not `snippet.liveBroadcastContent` -- that
+    field reports only the CURRENT live/upcoming/none state and reverts to
+    "none" once a stream ends, so it cannot distinguish a completed
+    livestream archive from a plain upload the way liveStreamingDetails'
+    mere presence can.
+
+    liveStatus ("upcoming"/"live"/"completed", only when contentType=="live")
+    is a further, orthogonal breakdown WITHIN liveStreamingDetails itself --
+    contentType=="live" alone cannot tell a still-upcoming or currently-live
+    broadcast apart from a genuinely completed archive, which matters for any
+    caller that wants archives only (e.g. Home's historical livestream list,
+    which must never duplicate the creator's own current live/upcoming
+    video). Per YouTube's documented liveStreamingDetails contract:
+    actualEndTime is present ONLY once a broadcast has ended (never for
+    upcoming or currently-live), actualStartTime is present once it begins
+    (live or completed, never upcoming) -- so checking actualEndTime first,
+    then actualStartTime, then falling back to "upcoming" is exhaustive and
+    never ambiguous. Still zero extra requests: both fields are already in
+    this same liveStreamingDetails object.
+    """
     try:
         snippet = item["snippet"]
         statistics = item["statistics"]
+        live_details = item.get("liveStreamingDetails")
+        is_live = isinstance(live_details, dict)
+        if is_live:
+            if "actualEndTime" in live_details:
+                live_status = "completed"
+            elif "actualStartTime" in live_details:
+                live_status = "live"
+            else:
+                live_status = "upcoming"
+        else:
+            live_status = None
         return {
             "videoId": item["id"],
             "title": snippet["title"],
             "publishedAt": snippet["publishedAt"],
             "viewCount": int(statistics["viewCount"]),
+            "contentType": "live" if is_live else "upload",
+            "liveStatus": live_status,
         }
     except (KeyError, TypeError, ValueError) as exc:
         raise YouTubeAPIError(f"Malformed video item, missing field: {exc}") from exc

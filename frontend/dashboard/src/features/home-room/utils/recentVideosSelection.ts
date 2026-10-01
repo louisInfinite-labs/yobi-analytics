@@ -78,12 +78,15 @@ export function selectLatestVideos(videos: RecentVideo[], count = 5): RecentVide
 
 /** The livestream row's 5 slots:
  *  - currently live now → [live now, ...4 most recent completed streams]
+ *  - no live now, but an upcoming stream exists → [upcoming, ...4 most recent completed streams]
  *  - otherwise → [5 most recent completed streams]
- * Also has no `sort` param, same reason as selectLatestVideos above. */
+ * live_now outranks live_upcoming (a creator can't be both), so at most one
+ * priority slot is ever prepended either way. Also has no `sort` param, same
+ * reason as selectLatestVideos above. */
 export function selectLivestreamSlots(videos: RecentVideo[], count = 5): RecentVideo[] {
-  const liveNow = videos.find((v) => v.contentFormat === "live_now")
+  const priority = videos.find((v) => v.contentFormat === "live_now") ?? videos.find((v) => v.contentFormat === "live_upcoming")
   const archives = sortByPublishedDesc(videos.filter((v) => v.contentFormat === "live_archive"))
 
-  if (liveNow) return [liveNow, ...archives.slice(0, count - 1)]
+  if (priority) return [priority, ...archives.slice(0, count - 1)]
   return archives.slice(0, count)
 }

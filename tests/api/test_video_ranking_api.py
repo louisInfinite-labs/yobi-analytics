@@ -38,23 +38,28 @@ def _canonical_row(
     current_view_count: int,
     *,
     creator_id: str = "aizawa_ema",
+    content_type: str | None = None,
+    live_status: str | None = None,
     anchor_1d: int | None = None,
     anchor_7d: int | None = None,
     anchor_30d: int | None = None,
     title: str | None = None,
     thumbnail_url: str | None = None,
+    published_at: str | None = None,
 ) -> dict:
     return {
         "videoId": video_id,
         "creatorId": creator_id,
         "topic": topic,
+        "contentType": content_type,
+        "liveStatus": live_status,
         "currentViewCount": current_view_count,
         "anchor1dViewCount": anchor_1d,
         "anchor7dViewCount": anchor_7d,
         "anchor30dViewCount": anchor_30d,
         "title": title,
         "thumbnailUrl": thumbnail_url,
-        "publishedAt": None,
+        "publishedAt": published_at,
         "discoveredAt": None,
     }
 
@@ -142,6 +147,91 @@ def test_topic_filter_keeps_only_matching_rows_and_reranks(monkeypatch):
 
     assert [row["videoId"] for row in result["rows"]] == ["v1"]
     assert result["rows"][0]["rank"] == 1
+
+
+def test_content_type_filter_keeps_only_matching_rows_and_reranks(monkeypatch):
+    """contentType=live keeps only the archived-livestream row, independent
+    of topic filtering."""
+    payload = _payload(
+        videos=[
+            _canonical_row("v1", "valorant", 500, content_type="live"),
+            _canonical_row("v2", "sf6", 300, content_type="upload"),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_video_ranking(_query(metric="total", contentType="live"))
+
+    assert result["contentType"] == "live"
+    assert [row["videoId"] for row in result["rows"]] == ["v1"]
+    assert result["rows"][0]["rank"] == 1
+
+
+def test_content_type_and_topic_filters_combine_independently(monkeypatch):
+    """topic and contentType are separate dimensions -- a video can match one
+    without the other, and the response only keeps rows matching both."""
+    payload = _payload(
+        videos=[
+            _canonical_row("v1", "valorant", 500, content_type="live"),
+            _canonical_row("v2", "valorant", 400, content_type="upload"),
+            _canonical_row("v3", "sf6", 300, content_type="live"),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_video_ranking(_query(metric="total", topic="valorant", contentType="live"))
+
+    assert [row["videoId"] for row in result["rows"]] == ["v1"]
+
+
+def test_content_type_defaults_to_all_when_omitted(monkeypatch):
+    payload = _payload(
+        videos=[
+            _canonical_row("v1", "valorant", 500, content_type="live"),
+            _canonical_row("v2", "sf6", 300, content_type=None),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_video_ranking(_query(metric="total"))
+
+    assert result["contentType"] == "all"
+    assert [row["videoId"] for row in result["rows"]] == ["v1", "v2"]
+
+
+def test_content_type_filter_excludes_a_row_with_no_persisted_content_type(monkeypatch):
+    """A row written before contentType existed (no key at all, unlike the
+    None used above) never matches a specific contentType filter -- excluded,
+    never fabricated as "upload"."""
+    payload = _payload(
+        videos=[
+            {
+                "videoId": "v1",
+                "creatorId": "aizawa_ema",
+                "topic": "valorant",
+                "currentViewCount": 500,
+                "anchor1dViewCount": None,
+                "anchor7dViewCount": None,
+                "anchor30dViewCount": None,
+                "title": None,
+                "thumbnailUrl": None,
+                "publishedAt": None,
+                "discoveredAt": None,
+            }
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_video_ranking(_query(metric="total", contentType="live"))
+
+    assert result["rows"] == []
+
+
+def test_invalid_content_type_raises_client_error(monkeypatch):
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): _payload()})
+
+    with pytest.raises(read_api.ClientError):
+        read_api.get_video_ranking(_query(contentType="archived"))
 
 
 def test_limit_truncates_the_served_rows(monkeypatch):
@@ -267,3 +357,239 @@ def test_one_creators_request_never_serves_another_creators_stored_result(monkey
 
     assert all(row["videoId"] != "z1" for row in result["rows"])
     assert result["creatorId"] == "aizawa_ema"
+
+
+# --- 5. get_recent_creator_videos (newest-first, non-ranking) ------------------
+
+
+def _recent_query(**overrides) -> dict:
+    query = {"creatorId": "aizawa_ema", "reportDate": "2026-09-29"}
+    query.update(overrides)
+    return query
+
+
+def test_recent_videos_are_ordered_newest_first_by_published_at(monkeypatch):
+    payload = _payload(
+        videos=[
+            _canonical_row("v1", "valorant", 500, published_at="2026-09-01T00:00:00Z"),
+            _canonical_row("v2", "sf6", 300, published_at="2026-09-20T00:00:00Z"),
+            _canonical_row("v3", "apex", 100, published_at="2026-09-10T00:00:00Z"),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_recent_creator_videos(_recent_query())
+
+    assert [video["videoId"] for video in result["videos"]] == ["v2", "v3", "v1"]
+
+
+def test_recent_videos_equal_published_at_break_ties_by_video_id(monkeypatch):
+    payload = _payload(
+        videos=[
+            _canonical_row("v9", "valorant", 500, published_at="2026-09-10T00:00:00Z"),
+            _canonical_row("v2", "sf6", 300, published_at="2026-09-10T00:00:00Z"),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_recent_creator_videos(_recent_query())
+
+    assert [video["videoId"] for video in result["videos"]] == ["v2", "v9"]
+
+
+def test_recent_videos_content_type_live_excludes_upload_and_unclassified(monkeypatch):
+    payload = _payload(
+        videos=[
+            _canonical_row("v1", "valorant", 500, content_type="live", published_at="2026-09-20T00:00:00Z"),
+            _canonical_row("v2", "sf6", 300, content_type="upload", published_at="2026-09-25T00:00:00Z"),
+            _canonical_row("v3", "apex", 100, content_type=None, published_at="2026-09-28T00:00:00Z"),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_recent_creator_videos(_recent_query(contentType="live"))
+
+    assert result["contentType"] == "live"
+    assert [video["videoId"] for video in result["videos"]] == ["v1"]
+
+
+def test_recent_videos_content_type_live_alone_includes_upcoming_and_live_not_just_completed(monkeypatch):
+    """contentType="live" only reflects liveStreamingDetails presence, NOT
+    lifecycle stage -- without an additional liveStatus filter, an upcoming
+    or currently-live video is included right alongside completed archives.
+    This is the exact conflation risk liveStatus exists to let a caller avoid."""
+    payload = _payload(
+        videos=[
+            _canonical_row("v1", "valorant", 500, content_type="live", live_status="completed", published_at="2026-09-20T00:00:00Z"),
+            _canonical_row("v2", "sf6", 300, content_type="live", live_status="live", published_at="2026-09-28T00:00:00Z"),
+            _canonical_row("v3", "apex", 100, content_type="live", live_status="upcoming", published_at="2026-09-29T00:00:00Z"),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_recent_creator_videos(_recent_query(contentType="live"))
+
+    assert {video["videoId"] for video in result["videos"]} == {"v1", "v2", "v3"}
+
+
+def test_live_status_completed_excludes_upcoming_and_currently_live(monkeypatch):
+    """contentType=live&liveStatus=completed is the archive-only combination
+    Home needs, to never duplicate the creator's own active/upcoming stream
+    (which the separate Holodex-backed live path already owns)."""
+    payload = _payload(
+        videos=[
+            _canonical_row("v1", "valorant", 500, content_type="live", live_status="completed", published_at="2026-09-20T00:00:00Z"),
+            _canonical_row("v2", "sf6", 300, content_type="live", live_status="live", published_at="2026-09-28T00:00:00Z"),
+            _canonical_row("v3", "apex", 100, content_type="live", live_status="upcoming", published_at="2026-09-29T00:00:00Z"),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_recent_creator_videos(_recent_query(contentType="live", liveStatus="completed"))
+
+    assert result["liveStatus"] == "completed"
+    assert [video["videoId"] for video in result["videos"]] == ["v1"]
+
+
+def test_live_status_defaults_to_all_when_omitted(monkeypatch):
+    payload = _payload(
+        videos=[
+            _canonical_row("v1", "valorant", 500, content_type="live", live_status="completed"),
+            _canonical_row("v2", "sf6", 300, content_type="live", live_status="upcoming"),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_recent_creator_videos(_recent_query())
+
+    assert result["liveStatus"] == "all"
+    assert {video["videoId"] for video in result["videos"]} == {"v1", "v2"}
+
+
+def test_invalid_live_status_raises_client_error(monkeypatch):
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): _payload()})
+
+    with pytest.raises(read_api.ClientError):
+        read_api.get_recent_creator_videos(_recent_query(liveStatus="ended"))
+
+
+def test_recent_videos_content_type_defaults_to_all(monkeypatch):
+    payload = _payload(
+        videos=[
+            _canonical_row("v1", "valorant", 500, content_type="live", published_at="2026-09-20T00:00:00Z"),
+            _canonical_row("v2", "sf6", 300, content_type="upload", published_at="2026-09-25T00:00:00Z"),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_recent_creator_videos(_recent_query())
+
+    assert result["contentType"] == "all"
+    assert {video["videoId"] for video in result["videos"]} == {"v1", "v2"}
+
+
+def test_recent_videos_limit_and_offset_paginate_the_sorted_set(monkeypatch):
+    payload = _payload(
+        videos=[
+            _canonical_row("v1", "x", 1, published_at="2026-09-25T00:00:00Z"),
+            _canonical_row("v2", "x", 1, published_at="2026-09-24T00:00:00Z"),
+            _canonical_row("v3", "x", 1, published_at="2026-09-23T00:00:00Z"),
+            _canonical_row("v4", "x", 1, published_at="2026-09-22T00:00:00Z"),
+            _canonical_row("v5", "x", 1, published_at="2026-09-21T00:00:00Z"),
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    page1 = read_api.get_recent_creator_videos(_recent_query(limit=2, offset=0))
+    page2 = read_api.get_recent_creator_videos(_recent_query(limit=2, offset=2))
+    page3 = read_api.get_recent_creator_videos(_recent_query(limit=2, offset=4))
+
+    assert [v["videoId"] for v in page1["videos"]] == ["v1", "v2"]
+    assert page1["hasMore"] is True
+    assert [v["videoId"] for v in page2["videos"]] == ["v3", "v4"]
+    assert page2["hasMore"] is True
+    assert [v["videoId"] for v in page3["videos"]] == ["v5"]
+    assert page3["hasMore"] is False
+
+
+def test_recent_videos_has_more_is_false_when_the_last_page_is_shorter_than_limit(monkeypatch):
+    """A naive `len(page) >= limit` would wrongly say hasMore=True here --
+    exactly 5 videos exist, limit=2 offset=4 returns only 1, and nothing
+    more follows."""
+    payload = _payload(
+        videos=[_canonical_row(f"v{i}", "x", 1, published_at=f"2026-09-{20 + i:02d}T00:00:00Z") for i in range(1, 6)]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_recent_creator_videos(_recent_query(limit=2, offset=4))
+
+    assert len(result["videos"]) == 1
+    assert result["hasMore"] is False
+
+
+def test_recent_videos_default_limit_is_four(monkeypatch):
+    payload = _payload(
+        videos=[
+            _canonical_row(f"v{i}", "x", 1, published_at=f"2026-09-{20 + i:02d}T00:00:00Z") for i in range(1, 7)
+        ]
+    )
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): payload})
+
+    result = read_api.get_recent_creator_videos(_recent_query())
+
+    assert len(result["videos"]) == 4
+    assert result["hasMore"] is True
+
+
+def test_recent_videos_never_serves_another_creators_stored_result(monkeypatch):
+    _wire(
+        monkeypatch,
+        {
+            ("2026-09-29", "aizawa_ema"): _payload(),
+            ("2026-09-29", "other_creator"): _payload(
+                creatorId="other_creator", videos=[_canonical_row("z1", "other", 999_999, creator_id="other_creator")]
+            ),
+        },
+    )
+
+    result = read_api.get_recent_creator_videos(_recent_query(creatorId="aizawa_ema"))
+
+    assert all(video["videoId"] != "z1" for video in result["videos"])
+    assert result["creatorId"] == "aizawa_ema"
+
+
+def test_recent_videos_unknown_creator_id_raises_client_error(monkeypatch):
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): _payload()})
+
+    with pytest.raises(read_api.ClientError):
+        read_api.get_recent_creator_videos(_recent_query(creatorId="not_a_real_creator"))
+
+
+def test_recent_videos_invalid_content_type_raises_client_error(monkeypatch):
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): _payload()})
+
+    with pytest.raises(read_api.ClientError):
+        read_api.get_recent_creator_videos(_recent_query(contentType="archived"))
+
+
+@pytest.mark.parametrize("bad_limit", [0, -1, "abc", 21])
+def test_recent_videos_invalid_limit_raises_client_error(monkeypatch, bad_limit):
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): _payload()})
+
+    with pytest.raises(read_api.ClientError):
+        read_api.get_recent_creator_videos(_recent_query(limit=bad_limit))
+
+
+@pytest.mark.parametrize("bad_offset", [-1, "abc"])
+def test_recent_videos_invalid_offset_raises_client_error(monkeypatch, bad_offset):
+    _wire(monkeypatch, {("2026-09-29", "aizawa_ema"): _payload()})
+
+    with pytest.raises(read_api.ClientError):
+        read_api.get_recent_creator_videos(_recent_query(offset=bad_offset))
+
+
+def test_recent_videos_missing_result_for_every_candidate_date_raises_ranking_not_ready(monkeypatch):
+    _wire(monkeypatch, {})
+
+    with pytest.raises(read_api.RankingNotReadyError):
+        read_api.get_recent_creator_videos(_recent_query())

@@ -30,6 +30,7 @@ from analytics.video_ranking import build_creator_video_catalog
 from analytics.video_ranking_result import build_video_ranking_result
 from stores.video_ranking_store import S3VideoRankingStore, VideoRankingStoreError
 from tracking.tracking_manifest import S3TrackingManifestStore, discovered_dates_by_video
+from tracking.video_master import VALID_CONTENT_TYPES, VALID_LIVE_STATUSES
 from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS
 
 _TIME_ZONE = "Asia/Tokyo"
@@ -105,6 +106,14 @@ def _build_and_persist_video_rankings(*, report_date: date, generated_at: str) -
         topic_by_video = {
             entry.video_id: (entry.topic if entry.topic in TOPIC_IDS else OTHER_TOPIC) for entry in active_entries
         }
+        content_type_by_video = {
+            entry.video_id: (entry.content_type if entry.content_type in VALID_CONTENT_TYPES else None)
+            for entry in active_entries
+        }
+        live_status_by_video = {
+            entry.video_id: (entry.live_status if entry.live_status in VALID_LIVE_STATUSES else None)
+            for entry in active_entries
+        }
         # Metadata propagation (video-ranking, Phase C correction): title/
         # thumbnailUrl/publishedAt/discoveredAt are read straight from the
         # tracking manifest's own already-persisted values (ultimately Video
@@ -133,6 +142,8 @@ def _build_and_persist_video_rankings(*, report_date: date, generated_at: str) -
                 creator_id=creator_id,
                 report_date=report_date,
                 topic_by_video=topic_by_video,
+                content_type_by_video=content_type_by_video,
+                live_status_by_video=live_status_by_video,
                 discovered_date_by_video=discovered_date_by_video,
                 title_by_video=title_by_video,
                 thumbnail_by_video=thumbnail_by_video,

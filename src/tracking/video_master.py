@@ -23,6 +23,24 @@ class VideoMasterError(JsonStoreError):
 
 VALID_ACTIVITY_STATES = {"Unknown", "Hot", "Warm", "Cold"}
 
+# "live" = an archived livestream (YouTube liveStreamingDetails was present on
+# the videos.list item that observed it -- collection.youtube_client's own
+# signal, never inferred from title/topic/duration). "upload" = a plain
+# video. Orthogonal to `topic` (game/genre) -- a video can be
+# content_type="live", topic="chatting" at the same time.
+VALID_CONTENT_TYPES = {"live", "upload"}
+
+# Lifecycle stage for a content_type="live" video, from the SAME
+# liveStreamingDetails object content_type itself was derived from --
+# actualEndTime present => "completed" (YouTube never sets this until the
+# broadcast is over); actualStartTime present without actualEndTime =>
+# "live"; neither present => "upcoming" (scheduled, not yet started). None
+# for a content_type="upload" video, where this dimension doesn't apply.
+# Never overloads `content_type` itself: "live" alone cannot tell a still-
+# upcoming/currently-live video apart from a completed archive, which is
+# exactly what Home's own archive-only list must exclude.
+VALID_LIVE_STATUSES = {"upcoming", "live", "completed"}
+
 
 @dataclass(frozen=True)
 class Video:
@@ -68,6 +86,17 @@ class Video:
     # One primary topic id (video_topics.TOPICS). None for a record written
     # before this field existed; only discovery and the topic backfill set it.
     topic: str | None = None
+    # "live" (archived livestream) or "upload" (plain video), from YouTube
+    # liveStreamingDetails presence on the collection-time videos.list
+    # observation (see collection.youtube_client.get_video_statistics). None
+    # for a record whose most recent observation predates this field, or
+    # that has never been observed via the statistics collection path yet
+    # (e.g. freshly discovered, not yet due for its first snapshot).
+    content_type: str | None = None
+    # "upcoming"/"live"/"completed" for a content_type="live" video, None
+    # otherwise (an "upload", or a "live" video whose lifecycle hasn't been
+    # observed since this field existed). See VALID_LIVE_STATUSES above.
+    live_status: str | None = None
 
 
 class VideoMasterStore(Protocol):
@@ -179,6 +208,8 @@ def _parse_video(raw: dict) -> Video:
             last_avg_views_per_day=_optional_float(raw, "lastAvgViewsPerDay", video_id),
             discovered_at=_optional_iso_datetime_str(raw, "discoveredAt", video_id),
             topic=_optional_topic(raw, video_id),
+            content_type=_optional_content_type(raw, video_id),
+            live_status=_optional_live_status(raw, video_id),
         )
     except (KeyError, TypeError) as exc:
         raise VideoMasterError(f"Malformed Video Master record, missing/invalid field: {exc}") from exc
@@ -216,6 +247,34 @@ def _validated_topic(value: object, video_id: str) -> str | None:
         return None
     if not isinstance(value, str) or value not in TOPIC_IDS:
         raise VideoMasterError(f"Video {video_id!r} has invalid 'topic': {value!r}")
+    return value
+
+
+def _optional_content_type(raw: dict, video_id: str) -> str | None:
+    """Return raw["contentType"] as a known content-type id, or None when absent."""
+    return _validated_content_type(raw.get("contentType"), video_id)
+
+
+def _validated_content_type(value: object, video_id: str) -> str | None:
+    """Return value if it is None or a known content-type id; a bad value is rejected on write as well as read."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in VALID_CONTENT_TYPES:
+        raise VideoMasterError(f"Video {video_id!r} has invalid 'contentType': {value!r}")
+    return value
+
+
+def _optional_live_status(raw: dict, video_id: str) -> str | None:
+    """Return raw["liveStatus"] as a known live-status id, or None when absent."""
+    return _validated_live_status(raw.get("liveStatus"), video_id)
+
+
+def _validated_live_status(value: object, video_id: str) -> str | None:
+    """Return value if it is None or a known live-status id; a bad value is rejected on write as well as read."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in VALID_LIVE_STATUSES:
+        raise VideoMasterError(f"Video {video_id!r} has invalid 'liveStatus': {value!r}")
     return value
 
 
@@ -280,8 +339,9 @@ def _optional_float(raw: dict, field: str, video_id: str) -> float | None:
 def _to_raw(video: Video) -> dict:
     """Convert a Video instance into its JSON-serializable form.
 
-    `topic` is omitted while unset so a record without one keeps its
-    pre-topic shape (and DynamoDB never stores a NULL topic attribute).
+    `topic`/`contentType`/`liveStatus` are each omitted while unset so a
+    record without one keeps its pre-existing shape (and DynamoDB never
+    stores a NULL attribute for any of them).
     """
     raw = {
         "videoId": video.video_id,
@@ -302,4 +362,10 @@ def _to_raw(video: Video) -> dict:
     topic = _validated_topic(video.topic, video.video_id)
     if topic is not None:
         raw["topic"] = topic
+    content_type = _validated_content_type(video.content_type, video.video_id)
+    if content_type is not None:
+        raw["contentType"] = content_type
+    live_status = _validated_live_status(video.live_status, video.video_id)
+    if live_status is not None:
+        raw["liveStatus"] = live_status
     return raw
