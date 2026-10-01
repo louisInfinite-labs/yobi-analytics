@@ -3,27 +3,10 @@ import { getCreatorById, getCreators, toLegacyRosterId } from "../../../entities
 import { useLiveStreams } from "../../../shared/api/hooks/useLiveStreams"
 import type { LiveStreamDto } from "../../../shared/api/liveStreams"
 import { reclassifyIfPastSchedule } from "../model/creatorStatusFormat"
+import { pickStatus } from "../model/creatorStatusSelection"
 import type { CreatorStatus } from "../model/creatorStatus"
 
 const TICK_MS = 30_000 // spec: countdown "updates at least once per minute" — twice that margin
-
-/** kind priority per creator: live first, otherwise the nearest upcoming
- * stream, otherwise offline (spec, same rule creatorStatus.ts documents). */
-function pickStatus(streams: LiveStreamDto[] | undefined): CreatorStatus {
-  if (!streams || streams.length === 0) return { kind: "offline" }
-
-  const live = streams.find((stream) => stream.status === "live")
-  if (live) return { kind: "live", videoId: live.videoId, title: live.title }
-
-  const nearestUpcoming = streams
-    .filter((stream): stream is LiveStreamDto & { scheduledStart: string } => stream.status === "upcoming" && stream.scheduledStart !== null)
-    .sort((a, b) => new Date(a.scheduledStart).getTime() - new Date(b.scheduledStart).getTime())[0]
-  if (nearestUpcoming) {
-    return { kind: "upcoming", videoId: nearestUpcoming.videoId, title: nearestUpcoming.title, scheduledStart: nearestUpcoming.scheduledStart }
-  }
-
-  return { kind: "offline" }
-}
 
 /** Every canonical creator gets an entry (offline by default) so consumers
  * that iterate the whole roster (CreatorStatusList) always find a status --
@@ -32,7 +15,7 @@ function pickStatus(streams: LiveStreamDto[] | undefined): CreatorStatus {
  * legacy "ch_"-prefixed id: every existing consumer (CreatorStatusList, Home's
  * useSelectedCreator) already reads this map by that id, not the canonical
  * creatorId (see toLegacyRosterId's own docstring). */
-function statusesFromStreams(streams: LiveStreamDto[]): Record<string, CreatorStatus> {
+export function statusesFromStreams(streams: LiveStreamDto[], now: Date): Record<string, CreatorStatus> {
   const streamsByCreatorId = new Map<string, LiveStreamDto[]>()
   for (const stream of streams) {
     const creator = getCreatorById(stream.creatorId)
@@ -44,7 +27,7 @@ function statusesFromStreams(streams: LiveStreamDto[]): Record<string, CreatorSt
 
   const statuses: Record<string, CreatorStatus> = {}
   for (const creator of getCreators()) {
-    statuses[toLegacyRosterId(creator)] = pickStatus(streamsByCreatorId.get(creator.creatorId))
+    statuses[toLegacyRosterId(creator)] = pickStatus(streamsByCreatorId.get(creator.creatorId), now)
   }
   return statuses
 }
@@ -64,7 +47,9 @@ export function useCreatorStatuses(): { statuses: Record<string, CreatorStatus>;
   }, [])
 
   const statuses = useMemo(() => {
-    const raw = statusesFromStreams(streams)
+    // One `now` for the whole selection: the 24h Live Status window (see
+    // creatorStatusSelection.ts) is evaluated against this same instant for every creator.
+    const raw = statusesFromStreams(streams, now)
     const reclassified: Record<string, CreatorStatus> = {}
     for (const [channelId, status] of Object.entries(raw)) {
       reclassified[channelId] = reclassifyIfPastSchedule(status, now)

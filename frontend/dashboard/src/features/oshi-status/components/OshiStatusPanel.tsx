@@ -1,5 +1,4 @@
 import { Avatar } from "antd"
-import { useMemo } from "react"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { resolvePlaybackVideoId } from "../../home-room/data/mockRecentVideos"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
@@ -8,33 +7,21 @@ import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import type { TimeFormat } from "../../../shared/i18n/model/timeFormat"
 import { formatAbsoluteTime, formatCountdown } from "../../live-status/model/creatorStatusFormat"
+import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { resetPreviousVisit, usePreviousVisit } from "../hooks/useLastVisit"
-import {
-  formatActivityTime,
-  formatCompactCount,
-  isUnseenActivity,
-  measureActivity,
-  selectRecentActivity,
-  WEEK_MS,
-  type ActivityEntry,
-} from "../utils/oshiActivity"
+import { useOshiStatus } from "../hooks/useOshiStatus"
+import type { OshiStatusRecentItem } from "../data/oshiStatus"
+import { formatActivityTime, formatCompactCount, isUnseenActivity } from "../utils/oshiActivity"
 import type { CreatorStatus } from "../../live-status/model/creatorStatus"
-import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 
-const RECENT_ROW_LIMIT = 6
-
-/** View growth needs a per-channel view time series, which no data source in
- * this app provides yet. The slot stays so the metric is visibly pending
- * rather than silently redefined — see measureActivity's own note. */
-const VIEW_GROWTH_UNAVAILABLE = "—"
+/** Shown for any number the backend has not provided (still loading, the request failed, or no
+ * value exists for it) -- never a fabricated 0. */
+const VALUE_UNAVAILABLE = "—"
 
 interface OshiStatusPanelProps {
   creatorId: string
   status: CreatorStatus
   now: Date
-  uploads: RecentVideo[]
-  streams: RecentVideo[]
-  loading: boolean
   /** The one shared Home selected-video path (see HomePage.tsx) -- switches
    * the central Oshi Stream player directly, never a modal/second player. */
   onSelectVideo: (video: { videoId: string; title: string }) => void
@@ -49,8 +36,7 @@ interface OshiStatusPanelProps {
  * always exactly these three grid columns -- see home.css's own
  * .oshi-status__recent-row. NEW lives under the timestamp specifically so
  * it can never eat into the title's own width or shrink the thumbnail;
- * every entry here already has a real videoId (selectRecentActivity only
- * ever draws from the video pools), so the title is always clickable. */
+ * every entry here is a real backend video with a videoId, so the title is always clickable. */
 function RecentActivityRow({
   entry,
   now,
@@ -59,7 +45,7 @@ function RecentActivityRow({
   timeFormat,
   onOpen,
 }: {
-  entry: ActivityEntry
+  entry: OshiStatusRecentItem
   now: Date
   previousVisit: Date | null
   locale: Locale
@@ -85,7 +71,7 @@ function RecentActivityRow({
       </div>
       <img
         className="oshi-status__recent-thumbnail"
-        src={`https://img.youtube.com/vi/${resolvePlaybackVideoId(entry.videoId)}/hqdefault.jpg`}
+        src={entry.thumbnailUrl ?? `https://img.youtube.com/vi/${resolvePlaybackVideoId(entry.videoId)}/hqdefault.jpg`}
         alt=""
         draggable={false}
       />
@@ -132,33 +118,18 @@ function LiveOrNext({ status, now }: { status: CreatorStatus; now: Date }) {
 
 /** Home's compact right-hand panel: who the current Oshi is, what they're
  * streaming, what changed since the last visit, and this week's activity.
- * Every number is derived from the video pools Home already loaded and the
- * shared Holodex status — nothing here fetches on its own. */
-export function OshiStatusPanel({
-  creatorId,
-  status,
-  now,
-  uploads,
-  streams,
-  loading,
-  onSelectVideo,
-  nowPlayingTitle,
-}: OshiStatusPanelProps) {
+ * Live/Next comes from the shared Holodex status; everything else (subscriber count,
+ * since-last-visit and this-week counts, view growth, the recent rows) is the backend's
+ * GET /creators/{creatorId}/oshi-status read model for the CURRENT creator. */
+export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlayingTitle }: OshiStatusPanelProps) {
   const creator = mockCreators.find((entry) => entry.channelId === creatorId)
   const accent = getMemberAccent(creatorId, creator?.themeColor)
   const previousVisit = usePreviousVisit()
   const [locale] = useLocale()
   const [timeFormat] = useTimeFormat()
-
-  const sinceLastVisit = useMemo(
-    () => (previousVisit ? measureActivity(uploads, streams, previousVisit, now) : null),
-    [previousVisit, uploads, streams, now],
-  )
-  const thisWeek = useMemo(
-    () => measureActivity(uploads, streams, new Date(now.getTime() - WEEK_MS), now),
-    [uploads, streams, now],
-  )
-  const recent = useMemo(() => selectRecentActivity(uploads, streams, RECENT_ROW_LIMIT), [uploads, streams])
+  const { data, loading } = useOshiStatus(resolveCreatorKey(creatorId)?.creatorId, previousVisit)
+  const recent = data?.recent ?? []
+  const number = (value: number | undefined) => (value === undefined ? VALUE_UNAVAILABLE : String(value))
 
   return (
     <aside className="oshi-status">
@@ -176,14 +147,10 @@ export function OshiStatusPanel({
             </Avatar>
             <div className="oshi-status__creator-text">
               <div className="oshi-status__creator-name">{creator?.channelName ?? creatorId}</div>
-              {/* No backend/mock field carries a real subscriber count for
-               * most creators yet -- only the primary dev/test creator has
-               * one, so the line is simply omitted rather than showing a
-               * fabricated number for everyone else. See this task's final
-               * report. */}
-              {creator?.subscriberCount != null && (
+              {/* The backend's subscriberCount; the line is omitted when it is null (never a fabricated 0). */}
+              {data?.subscriberCount != null && (
                 <div className="oshi-status__subscriber-count">
-                  {formatCompactCount(creator.subscriberCount)} {t(locale, "oshiStatus.subscribers")}
+                  {formatCompactCount(data.subscriberCount)} {t(locale, "oshiStatus.subscribers")}
                 </div>
               )}
             </div>
@@ -210,11 +177,13 @@ export function OshiStatusPanel({
 
         <section className="oshi-status__section">
           <div className="oshi-status__section-title">{t(locale, "oshiStatus.sinceLastVisit")}</div>
-          {sinceLastVisit ? (
+          {previousVisit ? (
             <div className="oshi-status__metrics">
-              <Metric value={String(sinceLastVisit.uploads)} label={t(locale, "oshiStatus.uploads")} />
-              <Metric value={String(sinceLastVisit.streams)} label={t(locale, "oshiStatus.streams")} />
-              <Metric value={VIEW_GROWTH_UNAVAILABLE} label={t(locale, "oshiStatus.viewGrowth")} />
+              <Metric value={number(data?.sinceLastVisit?.newUploads)} label={t(locale, "oshiStatus.uploads")} />
+              <Metric value={number(data?.sinceLastVisit?.newStreams)} label={t(locale, "oshiStatus.streams")} />
+              {/* The backend has no growth for an arbitrary since-window (only 1d/7d/30d channel totals),
+               * and no raw history is exposed to derive one, so this slot stays a placeholder. */}
+              <Metric value={VALUE_UNAVAILABLE} label={t(locale, "oshiStatus.viewGrowth")} />
             </div>
           ) : (
             <div className="oshi-empty-state">{t(locale, "oshiStatus.firstVisit")}</div>
@@ -224,9 +193,12 @@ export function OshiStatusPanel({
         <section className="oshi-status__section">
           <div className="oshi-status__section-title">{t(locale, "oshiStatus.thisWeek")}</div>
           <div className="oshi-status__metrics">
-            <Metric value={VIEW_GROWTH_UNAVAILABLE} label={t(locale, "oshiStatus.viewGrowth")} />
-            <Metric value={String(thisWeek.streams)} label={t(locale, "oshiStatus.streams")} />
-            <Metric value={String(thisWeek.uploads)} label={t(locale, "oshiStatus.uploads")} />
+            <Metric
+              value={data ? formatCompactCount(data.growth["7d"].absoluteGrowth) : VALUE_UNAVAILABLE}
+              label={t(locale, "oshiStatus.viewGrowth")}
+            />
+            <Metric value={number(data?.thisWeek.newStreams)} label={t(locale, "oshiStatus.streams")} />
+            <Metric value={number(data?.thisWeek.newUploads)} label={t(locale, "oshiStatus.uploads")} />
           </div>
         </section>
 

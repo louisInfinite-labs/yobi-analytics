@@ -32,6 +32,15 @@ export type TranslationKey =
   | "recentVideos.sort.oldest"
   | "recentVideos.sort.mostViews"
   | "recentVideos.sortAriaLabel"
+  | "recentVideos.windowAriaLabel"
+  | "recentVideos.window.total"
+  | "recentVideos.window.1d"
+  | "recentVideos.window.7d"
+  | "recentVideos.window.30d"
+  | "recentVideos.contentType.all"
+  | "recentVideos.contentType.live"
+  | "recentVideos.contentType.video"
+  | "recentVideos.contentTypeAriaLabel"
   | "recentVideos.empty.latestVideos"
   | "recentVideos.empty.latestLive"
   | "recentVideos.empty.other"
@@ -212,8 +221,17 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.tag.other": "其他",
     "recentVideos.sort.newest": "最新上架",
     "recentVideos.sort.oldest": "最舊上架",
-    "recentVideos.sort.mostViews": "總觀看次數最多",
+    "recentVideos.sort.mostViews": "最多觀看次數",
     "recentVideos.sortAriaLabel": "排序影片",
+    "recentVideos.windowAriaLabel": "期間",
+    "recentVideos.window.total": "全部",
+    "recentVideos.window.1d": "1d",
+    "recentVideos.window.7d": "7d",
+    "recentVideos.window.30d": "30d",
+    "recentVideos.contentType.all": "全部",
+    "recentVideos.contentType.live": "直播",
+    "recentVideos.contentType.video": "影片",
+    "recentVideos.contentTypeAriaLabel": "內容類型",
     "recentVideos.empty.latestVideos": "尚無最新影片",
     "recentVideos.empty.latestLive": "尚無最新直播",
     "recentVideos.empty.other": "沒有影片",
@@ -395,6 +413,15 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.sort.oldest": "Oldest",
     "recentVideos.sort.mostViews": "Most Views",
     "recentVideos.sortAriaLabel": "Sort videos",
+    "recentVideos.windowAriaLabel": "Period",
+    "recentVideos.window.total": "All",
+    "recentVideos.window.1d": "1d",
+    "recentVideos.window.7d": "7d",
+    "recentVideos.window.30d": "30d",
+    "recentVideos.contentType.all": "All",
+    "recentVideos.contentType.live": "Live",
+    "recentVideos.contentType.video": "Videos",
+    "recentVideos.contentTypeAriaLabel": "Content type",
     "recentVideos.empty.latestVideos": "No recent videos",
     "recentVideos.empty.latestLive": "No recent streams",
     "recentVideos.empty.other": "No videos",
@@ -576,6 +603,15 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.sort.oldest": "古い順",
     "recentVideos.sort.mostViews": "総再生数順",
     "recentVideos.sortAriaLabel": "動画を並び替え",
+    "recentVideos.windowAriaLabel": "期間",
+    "recentVideos.window.total": "All",
+    "recentVideos.window.1d": "1d",
+    "recentVideos.window.7d": "7d",
+    "recentVideos.window.30d": "30d",
+    "recentVideos.contentType.all": "すべて",
+    "recentVideos.contentType.live": "配信",
+    "recentVideos.contentType.video": "動画",
+    "recentVideos.contentTypeAriaLabel": "コンテンツ種別",
     "recentVideos.empty.latestVideos": "最新動画はありません",
     "recentVideos.empty.latestLive": "最新配信はありません",
     "recentVideos.empty.other": "動画がありません",
