@@ -1,10 +1,12 @@
-import { getCreators, isCurrentMemberEligible, resolveCreatorKey, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
+import { getCreators, isCurrentMemberEligible, isMyOshiEligible, resolveCreatorKey, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 import { createSharedState, useSharedState } from "../../../shared/state/sharedState"
 
 const STORAGE_KEY = "yobi.defaultOshiCreatorId"
 
-/** The canonical selectable roster, ascending by displayOrder (C8A0) -- never
+/** The CURRENT members, ascending by displayOrder (C8A0) -- the pool the
+ * fallback default is drawn from, so a fresh install never defaults to a
+ * graduated creator even though graduated creators are selectable. Never
  * getCreators()'s own raw array order, which stays alphabetical-by-creatorId
  * for deterministic codegen and is not a display order. */
 function selectableCreatorsByDisplayOrder(): CanonicalCreator[] {
@@ -35,7 +37,8 @@ export function readDefaultOshiCreatorId(): string {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const resolved = resolveCreatorKey(raw)
-      if (resolved && isCurrentMemberEligible(resolved)) return toLegacyRosterId(resolved)
+      // isMyOshiEligible, not the current-member rule: a creator who has since graduated stays a valid saved Oshi.
+      if (resolved && isMyOshiEligible(resolved)) return toLegacyRosterId(resolved)
     }
   } catch {
     // Fall through to the default below.

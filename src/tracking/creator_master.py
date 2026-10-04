@@ -243,83 +243,91 @@ def find_creator_by_youtube_channel_id(youtube_channel_id: str, path: Path = DEF
 
 
 # ---------------------------------------------------------------------------
-# Eligibility (C4) -- deliberately separate from identity resolution above.
+# Eligibility -- deliberately separate from identity resolution above, and
+# deliberately FOUR separate rules, never one shared predicate.
 #
 # resolve_creator_key()/find_creator_by_youtube_channel_id() answer "does this
-# key identify a real creator". The functions below answer a different
-# question entirely: "should this ALREADY-RESOLVED creator appear in a given
-# current-facing roster". A creator can resolve successfully and still be
-# ineligible for every roster (e.g. vspo_official: a real Creator Master
-# identity, channel_type "group", excluded from both rosters below) -- and
-# the reverse is never true, since eligibility is only ever checked on an
-# already-resolved Creator, not a raw key. Never call these from inside
-# resolve_creator_key()/find_creator_by_youtube_channel_id(), and never use
-# them as a general "does this creator exist" filter for historical/
-# analytics consumers (see the module note below).
+# key identify a real creator". The functions below answer different questions
+# about an ALREADY-RESOLVED creator. They must never be called from inside
+# resolve_creator_key()/find_creator_by_youtube_channel_id(), and never used as
+# a general "does this creator exist" filter for historical/analytics
+# consumers.
+#
+#   is_live_status_display_eligible   -- does the channel get a Live Status row.
+#   is_live_status_polling_eligible   -- do we ask Holodex about it (API quota).
+#   is_my_oshi_eligible               -- may a user pick it as their Oshi.
+#   is_content_collection_eligible    -- does new-video discovery look at it.
+#
+# They differ on purpose. A graduated individual creator is displayed in Live
+# Status (as OFFLINE unless something is live) and stays selectable as an Oshi,
+# but is neither polled nor discovered for new content: graduation means "stop
+# actively collecting", not "remove from the product". Group/staff channels
+# (e.g. vspo_official) are displayed and polled like any channel, but are not
+# people, so they can never be an Oshi.
 #
 # active vs. lifecycle_stage vs. discovery_enabled -- audited, not assumed
 # interchangeable:
-#   - `active` is documented above (see get_active_creators()) as the
-#     COLLECTION pipeline's own toggle: whether main.py still actively
-#     processes this creator at all. It is intentionally independent of
-#     real-world status (a pre-debut unit can be active=true; a graduated
-#     creator can also still be active=true, per discovery_enabled's own
-#     comment, purely so their already-known videos keep getting
-#     statistics/snapshots).
+#   - `active` is the COLLECTION pipeline's own toggle: whether main.py still
+#     processes this creator at all (a graduated creator keeps active=true so
+#     already-known videos keep getting statistics/snapshots).
 #   - `lifecycle_stage` is the real-world status (active/pre_debut/graduated/
-#     retired) -- this is what actually answers "is this a current talent".
-#   - `discovery_enabled` only controls whether Discovery looks for NEW
-#     uploads; it says nothing about a creator's own current-ness and is not
-#     used below, since no product requirement for these two rosters depends
-#     on upload-discovery state.
-# Every one of the current 118 production creators has active=true, so
-# `active` never actually excludes anyone today -- it is still checked
-# explicitly below as a future-safe rule: a creator taken out of active
-# collection has no reliable ongoing data, so a roster meant to show
-# CURRENT status should not offer them either, even though nothing in
-# today's data exercises that branch yet.
+#     retired).
+#   - `discovery_enabled` controls whether Discovery looks for NEW uploads
+#     (false for every graduated creator).
+# Display eligibility does NOT depend on lifecycle_stage, channel_type, or on
+# whether the channel has any video, manifest or ranking data.
 # ---------------------------------------------------------------------------
 
-_CURRENT_LIFECYCLE_STAGES = frozenset({"active", "pre_debut"})
+# Lifecycle stages whose channels can plausibly be live/upcoming right now.
+_POLLED_LIFECYCLE_STAGES = frozenset({"active", "pre_debut"})
+# Lifecycle stages an individual creator may be selected as an Oshi in --
+# graduation keeps the creator selectable (existing selections stay valid).
+_MY_OSHI_LIFECYCLE_STAGES = frozenset({"active", "pre_debut", "graduated"})
+# A YouTube channel id as Holodex expects it: "UC" followed by url-safe characters.
+# Deliberately not pinned to the real 24-character length -- the point is to refuse a
+# blank/whitespace/foreign value before it reaches Holodex, not to re-validate YouTube.
+YOUTUBE_CHANNEL_ID_PATTERN = re.compile(r"^UC[0-9A-Za-z_-]+$")
 
 
-def _is_current_active_member(creator: Creator) -> bool:
-    """Shared rule behind both eligibility functions below: an individual talent
-    (channel_type "member") who is a current real-world talent (lifecycle_stage
-    "active" or "pre_debut") and still under active collection."""
+def is_live_status_display_eligible(creator: Creator) -> bool:
+    """Whether `creator` gets a row in the Live Status roster: every supported channel
+    -- member (including graduated), group and staff -- regardless of lifecycle_stage,
+    channel_type, or any content/ranking availability. Only a channel taken out of the
+    roster altogether (active=false) is not displayed."""
+    return creator.active
+
+
+def is_live_status_polling_eligible(creator: Creator) -> bool:
+    """Whether Holodex is asked about `creator`'s live/upcoming streams: displayed,
+    current (active or pre_debut) and carrying a well-formed YouTube channel id.
+    A graduated creator is displayed but never polled, so visibility costs no API
+    quota; their row simply resolves to OFFLINE. Any channel_type is polled
+    (members, groups and staff stream too)."""
     return (
-        creator.active
-        and creator.channel_type == "member"
-        and creator.lifecycle_stage in _CURRENT_LIFECYCLE_STAGES
+        is_live_status_display_eligible(creator)
+        and creator.lifecycle_stage in _POLLED_LIFECYCLE_STAGES
+        and bool(YOUTUBE_CHANNEL_ID_PATTERN.match(creator.youtube_channel_id or ""))
     )
 
 
-def is_creator_selectable(creator: Creator) -> bool:
-    """Whether `creator` may be selected on a member-selection surface (My Oshi,
-    Favorites).
-
-    Currently identical to is_creator_live_roster_eligible() below -- kept as
-    a separate function because the two surfaces are conceptually distinct
-    (selecting a creator vs. showing them in a live/upcoming roster) and may
-    diverge later; callers should use the function matching their own
-    surface, not assume the two will always agree.
-    """
-    return _is_current_active_member(creator)
+def is_my_oshi_eligible(creator: Creator) -> bool:
+    """Whether `creator` may be chosen as a user's Oshi: an individual talent
+    (channel_type "member") still in the roster, whether currently active, pre-debut
+    or graduated. Group/staff channels are never an Oshi, whatever their lifecycle."""
+    return (
+        creator.active
+        and creator.channel_type == "member"
+        and creator.lifecycle_stage in _MY_OSHI_LIFECYCLE_STAGES
+    )
 
 
-def is_creator_live_roster_eligible(creator: Creator) -> bool:
-    """Whether `creator` may appear in a current live/upcoming roster (Live
-    Status, Live Schedule).
-
-    Currently identical to is_creator_selectable() above -- see that
-    function's docstring for why they are kept separate anyway. A graduated
-    creator's identity remains fully valid (resolve_creator_key() /
-    load_creators() still return it) -- this function only says it should
-    not appear in a CURRENT roster; historical/analytics consumers must
-    never call this as a general creator filter (see the module note above
-    this section).
-    """
-    return _is_current_active_member(creator)
+def is_content_collection_eligible(creator: Creator) -> bool:
+    """Whether new-video discovery/collection looks at `creator`: under active
+    collection AND discovery enabled. This mirrors the gate collection.main already
+    applies (`creator.discovery_enabled`, false for every graduated creator); it is
+    kept here as a named rule so display/polling/Oshi eligibility can never be
+    mistaken for it."""
+    return creator.active and creator.discovery_enabled
 
 
 def _parse_creator(raw: dict) -> Creator:

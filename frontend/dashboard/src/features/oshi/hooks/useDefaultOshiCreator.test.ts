@@ -71,11 +71,28 @@ describe("useDefaultOshiCreator", () => {
     expect(result.current[0]).toBe("ch_iofi")
   })
 
-  it("ch_amelia_myth_graduated (legacy alias) resolves to watson_amelia but she is graduated -- falls back", () => {
+  it("ch_amelia_myth_graduated (legacy alias) resolves to watson_amelia -- graduated creators are still valid Oshi, so the saved pick is kept", () => {
     window.localStorage.setItem(STORAGE_KEY, "ch_amelia_myth_graduated")
     resetAllSharedStateForTests()
     const { result } = renderHook(() => useDefaultOshiCreator())
-    expect(result.current[0]).toBe(expectedFallbackLegacyId())
+    expect(result.current[0]).toBe("ch_amelia_myth_graduated")
+  })
+
+  it.each(["gawr_gura", "ch_gawr_gura", "mano_aloe", "nanashi_mumei"])(
+    "a saved graduated Oshi (%s) stays valid after a reload -- graduation never invalidates a selection",
+    (stored) => {
+      window.localStorage.setItem(STORAGE_KEY, stored)
+      resetAllSharedStateForTests()
+      const { result } = renderHook(() => useDefaultOshiCreator())
+      expect(result.current[0]).not.toBe(expectedFallbackLegacyId())
+      expect(result.current[0]).toBe(toLegacyRosterId(getCreators().find((c) => c.creatorId === stored.replace(/^ch_/, ""))!))
+    },
+  )
+
+  it("the fresh-install fallback is never a graduated creator, even though graduated creators are selectable", () => {
+    const { result } = renderHook(() => useDefaultOshiCreator())
+    const fallback = getCreators().find((c) => toLegacyRosterId(c) === result.current[0])!
+    expect(fallback.lifecycleStage).not.toBe("graduated")
   })
 
   it("ch_vspo_group (legacy alias) resolves to vspo_official but it is a group channel -- falls back", () => {

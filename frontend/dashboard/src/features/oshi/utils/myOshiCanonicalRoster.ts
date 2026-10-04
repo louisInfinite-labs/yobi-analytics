@@ -1,4 +1,4 @@
-import { getCreators, isCurrentMemberEligible } from "../../../entities/creator/data/creatorRegistry"
+import { getCreators, isMyOshiEligible } from "../../../entities/creator/data/creatorRegistry"
 import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 import type { BranchKey } from "../../../entities/creator/model/domain"
 import { DOCK_BRANCH_ORDER } from "../../../entities/creator/utils/dockCreatorOrder"
@@ -45,14 +45,17 @@ function matchesSearch(creator: CanonicalCreator, query: string): boolean {
  * data source, eligibility rule, and per-subgroup order (displayOrder
  * ascending, C8A0) differ.
  *
- * isCurrentMemberEligible already excludes every non-"member" channelType, so
- * -- unlike oshiSettingsGrouping.ts's own pinNonMemberChannelsLast for VSPO
- * JP -- there is never a non-member creator left in this filtered roster to
- * pin last; that step is simply omitted here rather than called on an input
- * that could never contain one. */
+ * isMyOshiEligible keeps every individual creator -- including graduated ones,
+ * who stay selectable -- and excludes every non-"member" channelType, so --
+ * unlike oshiSettingsGrouping.ts's own pinNonMemberChannelsLast for VSPO JP --
+ * there is never a non-member creator left in this filtered roster to pin
+ * last; that step is simply omitted here rather than called on an input that
+ * could never contain one. A graduated creator keeps her original
+ * generation/unit group key, so she stays in her own group (there is no
+ * separate "Graduated" group). */
 export function groupSelectableCreatorsForMyOshi(query: string): MyOshiAgencyGroup[] {
   const filtered = getCreators()
-    .filter((creator) => isCurrentMemberEligible(creator) && matchesSearch(creator, query))
+    .filter((creator) => isMyOshiEligible(creator) && matchesSearch(creator, query))
     .slice()
     .sort((a, b) => a.displayOrder - b.displayOrder)
 

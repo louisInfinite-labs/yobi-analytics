@@ -1747,6 +1747,17 @@
   color: var(--member-theme-color);
 }
 
+/* A group/staff/official channel row: same layout as a creator row, but it is not a
+   person who can become Current Oshi, so it is a plain element -- no pointer, no hover
+   recolor, and (see CreatorStatusList.tsx) no Oshi-switch flow. */
+.live-status-member__creator-button--static {
+  cursor: default;
+}
+
+.live-status-member__creator-button--static:hover .live-status-member__name {
+  color: var(--oshi-text-1);
+}
+
 .live-status-member__main-badge {
   flex: 0 0 auto;
 

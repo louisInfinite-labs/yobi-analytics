@@ -5,6 +5,8 @@ import {
   getCreatorByYoutubeChannelId,
   getCreators,
   isCurrentMemberEligible,
+  isLiveStatusDisplayEligible,
+  isMyOshiEligible,
   resolveCreatorKey,
   toLegacyRosterId,
 } from "./creatorRegistry"
@@ -207,5 +209,55 @@ describe("isCurrentMemberEligible", () => {
     expect(asobimawaritai?.channelType).toBe("group")
     expect(asobimawaritai?.lifecycleStage).toBe("pre_debut")
     expect(isCurrentMemberEligible(asobimawaritai!)).toBe(false)
+  })
+})
+
+describe("isLiveStatusDisplayEligible / isMyOshiEligible are separate from the current-member rule", () => {
+  it("Live Status displays every channel: member (any lifecycle), group and staff", () => {
+    for (const lifecycleStage of ["active", "pre_debut", "graduated"] as const) {
+      expect(isLiveStatusDisplayEligible(creator({ lifecycleStage }))).toBe(true)
+    }
+    expect(isLiveStatusDisplayEligible(creator({ channelType: "group" }))).toBe(true)
+    expect(isLiveStatusDisplayEligible(creator({ channelType: "staff" }))).toBe(true)
+  })
+
+  it("My Oshi accepts an individual creator in any stage, including graduated", () => {
+    for (const lifecycleStage of ["active", "pre_debut", "graduated"] as const) {
+      expect(isMyOshiEligible(creator({ lifecycleStage }))).toBe(true)
+    }
+  })
+
+  it("My Oshi never accepts a group or staff channel, whatever its lifecycle", () => {
+    for (const channelType of ["group", "staff"] as const) {
+      for (const lifecycleStage of ["active", "pre_debut", "graduated"] as const) {
+        expect(isMyOshiEligible(creator({ channelType, lifecycleStage }))).toBe(false)
+      }
+    }
+  })
+
+  it("a graduated member is Live Status- and My Oshi-eligible but not a CURRENT member", () => {
+    const graduated = creator({ lifecycleStage: "graduated" })
+
+    expect(isLiveStatusDisplayEligible(graduated)).toBe(true)
+    expect(isMyOshiEligible(graduated)).toBe(true)
+    expect(isCurrentMemberEligible(graduated)).toBe(false)
+  })
+
+  it("real generated data: 118 displayed, 110 Oshi-eligible (13 graduated), 8 non-member channels", () => {
+    const all = getCreators()
+
+    expect(all).toHaveLength(118)
+    expect(all.filter(isLiveStatusDisplayEligible)).toHaveLength(118)
+    expect(all.filter(isMyOshiEligible)).toHaveLength(110)
+    expect(all.filter((c) => c.lifecycleStage === "graduated" && isMyOshiEligible(c))).toHaveLength(13)
+    expect(all.filter((c) => c.channelType !== "member" && isMyOshiEligible(c))).toHaveLength(0)
+    expect(all.filter((c) => c.channelType !== "member" && isLiveStatusDisplayEligible(c))).toHaveLength(8)
+  })
+
+  it("the frontend predicates agree with the backend rules on the real master (display=all, Oshi=members)", () => {
+    for (const c of getCreators()) {
+      expect(isLiveStatusDisplayEligible(c), c.creatorId).toBe(c.active)
+      expect(isMyOshiEligible(c), c.creatorId).toBe(c.active && c.channelType === "member")
+    }
   })
 })
