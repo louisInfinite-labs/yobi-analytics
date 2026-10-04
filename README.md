@@ -577,17 +577,33 @@ Dashboard / Yobi.exe
 → DynamoDB
 ```
 
-Endpoints (request validation and response normalization implemented in `src/read_api.py`; live API Gateway + Lambda deployment remains blocked on AWS console access — see [`Roadmap.md`](./Roadmap.md) 4.1):
+Endpoints (request validation and response normalization implemented in `src/api/read_api.py`, routed by `src/api/api_handler.py`). Every active read endpoint is cache-only: it serves precomputed S3 results and never computes a ranking live, so a result that has not been produced yet answers `503 RANKING_NOT_READY`.
 
 ```text
-GET /creators/{creatorId}/trending?period=7d
-
-GET /organizations/vspo/trending?period=1d
-
-GET /organizations/hololive/trending?period=30d
+GET /creators/{creatorId}/videos/ranking?metric=total|1d|7d|30d   (own-video ranking; topic / contentType / liveStatus filters)
+GET /creators/{creatorId}/videos/recent                            (Home recent videos / streams shelf)
+GET /creators/{creatorId}/oshi-status                              (Oshi Status panel)
+GET /subscribers/leaderboard?metric=total|1d|7d|30d                (whole-roster subscriber ranking)
+GET /videos/{videoId}/growth
+GET /topics
+GET /dashboard/chart-catalog
+GET /live-streams
+GET /recent-streams
 ```
 
-Here, `period=1d|7d|30d` is an analytics comparison window over stored snapshots, not a collection schedule. It never triggers a YouTube API request. The independent collection cadence remains Recent/Hot daily, Unknown every 2 days, Warm every 3 days, and Cold every 15 days.
+**Retired endpoints.** The original trending and leaderboard endpoints were retired by the ranking simplification. Their API Gateway routes are kept so existing clients get a stable answer instead of a bare gateway 404 (which a browser reports only as "Failed to fetch"). Each now returns `410 Gone` with a fixed JSON body, `{"error": "...", "code": "ENDPOINT_RETIRED", "replacement": ...}`, where `replacement` is the closest successor route or `null` when there is none. They never read any store and never return data:
+
+```text
+GET /creators/{creatorId}/trending                -> 410 ENDPOINT_RETIRED, replacement: GET /creators/{creatorId}/videos/ranking
+GET /organizations/{organization}/trending        -> 410 ENDPOINT_RETIRED, replacement: null
+GET /leaderboard                                  -> 410 ENDPOINT_RETIRED, replacement: null
+GET /organizations/{organization}/leaderboard     -> 410 ENDPOINT_RETIRED, replacement: null
+GET /topics/{topic}/leaderboard                   -> 410 ENDPOINT_RETIRED, replacement: null
+```
+
+The history bucket the read endpoints serve from is `yobi-analytics-history`. The `YOBI_HISTORY_BUCKET` environment variable is only an optional override (tests, staging); the API Lambda does not need it. The collector, history worker and ranking reducer still require it explicitly.
+
+Here, `metric=1d|7d|30d` is an analytics comparison window over the stored daily history, not a collection schedule. It never triggers a YouTube API request. The independent collection cadence remains Recent/Hot daily, Unknown every 2 days, Warm every 3 days, and Cold every 15 days.
 
 The API should return normalized analytics data rather than expose DynamoDB implementation details.
 

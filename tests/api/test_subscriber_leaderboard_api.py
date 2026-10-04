@@ -82,7 +82,7 @@ def _wire_store(monkeypatch, payload_by_date: dict[str, dict | None]):
 
     class _FakeStoreClass:
         @classmethod
-        def from_environment(cls, *, s3_client=None):
+        def from_environment_or_default(cls, *, s3_client=None):
             return fake_store
 
     monkeypatch.setattr(read_api, "S3SubscriberRankingStore", _FakeStoreClass)
@@ -275,25 +275,6 @@ def test_missing_result_object_raises_ranking_not_ready(monkeypatch):
         read_api.get_subscriber_leaderboard(_query(reportDate="2026-09-29"))
 
 
-def test_unconfigured_history_bucket_raises_ranking_not_ready_not_500(monkeypatch):
-    """S3SubscriberRankingStore.from_environment() returns None (mirroring
-    S3TrendingCacheArchiveStore's own "not configured" contract) when
-    YOBI_HISTORY_BUCKET is unset -- this must surface as the same
-    RankingNotReadyError/503 every other cache-only endpoint here already
-    uses for "not yet computed", never an unhandled 500."""
-
-    class _UnconfiguredStoreClass:
-        @classmethod
-        def from_environment(cls, *, s3_client=None):
-            return None
-
-    monkeypatch.setattr(read_api, "S3SubscriberRankingStore", _UnconfiguredStoreClass)
-    monkeypatch.setattr(read_api, "load_creators", lambda: DEFAULT_CREATORS)
-
-    with pytest.raises(read_api.RankingNotReadyError):
-        read_api.get_subscriber_leaderboard(_query(reportDate="2026-09-29"))
-
-
 # --- 15/16. invalid organization/metric -> 400 --------------------------------
 
 
@@ -456,7 +437,7 @@ def test_no_s3_write_from_the_read_path(monkeypatch):
 
     class _FakeStoreClass:
         @classmethod
-        def from_environment(cls, *, s3_client=None):
+        def from_environment_or_default(cls, *, s3_client=None):
             store = _FakeRankingStore({"2026-09-29": _payload()})
             store.write_result = lambda *a, **k: write_calls.append(1)
             return store

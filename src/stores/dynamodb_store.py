@@ -44,7 +44,7 @@ from stores.snapshot_store import (
 )
 from stores.snapshot_store import _summary_to_raw
 from stores.snapshot_store import _to_raw as _snapshot_to_raw
-from tracking.video_master import Video, VideoMasterError
+from tracking.video_master import VALID_CONTENT_TYPES, VALID_LIVE_STATUSES, Video, VideoMasterError
 from tracking.video_master import _parse_video as _parse_video_raw
 from tracking.video_master import _to_raw as _video_to_raw
 from tracking.video_topics import TOPIC_IDS
@@ -223,6 +223,29 @@ def scan_video_topic_items() -> list[dict[str, Any]]:
     return items
 
 
+def scan_video_classification_items() -> list[dict[str, Any]]:
+    """Scan Video Master for each item's videoId/contentType/liveStatus only (an ops scan, not a request path)."""
+    table = _resource().Table(VIDEO_MASTER_TABLE)
+    scan_kwargs = {
+        "ProjectionExpression": "#videoId, #contentType, #liveStatus",
+        "ExpressionAttributeNames": {
+            "#videoId": "videoId",
+            "#contentType": "contentType",
+            "#liveStatus": "liveStatus",
+        },
+    }
+    items: list[dict[str, Any]] = []
+    try:
+        response = table.scan(**scan_kwargs)
+        items.extend(response.get("Items", []))
+        while "LastEvaluatedKey" in response:
+            response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"], **scan_kwargs)
+            items.extend(response.get("Items", []))
+    except ClientError as exc:
+        raise VideoMasterError(f"Failed to scan {VIDEO_MASTER_TABLE}: {exc}") from exc
+    return items
+
+
 # DynamoDB's own per-call cap for BatchGetItem's Keys list.
 _BATCH_GET_ITEM_LIMIT = 100
 
@@ -357,6 +380,50 @@ def set_video_topic(video_id: str, topic: str, *, overwrite: bool, expected_topi
         if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
             return False
         raise VideoMasterError(f"Failed to set topic in {VIDEO_MASTER_TABLE}: {exc}") from exc
+    return True
+
+
+def set_video_classification(video_id: str, content_type: str, live_status: str | None) -> bool:
+    """Set only `contentType`/`liveStatus` of an existing, still-unclassified video; nothing else is touched.
+
+    A targeted UpdateItem rather than upsert_videos' whole-item put, so a classification write can never
+    clobber the title, topic, scheduler state or view counts. The write is conditional on the stored
+    classification still being INCOMPLETE (tracking.video_master.is_classification_incomplete: no
+    contentType, or a "live" one with no liveStatus), so an already-classified record is never overwritten
+    and a concurrent newer classification is never lost. A plain upload's liveStatus is removed, not set to
+    NULL (liveStatus is omitted while unset, see tracking.video_master._to_raw).
+    Returns False when the condition rejects the write: the video does not exist or is already classified.
+    """
+    if content_type not in VALID_CONTENT_TYPES:
+        raise ValueError(f"Unknown content type: {content_type!r}")
+    if content_type == "live":
+        if live_status not in VALID_LIVE_STATUSES:
+            raise ValueError(f"A live video needs a known live status, got {live_status!r}")
+    elif live_status is not None:
+        raise ValueError(f"liveStatus only exists for livestreams, got {live_status!r} for {content_type!r}")
+    names = {"#videoId": "videoId", "#contentType": "contentType", "#liveStatus": "liveStatus"}
+    values: dict[str, Any] = {":contentType": content_type, ":live": "live"}
+    if live_status is not None:
+        update = "SET #contentType = :contentType, #liveStatus = :liveStatus"
+        values[":liveStatus"] = live_status
+    else:
+        update = "SET #contentType = :contentType REMOVE #liveStatus"
+    table = _resource().Table(VIDEO_MASTER_TABLE)
+    try:
+        table.update_item(
+            Key={"videoId": video_id},
+            UpdateExpression=update,
+            ConditionExpression=(
+                "attribute_exists(#videoId) AND (attribute_not_exists(#contentType) "
+                "OR (#contentType = :live AND attribute_not_exists(#liveStatus)))"
+            ),
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise VideoMasterError(f"Failed to set classification in {VIDEO_MASTER_TABLE}: {exc}") from exc
     return True
 
 

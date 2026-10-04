@@ -12,6 +12,10 @@ from googleapiclient.errors import HttpError
 from collection.quota_ledger import IMMEDIATE_MAX_ATTEMPTS, RETRYABLE, STOP_ALL, classify_http_error
 
 MAX_IDS_PER_REQUEST = 50
+# get_video_statistics skip reasons, named so a caller (the one-time classification backfill) can tell a video
+# YouTube no longer returns apart from a failed request without matching on message text.
+SKIP_REASON_NO_DATA = "No data returned by YouTube API (video may be deleted or private)"
+SKIP_REASON_API_ERROR_PREFIX = "YouTube API error: "
 # The original request is attempt 1; MAX_RETRIES total attempts means two
 # actual retries after it (Roadmap 2.5's "three total immediate attempts").
 MAX_RETRIES = IMMEDIATE_MAX_ATTEMPTS
@@ -208,7 +212,7 @@ def get_video_statistics(youtube: Resource, video_ids: list[str]) -> tuple[list[
         except YouTubeAPIError as exc:
             print(f"Warning: skipping a batch of {len(batch)} video ID(s) due to an API error: {exc}")
             for video_id in batch:
-                skip_reasons[video_id] = f"YouTube API error: {exc}"
+                skip_reasons[video_id] = f"{SKIP_REASON_API_ERROR_PREFIX}{exc}"
     return results, skip_reasons
 
 
@@ -230,7 +234,7 @@ def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[
     if missing_ids:
         print(f"Warning: no data returned for video ID(s): {', '.join(missing_ids)}")
         for video_id in missing_ids:
-            skip_reasons[video_id] = "No data returned by YouTube API (video may be deleted or private)"
+            skip_reasons[video_id] = SKIP_REASON_NO_DATA
 
     parsed_items: list[dict] = []
     for item in items:

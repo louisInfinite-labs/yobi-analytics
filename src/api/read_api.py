@@ -390,13 +390,12 @@ def get_subscriber_leaderboard(query: dict[str, Any]) -> dict[str, Any]:
     organization = parse_subscriber_organization(query.get("organization"))
     report_dates = _leaderboard_report_dates(query.get("reportDate"))
 
-    store = S3SubscriberRankingStore.from_environment()
+    store = S3SubscriberRankingStore.from_environment_or_default()
     result = None
-    if store is not None:
-        for candidate_date in report_dates:
-            result = store.read_result(candidate_date)
-            if result is not None:
-                break
+    for candidate_date in report_dates:
+        result = store.read_result(candidate_date)
+        if result is not None:
+            break
     if result is None:
         raise RankingNotReadyError(
             f"Subscriber leaderboard for metric={metric!r} organization={organization!r} "
@@ -499,13 +498,12 @@ def get_video_ranking(query: dict[str, Any]) -> dict[str, Any]:
     if creator is None:
         raise ClientError(f"No creator found for creatorId {creator_id!r}")
 
-    store = S3VideoRankingStore.from_environment()
+    store = S3VideoRankingStore.from_environment_or_default()
     result = None
-    if store is not None:
-        for candidate_date in report_dates:
-            result = store.read_result(candidate_date, creator_id)
-            if result is not None:
-                break
+    for candidate_date in report_dates:
+        result = store.read_result(candidate_date, creator_id)
+        if result is not None:
+            break
     if result is None:
         raise RankingNotReadyError(
             f"Video ranking for creatorId={creator_id!r} metric={metric!r} topic={topic!r} "
@@ -673,13 +671,12 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
     if creator is None:
         raise ClientError(f"No creator found for creatorId {creator_id!r}")
 
-    store = S3VideoRankingStore.from_environment()
+    store = S3VideoRankingStore.from_environment_or_default()
     result = None
-    if store is not None:
-        for candidate_date in report_dates:
-            result = store.read_result(candidate_date, creator_id)
-            if result is not None:
-                break
+    for candidate_date in report_dates:
+        result = store.read_result(candidate_date, creator_id)
+        if result is not None:
+            break
     if result is None:
         raise RankingNotReadyError(
             f"Recent videos for creatorId={creator_id!r} topic={topic!r} contentType={content_type!r} "
@@ -839,9 +836,7 @@ def _creator_subscriber_count(creator_id: str, report_dates: list[date]) -> int 
     older day's number or a fabricated 0. Any read problem is also None -- the count is
     an optional header detail and must not take down the rest of the Oshi Status read.
     """
-    store = S3SubscriberRankingStore.from_environment()
-    if store is None:
-        return None
+    store = S3SubscriberRankingStore.from_environment_or_default()
     for candidate_date in report_dates:
         try:
             result = store.read_result(candidate_date)
@@ -917,13 +912,12 @@ def get_oshi_status(query: dict[str, Any], *, now: datetime | None = None) -> di
     if _find_creator(creator_id) is None:
         raise ClientError(f"No creator found for creatorId {creator_id!r}")
 
-    store = S3VideoRankingStore.from_environment()
+    store = S3VideoRankingStore.from_environment_or_default()
     result = None
-    if store is not None:
-        for candidate_date in report_dates:
-            result = store.read_result(candidate_date, creator_id)
-            if result is not None:
-                break
+    for candidate_date in report_dates:
+        result = store.read_result(candidate_date, creator_id)
+        if result is not None:
+            break
     if result is None:
         raise RankingNotReadyError(
             f"Oshi status for creatorId={creator_id!r} reportDate={report_dates[0].isoformat()!r} is not yet computed"

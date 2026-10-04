@@ -1,18 +1,18 @@
-name: Backend branch tests (Home Oshi / Holodex archive)
+name: Backend branch tests (Home API endpoints)
 
-# Branch- and task-scoped backend regression for `fix/home_video_holodex_aws_backend`.
-# It deliberately runs ONLY the test files that protect the contracts this branch added or
-# changed -- never `pytest` / `pytest tests` (the full backend suite). When the branch is
-# merged and deleted, delete this workflow with it; to widen coverage, add a file to the
-# explicit list below rather than a directory.
+# Branch- and task-scoped backend regression for `feat/home_video_holodex_frontend`, the Home mock -> real API
+# cutover. It runs ONLY the focused endpoint tests Home depends on: recent videos (paging, topic / contentType /
+# newest-oldest), the ranking modes Home uses, Oshi Status, the read path's history-bucket resolution, and the API
+# Gateway route wiring. It deliberately never runs `pytest` / `pytest tests` (the full backend suite). To widen
+# coverage, add a file to the list rather than a directory. When the branch is merged and deleted, delete this
+# workflow with it.
 on:
   push:
     branches:
-      - fix/home_video_holodex_aws_backend
+      - feat/home_video_holodex_frontend
     paths:
       - "src/**"
-      - "scripts/backfill/**"
-      - "terraform/api_gateway.tf"
+      - "terraform/**"
       - "tests/**"
       - "requirements.txt"
       - "pytest.ini"
@@ -20,12 +20,11 @@ on:
   # NOT `pull_request.branches`: that filters the PR's BASE (target) branch, never its head/source
   # branch. GitHub cannot filter a pull_request trigger by head branch, so the head branch is
   # checked by the job-level `if` below (github.head_ref). The base branch is intentionally
-  # unrestricted, so `fix/home_video_holodex_aws_backend -> develop` (or any base) is covered.
+  # unrestricted, so `feat/home_video_holodex_frontend -> develop` (or any base) is covered.
   pull_request:
     paths:
       - "src/**"
-      - "scripts/backfill/**"
-      - "terraform/api_gateway.tf"
+      - "terraform/**"
       - "tests/**"
       - "requirements.txt"
       - "pytest.ini"
@@ -34,16 +33,18 @@ on:
 permissions:
   contents: read
 
+# The event name is part of the key, so a push run and a pull_request run for the same commit never cancel
+# each other (they are different groups); a newer commit still cancels an older run of the SAME event.
 concurrency:
-  group: backend-branch-tests-${{ github.head_ref || github.ref_name }}
+  group: backend-branch-tests-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   branch-backend-tests:
     # A pull request event runs for every PR in the repo; only this branch's PR is in scope.
-    if: github.event_name == 'push' || github.head_ref == 'fix/home_video_holodex_aws_backend'
+    if: github.event_name == 'push' || github.head_ref == 'feat/home_video_holodex_frontend'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,25 +59,11 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Run this branch's backend regression (explicit files only, not the full suite)
+      - name: Run the Home endpoint tests (explicit files only, not the full suite)
         run: >
           python -m pytest -q -p no:cacheprovider
           tests/api/test_home_oshi_videos_api.py
           tests/api/test_video_ranking_api.py
           tests/api/test_oshi_status_api.py
-          tests/api/test_read_api.py
-          tests/api/test_api_handler.py
+          tests/api/test_history_bucket_read_paths.py
           tests/test_api_gateway_routes.py
-          tests/analytics/test_video_ranking.py
-          tests/analytics/test_video_ranking_reducer_wiring.py
-          tests/analytics/test_video_ranking_result.py
-          tests/tracking/test_video_master.py
-          tests/tracking/test_video_topics.py
-          tests/tracking/test_tracking_manifest.py
-          tests/tracking/test_tracking_manifest_patch.py
-          tests/collection/test_youtube_client.py
-          tests/collection/test_history_worker_manifest_patch.py
-          tests/test_history_architecture.py
-          tests/test_history_worker_scheduler_state.py
-          tests/stores/test_dynamodb_store.py
-          tests/scripts/backfill/test_backfill_video_topics.py

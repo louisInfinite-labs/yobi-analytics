@@ -93,7 +93,7 @@ def _wire(monkeypatch, per_creator: dict[str, list[dict]]) -> _Store:
 
     class _StoreClass:
         @classmethod
-        def from_environment(cls, *, s3_client=None):
+        def from_environment_or_default(cls, *, s3_client=None):
             return store
 
     monkeypatch.setattr(read_api, "S3VideoRankingStore", _StoreClass)

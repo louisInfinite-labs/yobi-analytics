@@ -92,7 +92,7 @@ def _wire_store(monkeypatch, payload_by_date_creator: dict[tuple[str, str], dict
 
     class _FakeStoreClass:
         @classmethod
-        def from_environment(cls, *, s3_client=None):
+        def from_environment_or_default(cls, *, s3_client=None):
             return fake_store
 
     monkeypatch.setattr(read_api, "S3VideoRankingStore", _FakeStoreClass)
@@ -321,19 +321,6 @@ def test_missing_result_for_every_candidate_date_raises_ranking_not_ready(monkey
 
     with pytest.raises(read_api.RankingNotReadyError):
         read_api.get_video_ranking({"creatorId": "aizawa_ema", "metric": "total"})
-
-
-def test_store_not_configured_is_ranking_not_ready_not_a_500(monkeypatch):
-    class _UnconfiguredStoreClass:
-        @classmethod
-        def from_environment(cls, *, s3_client=None):
-            return None
-
-    monkeypatch.setattr(read_api, "S3VideoRankingStore", _UnconfiguredStoreClass)
-    monkeypatch.setattr(read_api, "load_creators", lambda: DEFAULT_CREATORS)
-
-    with pytest.raises(read_api.RankingNotReadyError):
-        read_api.get_video_ranking(_query())
 
 
 # --- 4. creator isolation at the API layer -------------------------------------

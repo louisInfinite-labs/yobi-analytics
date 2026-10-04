@@ -26,6 +26,8 @@ from typing import Any
 
 from botocore.exceptions import ClientError
 
+from stores.history_bucket import resolve_history_bucket
+
 # Bumped from 1 -- the Phase C storage correction changed the persisted
 # shape from four duplicated per-metric row sets to one canonical row per
 # video (build_video_ranking_result's own "videos" list). This feature is
@@ -66,6 +68,15 @@ class S3VideoRankingStore:
         if not bucket_name:
             return None
         return cls(bucket_name, s3_client=s3_client)
+
+    @classmethod
+    def from_environment_or_default(cls, *, s3_client=None) -> "S3VideoRankingStore":
+        """Read-side factory: YOBI_HISTORY_BUCKET when set (override), else the fixed production history bucket.
+
+        Used by the API Lambda, which has no bucket env var. Writers (the ranking reducer) keep the strict
+        from_environment() so an unconfigured run never defaults to writing into the production bucket.
+        """
+        return cls(resolve_history_bucket(), s3_client=s3_client)
 
     def write_result(self, report_date: date, creator_id: str, payload: dict[str, Any]) -> str:
         """Deterministically replace this (date, creator)'s result -- a
