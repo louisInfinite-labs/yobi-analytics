@@ -243,15 +243,39 @@ describe("isLiveStatusDisplayEligible / isMyOshiEligible are separate from the c
     expect(isCurrentMemberEligible(graduated)).toBe(false)
   })
 
-  it("real generated data: 118 displayed, 110 Oshi-eligible (13 graduated), 8 non-member channels", () => {
+  it("real generated data: every channel displayed, Oshi-eligible = individual creators (incl. 13 graduated), non-members never", () => {
     const all = getCreators()
+    const members = all.filter((c) => c.channelType === "member")
 
-    expect(all).toHaveLength(118)
-    expect(all.filter(isLiveStatusDisplayEligible)).toHaveLength(118)
-    expect(all.filter(isMyOshiEligible)).toHaveLength(110)
+    expect(all.filter(isLiveStatusDisplayEligible)).toHaveLength(all.length)
+    expect(all.filter(isMyOshiEligible)).toHaveLength(members.length)
     expect(all.filter((c) => c.lifecycleStage === "graduated" && isMyOshiEligible(c))).toHaveLength(13)
     expect(all.filter((c) => c.channelType !== "member" && isMyOshiEligible(c))).toHaveLength(0)
-    expect(all.filter((c) => c.channelType !== "member" && isLiveStatusDisplayEligible(c))).toHaveLength(8)
+    expect(all.filter((c) => c.channelType !== "member").map((c) => c.creatorId).sort()).toEqual(
+      [
+        "achrora",
+        "fuwamoco",
+        "holoan_room",
+        "hololive_asobimawaritai",
+        "hololive_dev_is_flow_glow",
+        "hololive_dev_is_regloss",
+        "hololive_official",
+        "unit_b_pre_debut",
+        "vspo_official",
+      ].sort(),
+    )
+  })
+
+  it("hololive_official is the main hololive channel (verified id), a displayed non-member, and ch_hololive_staff stays unresolved", () => {
+    const official = getCreatorById("hololive_official")!
+
+    expect(official.youtubeChannelId).toBe("UCJFZiqLMntJufDCHc6bQixg")
+    expect(official.channelType).toBe("group")
+    expect(official.branch).toBe("holo_jp")
+    expect(isLiveStatusDisplayEligible(official)).toBe(true)
+    expect(isMyOshiEligible(official)).toBe(false)
+    expect(getCreatorByYoutubeChannelId("UCJFZiqLMntJufDCHc6bQixg")?.creatorId).toBe("hololive_official")
+    expect(resolveCreatorKey("ch_hololive_staff")).toBeUndefined()
   })
 
   it("the frontend predicates agree with the backend rules on the real master (display=all, Oshi=members)", () => {

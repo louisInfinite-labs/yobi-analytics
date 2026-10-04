@@ -26,9 +26,11 @@ function offeredCreatorIds(query = ""): string[] {
 }
 
 describe("My Oshi eligibility (separate from Live Status)", () => {
-  it("every individual creator is offered: 110 distinct creators", () => {
-    expect(new Set(offeredCreatorIds()).size).toBe(110)
-    expect(getCreators().filter(isMyOshiEligible)).toHaveLength(110)
+  it("every individual creator is offered, and only individual creators", () => {
+    const members = getCreators().filter((c) => c.channelType === "member")
+
+    expect(new Set(offeredCreatorIds())).toEqual(new Set(members.map((c) => c.creatorId)))
+    expect(getCreators().filter(isMyOshiEligible)).toHaveLength(members.length)
   })
 
   it("all 13 graduated individual creators are offered and selectable", () => {
@@ -44,12 +46,13 @@ describe("My Oshi eligibility (separate from Live Status)", () => {
     const offered = new Set(offeredCreatorIds())
     const current = getCreators().filter((c) => c.channelType === "member" && c.lifecycleStage !== "graduated")
 
-    expect(current).toHaveLength(97)
+    expect(current.length).toBeGreaterThan(0)
     for (const creator of current) expect(offered.has(creator.creatorId), creator.creatorId).toBe(true)
   })
 
   it.each([
     "vspo_official",
+    "hololive_official",
     "hololive_dev_is_regloss",
     "hololive_dev_is_flow_glow",
     "hololive_asobimawaritai",

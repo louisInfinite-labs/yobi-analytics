@@ -526,31 +526,49 @@ def test_non_string_avatar_url_is_rejected(tmp_path):
 
 
 def test_production_roster_theme_color_coverage():
-    """98 of the 118 production creators carry a verified themeColor
+    """98 of the 119 production creators carry a verified themeColor
     (Justice/ReGLOSS/FLOWGLOW, every VSPO JP/EN member, and all four
-    アソビ★まわり隊！ pre-debut members included); the remaining 20 (graduated
-    members, pre-debut mekPark units, staff/group channels with no verified
-    color) are correctly left unset for the frontend hashed-palette
-    fallback."""
+    アソビ★まわり隊！ pre-debut members included); the remaining 21 (graduated
+    members, pre-debut mekPark units, staff/group channels -- including the
+    hololive Official channel -- with no verified color) are correctly left
+    unset for the frontend hashed-palette fallback."""
     creators = load_creators()
 
     with_color = [c for c in creators if c.theme_color is not None]
     without_color = [c for c in creators if c.theme_color is None]
 
     assert len(with_color) == 98
-    assert len(without_color) == 20
+    assert len(without_color) == 21
+
+
+# Creators added to the roster whose avatar the YouTube avatar sync
+# (scripts/maintenance/sync_creator_avatars.py --execute) has not been run for yet.
+# Deliberately explicit and temporary: remove an id from this set as soon as its
+# avatarUrl is synced -- test_avatar_sync_pending_entries_really_are_pending fails if you forget.
+AVATAR_SYNC_PENDING = frozenset({"hololive_official"})
 
 
 def test_production_roster_has_avatar_url_populated_for_every_creator():
     """C7 completed the real YouTube avatar sync -- every canonical creator in
-    the current production roster now carries a populated avatar_url. (The
-    schema itself still tolerates a missing avatarUrl -- see
+    the current production roster carries a populated avatar_url, except the
+    explicitly named AVATAR_SYNC_PENDING entries (added after C7, awaiting the
+    sync). (The schema itself still tolerates a missing avatarUrl -- see
     test_avatar_url_defaults_to_none_when_absent above -- this test is about
     the current state of the real roster, not the schema.)"""
     creators = load_creators()
 
     assert creators
-    assert all(c.avatar_url for c in creators)
+    assert all(c.avatar_url for c in creators if c.creator_id not in AVATAR_SYNC_PENDING)
+
+
+def test_avatar_sync_pending_entries_really_are_pending():
+    """Keeps AVATAR_SYNC_PENDING honest: once a pending creator has an avatar_url, the
+    exemption above must be deleted so the every-creator invariant covers it again."""
+    by_id = {c.creator_id: c for c in load_creators()}
+
+    for creator_id in AVATAR_SYNC_PENDING:
+        assert creator_id in by_id
+        assert not by_id[creator_id].avatar_url, f"{creator_id} now has an avatar -- remove it from AVATAR_SYNC_PENDING"
 
 
 def test_production_roster_display_order_values_are_unique_ints():
@@ -567,7 +585,7 @@ def test_production_roster_display_order_values_are_unique_ints():
 def test_production_roster_loads_with_unique_ids_and_the_verified_asobimawaritai_unit():
     creators = load_creators()
 
-    assert len(creators) == 118
+    assert len(creators) == 119
     assert len({creator.creator_id for creator in creators}) == len(creators)
     assert len({creator.youtube_channel_id for creator in creators}) == len(creators)
 
@@ -848,29 +866,58 @@ class TestEligibility:
     def test_real_master_every_channel_is_displayed_and_the_polled_set_is_the_current_channels(self):
         creators = load_creators()
         polled = [c for c in creators if is_live_status_polling_eligible(c)]
+        graduated_ids = {c.creator_id for c in creators if c.lifecycle_stage == "graduated"}
 
-        assert len(creators) == 118
+        assert len({c.creator_id for c in creators}) == len(creators)
         assert all(is_live_status_display_eligible(c) for c in creators)
-        assert len(polled) == 105  # 118 minus the 13 graduated members
-        assert {c.creator_id for c in creators} - {c.creator_id for c in polled} == {
-            c.creator_id for c in creators if c.lifecycle_stage == "graduated"
-        }
+        # Polled = every channel except the graduated members -- derived, not a pinned total.
+        assert {c.creator_id for c in creators} - {c.creator_id for c in polled} == graduated_ids
+        assert len(polled) == len(creators) - len(graduated_ids)
 
     def test_real_master_group_and_staff_channels_are_polled_but_not_oshi_eligible(self):
         non_members = [c for c in load_creators() if c.channel_type != "member"]
 
-        assert len(non_members) == 8
-        assert {c.creator_id for c in non_members} >= {"vspo_official", "hololive_dev_is_regloss", "holoan_room"}
+        assert {c.creator_id for c in non_members} == {
+            "vspo_official",
+            "hololive_official",
+            "hololive_dev_is_regloss",
+            "hololive_dev_is_flow_glow",
+            "hololive_asobimawaritai",
+            "fuwamoco",
+            "achrora",
+            "unit_b_pre_debut",
+            "holoan_room",
+        }
         for creator in non_members:
             assert is_live_status_display_eligible(creator) is True, creator.creator_id
             assert is_live_status_polling_eligible(creator) is True, creator.creator_id
             assert is_my_oshi_eligible(creator) is False, creator.creator_id
 
     def test_real_master_my_oshi_roster_is_every_individual_creator(self):
-        eligible = [c for c in load_creators() if is_my_oshi_eligible(c)]
+        creators = load_creators()
+        eligible = [c for c in creators if is_my_oshi_eligible(c)]
 
-        assert len(eligible) == 110
+        assert {c.creator_id for c in eligible} == {c.creator_id for c in creators if c.channel_type == "member"}
         assert all(c.channel_type == "member" for c in eligible)
+
+    def test_hololive_official_is_the_verified_main_channel_and_is_displayed_and_polled_but_not_an_oshi(self):
+        """The main hololive official YouTube channel (hololive.hololivepro.com/en/about) -- a
+        canonical group-type channel, distinct from the old mock-only ch_hololive_staff."""
+        official = next(c for c in load_creators() if c.creator_id == "hololive_official")
+
+        assert official.youtube_channel_id == "UCJFZiqLMntJufDCHc6bQixg"
+        assert official.organization == "hololive"
+        assert official.branch == "holo_jp"
+        assert official.channel_type == "group"
+        assert official.lifecycle_stage == "active"
+        assert official.group_key == ["NO"]
+        assert is_live_status_display_eligible(official) is True
+        assert is_live_status_polling_eligible(official) is True
+        assert is_my_oshi_eligible(official) is False
+
+    def test_ch_hololive_staff_stays_unresolved_and_is_not_the_main_official_channel(self):
+        assert resolve_creator_key("ch_hololive_staff") is None
+        assert resolve_creator_key("hololive_official") is not None
 
     def test_vspo_official_resolves_and_is_displayed_but_is_not_oshi_eligible(self):
         resolved = resolve_creator_key("ch_vspo_group")

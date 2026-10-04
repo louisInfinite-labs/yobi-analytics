@@ -5,6 +5,10 @@ import { CreatorStatusList } from "./CreatorStatusList"
 import { getCreatorById, getCreators, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 import type { CreatorStatus } from "../model/creatorStatus"
 
+// Each test renders the whole ~120-row roster (antd avatars included); under the parallel workers CI uses,
+// the default 5s per-test budget is occasionally too tight for that, so give this file more headroom.
+vi.setConfig({ testTimeout: 30_000 })
+
 const now = new Date("2026-09-09T12:00:00.000Z")
 
 function renderList(overrides: Partial<React.ComponentProps<typeof CreatorStatusList>> = {}) {
@@ -96,6 +100,7 @@ const GRADUATED_IDS = [
 
 const NON_MEMBER_IDS = [
   "vspo_official",
+  "hololive_official",
   "hololive_dev_is_regloss",
   "hololive_dev_is_flow_glow",
   "hololive_asobimawaritai",
@@ -106,15 +111,15 @@ const NON_MEMBER_IDS = [
 ]
 
 describe("Live Status shows the complete supported channel roster", () => {
-  it("renders every one of the 118 canonical channels with no stream data supplied -- all OFFLINE, none dropped", () => {
+  it("renders every canonical channel with no stream data supplied -- all OFFLINE, none dropped", () => {
     renderList()
 
-    expect(getCreators()).toHaveLength(118)
+    const total = getCreators().length
     for (const creator of getCreators()) {
       expect(screen.getAllByText(creator.displayName, { selector: ".live-status-member__name" }).length).toBeGreaterThan(0)
     }
     const statusButtons = [...document.querySelectorAll(".live-status-member__status")]
-    expect(statusButtons.length).toBeGreaterThanOrEqual(118)
+    expect(statusButtons.length).toBeGreaterThanOrEqual(total)
     expect(statusButtons.every((button) => button.getAttribute("data-status") === "offline")).toBe(true)
   })
 
@@ -158,8 +163,7 @@ describe("Live Status shows the complete supported channel roster", () => {
     const empty = renderedRoster(renderList({ statuses: {} }).container)
     const names = (roster: RenderedGroup[]) => roster.flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.names))
 
-    expect(names(empty).length).toBeGreaterThanOrEqual(118)
-    expect(new Set(names(empty)).size).toBe(118)
+    expect(new Set(names(empty)).size).toBe(getCreators().length)
   })
 })
 
@@ -188,14 +192,42 @@ describe("Live Status group placement of official/group/staff channels", () => {
     expect(subgroupNamed(holoJp, "ReGLOSS").names.slice(0, -1)).not.toContain(nameOf("hololive_dev_is_regloss"))
   })
 
-  it("Hololive JP: Other is the final group and holds exactly ACHRORA, holoAN room and UNIT B", () => {
+  it("Hololive JP: Other is the final group; ACHRORA, holoAN room and UNIT B come first, then hololive Official as the very last row", () => {
     const { container } = renderList()
     const holoJp = groupNamed(renderedRoster(container), "HOLOLIVE // JP")
     const last = holoJp.subgroups.at(-1)!
 
     expect(last.label).toBe("Other")
-    expect(last.names).toEqual([nameOf("achrora"), nameOf("holoan_room"), nameOf("unit_b_pre_debut")])
+    expect(last.names).toEqual([nameOf("achrora"), nameOf("holoan_room"), nameOf("unit_b_pre_debut"), nameOf("hololive_official")])
     expect(holoJp.subgroups.filter((subgroup) => subgroup.label === "Other")).toHaveLength(1)
+  })
+
+  it("hololive Official is the final row of the whole Hololive JP group, after every member and group channel", () => {
+    const { container } = renderList()
+    const holoJp = groupNamed(renderedRoster(container), "HOLOLIVE // JP")
+    const names = holoJp.subgroups.flatMap((subgroup) => subgroup.names)
+
+    expect(names.at(-1)).toBe(nameOf("hololive_official"))
+    expect(names.filter((name) => name === nameOf("hololive_official"))).toHaveLength(1)
+  })
+
+  it("hololive Official is displayed with its own verified channel and is a plain row: live status works, no Oshi switch", async () => {
+    const official = getCreatorById("hololive_official")!
+    const id = toLegacyRosterId(official)
+    const { onSelectCreator, onSelectVideo } = renderList({
+      confirmOshiSwitch: true,
+      statuses: { [id]: { kind: "live", videoId: "vh", title: "hololive official broadcast" } },
+    })
+    const user = userEvent.setup()
+    const row = [...document.querySelectorAll(".live-status-member")].find((r) => r.textContent?.includes(official.displayName))!
+
+    expect(official.youtubeChannelId).toBe("UCJFZiqLMntJufDCHc6bQixg")
+    expect(row.querySelector(".live-status-member__status")).toHaveTextContent("LIVE")
+    await user.click(row.querySelector(".live-status-member__status")!)
+
+    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "vh", title: "hololive official broadcast" }, id)
+    expect(onSelectCreator).not.toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: `Switch Oshi to ${official.displayName}` })).not.toBeInTheDocument()
   })
 
   it("non-member channels are not collected into one global section: each stays in its own group", () => {
@@ -257,7 +289,7 @@ describe("Live Status status and search for the added channels", () => {
     expect(screen.getByText(nameOf("gawr_gura"), { selector: ".live-status-member__name" })).toBeInTheDocument()
   })
 
-  it.each(["vspo_official", "hololive_dev_is_regloss", "fuwamoco", "holoan_room", "achrora", "unit_b_pre_debut"])(
+  it.each(["vspo_official", "hololive_official", "hololive_dev_is_regloss", "fuwamoco", "holoan_room", "achrora", "unit_b_pre_debut"])(
     "search finds the non-member channel %s",
     (creatorId) => {
       renderList({ query: nameOf(creatorId) })

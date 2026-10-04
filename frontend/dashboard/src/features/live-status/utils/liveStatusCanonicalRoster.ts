@@ -19,16 +19,26 @@ export function creatorMatchesSearch(creator: CanonicalCreator, query: string): 
   return creator.displayName.toLowerCase().includes(query.trim().toLowerCase())
 }
 
-/** Individual members first, then group/staff/official channels, preserving the
- * relative order inside each half. Applied inside every subgroup (never across
- * the whole roster), so a non-member channel stays in the group it belongs to --
- * VSPO JP's own list, ReGLOSS, FLOW GLOW, Advent, ... -- pinned to that group's
- * bottom, instead of being collected into one global non-member section. */
+/** The placeholder groupKey the canonical master gives a channel that belongs to no
+ * generation/unit (backend creators.json: "a single-element placeholder like ["NO"]
+ * where the concept doesn't apply"). For a non-member channel it identifies the
+ * ORGANIZATION-level official channel (vspo_official, hololive_official) -- as opposed
+ * to a unit/generation channel such as hololive ReGLOSS, whose groupKey names its unit. */
+const NO_GROUP_KEY = "NO"
+
+function placementTier(creator: CanonicalCreator): number {
+  if (creator.channelType === "member") return 0
+  return creator.groupKey[0] === NO_GROUP_KEY ? 2 : 1
+}
+
+/** Inside one subgroup: individual members first, then unit/staff channels, then the
+ * organization-level official channel -- preserving the relative order within each tier.
+ * Applied inside every subgroup (never across the whole roster), so a non-member channel
+ * stays in the group it belongs to -- VSPO JP's own list, ReGLOSS, FLOW GLOW, Advent,
+ * Hololive JP's "Other" -- pinned to that group's bottom, instead of being collected into
+ * one global non-member section. Data-driven (channelType + groupKey), never a creatorId. */
 function membersBeforeNonMembers(creators: CanonicalCreator[]): CanonicalCreator[] {
-  return [
-    ...creators.filter((creator) => creator.channelType === "member"),
-    ...creators.filter((creator) => creator.channelType !== "member"),
-  ]
+  return [...creators].sort((a, b) => placementTier(a) - placementTier(b))
 }
 
 /** Live Status' own canonical-registry roster grouping -- deliberately a
@@ -51,8 +61,9 @@ function membersBeforeNonMembers(creators: CanonicalCreator[]): CanonicalCreator
  * Placement: every group/staff channel stays inside its own group, below that
  * group's individual members (membersBeforeNonMembers, per subgroup) -- e.g.
  * vspo_official last in VSPO JP, hololive ReGLOSS last in ReGLOSS, and the
- * catch-all "Other" bucket (ACHRORA, holoAN room, UNIT B) as the final
- * Hololive JP group, which subgroupsForBranch already emits last.
+ * catch-all "Other" bucket (ACHRORA, holoAN room, UNIT B, then the organization-
+ * level hololive Official channel last) as the final Hololive JP group, which
+ * subgroupsForBranch already emits last.
  *
  * Ordered by canonical displayOrder (C8A0) ascending -- getCreators()'s own
  * array order is alphabetical-by-creatorId for deterministic codegen, never
