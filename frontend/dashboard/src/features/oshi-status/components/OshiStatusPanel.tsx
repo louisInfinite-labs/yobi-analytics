@@ -1,6 +1,6 @@
 import { Avatar } from "antd"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
-import { resolvePlaybackVideoId } from "../../home-room/data/mockRecentVideos"
+import { OshiErrorState } from "../../home-room/components/OshiErrorState"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
@@ -71,7 +71,7 @@ function RecentActivityRow({
       </div>
       <img
         className="oshi-status__recent-thumbnail"
-        src={entry.thumbnailUrl ?? `https://img.youtube.com/vi/${resolvePlaybackVideoId(entry.videoId)}/hqdefault.jpg`}
+        src={entry.thumbnailUrl ?? `https://img.youtube.com/vi/${entry.videoId}/hqdefault.jpg`}
         alt=""
         draggable={false}
       />
@@ -127,7 +127,7 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
   const previousVisit = usePreviousVisit()
   const [locale] = useLocale()
   const [timeFormat] = useTimeFormat()
-  const { data, loading } = useOshiStatus(resolveCreatorKey(creatorId)?.creatorId, previousVisit)
+  const { data, loading, error } = useOshiStatus(resolveCreatorKey(creatorId)?.creatorId, previousVisit)
   const recent = data?.recent ?? []
   const number = (value: number | undefined) => (value === undefined ? VALUE_UNAVAILABLE : String(value))
 
@@ -214,6 +214,8 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
                 </div>
               ))}
             </div>
+          ) : error ? (
+            <OshiErrorState error={error} />
           ) : recent.length === 0 ? (
             <div className="oshi-empty-state">{t(locale, "oshiStatus.noRecentActivity")}</div>
           ) : (

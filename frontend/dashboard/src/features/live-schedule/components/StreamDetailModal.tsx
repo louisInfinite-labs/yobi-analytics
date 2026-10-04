@@ -2,7 +2,6 @@ import { useState } from "react"
 import { Modal } from "antd"
 import { getScheduleCreatorAvatarVisual } from "../utils/creatorAvatar"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
-import { resolvePlaybackVideoId } from "../../home-room/data/mockRecentVideos"
 import { shouldShowLiveBadge, type ScheduledStream } from "../model/scheduledStream"
 import { t, type Locale } from "../../../shared/i18n/translations"
 
@@ -25,9 +24,7 @@ function startedTimeText(stream: ScheduledStream, locale: Locale, nowMs: number)
 }
 
 /** 16:9 real YouTube/Holodex thumbnail ratio (spec's own correction over an
- * earlier portrait-thumbnail concept) -- resolvePlaybackVideoId's fallback to
- * an always-embeddable demo id is what mockRecentVideos.ts's own docstring
- * documents for non-real videoIds, same as RecentVideosSection's thumbnail. */
+ * earlier portrait-thumbnail concept), keyed by the stream's own real videoId. */
 function StreamThumbnail({ stream, locale }: { stream: ScheduledStream; locale: Locale }) {
   const [thumbFailed, setThumbFailed] = useState(false)
   const isLive = stream.status === "live"
@@ -39,7 +36,7 @@ function StreamThumbnail({ stream, locale }: { stream: ScheduledStream; locale: 
       ) : (
         <img
           className="stream-detail-thumbnail"
-          src={`https://img.youtube.com/vi/${resolvePlaybackVideoId(stream.videoId)}/hqdefault.jpg`}
+          src={`https://img.youtube.com/vi/${stream.videoId}/hqdefault.jpg`}
           alt=""
           onError={() => setThumbFailed(true)}
         />

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { OshiStatusPanel } from "./OshiStatusPanel"
 import * as useLastVisit from "../hooks/useLastVisit"
 import { fetchOshiStatus, type OshiStatusData, type OshiStatusRecentItem } from "../data/oshiStatus"
+import { ApiError } from "../../../shared/api/apiClient"
 
 vi.mock("../hooks/useLastVisit", async () => {
   const actual = await vi.importActual<typeof import("../hooks/useLastVisit")>("../hooks/useLastVisit")
@@ -149,13 +150,23 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
     expect(metrics("This week")).toEqual({ "View growth": "—", Streams: "—", Uploads: "—" })
   })
 
-  it("a failed request leaves the placeholders and the empty recent state, with no old or mock data", async () => {
-    fetchMock.mockRejectedValue(new Error("503"))
+  it("a failed request shows the normal error state with its code and the placeholders, never old or mock data", async () => {
+    fetchMock.mockRejectedValue(new ApiError(503, "Service Unavailable", "RANKING_NOT_READY"))
     renderPanel()
 
-    expect(await screen.findByText("No recent activity")).toBeInTheDocument()
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("(Code: 503)")
+    expect(screen.queryByText("No recent activity")).toBeNull() // the empty text is for a valid empty result only
     expect(metrics("This week")).toEqual({ "View growth": "—", Streams: "—", Uploads: "—" })
     expect(document.querySelector(".oshi-status__subscriber-count")).toBeNull()
+    expect(document.querySelector(".oshi-status__recent-row")).toBeNull()
+  })
+
+  it("a network failure shows the network error state, not the server one", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"))
+    renderPanel()
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("(Code: NETWORK)")
   })
 
   it("an empty backend result (no recent rows) shows the empty state, not an error", async () => {
@@ -163,6 +174,7 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
     renderPanel()
 
     expect(await screen.findByText("No recent activity")).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).toBeNull()
     expect(metrics("This week").Uploads).toBe("2") // the rest of the panel still renders
   })
 })

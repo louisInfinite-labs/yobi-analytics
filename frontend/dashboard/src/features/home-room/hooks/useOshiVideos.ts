@@ -15,6 +15,16 @@ interface ShelfResult {
   error: Error | null
 }
 
+/** `incoming` rows whose videoId is not already shown (nor repeated within the page itself): an offset
+ * page can overlap the previous one if the backend's result changes between two requests, and a
+ * video must never render twice (it is also the React key). The server's own offset still advances by
+ * the rows it returned, so paging never skips or repeats because of this. */
+function appendUnique(shown: RecentVideo[], incoming: RecentVideo[]): RecentVideo[] {
+  const seen = new Set(shown.map((video) => video.videoId))
+  const fresh = incoming.filter((video) => !seen.has(video.videoId) && seen.add(video.videoId))
+  return [...shown, ...fresh]
+}
+
 /** Home's Oshi Videos shelf data for the current creator + topic + content
  * type + sort + view window. `query === null` (a quick-filter tag, or a
  * creator with no canonical id) means "not this hook's shelf": nothing is
@@ -50,8 +60,9 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
     fetchOshiVideos(stableQuery, 0)
       .then((page) => {
         if (generation !== generationRef.current) return
-        const revealed = stableQuery.sort === "mostViews" ? page.videos.slice(0, OSHI_VIDEOS_RANKING_REVEAL_BATCH) : page.videos
-        const pending = page.videos.slice(revealed.length)
+        const unique = appendUnique([], page.videos)
+        const revealed = stableQuery.sort === "mostViews" ? unique.slice(0, OSHI_VIDEOS_RANKING_REVEAL_BATCH) : unique
+        const pending = unique.slice(revealed.length)
         setResult({ key, videos: revealed, pending, nextOffset: page.nextOffset, hasMore: page.hasMore || pending.length > 0, error: null })
       })
       .catch((err: unknown) => {
@@ -69,7 +80,7 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
       const next = current.pending.slice(0, OSHI_VIDEOS_RANKING_REVEAL_BATCH)
       const rest = current.pending.slice(next.length)
       setResult((prev) =>
-        prev && prev.key === key ? { ...prev, videos: [...prev.videos, ...next], pending: rest, hasMore: rest.length > 0 } : prev,
+        prev && prev.key === key ? { ...prev, videos: appendUnique(prev.videos, next), pending: rest, hasMore: rest.length > 0 } : prev,
       )
       return
     }
@@ -81,7 +92,7 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
         if (generation !== generationRef.current) return
         setResult((prev) =>
           prev && prev.key === key
-            ? { ...prev, videos: [...prev.videos, ...page.videos], nextOffset: page.nextOffset, hasMore: page.hasMore }
+            ? { ...prev, videos: appendUnique(prev.videos, page.videos), nextOffset: page.nextOffset, hasMore: page.hasMore }
             : prev,
         )
       })

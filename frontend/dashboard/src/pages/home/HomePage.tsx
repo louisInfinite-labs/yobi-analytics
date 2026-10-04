@@ -1,5 +1,4 @@
 import { mockCreators } from "../../entities/creator/data/mockCreators"
-import { resolvePlaybackVideoId } from "../../features/home-room/data/mockRecentVideos"
 import { creatorThemeStyle } from "../../shared/theme/creatorThemeStyle"
 import { useBreakpoint } from "../../shared/hooks/useBreakpoint"
 import { useCreatorStatuses } from "../../features/live-status/hooks/useCreatorStatuses"
@@ -75,7 +74,7 @@ export function HomePage() {
               <div className="oshi-player-frame__ratio">
                 {embed && (
                   <LiveEmbedPlayer
-                    videoId={resolvePlaybackVideoId(embed.videoId)}
+                    videoId={embed.videoId}
                     title={embed.title}
                     autoplay={breakpoint !== "mobile"}
                   />

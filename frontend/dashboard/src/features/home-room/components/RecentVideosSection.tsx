@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import { ConfigProvider, Segmented } from "antd"
 import { ChevronRight } from "lucide-react"
-import { resolvePlaybackVideoId } from "../data/mockRecentVideos"
+import { OshiErrorState } from "./OshiErrorState"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t, type Locale } from "../../../shared/i18n/translations"
@@ -56,14 +56,8 @@ function formatCardMeta(video: RecentVideo): string {
 }
 
 /** The card's own thumbnail sits above its title, using YouTube's own
- * thumbnail JPG endpoint — no separate fetch, keyed only by videoId. Most
- * mockRecentVideos ids aren't real YouTube ids, so the thumbnail/embed
- * source goes through resolvePlaybackVideoId (falls back to a real, always-
- * embeddable placeholder video for those) rather than the entry's own
- * `videoId` directly -- `videoId` itself must stay each entry's own unique
- * value (not the shared placeholder) since it also doubles as the React
- * list key and the identity recentVideosSelection.ts's mergeAndDedupe
- * dedupes by. */
+ * thumbnail JPG endpoint -- no separate fetch, keyed only by the real
+ * videoId the API returned (never a substituted placeholder video). */
 function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video: RecentVideo) => void }) {
   const [thumbFailed, setThumbFailed] = useState(false)
   const isLiveNow = video.contentFormat === "live_now"
@@ -76,7 +70,7 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
           <span className="home-placeholder">No thumbnail</span>
         ) : (
           <img
-            src={`https://img.youtube.com/vi/${resolvePlaybackVideoId(video.videoId)}/hqdefault.jpg`}
+            src={`https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`}
             alt=""
             draggable={false}
             onError={() => setThumbFailed(true)}
@@ -104,11 +98,14 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
 function VideoTrack({
   videos,
   emptyLabel,
+  error,
   onOpen,
   onNearEnd,
 }: {
   videos: RecentVideo[]
   emptyLabel: string
+  /** The first page failed: shown as the normal error state, distinct from a valid empty result. */
+  error: Error | null
   onOpen: (video: RecentVideo) => void
   onNearEnd: () => void
 }) {
@@ -226,7 +223,11 @@ function VideoTrack({
       >
         <div className="oshi-videos__list">
           {videos.length === 0 ? (
-            <div className="oshi-empty-state">{emptyLabel}</div>
+            error ? (
+              <OshiErrorState error={error} />
+            ) : (
+              <div className="oshi-empty-state">{emptyLabel}</div>
+            )
           ) : (
             videos.map((video) => <VideoThumbCard key={video.videoId} video={video} onOpen={handleOpen} />)
           )}
@@ -490,6 +491,7 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
         key={`${creatorId}:${shelfQuery ? oshiVideosQueryKey(shelfQuery) : selectedTag}`}
         videos={shelf.videos}
         emptyLabel={emptyLabel}
+        error={shelf.error}
         onOpen={(video) => onSelectVideo({ videoId: video.videoId, title: video.title })}
         onNearEnd={shelf.loadMore}
       />

@@ -67,9 +67,7 @@ jobs:
           src/features/home-room/model/oshiVideosQuery.test.ts
           src/features/home-room/data/oshiVideos.test.ts
           src/features/home-room/hooks/useOshiVideos.test.tsx
-          src/features/home-room/hooks/useRecentVideos.test.ts
-          src/features/home-room/hooks/useRecentVideos.liveStreams.test.ts
-          src/features/home-room/hooks/useRecentVideos.latestVideos.test.ts
+          src/features/home-room/hooks/useLiveStreamVideoPool.test.ts
           src/features/home-room/hooks/useHomeSelectedVideo.test.ts
           src/features/home-room/utils/recentVideosSelection.test.ts
           src/features/home-room/components/RecentVideosSection.test.tsx
@@ -79,6 +77,7 @@ jobs:
           src/features/oshi-status/hooks/useLastVisit.test.ts
           src/features/oshi-status/utils/oshiActivity.test.ts
           src/features/oshi-status/components/OshiStatusPanel.test.tsx
+          src/pages/home/HomePage.apiCutover.test.tsx
           src/features/live-status/model/creatorStatusSelection.test.ts
           src/features/live-status/hooks/useCreatorStatuses.test.tsx
           src/shared/api/liveStreams.test.ts
