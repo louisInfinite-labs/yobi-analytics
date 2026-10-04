@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { CreatorStatusList, countLiveAndOffline } from "./CreatorStatusList"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
-import { getCreators, isCurrentMemberEligible, resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
+import { getCreators, isCurrentMemberEligible, isLiveStatusDisplayEligible, resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
 import { useDefaultOshiCreator } from "../../oshi/hooks/useDefaultOshiCreator"
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
@@ -488,9 +488,9 @@ describe("countLiveAndOffline", () => {
 })
 
 describe("CreatorStatusList canonical registry migration (C8C)", () => {
-  it("roster comes from the canonical Creator Registry, filtered by isCurrentMemberEligible -- not a hardcoded count", () => {
+  it("roster comes from the canonical Creator Registry, filtered by isLiveStatusDisplayEligible -- not a hardcoded count", () => {
     renderList()
-    const eligible = getCreators().filter(isCurrentMemberEligible)
+    const eligible = getCreators().filter(isLiveStatusDisplayEligible)
     // A dual-tagged Gamers member (Shirakami Fubuki) intentionally renders
     // twice (once per subgroup) -- count distinct rendered names instead of
     // raw row count.
@@ -500,17 +500,17 @@ describe("CreatorStatusList canonical registry migration (C8C)", () => {
     }
   })
 
-  it("vspo_official (canonical group channel) resolves but is not visible -- only individual members are", () => {
+  it("vspo_official (canonical group channel) resolves and is visible as a normal OFFLINE row", () => {
     renderList()
     const vspoOfficial = getCreators().find((c) => c.creatorId === "vspo_official")!
-    expect(resolveCreatorKey("ch_vspo_group")?.creatorId).toBe("vspo_official") // identity still resolves
-    expect(screen.queryByText(vspoOfficial.displayName)).not.toBeInTheDocument()
+    expect(resolveCreatorKey("ch_vspo_group")?.creatorId).toBe("vspo_official")
+    expect(screen.getByText(vspoOfficial.displayName)).toBeInTheDocument()
   })
 
-  it("holoan_room (canonical staff channel) is not visible", () => {
+  it("holoan_room (canonical staff channel) is visible", () => {
     renderList()
     const holoanRoom = getCreators().find((c) => c.creatorId === "holoan_room")!
-    expect(screen.queryByText(holoanRoom.displayName)).not.toBeInTheDocument()
+    expect(screen.getByText(holoanRoom.displayName)).toBeInTheDocument()
   })
 
   it("ch_hololive_staff (mock-only, no canonical record) is absent -- never synthesized", () => {
@@ -519,9 +519,10 @@ describe("CreatorStatusList canonical registry migration (C8C)", () => {
     expect(resolveCreatorKey("ch_hololive_staff")).toBeUndefined()
   })
 
-  it("hololive_asobimawaritai: the group channel is excluded, but its 4 members render under their own subgroup, none falling into Other", () => {
+  it("hololive_asobimawaritai: the group channel is shown but is not an Oshi-switch button, and its 4 members render under their own subgroup, none falling into Other", () => {
     renderList()
     expect(screen.queryByRole("button", { name: "Switch Oshi to アソビ★まわり隊！" })).not.toBeInTheDocument()
+    expect(screen.getAllByText("アソビ★まわり隊！", { selector: ".live-status-member__name" })).toHaveLength(1)
     expect(screen.getByText("アソビ★まわり隊！", { selector: ".live-status-group__subheading" })).toBeInTheDocument()
     for (const name of ["百灯キョーコ", "熱千めら", "鈴鳴つづり", "宙科そぴあ"]) {
       expect(screen.getByRole("button", { name: new RegExp(name) })).toBeInTheDocument()
@@ -539,11 +540,11 @@ describe("CreatorStatusList canonical registry migration (C8C)", () => {
     expect(renderedVspoJpOrder).toEqual(expectedOrder)
   })
 
-  it("search operates on the canonical roster and never surfaces an excluded creator", () => {
+  it("search operates on the canonical roster and finds a group channel by its own displayName", () => {
     renderList({ query: "アソビ" })
-    // Matches only the group channel's own displayName -- which is
-    // ineligible, so the query legitimately yields nothing, proving search
-    // filtering happens on top of (not instead of) eligibility.
+    // The group channel is a normal Live Status row now, so search reaches it -- as a
+    // plain row, never an Oshi-switch button.
+    expect(screen.getByText("アソビ★まわり隊！", { selector: ".live-status-member__name" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /アソビ/ })).not.toBeInTheDocument()
   })
 

@@ -1894,5 +1894,20 @@
       "NO"
     ],
     "avatarUrl": "https://yt3.ggpht.com/YxkHbTBTSYsQjMHOp269eQUReXvJsTfM9gTEeByvNDGl97N6fqatLGRMZnHx-RIA_oPikX-e=s800-c-k-c0x00ffffff-no-rj"
+  },
+  {
+    "creatorId": "hololive_official",
+    "displayName": "hololive Official",
+    "organization": "hololive",
+    "youtubeChannelId": "UCJFZiqLMntJufDCHc6bQixg",
+    "active": true,
+    "branch": "holo_jp",
+    "channelType": "group",
+    "lifecycleStage": "active",
+    "displayOrder": 118,
+    "groupKey": [
+      "NO"
+    ],
+    "avatarUrl": "https://yt3.ggpht.com/rl6ZG9_MqKPDABLRDNG75FPX7EOPGXHtJ-2Hm97yqWziq6gkcwnsSe6wA8vv8xIhGuQe9joF=s800-c-k-c0x00ffffff-no-rj"
   }
 ]

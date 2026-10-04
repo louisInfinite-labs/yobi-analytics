@@ -1539,6 +1539,18 @@
   opacity: 0.8;
 }
 
+/* Separator before a branch's organization-level channel row when it follows named groups
+   (Hololive JP: hololive Official after "Other"). */
+.live-status-group__org-divider {
+  height: 1px;
+
+  margin: 6px 12px 2px;
+
+  background: var(--oshi-text-3);
+
+  opacity: 0.25;
+}
+
 /* Swipe-to-favorite wrapper: houses the reveal layer (behind) and the
    draggable row (in front, same DOM order = on top, no z-index needed). */
 .live-status-member-swipe {
@@ -1745,6 +1757,17 @@
 .live-status-member__creator-button:hover .live-status-member__name,
 .live-status-member__creator-button:focus-visible .live-status-member__name {
   color: var(--member-theme-color);
+}
+
+/* A group/staff/official channel row: same layout as a creator row, but it is not a
+   person who can become Current Oshi, so it is a plain element -- no pointer, no hover
+   recolor, and (see CreatorStatusList.tsx) no Oshi-switch flow. */
+.live-status-member__creator-button--static {
+  cursor: default;
+}
+
+.live-status-member__creator-button--static:hover .live-status-member__name {
+  color: var(--oshi-text-1);
 }
 
 .live-status-member__main-badge {

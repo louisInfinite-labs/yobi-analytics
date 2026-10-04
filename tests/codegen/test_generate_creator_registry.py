@@ -96,7 +96,7 @@ def test_display_order_values_are_unique_in_the_generated_artifact(registry):
 
 
 def test_active_exactly_matches_the_backend_creator_active_field(registry):
-    """C4's eligibility rules (is_creator_selectable/is_creator_live_roster_eligible)
+    """The eligibility rules (is_live_status_display_eligible/is_live_status_polling_eligible/is_my_oshi_eligible)
     depend on `active` alongside channelType/lifecycleStage -- this proves the
     generated value is a faithful copy of Creator.active, not derived/guessed."""
     active_by_id = {creator.creator_id: creator.active for creator in load_creators()}

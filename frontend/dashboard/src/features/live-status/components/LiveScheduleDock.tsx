@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { ConfigProvider, Segmented } from "antd"
 import { Search } from "lucide-react"
 import { CreatorStatusList } from "./CreatorStatusList"
-import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
+import { isMyOshiEligible, resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { useCurrentPage } from "../../../app/navigation/useCurrentPage"
 import { useConfirmOshiSwitchPreference } from "../../oshi/hooks/useConfirmOshiSwitchPreference"
 import { useCreatorStatuses } from "../hooks/useCreatorStatuses"
@@ -285,7 +285,11 @@ export function LiveScheduleDock() {
                   // remaining use of it (see this component's own top
                   // docstring: the dock is mounted above every page, not
                   // just Home).
-                  if (page === "home") {
+                  // A group/staff/official channel is never Current Oshi, so Home's
+                  // central player (keyed to the Oshi) has nothing to select it into --
+                  // its stream plays in the modal instead.
+                  const channel = resolveCreatorKey(creatorId)
+                  if (page === "home" && channel && isMyOshiEligible(channel)) {
                     selectHomeVideo(video, creatorId)
                   } else {
                     setEmbed(video)

@@ -433,9 +433,10 @@ def test_get_live_streams_filters_out_a_channel_holodex_returns_that_is_not_supp
     assert result == {"streams": []}
 
 
-def test_get_live_streams_excludes_an_ineligible_creator_from_the_request_itself(monkeypatch):
-    """A graduated creator is a real Creator Master identity but not
-    live-roster-eligible -- must not appear in the Holodex `channels` param."""
+def test_get_live_streams_does_not_request_a_graduated_creator(monkeypatch):
+    """A graduated creator is a real, displayed Creator Master identity but is not
+    polling-eligible -- must not appear in the Holodex `channels` param (visibility
+    in Live Status costs no API quota; their row falls back to OFFLINE client-side)."""
     monkeypatch.setattr(
         read_api,
         "load_creators",
@@ -455,6 +456,72 @@ def test_get_live_streams_excludes_an_ineligible_creator_from_the_request_itself
     get_live_streams()
 
     assert captured["params"]["channels"] == "UC_active"
+
+
+def test_get_live_streams_requests_active_group_and_staff_channels_alongside_members(monkeypatch):
+    """Group and staff channels (e.g. vspo_official) get the same Live Status
+    behaviour as members, so they are asked about too."""
+    monkeypatch.setattr(
+        read_api,
+        "load_creators",
+        lambda: [
+            _creator(creator_id="a_member", youtube_channel_id="UC_member"),
+            _creator(creator_id="pre_debut_member", youtube_channel_id="UC_predebut", lifecycle_stage="pre_debut"),
+            _creator(creator_id="a_group", youtube_channel_id="UC_group", channel_type="group"),
+            _creator(creator_id="pre_debut_group", youtube_channel_id="UC_pregroup", channel_type="group", lifecycle_stage="pre_debut"),
+            _creator(creator_id="a_staff", youtube_channel_id="UC_staff", channel_type="staff"),
+            _creator(creator_id="graduated_one", youtube_channel_id="UC_graduated", lifecycle_stage="graduated"),
+        ],
+    )
+    captured = {}
+
+    def fake_holodex_get(path, params=None):
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(read_api, "holodex_get", fake_holodex_get)
+
+    get_live_streams()
+
+    assert captured["params"]["channels"].split(",") == ["UC_member", "UC_predebut", "UC_group", "UC_pregroup", "UC_staff"]
+
+
+def test_get_live_streams_does_not_request_a_channel_with_a_malformed_youtube_id(monkeypatch):
+    monkeypatch.setattr(
+        read_api,
+        "load_creators",
+        lambda: [
+            _creator(creator_id="good", youtube_channel_id="UC_good"),
+            _creator(creator_id="blank", youtube_channel_id=""),
+            _creator(creator_id="junk", youtube_channel_id="not-a-channel-id"),
+        ],
+    )
+    captured = {}
+
+    def fake_holodex_get(path, params=None):
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(read_api, "holodex_get", fake_holodex_get)
+
+    get_live_streams()
+
+    assert captured["params"]["channels"] == "UC_good"
+
+
+def test_get_live_streams_maps_a_group_channel_stream_to_its_creator_id(monkeypatch):
+    """A live stream on an official/group channel is returned like any other, keyed by
+    that channel's own creatorId -- the frontend overlays it on the canonical roster."""
+    monkeypatch.setattr(
+        read_api,
+        "load_creators",
+        lambda: [_creator(creator_id="vspo_official", youtube_channel_id="UC_vspo", channel_type="group")],
+    )
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_holodex_item(channel_id="UC_vspo")])
+
+    result = get_live_streams()
+
+    assert [stream["creatorId"] for stream in result["streams"]] == ["vspo_official"]
 
 
 def test_get_live_streams_skips_the_holodex_call_entirely_when_no_creator_is_eligible(monkeypatch):
@@ -681,18 +748,20 @@ def test_get_recent_streams_rejects_an_unknown_creator(monkeypatch):
 
 
 def test_get_recent_streams_rejects_an_ineligible_creator(monkeypatch):
-    """A real Creator Master record that fails is_creator_live_roster_eligible
+    """A real Creator Master record that fails is_current_member_eligible
     (e.g. graduated, or a group/staff channel) is rejected the same clean way
-    as an unknown creatorId -- get_live_streams applies the identical rule."""
-    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(lifecycle_stage="graduated"))
+    as an unknown creatorId -- /recent-streams' existing member-only behaviour,
+    unchanged by the Live Status roster work."""
+    for overrides in ({"lifecycle_stage": "graduated"}, {"channel_type": "group"}, {"channel_type": "staff"}):
+        monkeypatch.setattr(read_api, "_find_creator", lambda creator_id, o=overrides: _creator(**o))
 
-    def _boom(*args, **kwargs):
-        raise AssertionError("Holodex must not be called for an ineligible creator")
+        def _boom(*args, **kwargs):
+            raise AssertionError("Holodex must not be called for an ineligible creator")
 
-    monkeypatch.setattr(read_api, "holodex_get", _boom)
+        monkeypatch.setattr(read_api, "holodex_get", _boom)
 
-    with pytest.raises(ScopeNotFoundError):
-        get_recent_streams({"creatorId": "aizawa_ema"})
+        with pytest.raises(ScopeNotFoundError):
+            get_recent_streams({"creatorId": "aizawa_ema"})
 
 
 def test_get_recent_streams_returns_empty_for_a_genuinely_empty_archive(monkeypatch):

@@ -96,20 +96,43 @@ export function getCreatorByYoutubeChannelId(youtubeChannelId: string): Canonica
   return creatorsByYoutubeChannelId.get(youtubeChannelId)
 }
 
-/** The already-approved canonical eligibility rule (C4's
- * is_creator_selectable/is_creator_live_roster_eligible on the backend,
- * currently identical): an individual talent, under active collection, who
- * is a current real-world talent (active or pre_debut). Derived from stable
+/** A CURRENT individual talent: under active collection, an individual
+ * member channel, and active or pre_debut. This is deliberately the NARROW
+ * rule -- used for "who is a current member" surfaces (Notification Settings,
+ * and the fallback default Oshi). It is NOT the Live Status roster rule and
+ * NOT the My Oshi selection rule; see isLiveStatusDisplayEligible and
+ * isMyOshiEligible below, which differ on purpose. Derived from stable
  * canonical facts (active/channelType/lifecycleStage) every time this is
  * called -- never a stored boolean, so there is nothing here that can drift
- * from the backend rule the way a precomputed flag could.
- *
- * Not yet applied to any UI (C5A is registry infrastructure only) -- no
- * consumer calls this function yet. */
+ * from the backend rule the way a precomputed flag could. */
 export function isCurrentMemberEligible(creator: CanonicalCreator): boolean {
   return (
     creator.active &&
     creator.channelType === "member" &&
     (creator.lifecycleStage === "active" || creator.lifecycleStage === "pre_debut")
+  )
+}
+
+/** Whether a channel gets a row in Live Status: every supported channel in the
+ * canonical roster -- members (including graduated), group and staff channels --
+ * regardless of lifecycle, channel type, or any video/ranking/manifest data. A
+ * channel with no stream data renders OFFLINE; it is never removed. Mirrors the
+ * backend's is_live_status_display_eligible. */
+export function isLiveStatusDisplayEligible(creator: CanonicalCreator): boolean {
+  return creator.active
+}
+
+/** Whether a user may pick this channel as their Oshi: an individual creator
+ * (channelType "member") in any lifecycle stage a person can be selected in --
+ * including graduated, because graduation stops new-content collection but does
+ * not remove the creator or invalidate an existing selection. Group and staff
+ * channels are never an Oshi. Mirrors the backend's is_my_oshi_eligible. */
+export function isMyOshiEligible(creator: CanonicalCreator): boolean {
+  return (
+    creator.active &&
+    creator.channelType === "member" &&
+    (creator.lifecycleStage === "active" ||
+      creator.lifecycleStage === "pre_debut" ||
+      creator.lifecycleStage === "graduated")
   )
 }

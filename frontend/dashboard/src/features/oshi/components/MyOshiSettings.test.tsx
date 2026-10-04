@@ -63,10 +63,41 @@ describe("MyOshiSettings (default Oshi picker)", () => {
     expect(screen.getByText("アソビ★まわり隊！", { selector: ".my-oshi-select__subgroup-title" })).toBeInTheDocument()
   })
 
-  it("search never reveals an excluded creator (staff/group/graduated), even by exact name", async () => {
+  it("offers graduated individual creators, and a graduated creator can be selected as Main Oshi and survives a reload", async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderMyOshiSettings()
+
+    expect(screen.getByRole("radio", { name: /Gawr Gura/ })).toBeInTheDocument()
+    await pickCreator(user, "Gawr Gura")
+
+    expect(screen.getByLabelText("Current Main Oshi: Gawr Gura")).toBeInTheDocument()
+    expect(localStorage.getItem(DEFAULT_KEY)).toBe("ch_gawr_gura")
+    unmount()
+
+    simulateReload()
+    renderMyOshiSettings()
+
+    expect(screen.getByLabelText("Current Main Oshi: Gawr Gura")).toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: /Gawr Gura/ })).toBeChecked()
+  })
+
+  it("an existing graduated Oshi selection stays valid -- it is shown as the current Main Oshi, not reset", () => {
+    localStorage.setItem(DEFAULT_KEY, "ch_gawr_gura")
+    resetAllSharedStateForTests()
+
+    renderMyOshiSettings()
+
+    expect(screen.getByLabelText("Current Main Oshi: Gawr Gura")).toBeInTheDocument()
+  })
+
+  it("search finds a graduated creator but never reveals a staff/group/official channel, even by exact name", async () => {
     const user = userEvent.setup()
     renderMyOshiSettings()
     const search = screen.getByPlaceholderText("Search creators")
+
+    await user.type(search, "Gawr")
+    expect(screen.getByRole("radio", { name: /Gawr Gura/ })).toBeInTheDocument()
+    await user.clear(search)
 
     await user.type(search, "VSPO! Official")
     expect(screen.getByText("No creators found")).toBeInTheDocument()

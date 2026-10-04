@@ -38,7 +38,7 @@ from zoneinfo import ZoneInfo
 
 from api.holodex_client import holodex_get
 from api.holodex_normalization import normalize_holodex_archived_streams_response, normalize_holodex_live_response
-from tracking.creator_master import Creator, is_creator_live_roster_eligible, load_creators
+from tracking.creator_master import Creator, is_current_member_eligible, is_live_status_polling_eligible, load_creators
 from analytics.subscriber_ranking import GROWTH_PERIODS, VALID_SUBSCRIBER_ORGANIZATIONS
 from stores.subscriber_ranking_store import S3SubscriberRankingStore
 from analytics.video_ranking import CONTENT_TYPE_SCOPE_ALL as VIDEO_RANKING_CONTENT_TYPE_ALL
@@ -90,12 +90,11 @@ class VideoNotFoundError(ClientError):
 
 
 class ScopeNotFoundError(ClientError):
-    """Raised when a requested creatorId doesn't resolve to a real, live-roster-
-    eligible creator -- get_recent_streams/get_live_streams check this against
-    Creator Master (is_creator_live_roster_eligible) before ever calling
-    Holodex, so an unknown or ineligible creatorId gets a clean 404 instead of
-    an empty result indistinguishable from "this real creator just has no
-    archives right now."
+    """Raised when a requested creatorId doesn't resolve to a real, current-member
+    creator -- get_recent_streams checks this against Creator Master
+    (is_current_member_eligible) before ever calling Holodex, so an unknown or
+    ineligible creatorId gets a clean 404 instead of an empty result
+    indistinguishable from "this real creator just has no archives right now."
     """
 
 
@@ -1063,13 +1062,16 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     -- here Holodex itself *is* the live source, with no persistence layer in
     front of it yet.
 
-    Eligibility reuses Creator Master's own is_creator_live_roster_eligible
-    (tracking/creator_master.py) -- the same rule already governing Live
-    Status/Live Schedule elsewhere -- rather than inventing a second
-    supported-creator definition here. A normalized stream whose channel
-    isn't in that eligible set (Holodex returning something unrequested,
-    e.g. a collab guest) is dropped defensively, the same "never guess"
-    posture normalize_holodex_stream itself already takes per-field.
+    Which channels are asked about is Creator Master's own
+    is_live_status_polling_eligible (tracking/creator_master.py): displayed,
+    current (active or pre_debut) channels of ANY type -- members, and group/
+    staff channels such as vspo_official -- with a well-formed YouTube channel
+    id. Graduated creators are never requested (they stay visible in Live
+    Status through the frontend roster and fall back to OFFLINE), so showing
+    them costs no Holodex quota. A normalized stream whose channel isn't in
+    that polled set (Holodex returning something unrequested, e.g. a collab
+    guest) is dropped defensively, the same "never guess" posture
+    normalize_holodex_stream itself already takes per-field.
 
     An "upcoming" stream is additionally kept only when _is_within_lookahead
     says its scheduled_start is within _HOLODEX_MAX_UPCOMING_HOURS from now
@@ -1082,7 +1084,7 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     api_handler.py's dispatch maps these to 503, the same "external
     dependency temporarily unavailable" treatment as TrendingNotReadyError.
     """
-    eligible_creators = [creator for creator in load_creators() if is_creator_live_roster_eligible(creator)]
+    eligible_creators = [creator for creator in load_creators() if is_live_status_polling_eligible(creator)]
     channel_index = {creator.youtube_channel_id: creator for creator in eligible_creators}
     if not channel_index:
         return {"streams": []}
@@ -1171,10 +1173,10 @@ def get_recent_streams(query: dict[str, Any]) -> dict[str, Any]:
     selectLivestreamSlots, unchanged by this endpoint).
 
     creatorId is resolved and eligibility-checked against Creator Master
-    (is_creator_live_roster_eligible -- the same rule get_live_streams already
-    applies) *before* ever calling Holodex, so an unknown or ineligible
-    creatorId gets a clean 404 (ScopeNotFoundError) rather than an empty
-    result indistinguishable from "this real creator just has no archives."
+    (is_current_member_eligible -- this endpoint's own member-only rule, unchanged
+    by the Live Status roster work) *before* ever calling Holodex, so an unknown
+    or ineligible creatorId gets a clean 404 (ScopeNotFoundError) rather than an
+    empty result indistinguishable from "this real creator just has no archives."
 
     Holodex request: GET /videos?channel_id=<real channel>&type=stream&
     status=past&sort=available_at&order=desc&limit=<limit>&offset=<offset> --
@@ -1198,7 +1200,7 @@ def get_recent_streams(query: dict[str, Any]) -> dict[str, Any]:
     offset = parse_offset(query.get("offset"))
 
     creator = _find_creator(creator_id)
-    if creator is None or not is_creator_live_roster_eligible(creator):
+    if creator is None or not is_current_member_eligible(creator):
         raise ScopeNotFoundError(f"No creator found for creatorId {creator_id!r}")
 
     raw_payload = holodex_get(

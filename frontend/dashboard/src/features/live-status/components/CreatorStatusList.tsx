@@ -1,7 +1,7 @@
 import { Avatar } from "antd"
 import { Heart } from "lucide-react"
 import { Fragment, useState, type CSSProperties } from "react"
-import { toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
+import { isMyOshiEligible, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 import { useDefaultOshiCreator } from "../../oshi/hooks/useDefaultOshiCreator"
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
@@ -127,6 +127,22 @@ function CreatorRow({
   const legacyId = toLegacyRosterId(creator)
   const swipe = useSwipeToFavorite(isFavorite, () => onToggleFavorite(legacyId))
   const topic = status.kind === "offline" ? null : status.title
+  // Group/staff/official channels get the same row (avatar, name, status, topic, favorite
+  // swipe) but are not people, so they can never become Current Oshi: their name area is a
+  // plain element rather than the Oshi-switch button.
+  const canBeOshi = isMyOshiEligible(creator)
+  const creatorContent = (
+    <>
+      <CreatorAvatar creator={creator} isFavorite={isFavorite} />
+      <span className="live-status-member__main">
+        <span className="live-status-member__name-row">
+          <span className="live-status-member__name">{creator.displayName}</span>
+          {isMainOshi && <span className="live-status-member__main-badge">{t(locale, "creatorStatusList.mainBadge")}</span>}
+        </span>
+        {topic && <span className="live-status-member__topic">{topic}</span>}
+      </span>
+    </>
+  )
 
   return (
     <div className="live-status-member-swipe">
@@ -145,22 +161,24 @@ function CreatorRow({
         style={{ transform: `translateX(${swipe.translateX}px)` }}
         {...swipe.rowHandlers}
       >
-        <button
-          type="button"
-          className="live-status-member__creator-button"
-          style={creatorNameAccentStyle(creator)}
-          onClick={swipe.guardClick(() => onCreatorButtonClick(creator))}
-          aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.displayName })}
-        >
-          <CreatorAvatar creator={creator} isFavorite={isFavorite} />
-          <span className="live-status-member__main">
-            <span className="live-status-member__name-row">
-              <span className="live-status-member__name">{creator.displayName}</span>
-              {isMainOshi && <span className="live-status-member__main-badge">{t(locale, "creatorStatusList.mainBadge")}</span>}
-            </span>
-            {topic && <span className="live-status-member__topic">{topic}</span>}
-          </span>
-        </button>
+        {canBeOshi ? (
+          <button
+            type="button"
+            className="live-status-member__creator-button"
+            style={creatorNameAccentStyle(creator)}
+            onClick={swipe.guardClick(() => onCreatorButtonClick(creator))}
+            aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.displayName })}
+          >
+            {creatorContent}
+          </button>
+        ) : (
+          <div
+            className="live-status-member__creator-button live-status-member__creator-button--static"
+            style={creatorNameAccentStyle(creator)}
+          >
+            {creatorContent}
+          </div>
+        )}
         <button
           type="button"
           className="live-status-member__status"
@@ -273,6 +291,12 @@ export function CreatorStatusList({
    * theme. */
   function handleVideoSelect(creator: CanonicalCreator, video: { videoId: string; title: string }) {
     const legacyId = toLegacyRosterId(creator)
+    // A group/staff/official channel's stream plays on its own: it can never become
+    // Current Oshi, so there is no creator switch (and no confirm dialog) to run first.
+    if (!isMyOshiEligible(creator)) {
+      onSelectVideo(video, legacyId)
+      return
+    }
     if (legacyId === currentOshiId) {
       onSelectVideo(video, legacyId)
       return
@@ -307,11 +331,14 @@ export function CreatorStatusList({
                 </span>
               )}
             </div>
-            {group.subgroups.map((subgroup) => (
+            {group.subgroups.map((subgroup, subgroupIndex) => (
               <Fragment key={subgroup.label ?? "__flat__"}>
                 {subgroup.label && (
                   <div className="live-status-group__subheading">{subgroupTitle(locale, subgroup.label)}</div>
                 )}
+                {/* An unlabeled block AFTER the named groups (the organization-level channel) gets a
+                    separator so it does not read as the last named group's own row. */}
+                {!subgroup.label && subgroupIndex > 0 && <div className="live-status-group__org-divider" aria-hidden="true" />}
                 {subgroup.creators.map((creator) => {
                   const legacyId = toLegacyRosterId(creator)
                   const status = statuses[legacyId] ?? { kind: "offline" as const }

@@ -5,6 +5,8 @@ import {
   getCreatorByYoutubeChannelId,
   getCreators,
   isCurrentMemberEligible,
+  isLiveStatusDisplayEligible,
+  isMyOshiEligible,
   resolveCreatorKey,
   toLegacyRosterId,
 } from "./creatorRegistry"
@@ -207,5 +209,79 @@ describe("isCurrentMemberEligible", () => {
     expect(asobimawaritai?.channelType).toBe("group")
     expect(asobimawaritai?.lifecycleStage).toBe("pre_debut")
     expect(isCurrentMemberEligible(asobimawaritai!)).toBe(false)
+  })
+})
+
+describe("isLiveStatusDisplayEligible / isMyOshiEligible are separate from the current-member rule", () => {
+  it("Live Status displays every channel: member (any lifecycle), group and staff", () => {
+    for (const lifecycleStage of ["active", "pre_debut", "graduated"] as const) {
+      expect(isLiveStatusDisplayEligible(creator({ lifecycleStage }))).toBe(true)
+    }
+    expect(isLiveStatusDisplayEligible(creator({ channelType: "group" }))).toBe(true)
+    expect(isLiveStatusDisplayEligible(creator({ channelType: "staff" }))).toBe(true)
+  })
+
+  it("My Oshi accepts an individual creator in any stage, including graduated", () => {
+    for (const lifecycleStage of ["active", "pre_debut", "graduated"] as const) {
+      expect(isMyOshiEligible(creator({ lifecycleStage }))).toBe(true)
+    }
+  })
+
+  it("My Oshi never accepts a group or staff channel, whatever its lifecycle", () => {
+    for (const channelType of ["group", "staff"] as const) {
+      for (const lifecycleStage of ["active", "pre_debut", "graduated"] as const) {
+        expect(isMyOshiEligible(creator({ channelType, lifecycleStage }))).toBe(false)
+      }
+    }
+  })
+
+  it("a graduated member is Live Status- and My Oshi-eligible but not a CURRENT member", () => {
+    const graduated = creator({ lifecycleStage: "graduated" })
+
+    expect(isLiveStatusDisplayEligible(graduated)).toBe(true)
+    expect(isMyOshiEligible(graduated)).toBe(true)
+    expect(isCurrentMemberEligible(graduated)).toBe(false)
+  })
+
+  it("real generated data: every channel displayed, Oshi-eligible = individual creators (incl. 13 graduated), non-members never", () => {
+    const all = getCreators()
+    const members = all.filter((c) => c.channelType === "member")
+
+    expect(all.filter(isLiveStatusDisplayEligible)).toHaveLength(all.length)
+    expect(all.filter(isMyOshiEligible)).toHaveLength(members.length)
+    expect(all.filter((c) => c.lifecycleStage === "graduated" && isMyOshiEligible(c))).toHaveLength(13)
+    expect(all.filter((c) => c.channelType !== "member" && isMyOshiEligible(c))).toHaveLength(0)
+    expect(all.filter((c) => c.channelType !== "member").map((c) => c.creatorId).sort()).toEqual(
+      [
+        "achrora",
+        "fuwamoco",
+        "holoan_room",
+        "hololive_asobimawaritai",
+        "hololive_dev_is_flow_glow",
+        "hololive_dev_is_regloss",
+        "hololive_official",
+        "unit_b_pre_debut",
+        "vspo_official",
+      ].sort(),
+    )
+  })
+
+  it("hololive_official is the main hololive channel (verified id), a displayed non-member, and ch_hololive_staff stays unresolved", () => {
+    const official = getCreatorById("hololive_official")!
+
+    expect(official.youtubeChannelId).toBe("UCJFZiqLMntJufDCHc6bQixg")
+    expect(official.channelType).toBe("group")
+    expect(official.branch).toBe("holo_jp")
+    expect(isLiveStatusDisplayEligible(official)).toBe(true)
+    expect(isMyOshiEligible(official)).toBe(false)
+    expect(getCreatorByYoutubeChannelId("UCJFZiqLMntJufDCHc6bQixg")?.creatorId).toBe("hololive_official")
+    expect(resolveCreatorKey("ch_hololive_staff")).toBeUndefined()
+  })
+
+  it("the frontend predicates agree with the backend rules on the real master (display=all, Oshi=members)", () => {
+    for (const c of getCreators()) {
+      expect(isLiveStatusDisplayEligible(c), c.creatorId).toBe(c.active)
+      expect(isMyOshiEligible(c), c.creatorId).toBe(c.active && c.channelType === "member")
+    }
   })
 })

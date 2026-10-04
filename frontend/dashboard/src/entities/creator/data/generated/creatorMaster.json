@@ -482,6 +482,22 @@
       "youtubeChannelId": "UC10wVt6hoQiwySRhz7RdOUA"
     },
     {
+      "creatorId": "hololive_official",
+      "displayName": "hololive Official",
+      "avatarUrl": "https://yt3.ggpht.com/rl6ZG9_MqKPDABLRDNG75FPX7EOPGXHtJ-2Hm97yqWziq6gkcwnsSe6wA8vv8xIhGuQe9joF=s800-c-k-c0x00ffffff-no-rj",
+      "organization": "hololive",
+      "branch": "holo_jp",
+      "groupKey": [
+        "NO"
+      ],
+      "channelType": "group",
+      "themeColor": null,
+      "lifecycleStage": "active",
+      "displayOrder": 118,
+      "active": true,
+      "youtubeChannelId": "UCJFZiqLMntJufDCHc6bQixg"
+    },
+    {
       "creatorId": "hoshimachi_suisei",
       "displayName": "星街すいせい",
       "avatarUrl": "https://yt3.ggpht.com/ytc/AIdro_kLDBK5ksSvk5-XJ6S8e0kWfjy7mVl3jyUkgDeMQ7rlCpU=s800-c-k-c0x00ffffff-no-rj",

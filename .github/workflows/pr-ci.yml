@@ -74,6 +74,9 @@ jobs:
           tests/test_history_worker_scheduler_state.py
           tests/scripts/backfill/test_backfill_video_classification.py
           tests/test_home_pipeline_end_to_end.py
+          tests/tracking/test_creator_master.py
+          tests/codegen/test_generate_creator_registry.py
+          tests/api/test_read_api.py
 
   frontend-focused-tests:
     needs: detect-scope
@@ -122,6 +125,10 @@ jobs:
           src/shared/api/hooks/useLiveStreams.test.ts
           src/features/live-schedule/hooks/useWeeklySchedule.test.tsx
           src/shared/i18n/translations.test.ts
+          src/entities/creator/data/creatorRegistry.test.ts
+          src/features/live-status/components/CreatorStatusList.completeRoster.test.tsx
+          src/features/oshi/utils/myOshiCanonicalRoster.test.ts
+          src/features/oshi/hooks/useDefaultOshiCreator.test.ts
 
   # The stable required check. Always runs (even when a test group failed or was skipped) and decides from the results:
   # a group whose scope was detected MUST have succeeded; a group whose scope was not detected must have been skipped.

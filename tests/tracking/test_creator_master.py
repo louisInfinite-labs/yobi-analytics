@@ -9,8 +9,11 @@ from tracking.creator_master import (
     CreatorMasterError,
     find_creator_by_youtube_channel_id,
     get_active_creators,
-    is_creator_live_roster_eligible,
-    is_creator_selectable,
+    is_content_collection_eligible,
+    is_current_member_eligible,
+    is_live_status_display_eligible,
+    is_live_status_polling_eligible,
+    is_my_oshi_eligible,
     load_creators,
     resolve_creator_key,
 )
@@ -524,19 +527,19 @@ def test_non_string_avatar_url_is_rejected(tmp_path):
 
 
 def test_production_roster_theme_color_coverage():
-    """98 of the 118 production creators carry a verified themeColor
+    """98 of the 119 production creators carry a verified themeColor
     (Justice/ReGLOSS/FLOWGLOW, every VSPO JP/EN member, and all four
-    アソビ★まわり隊！ pre-debut members included); the remaining 20 (graduated
-    members, pre-debut mekPark units, staff/group channels with no verified
-    color) are correctly left unset for the frontend hashed-palette
-    fallback."""
+    アソビ★まわり隊！ pre-debut members included); the remaining 21 (graduated
+    members, pre-debut mekPark units, staff/group channels -- including the
+    hololive Official channel -- with no verified color) are correctly left
+    unset for the frontend hashed-palette fallback."""
     creators = load_creators()
 
     with_color = [c for c in creators if c.theme_color is not None]
     without_color = [c for c in creators if c.theme_color is None]
 
     assert len(with_color) == 98
-    assert len(without_color) == 20
+    assert len(without_color) == 21
 
 
 def test_production_roster_has_avatar_url_populated_for_every_creator():
@@ -565,7 +568,7 @@ def test_production_roster_display_order_values_are_unique_ints():
 def test_production_roster_loads_with_unique_ids_and_the_verified_asobimawaritai_unit():
     creators = load_creators()
 
-    assert len(creators) == 118
+    assert len(creators) == 119
     assert len({creator.creator_id for creator in creators}) == len(creators)
     assert len({creator.youtube_channel_id for creator in creators}) == len(creators)
 
@@ -728,7 +731,7 @@ class TestFindCreatorByYoutubeChannelId:
 def _creator(**overrides) -> Creator:
     """A default active/member/current Creator, overridable per test -- eligibility
     tests build Creator instances directly rather than round-tripping JSON, since
-    is_creator_selectable/is_creator_live_roster_eligible take a Creator, not a key."""
+    the eligibility functions take a Creator, not a key."""
     fields = {
         "creator_id": "test_creator",
         "display_name": "Test Creator",
@@ -746,88 +749,196 @@ def _creator(**overrides) -> Creator:
 
 
 class TestEligibility:
-    """is_creator_selectable (My Oshi / Favorites) and is_creator_live_roster_eligible
-    (Live Status / Live Schedule) currently share one rule: an active-collection
-    individual member who is a current real-world talent (active or pre_debut).
-    Both functions are exercised identically below to prove they agree today,
-    without assuming they must always agree (see their own docstrings)."""
+    """Live Status display, Live Status polling, My Oshi and new-content collection are
+    four separate rules (see creator_master.py's own section note) -- never one shared
+    predicate. A graduated individual creator is the case that proves it: displayed and
+    Oshi-selectable, but neither polled nor discovered."""
 
-    ELIGIBILITY_FUNCTIONS = [is_creator_selectable, is_creator_live_roster_eligible]
+    # --- Live Status display eligibility: every supported channel ---------------
 
-    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
-    def test_active_member_is_eligible(self, is_eligible):
-        assert is_eligible(_creator(lifecycle_stage="active")) is True
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"channel_type": "member", "lifecycle_stage": "active"},
+            {"channel_type": "member", "lifecycle_stage": "pre_debut"},
+            {"channel_type": "member", "lifecycle_stage": "graduated"},
+            {"channel_type": "group", "lifecycle_stage": "active"},
+            {"channel_type": "group", "lifecycle_stage": "pre_debut"},
+            {"channel_type": "staff", "lifecycle_stage": "active"},
+        ],
+        ids=["active-member", "pre-debut-member", "graduated-member", "active-group", "pre-debut-group", "staff"],
+    )
+    def test_every_supported_channel_is_display_eligible(self, overrides):
+        assert is_live_status_display_eligible(_creator(**overrides)) is True
 
-    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
-    def test_pre_debut_member_is_eligible(self, is_eligible):
-        """A pre-debut member is eligible even though no current stream exists yet --
-        eligibility is about identity/status, not about whether they've ever streamed."""
-        assert is_eligible(_creator(lifecycle_stage="pre_debut")) is True
+    def test_a_channel_taken_out_of_the_roster_is_not_displayed(self):
+        assert is_live_status_display_eligible(_creator(active=False)) is False
 
-    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
-    def test_graduated_member_is_excluded(self, is_eligible):
-        assert is_eligible(_creator(lifecycle_stage="graduated")) is False
+    # --- Live Status polling eligibility: narrower than display -----------------
 
-    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
-    def test_retired_member_is_excluded(self, is_eligible):
-        assert is_eligible(_creator(lifecycle_stage="retired")) is False
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"channel_type": "member", "lifecycle_stage": "active"},
+            {"channel_type": "member", "lifecycle_stage": "pre_debut"},
+            {"channel_type": "group", "lifecycle_stage": "active"},
+            {"channel_type": "group", "lifecycle_stage": "pre_debut"},
+            {"channel_type": "staff", "lifecycle_stage": "active"},
+        ],
+        ids=["active-member", "pre-debut-member", "active-group", "pre-debut-group", "staff"],
+    )
+    def test_current_channels_of_any_type_are_polled(self, overrides):
+        assert is_live_status_polling_eligible(_creator(**overrides)) is True
 
-    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
-    def test_active_group_is_excluded(self, is_eligible):
-        """channel_type alone excludes a group, regardless of lifecycle_stage --
-        never special-cased by creatorId (e.g. vspo_official) or branch."""
-        assert is_eligible(_creator(channel_type="group", lifecycle_stage="active")) is False
+    def test_a_graduated_member_is_displayed_but_never_polled(self):
+        graduated = _creator(lifecycle_stage="graduated")
 
-    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
-    def test_pre_debut_group_is_excluded(self, is_eligible):
-        """hololive_asobimawaritai's own real shape: channel_type "group" with
-        lifecycle_stage "pre_debut" -- group exclusion wins regardless of
-        lifecycle_stage, exactly per the accepted product rule."""
-        assert is_eligible(_creator(channel_type="group", lifecycle_stage="pre_debut")) is False
+        assert is_live_status_display_eligible(graduated) is True
+        assert is_live_status_polling_eligible(graduated) is False
 
-    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
-    def test_active_staff_is_excluded(self, is_eligible):
-        assert is_eligible(_creator(channel_type="staff", lifecycle_stage="active")) is False
+    @pytest.mark.parametrize("channel_id", ["", "   ", "not-a-channel", "uc_lowercase", "UC has space"])
+    def test_a_missing_or_malformed_youtube_channel_id_is_not_polled(self, channel_id):
+        assert is_live_status_polling_eligible(_creator(youtube_channel_id=channel_id)) is False
 
-    @pytest.mark.parametrize("is_eligible", ELIGIBILITY_FUNCTIONS)
-    def test_active_false_member_is_excluded(self, is_eligible):
-        """Future-safe rule, not exercised by any real data today (every production
-        creator currently has active=true): a member taken out of active collection
-        has no reliable ongoing data, so a current-facing roster must not offer them
-        either, even though their real-world lifecycle_stage might still say "active"."""
-        assert is_eligible(_creator(active=False, lifecycle_stage="active")) is False
+    def test_a_retired_member_is_not_polled(self):
+        assert is_live_status_polling_eligible(_creator(lifecycle_stage="retired")) is False
 
-    def test_vspo_official_resolves_but_is_ineligible_for_either_roster(self):
-        """vspo_official: a real Creator Master identity (channel_type "group") --
-        resolves successfully, but is ineligible for My Oshi and Live Status/Schedule."""
+    # --- My Oshi eligibility: individual creators only, graduation keeps them ----
+
+    @pytest.mark.parametrize("lifecycle_stage", ["active", "pre_debut", "graduated"])
+    def test_an_individual_creator_is_oshi_eligible_in_every_current_or_graduated_stage(self, lifecycle_stage):
+        assert is_my_oshi_eligible(_creator(lifecycle_stage=lifecycle_stage)) is True
+
+    @pytest.mark.parametrize("channel_type", ["group", "staff"])
+    @pytest.mark.parametrize("lifecycle_stage", ["active", "pre_debut", "graduated"])
+    def test_group_and_staff_channels_are_never_oshi_eligible(self, channel_type, lifecycle_stage):
+        assert is_my_oshi_eligible(_creator(channel_type=channel_type, lifecycle_stage=lifecycle_stage)) is False
+
+    def test_a_retired_member_is_not_oshi_eligible(self):
+        assert is_my_oshi_eligible(_creator(lifecycle_stage="retired")) is False
+
+    def test_a_member_taken_out_of_the_roster_is_not_oshi_eligible(self):
+        assert is_my_oshi_eligible(_creator(active=False)) is False
+
+    # --- The original narrow "current member" rule (kept for /recent-streams) ----
+
+    @pytest.mark.parametrize("lifecycle_stage", ["active", "pre_debut"])
+    def test_current_member_rule_accepts_an_active_or_pre_debut_member(self, lifecycle_stage):
+        assert is_current_member_eligible(_creator(lifecycle_stage=lifecycle_stage)) is True
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"lifecycle_stage": "graduated"},
+            {"lifecycle_stage": "retired"},
+            {"channel_type": "group"},
+            {"channel_type": "staff"},
+            {"active": False},
+        ],
+    )
+    def test_current_member_rule_is_unchanged_and_rejects_everything_else(self, overrides):
+        assert is_current_member_eligible(_creator(**overrides)) is False
+
+    # --- New-content collection: graduated creators are never discovered ---------
+
+    def test_content_collection_requires_discovery_enabled(self):
+        assert is_content_collection_eligible(_creator(discovery_enabled=True)) is True
+        assert is_content_collection_eligible(_creator(discovery_enabled=False)) is False
+
+    def test_content_collection_is_not_widened_by_display_or_oshi_eligibility(self):
+        graduated = _creator(lifecycle_stage="graduated", discovery_enabled=False)
+
+        assert is_live_status_display_eligible(graduated) is True
+        assert is_my_oshi_eligible(graduated) is True
+        assert is_content_collection_eligible(graduated) is False
+
+    # --- the real Creator Master ------------------------------------------------
+
+    def test_real_master_every_graduated_member_is_displayed_and_oshi_eligible_but_not_polled_or_collected(self):
+        graduated = [c for c in load_creators() if c.lifecycle_stage == "graduated"]
+
+        assert len(graduated) == 13
+        for creator in graduated:
+            assert creator.channel_type == "member"
+            assert is_live_status_display_eligible(creator) is True, creator.creator_id
+            assert is_my_oshi_eligible(creator) is True, creator.creator_id
+            assert is_live_status_polling_eligible(creator) is False, creator.creator_id
+            assert is_content_collection_eligible(creator) is False, creator.creator_id
+
+    def test_real_master_every_channel_is_displayed_and_the_polled_set_is_the_current_channels(self):
+        creators = load_creators()
+        polled = [c for c in creators if is_live_status_polling_eligible(c)]
+        graduated_ids = {c.creator_id for c in creators if c.lifecycle_stage == "graduated"}
+
+        assert len({c.creator_id for c in creators}) == len(creators)
+        assert all(is_live_status_display_eligible(c) for c in creators)
+        # Polled = every channel except the graduated members -- derived, not a pinned total.
+        assert {c.creator_id for c in creators} - {c.creator_id for c in polled} == graduated_ids
+        assert len(polled) == len(creators) - len(graduated_ids)
+
+    def test_real_master_group_and_staff_channels_are_polled_but_not_oshi_eligible(self):
+        non_members = [c for c in load_creators() if c.channel_type != "member"]
+
+        assert {c.creator_id for c in non_members} == {
+            "vspo_official",
+            "hololive_official",
+            "hololive_dev_is_regloss",
+            "hololive_dev_is_flow_glow",
+            "hololive_asobimawaritai",
+            "fuwamoco",
+            "achrora",
+            "unit_b_pre_debut",
+            "holoan_room",
+        }
+        for creator in non_members:
+            assert is_live_status_display_eligible(creator) is True, creator.creator_id
+            assert is_live_status_polling_eligible(creator) is True, creator.creator_id
+            assert is_my_oshi_eligible(creator) is False, creator.creator_id
+
+    def test_real_master_my_oshi_roster_is_every_individual_creator(self):
+        creators = load_creators()
+        eligible = [c for c in creators if is_my_oshi_eligible(c)]
+
+        assert {c.creator_id for c in eligible} == {c.creator_id for c in creators if c.channel_type == "member"}
+        assert all(c.channel_type == "member" for c in eligible)
+
+    def test_hololive_official_is_the_verified_main_channel_and_is_displayed_and_polled_but_not_an_oshi(self):
+        """The main hololive official YouTube channel (hololive.hololivepro.com/en/about) -- a
+        canonical group-type channel, distinct from the old mock-only ch_hololive_staff."""
+        official = next(c for c in load_creators() if c.creator_id == "hololive_official")
+
+        assert official.youtube_channel_id == "UCJFZiqLMntJufDCHc6bQixg"
+        assert official.organization == "hololive"
+        assert official.branch == "holo_jp"
+        assert official.channel_type == "group"
+        assert official.lifecycle_stage == "active"
+        assert official.group_key == ["NO"]
+        assert is_live_status_display_eligible(official) is True
+        assert is_live_status_polling_eligible(official) is True
+        assert is_my_oshi_eligible(official) is False
+
+    def test_ch_hololive_staff_stays_unresolved_and_is_not_the_main_official_channel(self):
+        assert resolve_creator_key("ch_hololive_staff") is None
+        assert resolve_creator_key("hololive_official") is not None
+
+    def test_vspo_official_resolves_and_is_displayed_but_is_not_oshi_eligible(self):
         resolved = resolve_creator_key("ch_vspo_group")
 
         assert resolved is not None
-        assert is_creator_selectable(resolved) is False
-        assert is_creator_live_roster_eligible(resolved) is False
-
-    def test_hololive_asobimawaritai_resolves_but_is_ineligible(self):
-        """hololive_asobimawaritai: channel_type "group", lifecycle_stage "pre_debut" --
-        resolves successfully, but group exclusion wins over pre_debut eligibility."""
-        resolved = resolve_creator_key("hololive_asobimawaritai")
-
-        assert resolved is not None
-        assert resolved.lifecycle_stage == "pre_debut"
+        assert resolved.creator_id == "vspo_official"
         assert resolved.channel_type == "group"
-        assert is_creator_selectable(resolved) is False
-        assert is_creator_live_roster_eligible(resolved) is False
+        assert is_live_status_display_eligible(resolved) is True
+        assert is_live_status_polling_eligible(resolved) is True
+        assert is_my_oshi_eligible(resolved) is False
 
     def test_a_graduated_creator_remains_resolvable_by_canonical_id(self):
-        """Graduated identity is never deleted/rejected by identity resolution --
-        only excluded from the two CURRENT rosters by eligibility, a separate check."""
+        """Graduated identity is never deleted/rejected by identity resolution."""
         graduated = next(c for c in load_creators() if c.lifecycle_stage == "graduated")
 
         resolved = resolve_creator_key(graduated.creator_id)
 
         assert resolved is not None
         assert resolved.creator_id == graduated.creator_id
-        assert is_creator_selectable(resolved) is False
-        assert is_creator_live_roster_eligible(resolved) is False
 
     def test_historical_identity_lookup_is_unaffected_by_eligibility(self):
         """load_creators()/get_active_creators() -- the functions historical/analytics
