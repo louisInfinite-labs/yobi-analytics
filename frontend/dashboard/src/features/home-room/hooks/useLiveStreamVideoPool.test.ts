@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
-import { useRecentVideos } from "./useRecentVideos"
+import { useLiveStreamVideoPool } from "./useRecentVideos"
 import * as useLiveStreamsModule from "../../../shared/api/hooks/useLiveStreams"
 import * as recentArchivedLivestreamsModule from "../data/recentArchivedLivestreams"
 import type { LiveStreamDto } from "../../../shared/api/liveStreams"
@@ -52,15 +52,15 @@ const UPCOMING: LiveStreamDto = {
   thumbnailUrl: "https://img.youtube.com/vi/v2/hqdefault.jpg",
 }
 
-describe("useRecentVideos streamVideos (Latest Live: Holodex current + AWS archives)", () => {
+describe("useLiveStreamVideoPool (player pool: Holodex current + AWS archives)", () => {
   it("maps a live stream for the current creator to a live_now RecentVideo with the real videoId/title", async () => {
     mockStreams([LIVE])
     mockArchivePage(emptyArchivePage())
 
-    const { result } = renderHook(() => useRecentVideos("ch_aizawa_ema"))
+    const { result } = renderHook(() => useLiveStreamVideoPool("ch_aizawa_ema"))
 
     await waitFor(() =>
-      expect(result.current.streamVideos.videos).toEqual([
+      expect(result.current.videos).toEqual([
         { videoId: "v1", title: "Ranked grind", publishedAt: "2026-09-29T10:00:00Z", contentFormat: "live_now" },
       ]),
     )
@@ -70,10 +70,10 @@ describe("useRecentVideos streamVideos (Latest Live: Holodex current + AWS archi
     mockStreams([UPCOMING])
     mockArchivePage(emptyArchivePage())
 
-    const { result } = renderHook(() => useRecentVideos("ch_aizawa_ema"))
+    const { result } = renderHook(() => useLiveStreamVideoPool("ch_aizawa_ema"))
 
     await waitFor(() =>
-      expect(result.current.streamVideos.videos).toEqual([
+      expect(result.current.videos).toEqual([
         { videoId: "v2", title: "Anniversary goods", publishedAt: "2026-10-02T14:45:00Z", contentFormat: "live_upcoming" },
       ]),
     )
@@ -83,10 +83,10 @@ describe("useRecentVideos streamVideos (Latest Live: Holodex current + AWS archi
     mockStreams([{ ...LIVE, creatorId: "shirakami_fubuki" }])
     mockArchivePage(emptyArchivePage())
 
-    const { result } = renderHook(() => useRecentVideos("ch_aizawa_ema"))
+    const { result } = renderHook(() => useLiveStreamVideoPool("ch_aizawa_ema"))
 
-    await waitFor(() => expect(result.current.streamVideos.loading).toBe(false))
-    expect(result.current.streamVideos.videos).toEqual([])
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.videos).toEqual([])
   })
 
   it("appends AWS completed archives (newest first, as the backend already ordered them) after the current stream", async () => {
@@ -100,10 +100,10 @@ describe("useRecentVideos streamVideos (Latest Live: Holodex current + AWS archi
       hasMore: false,
     })
 
-    const { result } = renderHook(() => useRecentVideos("ch_aizawa_ema"))
+    const { result } = renderHook(() => useLiveStreamVideoPool("ch_aizawa_ema"))
 
-    await waitFor(() => expect(result.current.streamVideos.videos).toHaveLength(3))
-    expect(result.current.streamVideos.videos.map((v) => v.videoId)).toEqual(["v1", "a1", "a2"])
+    await waitFor(() => expect(result.current.videos).toHaveLength(3))
+    expect(result.current.videos.map((v) => v.videoId)).toEqual(["v1", "a1", "a2"])
   })
 
   it("offline creator (no live/upcoming) shows AWS archives starting at slot 0", async () => {
@@ -114,9 +114,9 @@ describe("useRecentVideos streamVideos (Latest Live: Holodex current + AWS archi
       hasMore: false,
     })
 
-    const { result } = renderHook(() => useRecentVideos("ch_aizawa_ema"))
+    const { result } = renderHook(() => useLiveStreamVideoPool("ch_aizawa_ema"))
 
-    await waitFor(() => expect(result.current.streamVideos.videos).toEqual([
+    await waitFor(() => expect(result.current.videos).toEqual([
       { videoId: "a1", title: "Archive", publishedAt: "2026-09-20T00:00:00Z", contentFormat: "live_archive", viewCount: 100 },
     ]))
   })
@@ -132,10 +132,10 @@ describe("useRecentVideos streamVideos (Latest Live: Holodex current + AWS archi
       hasMore: false,
     })
 
-    const { result } = renderHook(() => useRecentVideos("ch_aizawa_ema"))
+    const { result } = renderHook(() => useLiveStreamVideoPool("ch_aizawa_ema"))
 
-    await waitFor(() => expect(result.current.streamVideos.videos.map((v) => v.videoId)).toEqual(["v1", "a2"]))
-    const v1 = result.current.streamVideos.videos.find((v) => v.videoId === "v1")
+    await waitFor(() => expect(result.current.videos.map((v) => v.videoId)).toEqual(["v1", "a2"]))
+    const v1 = result.current.videos.find((v) => v.videoId === "v1")
     expect(v1?.contentFormat).toBe("live_now")
     expect(v1?.title).toBe("Ranked grind")
   })
@@ -144,10 +144,10 @@ describe("useRecentVideos streamVideos (Latest Live: Holodex current + AWS archi
     mockStreams([LIVE])
     mockArchiveFailure(new Error("network down"))
 
-    const { result } = renderHook(() => useRecentVideos("ch_aizawa_ema"))
+    const { result } = renderHook(() => useLiveStreamVideoPool("ch_aizawa_ema"))
 
-    await waitFor(() => expect(result.current.streamVideos.loading).toBe(false))
-    expect(result.current.streamVideos.videos).toEqual([
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.videos).toEqual([
       { videoId: "v1", title: "Ranked grind", publishedAt: "2026-09-29T10:00:00Z", contentFormat: "live_now" },
     ])
   })
@@ -156,7 +156,7 @@ describe("useRecentVideos streamVideos (Latest Live: Holodex current + AWS archi
     mockStreams([LIVE])
     mockArchivePage(emptyArchivePage())
 
-    renderHook(() => useRecentVideos("ch_aizawa_ema"))
+    renderHook(() => useLiveStreamVideoPool("ch_aizawa_ema"))
 
     await waitFor(() => expect(recentArchivedLivestreamsModule.fetchArchivedLivestreams).toHaveBeenCalled())
     // The query string itself (contentType=live&liveStatus=completed) is
@@ -170,10 +170,10 @@ describe("useRecentVideos streamVideos (Latest Live: Holodex current + AWS archi
     mockStreams([], { isLoading: true, error: "network down" })
     mockArchivePage(emptyArchivePage())
 
-    const { result } = renderHook(() => useRecentVideos("ch_aizawa_ema"))
+    const { result } = renderHook(() => useLiveStreamVideoPool("ch_aizawa_ema"))
 
-    expect(result.current.streamVideos.loading).toBe(true)
-    expect(result.current.streamVideos.error?.message).toBe("network down")
+    expect(result.current.loading).toBe(true)
+    expect(result.current.error?.message).toBe("network down")
   })
 })
 
@@ -196,7 +196,7 @@ function deferredPage() {
   return { promise, resolve }
 }
 
-describe("useRecentVideos archive pool: creator switching and pagination guards", () => {
+describe("useLiveStreamVideoPool archive pool: creator switching and pagination guards", () => {
   const fetchMock = () => vi.mocked(recentArchivedLivestreamsModule.fetchArchivedLivestreams)
 
   it("drops the previous creator's archives and hasMore as soon as the creator changes, before the new request resolves", async () => {
@@ -204,17 +204,17 @@ describe("useRecentVideos archive pool: creator switching and pagination guards"
     const b = deferredPage()
     fetchMock().mockReset()
     fetchMock().mockResolvedValueOnce(archivePage(["a1"], true)).mockReturnValueOnce(b.promise)
-    const { result, rerender } = renderHook(({ id }) => useRecentVideos(id), { initialProps: { id: CREATOR_A.creatorId } })
-    await waitFor(() => expect(result.current.streamVideos.videos.map((v) => v.videoId)).toEqual(["a1"]))
-    expect(result.current.streamVideos.hasMore).toBe(true)
+    const { result, rerender } = renderHook(({ id }) => useLiveStreamVideoPool(id), { initialProps: { id: CREATOR_A.creatorId } })
+    await waitFor(() => expect(result.current.videos.map((v) => v.videoId)).toEqual(["a1"]))
+    expect(result.current.hasMore).toBe(true)
 
     rerender({ id: CREATOR_B.creatorId })
 
     await waitFor(() => expect(fetchMock()).toHaveBeenCalledWith(CREATOR_B.creatorId, { offset: 0 }))
-    expect(result.current.streamVideos.videos).toEqual([]) // A's archive never shows under B while B loads
-    expect(result.current.streamVideos.hasMore).toBe(false)
+    expect(result.current.videos).toEqual([]) // A's archive never shows under B while B loads
+    expect(result.current.hasMore).toBe(false)
     await act(async () => b.resolve(archivePage(["b1"], false)))
-    expect(result.current.streamVideos.videos.map((v) => v.videoId)).toEqual(["b1"])
+    expect(result.current.videos.map((v) => v.videoId)).toEqual(["b1"])
   })
 
   it("loadMore() is ignored while the initial request is still loading", async () => {
@@ -222,25 +222,25 @@ describe("useRecentVideos archive pool: creator switching and pagination guards"
     const initial = deferredPage()
     fetchMock().mockReset()
     fetchMock().mockReturnValueOnce(initial.promise)
-    const { result } = renderHook(() => useRecentVideos(CREATOR_A.creatorId))
+    const { result } = renderHook(() => useLiveStreamVideoPool(CREATOR_A.creatorId))
     await waitFor(() => expect(fetchMock()).toHaveBeenCalledTimes(1))
 
-    act(() => result.current.streamVideos.loadMore())
+    act(() => result.current.loadMore())
     await act(async () => initial.resolve(archivePage(["a1", "a2"], true)))
 
     expect(fetchMock()).toHaveBeenCalledTimes(1) // no second offset-0 request that would append a duplicate page
-    expect(result.current.streamVideos.videos.map((v) => v.videoId)).toEqual(["a1", "a2"])
+    expect(result.current.videos.map((v) => v.videoId)).toEqual(["a1", "a2"])
   })
 
   it("loadMore() is a no-op once hasMore is false", async () => {
     mockStreams([])
     fetchMock().mockReset()
     fetchMock().mockResolvedValue(archivePage(["a1"], false))
-    const { result } = renderHook(() => useRecentVideos(CREATOR_A.creatorId))
-    await waitFor(() => expect(result.current.streamVideos.loading).toBe(false))
+    const { result } = renderHook(() => useLiveStreamVideoPool(CREATOR_A.creatorId))
+    await waitFor(() => expect(result.current.loading).toBe(false))
 
-    act(() => result.current.streamVideos.loadMore())
-    act(() => result.current.streamVideos.loadMore())
+    act(() => result.current.loadMore())
+    act(() => result.current.loadMore())
 
     expect(fetchMock()).toHaveBeenCalledTimes(1)
   })
@@ -250,16 +250,16 @@ describe("useRecentVideos archive pool: creator switching and pagination guards"
     const more = deferredPage()
     fetchMock().mockReset()
     fetchMock().mockResolvedValueOnce(archivePage(["a1", "a2"], true)).mockReturnValueOnce(more.promise)
-    const { result } = renderHook(() => useRecentVideos(CREATOR_A.creatorId))
-    await waitFor(() => expect(result.current.streamVideos.hasMore).toBe(true))
+    const { result } = renderHook(() => useLiveStreamVideoPool(CREATOR_A.creatorId))
+    await waitFor(() => expect(result.current.hasMore).toBe(true))
 
-    act(() => result.current.streamVideos.loadMore())
-    act(() => result.current.streamVideos.loadMore()) // overlapping -- ignored
+    act(() => result.current.loadMore())
+    act(() => result.current.loadMore()) // overlapping -- ignored
     await act(async () => more.resolve(archivePage(["a3"], false)))
 
     expect(fetchMock()).toHaveBeenCalledTimes(2)
     expect(fetchMock()).toHaveBeenLastCalledWith(CREATOR_A.creatorId, { offset: 2 })
-    expect(result.current.streamVideos.videos.map((v) => v.videoId)).toEqual(["a1", "a2", "a3"])
-    expect(result.current.streamVideos.hasMore).toBe(false)
+    expect(result.current.videos.map((v) => v.videoId)).toEqual(["a1", "a2", "a3"])
+    expect(result.current.hasMore).toBe(false)
   })
 })

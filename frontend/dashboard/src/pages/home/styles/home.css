@@ -1838,6 +1838,31 @@
   text-align: center;
 }
 
+/* The normal error state of a Home data surface (shelf, Oshi Status recent rows): the API/network/server
+   failure message plus its code, visually the counterpart of .oshi-empty-state. */
+.oshi-error-state {
+  min-height: 0;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+
+  padding: 12px;
+
+  color: var(--oshi-text-2);
+
+  font-size: 11px;
+  text-align: center;
+}
+
+.oshi-error-state__code {
+  color: var(--oshi-text-3);
+
+  font-variant-numeric: tabular-nums;
+}
+
 .home-placeholder {
   position: absolute;
 

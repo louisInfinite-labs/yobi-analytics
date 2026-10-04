@@ -11,7 +11,7 @@ import type { RecentVideo } from "../../../shared/media/model/recentVideo"
  * own docstring for why liveStatus is a second, independent filter from
  * contentType. */
 
-/** Mirrors HolodexPage's own page size (usePaginatedVideos' established
+/** Mirrors HolodexPage's own page size (the former shelf hook's established
  * "Latest Videos" convention) -- this row's own bounded page, not a fetch of
  * the whole historical catalog. */
 const ARCHIVE_PAGE_SIZE = 20

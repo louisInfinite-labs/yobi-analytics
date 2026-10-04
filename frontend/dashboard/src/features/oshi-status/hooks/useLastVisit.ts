@@ -2,9 +2,8 @@ import { createSharedState, useSharedState } from "../../../shared/state/sharedS
 
 const STORAGE_KEY = "yobi.home.lastVisitAt"
 
-/** How far back a DEV reset rewinds the stored visit -- far enough that the
- * mock unseen video entries (see mockRecentVideos.ts's 5/20-minutes-ago
- * entries) always land after it again, however long this tab has been open. */
+/** How far back a DEV reset rewinds the stored visit -- far enough that recent activity
+ * rows always land after it again (so the NEW badge shows), however long this tab has been open. */
 const RESET_LOOKBACK_MS = 24 * 60 * 60 * 1000
 
 /** Null on a first visit, an unparseable stored value, or a storage read
@@ -50,9 +49,8 @@ export function usePreviousVisit(): Date | null {
   return useSharedState(previousVisitStore)[0]
 }
 
-/** DEV-only: rewinds the stored visit so the existing mock unseen video
- * entries register as unseen again, gated the same way any other dev-only
- * tool in this codebase is (`import.meta.env.DEV`). No-op outside dev. */
+/** DEV-only: rewinds the stored visit so recent activity registers as unseen again, gated the same
+ * way any other dev-only tool in this codebase is (`import.meta.env.DEV`). No-op outside dev. */
 export function resetPreviousVisit(): void {
   if (!import.meta.env.DEV) return
   previousVisitStore.set(new Date(Date.now() - RESET_LOOKBACK_MS))

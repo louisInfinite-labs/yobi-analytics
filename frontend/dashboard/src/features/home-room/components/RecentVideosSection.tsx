@@ -1,29 +1,27 @@
-import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import { ConfigProvider, Segmented } from "antd"
 import { ChevronRight } from "lucide-react"
-import { resolvePlaybackVideoId } from "../data/mockRecentVideos"
+import { OshiErrorState } from "./OshiErrorState"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
-import type { VideoPage } from "../hooks/useRecentVideos"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { formatCompactCount } from "../../oshi-status/utils/oshiActivity"
-import {
-  selectAllVideos,
-  selectLatestVideos,
-  selectLivestreamSlots,
-  selectVideosByCategory,
-  VIDEO_SORT_LABEL_KEYS,
-  VIDEO_SORT_OPTIONS,
-  type VideoSortOption,
-} from "../utils/recentVideosSelection"
+import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
+import type { VideoSortOption } from "../utils/recentVideosSelection"
 import { VIDEO_SECTION_TAGS, VIDEO_SECTION_TAG_LABEL_KEYS, type VideoSectionTag } from "../model/videoCategories"
+import {
+  VIDEO_CONTENT_TYPES,
+  VIDEO_VIEW_WINDOWS,
+  buildShelfQuery,
+  isQuickFilterTag,
+  oshiVideosQueryKey,
+  type VideoContentType,
+  type VideoViewWindow,
+} from "../model/oshiVideosQuery"
+import { useOshiVideos } from "../hooks/useOshiVideos"
 
 interface RecentVideosSectionProps {
   creatorId: string
-  /** Both pools are loaded once by Home and handed down, so this section and
-   * Oshi Status read the same fetch rather than each opening their own. */
-  latestVideos: VideoPage
-  streamVideos: VideoPage
   /** The one shared Home selected-video path (see HomePage.tsx) -- a normal
    * card click switches the central Oshi Stream player directly, never a
    * modal/second player. Drag-to-scroll (see VideoTrack) never calls this. */
@@ -35,10 +33,7 @@ interface RecentVideosSectionProps {
  * no later than that window. */
 const PREFETCH_AT_INDEX = 13
 
-const INITIAL_VISIBLE_COUNT = 20
-/** Both how many more slots `visibleCount` grows by per prefetch AND how far
- * the track's own next-prefetch threshold advances each time — one page's
- * worth either way. */
+/** How far the track's own next-prefetch threshold advances each time -- one page's worth. */
 const VISIBLE_COUNT_STEP = 20
 
 /** Matches .oshi-videos__list's own `gap`, so a scroll step lands one card
@@ -61,14 +56,8 @@ function formatCardMeta(video: RecentVideo): string {
 }
 
 /** The card's own thumbnail sits above its title, using YouTube's own
- * thumbnail JPG endpoint — no separate fetch, keyed only by videoId. Most
- * mockRecentVideos ids aren't real YouTube ids, so the thumbnail/embed
- * source goes through resolvePlaybackVideoId (falls back to a real, always-
- * embeddable placeholder video for those) rather than the entry's own
- * `videoId` directly -- `videoId` itself must stay each entry's own unique
- * value (not the shared placeholder) since it also doubles as the React
- * list key and the identity recentVideosSelection.ts's mergeAndDedupe
- * dedupes by. */
+ * thumbnail JPG endpoint -- no separate fetch, keyed only by the real
+ * videoId the API returned (never a substituted placeholder video). */
 function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video: RecentVideo) => void }) {
   const [thumbFailed, setThumbFailed] = useState(false)
   const isLiveNow = video.contentFormat === "live_now"
@@ -81,7 +70,7 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
           <span className="home-placeholder">No thumbnail</span>
         ) : (
           <img
-            src={`https://img.youtube.com/vi/${resolvePlaybackVideoId(video.videoId)}/hqdefault.jpg`}
+            src={`https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`}
             alt=""
             draggable={false}
             onError={() => setThumbFailed(true)}
@@ -109,11 +98,14 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
 function VideoTrack({
   videos,
   emptyLabel,
+  error,
   onOpen,
   onNearEnd,
 }: {
   videos: RecentVideo[]
   emptyLabel: string
+  /** The first page failed: shown as the normal error state, distinct from a valid empty result. */
+  error: Error | null
   onOpen: (video: RecentVideo) => void
   onNearEnd: () => void
 }) {
@@ -231,7 +223,11 @@ function VideoTrack({
       >
         <div className="oshi-videos__list">
           {videos.length === 0 ? (
-            <div className="oshi-empty-state">{emptyLabel}</div>
+            error ? (
+              <OshiErrorState error={error} />
+            ) : (
+              <div className="oshi-empty-state">{emptyLabel}</div>
+            )
           ) : (
             videos.map((video) => <VideoThumbCard key={video.videoId} video={video} onOpen={handleOpen} />)
           )}
@@ -308,9 +304,22 @@ function VideoSectionTagBar({
   )
 }
 
-/** The sort dropdown -- only rendered for "ALL"/the 7 category tags, never
- * for "latest videos"/"latest live" which keep their existing fixed
- * newest-first order. */
+const SORT_OPTIONS: readonly VideoSortOption[] = ["newest", "oldest", "mostViews"]
+const SORT_LABEL_KEYS = {
+  newest: "recentVideos.sort.newest",
+  oldest: "recentVideos.sort.oldest",
+  mostViews: "recentVideos.sort.mostViews",
+} as const
+/** The UI shows the backend's canonical "upload" content type as 影片 / Videos. */
+const CONTENT_TYPE_LABEL_KEYS = {
+  all: "recentVideos.contentType.all",
+  live: "recentVideos.contentType.live",
+  upload: "recentVideos.contentType.video",
+} as const
+
+/** The sort dropdown: exactly Newest / Oldest / Most viewed -- "Most viewed" is itself selectable
+ * (its All/1d/7d/30d period is a separate dropdown, see ViewWindowDropdown). Only for the topic
+ * tags (ALL + the 7 categories); the quick filters have a fixed newest-first order. */
 function VideoSortDropdown({
   value,
   onChange,
@@ -332,9 +341,68 @@ function VideoSortDropdown({
       aria-hidden={hidden}
       tabIndex={hidden ? -1 : undefined}
     >
-      {VIDEO_SORT_OPTIONS.map((option) => (
-        <option key={option} value={option}>
-          {t(locale, VIDEO_SORT_LABEL_KEYS[option])}
+      {SORT_OPTIONS.map((sort) => (
+        <option key={sort} value={sort}>
+          {t(locale, SORT_LABEL_KEYS[sort])}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** The period dropdown (All / 1d / 7d / 30d): rendered ONLY while the sort is "most viewed", right
+ * beside the sort dropdown. It is not rendered at all for newest/oldest. */
+function ViewWindowDropdown({
+  value,
+  onChange,
+  locale,
+}: {
+  value: VideoViewWindow
+  onChange: (window: VideoViewWindow) => void
+  locale: Locale
+}) {
+  return (
+    <select
+      className="oshi-videos__sort"
+      value={value}
+      onChange={(event) => onChange(event.target.value as VideoViewWindow)}
+      aria-label={t(locale, "recentVideos.windowAriaLabel")}
+    >
+      {VIDEO_VIEW_WINDOWS.map((window) => (
+        <option key={window} value={window}>
+          {t(locale, `recentVideos.window.${window}`)}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** All / Live / Videos -- narrows the selected topic (ALL included) to one content
+ * type. Same visibility rule as the sort dropdown: the quick filters don't use it. */
+function ContentTypeDropdown({
+  value,
+  onChange,
+  locale,
+  hidden,
+}: {
+  value: VideoContentType
+  onChange: (contentType: VideoContentType) => void
+  locale: Locale
+  hidden: boolean
+}) {
+  return (
+    <select
+      className="oshi-videos__sort"
+      style={{ visibility: hidden ? "hidden" : "visible" }}
+      value={value}
+      onChange={(event) => onChange(event.target.value as VideoContentType)}
+      aria-label={t(locale, "recentVideos.contentTypeAriaLabel")}
+      aria-hidden={hidden}
+      tabIndex={hidden ? -1 : undefined}
+    >
+      {VIDEO_CONTENT_TYPES.map((type) => (
+        <option key={type} value={type}>
+          {t(locale, CONTENT_TYPE_LABEL_KEYS[type])}
         </option>
       ))}
     </select>
@@ -366,50 +434,32 @@ function ViewAllButton({ locale }: { locale: Locale }) {
 
 /** Home's Oshi Videos strip: one compact filter row, then one horizontally
  * scrolling thumbnail row -- fixed height, so it can never grow the page
- * tall enough to introduce a vertical scrollbar. Each of the three view
- * "modes" (latest/live/all-or-category) keeps its own visibleCount and
- * prefetch threshold so switching tags never loses another mode's own
- * scroll position or re-triggers its loadMore(). */
-export function RecentVideosSection({
-  creatorId,
-  latestVideos: latestPool,
-  streamVideos: streamPool,
-  onSelectVideo,
-}: RecentVideosSectionProps) {
+ * tall enough to introduce a vertical scrollbar.
+ *
+ * Every tag is a backend query for the CURRENT creator (see oshiVideosQuery.ts): the topic tags
+ * use the content type / sort / period controls, and the two quick filters are fixed shortcuts
+ * (最新影片 = uploads, 最新直播 = completed livestream archives, both newest first). */
+export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSectionProps) {
   const [locale] = useLocale()
   const [selectedTag, setSelectedTag] = useState<VideoSectionTag>("latestVideos")
   const [sortOption, setSortOption] = useState<VideoSortOption>("newest")
-  const [latestVisibleCount, setLatestVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
-  const [streamVisibleCount, setStreamVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
-  const [combinedVisibleCount, setCombinedVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
+  const [viewWindow, setViewWindow] = useState<VideoViewWindow>("total")
+  const [contentType, setContentType] = useState<VideoContentType>("all")
 
-  // Sort dropdown only applies to "ALL"/the 7 category tags -- see
-  // VideoSortDropdown's own docstring.
-  const showSortDropdown = selectedTag !== "latestVideos" && selectedTag !== "latestLive"
+  const canonicalCreatorId = resolveCreatorKey(creatorId)?.creatorId
+  const shelfQuery = useMemo(
+    () => buildShelfQuery(selectedTag, canonicalCreatorId, { contentType, sort: sortOption, viewWindow }),
+    [selectedTag, canonicalCreatorId, contentType, sortOption, viewWindow],
+  )
+  const shelf = useOshiVideos(shelfQuery)
 
-  const videos = useMemo(() => {
-    if (selectedTag === "latestVideos") return selectLatestVideos(latestPool.videos, latestVisibleCount)
-    if (selectedTag === "latestLive") return selectLivestreamSlots(streamPool.videos, streamVisibleCount)
-    if (selectedTag === "all") return selectAllVideos(latestPool.videos, streamPool.videos, combinedVisibleCount, sortOption)
-    return selectVideosByCategory(latestPool.videos, streamPool.videos, selectedTag, combinedVisibleCount, sortOption)
-  }, [selectedTag, latestPool.videos, streamPool.videos, latestVisibleCount, streamVisibleCount, combinedVisibleCount, sortOption])
+  // The dropdowns only apply to the topic tags; the period dropdown only to the most-viewed sort.
+  const showShelfFilters = !isQuickFilterTag(selectedTag)
+  const showViewWindow = showShelfFilters && sortOption === "mostViews"
 
-  const handleNearEnd = useCallback(() => {
-    if (selectedTag === "latestVideos") {
-      setLatestVisibleCount((prev) => prev + VISIBLE_COUNT_STEP)
-      latestPool.loadMore()
-    } else if (selectedTag === "latestLive") {
-      setStreamVisibleCount((prev) => prev + VISIBLE_COUNT_STEP)
-      streamPool.loadMore()
-    } else {
-      setCombinedVisibleCount((prev) => prev + VISIBLE_COUNT_STEP)
-      latestPool.loadMore()
-      streamPool.loadMore()
-    }
-  }, [selectedTag, latestPool, streamPool])
-
-  const emptyLabel =
-    selectedTag === "latestVideos"
+  const emptyLabel = shelf.loading
+    ? ""
+    : selectedTag === "latestVideos"
       ? t(locale, "recentVideos.empty.latestVideos")
       : selectedTag === "latestLive"
         ? t(locale, "recentVideos.empty.latestLive")
@@ -422,22 +472,28 @@ export function RecentVideosSection({
           selected={selectedTag}
           onSelect={setSelectedTag}
           locale={locale}
-          trailing={<VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showSortDropdown} />}
+          trailing={
+            <>
+              <ContentTypeDropdown value={contentType} onChange={setContentType} locale={locale} hidden={!showShelfFilters} />
+              <VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showShelfFilters} />
+              {showViewWindow && <ViewWindowDropdown value={viewWindow} onChange={setViewWindow} locale={locale} />}
+            </>
+          }
         />
         <ViewAllButton locale={locale} />
       </header>
 
-      {/* key includes creatorId, not just selectedTag: a fresh track per tag
-          AND per creator, not a reused instance -- otherwise switching
-          creator while the same tag stays selected would carry over the
-          PREVIOUS creator's scroll position and prefetch threshold onto the
-          new creator's own videos. */}
+      {/* key = the creator + what the shelf is actually showing: a fresh track (scroll position and
+          prefetch threshold) per creator, tag, content type, sort and period -- otherwise switching
+          creator while the same tag stays selected would carry the PREVIOUS creator's scroll state
+          onto the new creator's videos. */}
       <VideoTrack
-        key={`${creatorId}:${selectedTag}`}
-        videos={videos}
+        key={`${creatorId}:${shelfQuery ? oshiVideosQueryKey(shelfQuery) : selectedTag}`}
+        videos={shelf.videos}
         emptyLabel={emptyLabel}
+        error={shelf.error}
         onOpen={(video) => onSelectVideo({ videoId: video.videoId, title: video.title })}
-        onNearEnd={handleNearEnd}
+        onNearEnd={shelf.loadMore}
       />
     </section>
   )
