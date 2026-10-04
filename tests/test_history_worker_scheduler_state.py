@@ -527,7 +527,7 @@ def test_active_does_not_imply_due(monkeypatch):
 
     entries = [
         ManifestEntry(stale_id, "c1", True, published_at=None, activity_state=None),
-        ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold"),
+        ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold", content_type="upload"),
         ManifestEntry(inactive_id, "c1", False, published_at="2020-01-01T00:00:00Z", activity_state="Hot"),
     ]
     video_master = _FakeVideoMaster(
@@ -611,7 +611,7 @@ def test_mixed_due_and_non_due_shard_only_requests_due_ids(monkeypatch):
         manifest_store=_FakeManifest(
             [
                 ManifestEntry(recent_id, "c1", True, published_at="2026-09-10T00:00:00Z", activity_state="Unknown"),
-                ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold"),
+                ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold", content_type="upload"),
             ]
         ),
         history_store=history,
@@ -662,7 +662,7 @@ def test_non_due_video_scheduler_state_is_untouched(monkeypatch):
         manifest_store=_FakeManifest(
             [
                 ManifestEntry(recent_id, "c1", True, published_at="2026-09-10T00:00:00Z", activity_state="Unknown"),
-                ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold"),
+                ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold", content_type="upload"),
             ]
         ),
         history_store=history,
@@ -706,7 +706,7 @@ def test_carried_forward_row_preserves_real_previous_observed_at_and_view_count(
             manifest_store=_FakeManifest(
                 [
                     ManifestEntry(recent_id, "c1", True, published_at="2026-09-10T00:00:00Z", activity_state="Unknown"),
-                    ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold"),
+                    ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold", content_type="upload"),
                 ]
             ),
             history_store=history,
@@ -750,7 +750,7 @@ def test_new_video_with_no_usable_prior_state_is_collected_not_omitted():
             shard=shard,
             youtube=object(),
             manifest_store=_FakeManifest(
-                [ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold")]
+                [ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold", content_type="upload")]
             ),
             history_store=_FakeHistory(),
             video_master_store=video_master,
@@ -796,7 +796,7 @@ def test_carry_forward_falls_back_to_video_master_when_previous_shard_is_missing
             manifest_store=_FakeManifest(
                 [
                     ManifestEntry(recent_id, "c1", True, published_at="2026-09-10T00:00:00Z", activity_state="Unknown"),
-                    ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold"),
+                    ManifestEntry(cold_id, "c1", True, published_at="2020-01-01T00:00:00Z", activity_state="Cold", content_type="upload"),
                 ]
             ),
             history_store=_FakeHistory(),  # no shard for any date at all -- a real gap

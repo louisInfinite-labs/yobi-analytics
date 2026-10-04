@@ -1,10 +1,10 @@
-"""Static, text-level structural check for terraform/lambda.tf's `api` Lambda
-environment block (PR #60 review fix, F1/F2): the `api` Lambda serves
-GET /subscribers/leaderboard (stores.subscriber_ranking_store) and the
-trending-cache S3 archive fallback (stores.trending_cache_archive_store),
-both of which call `from_environment()` reading YOBI_HISTORY_BUCKET at
-runtime -- an unconfigured bucket previously meant either an unhandled 500
-(subscriber leaderboard) or a silently-broken archive fallback.
+"""Static, text-level structural check for terraform/lambda.tf's Lambda environment blocks.
+
+The API Lambda deliberately has NO YOBI_HISTORY_BUCKET: its read paths (video-ranking, subscriber-ranking, Oshi
+Status) resolve the fixed bucket through stores.history_bucket, where the variable is only an optional override.
+That keeps a deploy of the API from needing any change to its live environment. The three data Lambdas (collector,
+history_worker, ranking_reducer) are writers and keep receiving it from the single `aws_s3_bucket.history`
+resource, so a writer can never silently fall back to a default bucket.
 
 No `terraform` CLI is available in this environment, so this is a best-effort
 textual substitute (substring/slice check against the raw .tf source), not a
@@ -16,9 +16,18 @@ module docstring for the same caveat.
 from __future__ import annotations
 
 import pathlib
+import re
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 LAMBDA_TF = (REPO_ROOT / "terraform" / "lambda.tf").read_text()
+
+WRITER_LAMBDAS = ("collector", "history_worker", "ranking_reducer")
+# The API Lambda's environment as last applied (4c0e3c8): everything here must stay exactly as it is.
+API_ENVIRONMENT = {
+    "YOBI_ADMIN_API_KEY_SECRET_NAME": '"yobi-analytics/admin-api-key"',
+    "YOBI_STORAGE_BACKEND": '"dynamodb"',
+    "HOLODEX_SECRET_NAME": '"yobi-analytics/holodex-api-key"',
+}
 
 
 def _resource_block(source: str, resource_line: str) -> str:
@@ -27,19 +36,34 @@ def _resource_block(source: str, resource_line: str) -> str:
     return source[start : next_resource if next_resource != -1 else len(source)]
 
 
-def test_api_lambda_has_the_history_bucket_env_var():
+def _environment_variables(block: str) -> dict[str, str]:
+    """Name -> value expression of every assignment in the block's `variables = {...}` map (comments ignored)."""
+    variables_map = re.search(r"variables\s*=\s*\{(.*?)\n\s*\}", block, re.DOTALL)
+    assert variables_map is not None, "no environment variables map found"
+    assignments = {}
+    for line in variables_map.group(1).splitlines():
+        match = re.match(r"^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.+?)\s*$", line)
+        if match:
+            assignments[match.group(1)] = match.group(2)
+    return assignments
+
+
+def test_api_lambda_does_not_set_the_history_bucket_env_var():
+    """The read side falls back to the fixed bucket, so the API Lambda's live environment must not need the variable."""
     block = _resource_block(LAMBDA_TF, 'resource "aws_lambda_function" "api"')
-    assert "YOBI_HISTORY_BUCKET = aws_s3_bucket.history.id" in block
+
+    assert "YOBI_HISTORY_BUCKET" not in _environment_variables(block)
 
 
-def test_api_lambda_history_bucket_uses_the_same_reference_every_other_lambda_uses():
-    """Must reuse the existing `aws_s3_bucket.history.id` reference -- not a
-    second/parallel bucket variable of its own."""
-    collector_block = _resource_block(LAMBDA_TF, 'resource "aws_lambda_function" "collector"')
-    history_worker_block = _resource_block(LAMBDA_TF, 'resource "aws_lambda_function" "history_worker"')
-    ranking_reducer_block = _resource_block(LAMBDA_TF, 'resource "aws_lambda_function" "ranking_reducer"')
-    api_block = _resource_block(LAMBDA_TF, 'resource "aws_lambda_function" "api"')
+def test_api_lambda_environment_is_exactly_the_last_applied_one():
+    """Same names and literal values as the applied config: no unrelated environment change hides behind the removal."""
+    block = _resource_block(LAMBDA_TF, 'resource "aws_lambda_function" "api"')
 
-    for block in (collector_block, history_worker_block, ranking_reducer_block, api_block):
-        assert "YOBI_HISTORY_BUCKET" in block
-        assert "aws_s3_bucket.history.id" in block
+    assert _environment_variables(block) == API_ENVIRONMENT
+
+
+def test_writer_lambdas_still_get_the_history_bucket_from_the_single_bucket_resource():
+    """The collector, history worker and reducer keep requiring the variable, wired to `aws_s3_bucket.history.id`."""
+    for name in WRITER_LAMBDAS:
+        block = _resource_block(LAMBDA_TF, f'resource "aws_lambda_function" "{name}"')
+        assert _environment_variables(block).get("YOBI_HISTORY_BUCKET") == "aws_s3_bucket.history.id", name

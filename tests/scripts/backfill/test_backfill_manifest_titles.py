@@ -221,3 +221,33 @@ def test_concurrent_discovery_patch_is_not_lost(env, monkeypatch):
     entries = {entry.video_id: entry for entry in store.read_shard(shard)}
     assert entries["v1"].title == "Real Title"
     assert new_video_id in entries  # the concurrent writer's own new entry survived, not overwritten away
+
+
+@pytest.fixture
+def recorded_runs(monkeypatch):
+    """Replace the real backfill with a recorder, so the CLI parser can be tested without any AWS."""
+    runs = []
+
+    def _record(*, execute):
+        runs.append(execute)
+        return {}
+
+    monkeypatch.setattr(backfill_manifest_titles, "backfill_manifest_titles", _record)
+    return runs
+
+
+@pytest.mark.parametrize("abbreviation", ["--exe", "--exec", "--execut"])
+def test_an_abbreviated_write_flag_is_rejected_and_never_reaches_the_execute_path(abbreviation, recorded_runs, capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        backfill_manifest_titles.main([abbreviation])
+
+    assert exit_info.value.code == 2
+    assert recorded_runs == []  # the backfill function was never called, not even as a dry run
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_only_the_exact_execute_flag_enables_writes(recorded_runs):
+    assert backfill_manifest_titles.main([]) == 0
+    assert backfill_manifest_titles.main(["--execute"]) == 0
+
+    assert recorded_runs == [False, True]  # no flag = dry run; exact --execute = write mode

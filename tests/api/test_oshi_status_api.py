@@ -92,8 +92,8 @@ class _FakeSubscriberStore:
         return self.payloads.get(report_date.isoformat())
 
 
-def _wire_subscribers(monkeypatch, payloads=None, *, configured: bool = True, error: Exception | None = None):
-    """Fake the daily subscriber-leaderboard store (default: configured, nothing persisted -> subscriberCount null).
+def _wire_subscribers(monkeypatch, payloads=None, *, error: Exception | None = None):
+    """Fake the daily subscriber-leaderboard store (default: nothing persisted -> subscriberCount null).
 
     Always installed by _wire so a test can never reach a real S3 client, whatever YOBI_HISTORY_BUCKET is set to.
     """
@@ -101,8 +101,8 @@ def _wire_subscribers(monkeypatch, payloads=None, *, configured: bool = True, er
 
     class _StoreClass:
         @classmethod
-        def from_environment(cls, *, s3_client=None):
-            return store if configured else None
+        def from_environment_or_default(cls, *, s3_client=None):
+            return store
 
     monkeypatch.setattr(read_api, "S3SubscriberRankingStore", _StoreClass)
     return store
@@ -133,7 +133,7 @@ def _wire(monkeypatch, payloads) -> _FakeStore:
 
     class _StoreClass:
         @classmethod
-        def from_environment(cls, *, s3_client=None):
+        def from_environment_or_default(cls, *, s3_client=None):
             return store
 
     monkeypatch.setattr(read_api, "S3VideoRankingStore", _StoreClass)
@@ -549,16 +549,14 @@ def test_a_hidden_or_missing_subscriber_count_is_null_not_zero_and_not_an_older_
     assert store.reads == [REPORT_DATE]  # the newest result decided; no fallback to the stale day
 
 
-def test_no_subscriber_result_yet_or_an_unconfigured_store_gives_null_and_the_rest_of_the_response_is_intact(monkeypatch):
+def test_no_subscriber_result_yet_gives_null_and_the_rest_of_the_response_is_intact(monkeypatch):
     _wire_rows(monkeypatch, [_row("a")])
 
-    not_computed = _call()  # _wire's default: store configured, nothing persisted
-    _wire_subscribers(monkeypatch, configured=False)
-    unconfigured = _call()
+    not_computed = _call()  # _wire's default: nothing persisted
 
-    for result in (not_computed, unconfigured):
-        assert result["subscriberCount"] is None
-        assert result["latestVideo"]["videoId"] == "a" and [item["videoId"] for item in result["recent"]] == ["a"]
+    assert not_computed["subscriberCount"] is None
+    assert not_computed["latestVideo"]["videoId"] == "a"
+    assert [item["videoId"] for item in not_computed["recent"]] == ["a"]
 
 
 def test_an_unreadable_subscriber_result_degrades_to_null_without_failing_or_leaking_error_text(monkeypatch, capsys):

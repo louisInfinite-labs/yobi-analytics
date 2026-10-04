@@ -24,6 +24,8 @@ from typing import Any
 
 from botocore.exceptions import ClientError
 
+from stores.history_bucket import resolve_history_bucket
+
 SUBSCRIBER_RANKING_PREFIX = "subscriber-ranking"
 SUBSCRIBER_RANKING_SCHEMA_VERSION = 1
 
@@ -62,6 +64,15 @@ class S3SubscriberRankingStore:
         if not bucket_name:
             return None
         return cls(bucket_name, s3_client=s3_client)
+
+    @classmethod
+    def from_environment_or_default(cls, *, s3_client=None) -> "S3SubscriberRankingStore":
+        """Read-side factory: YOBI_HISTORY_BUCKET when set (override), else the fixed production history bucket.
+
+        Used by the API Lambda, which has no bucket env var. Writers keep the strict from_environment() (or an
+        explicit bucket) so an unconfigured run never defaults to writing into the production bucket.
+        """
+        return cls(resolve_history_bucket(), s3_client=s3_client)
 
     def write_result(self, report_date: date, payload: dict[str, Any]) -> str:
         """Deterministically replace this date's result -- a same-date rebuild

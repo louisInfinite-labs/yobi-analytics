@@ -8,9 +8,28 @@ from datetime import date, datetime, timedelta
 from stores.history_store import HISTORY_SHARD_COUNT, HistoryRow, HistoryStore, daily_history_key, shard_for_video
 from tracking.tracking_manifest import ManifestEntry, TrackingManifestStore, patch_shard
 from tracking.tracking_schedule import classify_after_observation, select_due_video_ids
-from tracking.video_master import VALID_CONTENT_TYPES, VALID_LIVE_STATUSES, Video, VideoMasterStore
+from tracking.video_master import (
+    VALID_CONTENT_TYPES,
+    VALID_LIVE_STATUSES,
+    Video,
+    VideoMasterStore,
+    is_classification_incomplete,
+)
 from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS
 from collection.youtube_client import get_video_statistics
+
+# Home API-data migration: ranking/Home filters (contentType, liveStatus) are only ever learned by observing a
+# video on YouTube, and the normal Hot/Warm/Cold cadence can leave a Cold video unobserved for up to 15 days.
+# Every active manifest entry whose classification is incomplete (no contentType, or a livestream with no
+# liveStatus; see _classification_incomplete) is therefore also due, newest published
+# first, up to this many per shard per day (16 shards x 50 ids per request = a bounded, one-off quota/duration
+# cost that drains the existing backlog in a few daily runs and then falls to ~zero). A video YouTube never
+# returns (deleted/private) stays unclassified and is simply retried inside this same bounded budget.
+UNCLASSIFIED_OBSERVATION_BUDGET_PER_SHARD = 2500
+
+# A stream last seen "upcoming"/"live" must be re-observed every day until it reaches "completed", otherwise a
+# finished stream stays hidden from the "archived" Home shelves until its (possibly 15-day) cadence comes around.
+_IN_PROGRESS_LIVE_STATUSES = frozenset({"upcoming", "live"})
 
 
 @dataclass(frozen=True)
@@ -134,6 +153,7 @@ def collect_history_shard(
                 as_of=collection_date,
             )
         )
+        due_ids |= _select_classification_due_ids(active_entries, already_due=due_ids)
         non_due_ids = [video_id for video_id in video_ids if video_id not in due_ids]
         carried_rows, forced_due_ids = _carry_forward_non_due_rows(
             non_due_ids,
@@ -178,6 +198,39 @@ def collect_history_shard(
         content_type_by_video=_resolve_manifest_content_types(active_entries),
         live_status_by_video=_resolve_manifest_live_statuses(active_entries),
     )
+
+
+def _classification_incomplete(entry: ManifestEntry) -> bool:
+    """Whether an observation is still needed to finish this entry's contentType/liveStatus classification.
+
+    Delegates to tracking.video_master.is_classification_incomplete, the one definition the one-time
+    classification backfill shares (an upload with liveStatus None is complete, never re-observed).
+    """
+    return is_classification_incomplete(entry.content_type, entry.live_status)
+
+
+def _select_classification_due_ids(entries: list[ManifestEntry], *, already_due: set[str]) -> set[str]:
+    """Extra video ids to observe today so contentType/liveStatus reach the manifest (see the constants above).
+
+    - every entry last seen "upcoming"/"live" (always, however many: they are few and time-sensitive);
+    - plus up to UNCLASSIFIED_OBSERVATION_BUDGET_PER_SHARD entries whose classification is incomplete (see
+      _classification_incomplete), newest published first (videoId descending as a deterministic tie-break),
+      skipping anything already due today.
+
+    A fully classified entry (an upload, or a livestream with a known liveStatus) is never selected here, so its
+    Hot/Warm/Cold cadence is untouched.
+    """
+    in_progress = {entry.video_id for entry in entries if entry.live_status in _IN_PROGRESS_LIVE_STATUSES}
+    unclassified = sorted(
+        (
+            entry
+            for entry in entries
+            if _classification_incomplete(entry) and entry.video_id not in already_due and entry.video_id not in in_progress
+        ),
+        key=lambda entry: (entry.published_at or "", entry.video_id),
+        reverse=True,
+    )
+    return in_progress | {entry.video_id for entry in unclassified[:UNCLASSIFIED_OBSERVATION_BUDGET_PER_SHARD]}
 
 
 def _resolve_manifest_content_types(entries) -> dict[str, str | None]:

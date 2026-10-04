@@ -1,0 +1,139 @@
+name: PR CI
+
+# One generic CI entry point for every pull request that targets `develop`. Test scope follows the files the PR
+# changes; the final `pr-required-check` job ALWAYS runs and always reports, so the branch ruleset can require it
+# for every PR (a path-filtered workflow reports nothing when no path matches, which would block the PR forever).
+# CI only, no deploy. Each group runs an explicit list of focused files -- never the full suite. To widen coverage,
+# add a file to the list below rather than a directory.
+on:
+  pull_request:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  detect-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.scope.outputs.backend }}
+      frontend: ${{ steps.scope.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # the PR merge commit and both its parents
+          persist-credentials: false
+      - id: scope
+        # For a pull_request event HEAD is the merge commit; HEAD^1 is the base tip, so this is exactly what the PR changes.
+        run: |
+          files=$(git diff --name-only HEAD^1 HEAD)
+          echo "Changed files:"; echo "$files"
+          backend=false; frontend=false
+          echo "$files" | grep -qE '^(src|terraform|tests|scripts)/|^requirements\.txt$|^pytest\.ini$|^\.github/workflows/pr-ci\.yml$' && backend=true
+          echo "$files" | grep -qE '^frontend/dashboard/|^\.github/workflows/pr-ci\.yml$' && frontend=true
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+
+  backend-focused-tests:
+    needs: detect-scope
+    if: needs.detect-scope.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run the focused Home endpoint tests (explicit files only, not the full suite)
+        run: >
+          python -m pytest -q -p no:cacheprovider
+          tests/api/test_home_oshi_videos_api.py
+          tests/api/test_video_ranking_api.py
+          tests/api/test_oshi_status_api.py
+          tests/api/test_history_bucket_read_paths.py
+          tests/test_api_gateway_routes.py
+
+  frontend-focused-tests:
+    needs: detect-scope
+    if: needs.detect-scope.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend/dashboard
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/dashboard/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npx tsc -b
+      - name: Lint
+        run: npm run lint
+      - name: Run the focused frontend tests (explicit files only, not the full suite)
+        run: >
+          npx vitest run
+          src/features/home-room/model/oshiVideosQuery.test.ts
+          src/features/home-room/data/oshiVideos.test.ts
+          src/features/home-room/hooks/useOshiVideos.test.tsx
+          src/features/home-room/hooks/useLiveStreamVideoPool.test.ts
+          src/features/home-room/hooks/useHomeSelectedVideo.test.ts
+          src/features/home-room/utils/recentVideosSelection.test.ts
+          src/features/home-room/components/RecentVideosSection.test.tsx
+          src/features/home-room/components/RecentVideosSection.shelf.test.tsx
+          src/features/oshi-status/data/oshiStatus.test.ts
+          src/features/oshi-status/hooks/useOshiStatus.test.tsx
+          src/features/oshi-status/hooks/useLastVisit.test.ts
+          src/features/oshi-status/utils/oshiActivity.test.ts
+          src/features/oshi-status/components/OshiStatusPanel.test.tsx
+          src/pages/home/HomePage.apiCutover.test.tsx
+          src/features/live-status/model/creatorStatusSelection.test.ts
+          src/features/live-status/hooks/useCreatorStatuses.test.tsx
+          src/shared/api/liveStreams.test.ts
+          src/shared/api/liveStreamsStore.test.ts
+          src/shared/api/hooks/useLiveStreams.test.ts
+          src/features/live-schedule/hooks/useWeeklySchedule.test.tsx
+          src/shared/i18n/translations.test.ts
+
+  # The stable required check. Always runs (even when a test group failed or was skipped) and decides from the results:
+  # a group whose scope was detected MUST have succeeded; a group whose scope was not detected must have been skipped.
+  pr-required-check:
+    needs: [detect-scope, backend-focused-tests, frontend-focused-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Decide
+        env:
+          DETECT: ${{ needs.detect-scope.result }}
+          BACKEND_SCOPE: ${{ needs.detect-scope.outputs.backend }}
+          FRONTEND_SCOPE: ${{ needs.detect-scope.outputs.frontend }}
+          BACKEND: ${{ needs.backend-focused-tests.result }}
+          FRONTEND: ${{ needs.frontend-focused-tests.result }}
+        run: |
+          echo "detect-scope=$DETECT backend(scope=$BACKEND_SCOPE)=$BACKEND frontend(scope=$FRONTEND_SCOPE)=$FRONTEND"
+          fail=0
+          [ "$DETECT" = "success" ] || { echo "scope detection did not succeed"; fail=1; }
+          if [ "$BACKEND_SCOPE" = "true" ]; then [ "$BACKEND" = "success" ] || { echo "backend tests required but result=$BACKEND"; fail=1; }
+          else [ "$BACKEND" = "skipped" ] || { echo "backend tests unexpectedly result=$BACKEND"; fail=1; }; fi
+          if [ "$FRONTEND_SCOPE" = "true" ]; then [ "$FRONTEND" = "success" ] || { echo "frontend tests required but result=$FRONTEND"; fail=1; }
+          else [ "$FRONTEND" = "skipped" ] || { echo "frontend tests unexpectedly result=$FRONTEND"; fail=1; }; fi
+          exit $fail

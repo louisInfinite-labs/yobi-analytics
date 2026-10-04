@@ -21,8 +21,8 @@ def _terraform_routes() -> set[str]:
 _HANDLERS_WITHOUT_GATEWAY_ROUTE: set[str] = set()
 
 
-def test_every_api_gateway_route_has_a_handler():
-    assert _terraform_routes() <= set(api_handler._ROUTES)
+def test_every_api_gateway_route_has_a_handler_or_a_deliberate_retired_answer():
+    assert _terraform_routes() <= set(api_handler._ROUTES) | set(api_handler._RETIRED_ROUTES)
 
 
 def test_every_handler_route_has_a_gateway_route_except_the_ones_without_one():
@@ -39,17 +39,30 @@ def test_topics_route_is_wired():
     assert "GET /topics" in _terraform_routes()
 
 
-# --- R7 (AWS Cost Recovery): zero-consumer routes must no longer be exposed --
+# --- R7/R9 retired routes: kept at the gateway, answered with 410 by the Lambda -------------------------
 
 
-def test_removed_leaderboard_and_summary_routes_are_no_longer_exposed():
+def test_retired_routes_stay_at_the_gateway_so_clients_get_a_lambda_answer_not_a_bare_gateway_404():
     routes = _terraform_routes()
 
-    assert "GET /organizations/{organization}/leaderboard" not in routes
-    assert "GET /leaderboard" not in routes
-    assert "GET /topics/{topic}/leaderboard" not in routes
+    for route in api_handler._RETIRED_ROUTES:
+        assert route in routes, f"{route} must stay in api_routes (removing it would delete the live gateway route)"
+
+
+def test_retired_routes_have_no_data_handler_and_the_removed_summary_route_is_fully_gone():
+    routes = _terraform_routes()
+
+    assert set(api_handler._RETIRED_ROUTES) == {
+        "GET /creators/{creatorId}/trending",
+        "GET /organizations/{organization}/trending",
+        "GET /leaderboard",
+        "GET /organizations/{organization}/leaderboard",
+        "GET /topics/{topic}/leaderboard",
+    }
+    assert not set(api_handler._RETIRED_ROUTES) & set(api_handler._ROUTES)
     assert "GET /creators/{creatorId}/summary" not in routes
     assert "GET /creators/{creatorId}/summary" not in api_handler._ROUTES
+    assert "GET /creators/{creatorId}/summary" not in api_handler._RETIRED_ROUTES
 
 
 # --- R8B (AWS Cost Recovery): comparison routes must no longer be exposed ----
