@@ -121,13 +121,11 @@ resource "aws_lambda_function" "api" {
       YOBI_ADMIN_API_KEY_SECRET_NAME = "yobi-analytics/admin-api-key"
       # YOBI_ADMIN_API_KEY_SSM_PARAMETER = local.ssm_parameter_prepared_not_applied.admin_api_key
       YOBI_STORAGE_BACKEND = "dynamodb"
-      # PR #60 review fix: get_subscriber_leaderboard (S3SubscriberRankingStore)
-      # and the trending-cache S3 archive fallback (S3TrendingCacheArchiveStore)
-      # both call `from_environment()`, which reads this var -- without it, the
-      # subscriber leaderboard endpoint 500s and archived (>35-day-old) trending
-      # rankings silently fail to fall back to S3.
-      YOBI_HISTORY_BUCKET = aws_s3_bucket.history.id
-      HOLODEX_SECRET_NAME  = "yobi-analytics/holodex-api-key"
+      # No history-bucket variable here on purpose: the read paths (video-ranking, subscriber-ranking,
+      # Oshi Status) resolve the fixed bucket through stores.history_bucket, where the env var is only
+      # an optional override. Keeping it out of this block means deploying the API needs no change to
+      # this Lambda's live environment.
+      HOLODEX_SECRET_NAME = "yobi-analytics/holodex-api-key"
     }
   }
 

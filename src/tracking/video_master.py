@@ -42,6 +42,20 @@ VALID_CONTENT_TYPES = {"live", "upload"}
 VALID_LIVE_STATUSES = {"upcoming", "live", "completed"}
 
 
+def is_classification_incomplete(content_type: str | None, live_status: str | None) -> bool:
+    """Whether a record still needs a YouTube observation to finish its contentType/liveStatus classification.
+
+    - no contentType: never observed (including a stray liveStatus without one, which is not trustworthy alone);
+    - contentType "live" but no liveStatus: a livestream whose lifecycle is unknown.
+    A classified upload has liveStatus None BY DESIGN (liveStatus only exists for livestreams), so contentType
+    "upload" with liveStatus None is COMPLETE: treating it as incomplete would re-observe every upload forever.
+
+    The single definition shared by the history worker's catch-up selection, the one-time classification
+    backfill and (as a DynamoDB condition) stores.dynamodb_store.set_video_classification.
+    """
+    return content_type is None or (content_type == "live" and live_status is None)
+
+
 @dataclass(frozen=True)
 class Video:
     """A single tracked video's discovery metadata plus its Adaptive Tracking

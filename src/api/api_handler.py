@@ -117,6 +117,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     route_key = event.get("routeKey")
     handler = _ROUTES.get(route_key)
     if handler is None:
+        if route_key in _RETIRED_ROUTES:
+            return _retired_route_response(route_key)
         return _json_response(404, {"error": f"No such route: {route_key!r}"})
 
     try:
@@ -326,6 +328,33 @@ def _handle_get_admin_heartbeat_stats(event: dict[str, Any]) -> dict[str, Any]:
     records = heartbeat_store.list_all()
     online_count = sum(1 for record in records if heartbeat_api.online_status(record["lastSeenAt"]) == "online")
     return {"totalClients": len(records), "onlineNow": online_count}
+
+
+# Routes retired by the ranking simplification (R7/R8B/R9): their data (YobiTrendingCache) is no longer produced, so
+# there is nothing left to serve. Their API Gateway routes are deliberately KEPT (terraform/api_gateway.tf), so a client
+# that still calls one gets a deterministic, machine-readable answer from this Lambda instead of API Gateway's own bare
+# 404 (which carries no CORS headers, so a browser reports it only as "Failed to fetch") or the generic "No such route"
+# 404 below. 410 Gone (not 404/503): the endpoint is permanently retired, so caches and retry loops should stop, and the
+# `code`/`replacement` fields tell a client what to migrate to. Maps the route to its closest replacement, or None.
+_RETIRED_ROUTES: dict[str, str | None] = {
+    "GET /creators/{creatorId}/trending": "GET /creators/{creatorId}/videos/ranking",
+    "GET /organizations/{organization}/trending": None,
+    "GET /leaderboard": None,
+    "GET /organizations/{organization}/leaderboard": None,
+    "GET /topics/{topic}/leaderboard": None,
+}
+
+
+def _retired_route_response(route_key: str) -> dict[str, Any]:
+    """The fixed 410 body for a retired route. Never reads any store, never echoes request input."""
+    return _json_response(
+        410,
+        {
+            "error": f"{route_key} was retired and no longer returns data",
+            "code": "ENDPOINT_RETIRED",
+            "replacement": _RETIRED_ROUTES[route_key],
+        },
+    )
 
 
 _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {

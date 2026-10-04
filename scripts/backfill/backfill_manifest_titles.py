@@ -147,7 +147,10 @@ def backfill_manifest_titles(*, execute: bool) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    # allow_abbrev=False: the production write flag must be typed exactly; `--exe`/`--exec` must not enable writes.
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False
+    )
     parser.add_argument(
         "--execute",
         action="store_true",
