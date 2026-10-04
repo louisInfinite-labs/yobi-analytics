@@ -747,32 +747,21 @@ def test_get_recent_streams_rejects_an_unknown_creator(monkeypatch):
         get_recent_streams({"creatorId": "does_not_exist"})
 
 
-@pytest.mark.parametrize("channel_type", ["group", "staff"])
-def test_get_recent_streams_rejects_a_group_or_staff_channel(monkeypatch, channel_type):
-    """A real Creator Master record that is not an individual creator (group/staff) can
-    never be an Oshi, so it is rejected the same clean way as an unknown creatorId."""
-    monkeypatch.setattr(read_api, "_find_creator", lambda creator_id: _creator(channel_type=channel_type))
+def test_get_recent_streams_rejects_an_ineligible_creator(monkeypatch):
+    """A real Creator Master record that fails is_current_member_eligible
+    (e.g. graduated, or a group/staff channel) is rejected the same clean way
+    as an unknown creatorId -- /recent-streams' existing member-only behaviour,
+    unchanged by the Live Status roster work."""
+    for overrides in ({"lifecycle_stage": "graduated"}, {"channel_type": "group"}, {"channel_type": "staff"}):
+        monkeypatch.setattr(read_api, "_find_creator", lambda creator_id, o=overrides: _creator(**o))
 
-    def _boom(*args, **kwargs):
-        raise AssertionError("Holodex must not be called for a non-Oshi channel")
+        def _boom(*args, **kwargs):
+            raise AssertionError("Holodex must not be called for an ineligible creator")
 
-    monkeypatch.setattr(read_api, "holodex_get", _boom)
+        monkeypatch.setattr(read_api, "holodex_get", _boom)
 
-    with pytest.raises(ScopeNotFoundError):
-        get_recent_streams({"creatorId": "aizawa_ema"})
-
-
-def test_get_recent_streams_serves_a_graduated_creator_who_is_the_users_oshi(monkeypatch):
-    """Graduation keeps a creator selectable as an Oshi, so Home's archive row for a
-    graduated Oshi must be served (one on-demand request, never polling)."""
-    monkeypatch.setattr(
-        read_api, "_find_creator", lambda creator_id: _creator(youtube_channel_id="UC_grad", lifecycle_stage="graduated")
-    )
-    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [])
-
-    result = get_recent_streams({"creatorId": "aizawa_ema"})
-
-    assert result == {"creatorId": "aizawa_ema", "streams": [], "hasMore": False}
+        with pytest.raises(ScopeNotFoundError):
+            get_recent_streams({"creatorId": "aizawa_ema"})
 
 
 def test_get_recent_streams_returns_empty_for_a_genuinely_empty_archive(monkeypatch):

@@ -369,6 +369,71 @@ def test_the_archived_scope_drops_upcoming_and_live_now_rows_but_keeps_uploads_a
     assert sorted(_ids(_recent(contentType="live"), "videos")) == ["done", "now", "soon"]
 
 
+# --- 5b. graduated creators keep their archive/history through this S3-backed path ------------------------
+
+
+def _graduated(creator_id: str) -> Creator:
+    return Creator(
+        creator_id=creator_id,
+        display_name=creator_id,
+        organization="hololive",
+        youtube_channel_id=f"UC_{creator_id}",
+        active=True,
+        branch="holo_en",
+        group_key=["Myth"],
+        channel_type="member",
+        lifecycle_stage="graduated",
+        display_order=0,
+        discovery_enabled=False,
+    )
+
+
+def test_a_graduated_creator_is_served_her_stored_archives_from_s3_with_no_holodex_or_youtube_call(monkeypatch):
+    """Graduation stops new-content collection; it never removes the creator's stored history. Home's archive
+    row reads /videos/recent, which only needs the creator to exist and a stored S3 result -- no Holodex call, no
+    YouTube call, no eligibility predicate that excludes graduated creators."""
+    rows = [_row("old-stream", "chatting", kind="stream", creator_id="gura"), _row("old-upload", "other", creator_id="gura")]
+    store = _wire(monkeypatch, {"gura": rows})
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_graduated("gura")])
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("the archive read path must never call Holodex")
+
+    monkeypatch.setattr(read_api, "holodex_get", _boom)
+
+    response = _recent(creatorId="gura", contentType="live", liveStatus="completed")
+
+    assert _ids(response, "videos") == ["old-stream"]
+    assert store.reads == [(REPORT_DATE, "gura")]  # exactly one stored-result read, nothing else
+    assert not hasattr(read_api, "build_youtube_client")  # the module has no YouTube client to call
+
+
+def test_every_real_graduated_creator_passes_the_archive_read_paths_creator_gate(monkeypatch):
+    """The real Creator Master's 13 graduated creators all resolve on the archive path (the gate is existence only);
+    this path neither depends on nor changes any collection/polling eligibility."""
+    from tracking.creator_master import is_content_collection_eligible, is_live_status_polling_eligible, load_creators
+
+    real = [c for c in load_creators() if c.lifecycle_stage == "graduated"]
+    assert len(real) == 13
+    for creator in real:
+        store = _Store({(REPORT_DATE, creator.creator_id): _payload([_row("a", "other", creator_id=creator.creator_id)], creator.creator_id)})
+
+        class _StoreClass:
+            @classmethod
+            def from_environment_or_default(cls, *, s3_client=None, _store=store):
+                return _store
+
+        monkeypatch.setattr(read_api, "S3VideoRankingStore", _StoreClass)
+        monkeypatch.setattr(read_api, "holodex_get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no Holodex call")))
+
+        response = _recent(creatorId=creator.creator_id)
+
+        assert _ids(response, "videos") == ["a"], creator.creator_id
+        # ...and being served does not make them collectable or pollable.
+        assert is_content_collection_eligible(creator) is False, creator.creator_id
+        assert is_live_status_polling_eligible(creator) is False, creator.creator_id
+
+
 # --- 6. empty / not ready / invalid ----------------------------------------------------------------------
 
 

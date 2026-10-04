@@ -70,14 +70,10 @@ def test_avatar_url_matches_the_backend_creator_master(registry):
     canonical creator now has one populated."""
     avatar_url_by_id = {creator.creator_id: creator.avatar_url for creator in load_creators()}
 
-    # hololive_official was added after C7 and awaits the avatar sync (see
-    # tests/tracking/test_creator_master.py's AVATAR_SYNC_PENDING, the single source of truth).
-    from tests.tracking.test_creator_master import AVATAR_SYNC_PENDING
-
-    assert all("avatarUrl" in creator for creator in registry["creators"] if creator["creatorId"] not in AVATAR_SYNC_PENDING)
-    assert all(creator["avatarUrl"] for creator in registry["creators"] if creator["creatorId"] not in AVATAR_SYNC_PENDING)
+    assert all("avatarUrl" in creator for creator in registry["creators"])
+    assert all(creator["avatarUrl"] for creator in registry["creators"])
     for creator in registry["creators"]:
-        assert creator.get("avatarUrl") == avatar_url_by_id[creator["creatorId"]]
+        assert creator["avatarUrl"] == avatar_url_by_id[creator["creatorId"]]
 
 
 def test_active_is_present_for_every_generated_creator(registry):

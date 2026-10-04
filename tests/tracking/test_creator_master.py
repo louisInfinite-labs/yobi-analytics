@@ -10,6 +10,7 @@ from tracking.creator_master import (
     find_creator_by_youtube_channel_id,
     get_active_creators,
     is_content_collection_eligible,
+    is_current_member_eligible,
     is_live_status_display_eligible,
     is_live_status_polling_eligible,
     is_my_oshi_eligible,
@@ -541,34 +542,16 @@ def test_production_roster_theme_color_coverage():
     assert len(without_color) == 21
 
 
-# Creators added to the roster whose avatar the YouTube avatar sync
-# (scripts/maintenance/sync_creator_avatars.py --execute) has not been run for yet.
-# Deliberately explicit and temporary: remove an id from this set as soon as its
-# avatarUrl is synced -- test_avatar_sync_pending_entries_really_are_pending fails if you forget.
-AVATAR_SYNC_PENDING = frozenset({"hololive_official"})
-
-
 def test_production_roster_has_avatar_url_populated_for_every_creator():
     """C7 completed the real YouTube avatar sync -- every canonical creator in
-    the current production roster carries a populated avatar_url, except the
-    explicitly named AVATAR_SYNC_PENDING entries (added after C7, awaiting the
-    sync). (The schema itself still tolerates a missing avatarUrl -- see
+    the current production roster now carries a populated avatar_url. (The
+    schema itself still tolerates a missing avatarUrl -- see
     test_avatar_url_defaults_to_none_when_absent above -- this test is about
     the current state of the real roster, not the schema.)"""
     creators = load_creators()
 
     assert creators
-    assert all(c.avatar_url for c in creators if c.creator_id not in AVATAR_SYNC_PENDING)
-
-
-def test_avatar_sync_pending_entries_really_are_pending():
-    """Keeps AVATAR_SYNC_PENDING honest: once a pending creator has an avatar_url, the
-    exemption above must be deleted so the every-creator invariant covers it again."""
-    by_id = {c.creator_id: c for c in load_creators()}
-
-    for creator_id in AVATAR_SYNC_PENDING:
-        assert creator_id in by_id
-        assert not by_id[creator_id].avatar_url, f"{creator_id} now has an avatar -- remove it from AVATAR_SYNC_PENDING"
+    assert all(c.avatar_url for c in creators)
 
 
 def test_production_roster_display_order_values_are_unique_ints():
@@ -836,6 +819,25 @@ class TestEligibility:
 
     def test_a_member_taken_out_of_the_roster_is_not_oshi_eligible(self):
         assert is_my_oshi_eligible(_creator(active=False)) is False
+
+    # --- The original narrow "current member" rule (kept for /recent-streams) ----
+
+    @pytest.mark.parametrize("lifecycle_stage", ["active", "pre_debut"])
+    def test_current_member_rule_accepts_an_active_or_pre_debut_member(self, lifecycle_stage):
+        assert is_current_member_eligible(_creator(lifecycle_stage=lifecycle_stage)) is True
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"lifecycle_stage": "graduated"},
+            {"lifecycle_stage": "retired"},
+            {"channel_type": "group"},
+            {"channel_type": "staff"},
+            {"active": False},
+        ],
+    )
+    def test_current_member_rule_is_unchanged_and_rejects_everything_else(self, overrides):
+        assert is_current_member_eligible(_creator(**overrides)) is False
 
     # --- New-content collection: graduated creators are never discovered ---------
 

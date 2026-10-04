@@ -331,11 +331,14 @@ export function CreatorStatusList({
                 </span>
               )}
             </div>
-            {group.subgroups.map((subgroup) => (
+            {group.subgroups.map((subgroup, subgroupIndex) => (
               <Fragment key={subgroup.label ?? "__flat__"}>
                 {subgroup.label && (
                   <div className="live-status-group__subheading">{subgroupTitle(locale, subgroup.label)}</div>
                 )}
+                {/* An unlabeled block AFTER the named groups (the organization-level channel) gets a
+                    separator so it does not read as the last named group's own row. */}
+                {!subgroup.label && subgroupIndex > 0 && <div className="live-status-group__org-divider" aria-hidden="true" />}
                 {subgroup.creators.map((creator) => {
                   const legacyId = toLegacyRosterId(creator)
                   const status = statuses[legacyId] ?? { kind: "offline" as const }

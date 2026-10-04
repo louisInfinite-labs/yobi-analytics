@@ -55,6 +55,10 @@ function renderedRoster(container: HTMLElement): RenderedGroup[] {
       if (child.classList.contains("live-status-group__subheading")) {
         current = { label: child.textContent, names: [] }
         subgroups.push(current)
+      } else if (child.classList.contains("live-status-group__org-divider")) {
+        // The separator before a branch's organization-level channel row: a NEW, unlabeled block.
+        current = { label: null, names: [] }
+        subgroups.push(current)
       } else if (child.classList.contains("live-status-member-swipe")) {
         current.names.push(child.querySelector(".live-status-member__name")!.textContent!)
       }
@@ -168,77 +172,93 @@ describe("Live Status shows the complete supported channel roster", () => {
 })
 
 describe("Live Status group placement of official/group/staff channels", () => {
-  it("VSPO JP: vspo_official is the final row, after every individual member", () => {
+  const OTHER_CHANNEL_IDS = ["achrora", "holoan_room", "unit_b_pre_debut"]
+
+  it("VSPO JP: every individual member first in canonical order, then VSPO! Official as the final row", () => {
     const { container } = renderList()
     const vspoJp = groupNamed(renderedRoster(container), "VSPO! // JP")
     const names = vspoJp.subgroups.flatMap((subgroup) => subgroup.names)
-    const members = getCreators().filter((c) => c.branch === "vspo_jp" && c.channelType === "member")
+    const members = getCreators()
+      .filter((c) => c.branch === "vspo_jp" && c.channelType === "member")
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+      .map((c) => c.displayName)
 
+    expect(names).toEqual([...members, nameOf("vspo_official")])
     expect(names.at(-1)).toBe(nameOf("vspo_official"))
-    expect(names).toHaveLength(members.length + 1)
-    expect(names.slice(0, -1)).not.toContain(nameOf("vspo_official"))
   })
 
-  it("a unit/group channel sits at the bottom of its own group, below all of that group's members", () => {
+  it("Hololive JP: Other is the final NAMED group and contains exactly ACHRORA, holoAN room and UNIT B", () => {
     const { container } = renderList()
     const holoJp = groupNamed(renderedRoster(container), "HOLOLIVE // JP")
-    const holoEn = groupNamed(renderedRoster(container), "HOLOLIVE // EN")
+    const named = holoJp.subgroups.filter((subgroup) => subgroup.label !== null)
 
-    expect(subgroupNamed(holoJp, "ReGLOSS").names.at(-1)).toBe(nameOf("hololive_dev_is_regloss"))
-    expect(subgroupNamed(holoJp, "FLOW GLOW").names.at(-1)).toBe(nameOf("hololive_dev_is_flow_glow"))
+    expect(named.at(-1)!.label).toBe("Other")
+    expect(named.filter((subgroup) => subgroup.label === "Other")).toHaveLength(1)
+    expect(subgroupNamed(holoJp, "Other").names).toEqual(OTHER_CHANNEL_IDS.map(nameOf))
+  })
+
+  it("Hololive JP: hololive Official is NOT in Other, but its own final row AFTER the Other group", () => {
+    const { container } = renderList()
+    const holoJp = groupNamed(renderedRoster(container), "HOLOLIVE // JP")
+    const otherIndex = holoJp.subgroups.findIndex((subgroup) => subgroup.label === "Other")
+    const officialBlockIndex = holoJp.subgroups.findIndex((subgroup) => subgroup.names.includes(nameOf("hololive_official")))
+
+    expect(subgroupNamed(holoJp, "Other").names).not.toContain(nameOf("hololive_official"))
+    expect(officialBlockIndex).toBeGreaterThan(otherIndex)
+    expect(officialBlockIndex).toBe(holoJp.subgroups.length - 1)
+    expect(holoJp.subgroups[officialBlockIndex]).toEqual({ label: null, names: [nameOf("hololive_official")] })
+    expect(holoJp.subgroups.flatMap((subgroup) => subgroup.names).at(-1)).toBe(nameOf("hololive_official"))
+  })
+
+  it("Hololive JP: hololive Official does not sort above any named Hololive JP group", () => {
+    const { container } = renderList()
+    const holoJp = groupNamed(renderedRoster(container), "HOLOLIVE // JP")
+    const officialBlockIndex = holoJp.subgroups.findIndex((subgroup) => subgroup.names.includes(nameOf("hololive_official")))
+    const namedIndexes = holoJp.subgroups.flatMap((subgroup, index) => (subgroup.label !== null ? [index] : []))
+
+    expect(Math.max(...namedIndexes)).toBeLessThan(officialBlockIndex)
+  })
+
+  it("ReGLOSS and FLOW GLOW: the group's own channel comes after all individual members", () => {
+    const { container } = renderList()
+    const holoJp = groupNamed(renderedRoster(container), "HOLOLIVE // JP")
+    const expected = (groupKey: string, channelId: string) => {
+      const members = getCreators()
+        .filter((c) => c.branch === "holo_jp" && c.channelType === "member" && c.groupKey[0] === groupKey)
+        .sort((a, b) => a.displayOrder - b.displayOrder)
+        .map((c) => c.displayName)
+      return [...members, nameOf(channelId)]
+    }
+
+    expect(subgroupNamed(holoJp, "ReGLOSS").names).toEqual(expected("ReGLOSS", "hololive_dev_is_regloss"))
+    expect(subgroupNamed(holoJp, "FLOW GLOW").names).toEqual(expected("FLOWGLOW", "hololive_dev_is_flow_glow"))
+  })
+
+  it("every existing group/unit channel sits below ALL of its own group's individual members (no member follows a channel)", () => {
+    const { container } = renderList()
+    const nonMemberNames = new Set(getCreators().filter((c) => c.channelType !== "member").map((c) => c.displayName))
+
+    for (const group of renderedRoster(container)) {
+      for (const subgroup of group.subgroups) {
+        const firstChannelIndex = subgroup.names.findIndex((name) => nonMemberNames.has(name))
+        if (firstChannelIndex === -1) continue
+        // From the first channel onwards a subgroup holds only channels, never another member.
+        expect(subgroup.names.slice(firstChannelIndex).every((name) => nonMemberNames.has(name)), `${group.heading} / ${subgroup.label}`).toBe(true)
+      }
+    }
+    const holoJp = groupNamed(renderedRoster(container), "HOLOLIVE // JP")
     expect(subgroupNamed(holoJp, "アソビ★まわり隊！").names.at(-1)).toBe(nameOf("hololive_asobimawaritai"))
-    expect(subgroupNamed(holoEn, "Advent").names.at(-1)).toBe(nameOf("fuwamoco"))
-    // ...and ONLY the last row of each: every other row is an individual member.
-    expect(subgroupNamed(holoJp, "ReGLOSS").names.slice(0, -1)).not.toContain(nameOf("hololive_dev_is_regloss"))
-  })
-
-  it("Hololive JP: Other is the final group; ACHRORA, holoAN room and UNIT B come first, then hololive Official as the very last row", () => {
-    const { container } = renderList()
-    const holoJp = groupNamed(renderedRoster(container), "HOLOLIVE // JP")
-    const last = holoJp.subgroups.at(-1)!
-
-    expect(last.label).toBe("Other")
-    expect(last.names).toEqual([nameOf("achrora"), nameOf("holoan_room"), nameOf("unit_b_pre_debut"), nameOf("hololive_official")])
-    expect(holoJp.subgroups.filter((subgroup) => subgroup.label === "Other")).toHaveLength(1)
-  })
-
-  it("hololive Official is the final row of the whole Hololive JP group, after every member and group channel", () => {
-    const { container } = renderList()
-    const holoJp = groupNamed(renderedRoster(container), "HOLOLIVE // JP")
-    const names = holoJp.subgroups.flatMap((subgroup) => subgroup.names)
-
-    expect(names.at(-1)).toBe(nameOf("hololive_official"))
-    expect(names.filter((name) => name === nameOf("hololive_official"))).toHaveLength(1)
-  })
-
-  it("hololive Official is displayed with its own verified channel and is a plain row: live status works, no Oshi switch", async () => {
-    const official = getCreatorById("hololive_official")!
-    const id = toLegacyRosterId(official)
-    const { onSelectCreator, onSelectVideo } = renderList({
-      confirmOshiSwitch: true,
-      statuses: { [id]: { kind: "live", videoId: "vh", title: "hololive official broadcast" } },
-    })
-    const user = userEvent.setup()
-    const row = [...document.querySelectorAll(".live-status-member")].find((r) => r.textContent?.includes(official.displayName))!
-
-    expect(official.youtubeChannelId).toBe("UCJFZiqLMntJufDCHc6bQixg")
-    expect(row.querySelector(".live-status-member__status")).toHaveTextContent("LIVE")
-    await user.click(row.querySelector(".live-status-member__status")!)
-
-    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "vh", title: "hololive official broadcast" }, id)
-    expect(onSelectCreator).not.toHaveBeenCalled()
-    expect(screen.queryByRole("button", { name: `Switch Oshi to ${official.displayName}` })).not.toBeInTheDocument()
+    expect(subgroupNamed(groupNamed(renderedRoster(container), "HOLOLIVE // EN"), "Advent").names.at(-1)).toBe(nameOf("fuwamoco"))
   })
 
   it("non-member channels are not collected into one global section: each stays in its own group", () => {
     const { container } = renderList()
     const roster = renderedRoster(container)
-    const vspoJp = groupNamed(roster, "VSPO! // JP")
     const holoJp = groupNamed(roster, "HOLOLIVE // JP")
 
     expect(subgroupNamed(holoJp, "Other").names).not.toContain(nameOf("vspo_official"))
     expect(subgroupNamed(holoJp, "Other").names).not.toContain(nameOf("hololive_dev_is_regloss"))
-    expect(vspoJp.subgroups.flatMap((subgroup) => subgroup.names)).not.toContain(nameOf("hololive_dev_is_regloss"))
+    expect(groupNamed(roster, "VSPO! // JP").subgroups.flatMap((subgroup) => subgroup.names)).not.toContain(nameOf("hololive_dev_is_regloss"))
   })
 
   it("the top-level group order is unchanged: VSPO JP, then Hololive JP, EN, ID", () => {
@@ -253,15 +273,12 @@ describe("Live Status group placement of official/group/staff channels", () => {
     ])
   })
 
-  it("members keep the existing canonical displayOrder ascending order inside a group", () => {
-    const { container } = renderList()
-    const vspoJp = groupNamed(renderedRoster(container), "VSPO! // JP")
-    const expected = getCreators()
-      .filter((c) => c.branch === "vspo_jp" && c.channelType === "member")
-      .sort((a, b) => a.displayOrder - b.displayOrder)
-      .map((c) => c.displayName)
+  it("a search that matches only the organization-level channel still shows it, with no divider before it", () => {
+    const { container } = renderList({ query: nameOf("hololive_official") })
+    const holoJp = groupNamed(renderedRoster(container), "HOLOLIVE // JP")
 
-    expect(vspoJp.subgroups.flatMap((subgroup) => subgroup.names).slice(0, -1)).toEqual(expected)
+    expect(holoJp.subgroups).toEqual([{ label: null, names: [nameOf("hololive_official")] }])
+    expect(container.querySelector(".live-status-group__org-divider")).toBeNull()
   })
 })
 
@@ -332,6 +349,25 @@ describe("Live Status rows of group/staff/official channels cannot become Curren
     expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "v1", title: "VSPO official broadcast" }, id)
     expect(onSelectCreator).not.toHaveBeenCalled()
     expect(screen.queryByText(/Switch your Oshi to/)).not.toBeInTheDocument()
+  })
+
+  it("hololive Official uses the verified main channel and is a plain row: live status works, no Oshi switch", async () => {
+    const official = getCreatorById("hololive_official")!
+    const id = toLegacyRosterId(official)
+    const { onSelectCreator, onSelectVideo } = renderList({
+      confirmOshiSwitch: true,
+      statuses: { [id]: { kind: "live", videoId: "vh", title: "hololive official broadcast" } },
+    })
+    const user = userEvent.setup()
+    const row = [...document.querySelectorAll(".live-status-member")].find((r) => r.textContent?.includes(official.displayName))!
+
+    expect(official.youtubeChannelId).toBe("UCJFZiqLMntJufDCHc6bQixg")
+    expect(row.querySelector(".live-status-member__status")).toHaveTextContent("LIVE")
+    await user.click(row.querySelector(".live-status-member__status")!)
+
+    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "vh", title: "hololive official broadcast" }, id)
+    expect(onSelectCreator).not.toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: `Switch Oshi to ${official.displayName}` })).not.toBeInTheDocument()
   })
 
   it("a graduated creator is still an individual creator: clicking her switches Oshi through the normal flow", async () => {

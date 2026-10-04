@@ -26,19 +26,41 @@ export function creatorMatchesSearch(creator: CanonicalCreator, query: string): 
  * to a unit/generation channel such as hololive ReGLOSS, whose groupKey names its unit. */
 const NO_GROUP_KEY = "NO"
 
-function placementTier(creator: CanonicalCreator): number {
-  if (creator.channelType === "member") return 0
-  return creator.groupKey[0] === NO_GROUP_KEY ? 2 : 1
+function isOrganizationChannel(creator: CanonicalCreator): boolean {
+  return creator.channelType !== "member" && creator.groupKey[0] === NO_GROUP_KEY
 }
 
-/** Inside one subgroup: individual members first, then unit/staff channels, then the
- * organization-level official channel -- preserving the relative order within each tier.
- * Applied inside every subgroup (never across the whole roster), so a non-member channel
- * stays in the group it belongs to -- VSPO JP's own list, ReGLOSS, FLOW GLOW, Advent,
- * Hololive JP's "Other" -- pinned to that group's bottom, instead of being collected into
- * one global non-member section. Data-driven (channelType + groupKey), never a creatorId. */
+/** Inside one named group/unit: individual members first, then that group's own
+ * channel(s) (e.g. hololive ReGLOSS after the ReGLOSS members) -- stable, so the
+ * existing order inside each half is preserved. Applied per subgroup, never across
+ * the roster, so a unit channel stays in its own group instead of a global section. */
 function membersBeforeNonMembers(creators: CanonicalCreator[]): CanonicalCreator[] {
-  return [...creators].sort((a, b) => placementTier(a) - placementTier(b))
+  return [
+    ...creators.filter((creator) => creator.channelType === "member"),
+    ...creators.filter((creator) => creator.channelType !== "member"),
+  ]
+}
+
+/** One branch's subgroups. Organization-level channels (vspo_official, hololive_official)
+ * are taken out BEFORE the shared grouping -- which would otherwise drop an unrecognized
+ * groupKey like "NO" into the catch-all "Other" bucket -- and placed after the last named
+ * group as the branch's final row: at the bottom of the single list in a flat branch
+ * (VSPO JP), and as their own trailing unlabeled block after "Other" in a grouped branch
+ * (Hololive JP), so "Other" holds only its own channels. */
+function branchSubgroups(branch: BranchKey, creators: CanonicalCreator[]): Subgroup<CanonicalCreator>[] {
+  const organizationChannels = creators.filter(isOrganizationChannel)
+  const subgroups = subgroupsForBranch(
+    branch,
+    creators.filter((creator) => !isOrganizationChannel(creator)),
+    (creator) => creator.displayName,
+  ).map((subgroup) => ({ ...subgroup, creators: membersBeforeNonMembers(subgroup.creators) }))
+
+  if (organizationChannels.length === 0) return subgroups
+  const [only] = subgroups
+  if (subgroups.length === 1 && only.label === null) {
+    return [{ ...only, creators: [...only.creators, ...organizationChannels] }]
+  }
+  return [...subgroups, { label: null, creators: organizationChannels }]
 }
 
 /** Live Status' own canonical-registry roster grouping -- deliberately a
@@ -58,12 +80,13 @@ function membersBeforeNonMembers(creators: CanonicalCreator[]): CanonicalCreator
  * simply renders OFFLINE (see useCreatorStatuses). This is intentionally NOT
  * the My Oshi rule (isMyOshiEligible), which excludes group/staff channels.
  *
- * Placement: every group/staff channel stays inside its own group, below that
- * group's individual members (membersBeforeNonMembers, per subgroup) -- e.g.
- * vspo_official last in VSPO JP, hololive ReGLOSS last in ReGLOSS, and the
- * catch-all "Other" bucket (ACHRORA, holoAN room, UNIT B, then the organization-
- * level hololive Official channel last) as the final Hololive JP group, which
- * subgroupsForBranch already emits last.
+ * Placement: a unit/group channel sits at the bottom of its own group, below
+ * that group's individual members (hololive ReGLOSS last in ReGLOSS). The
+ * catch-all "Other" bucket (ACHRORA, holoAN room, UNIT B) is the final named
+ * Hololive JP group, which subgroupsForBranch already emits last. The
+ * organization-level channels come after everything else in their branch:
+ * vspo_official last in VSPO JP, hololive Official last in Hololive JP, after
+ * "Other" (see branchSubgroups).
  *
  * Ordered by canonical displayOrder (C8A0) ascending -- getCreators()'s own
  * array order is alphabetical-by-creatorId for deterministic codegen, never
@@ -85,8 +108,9 @@ export function groupEligibleCreatorsForLiveStatus(
 
   return DOCK_BRANCH_ORDER.map((branch) => ({
     branch,
-    subgroups: subgroupsForBranch(branch, filtered.filter((creator) => creator.branch === branch), (creator) => creator.displayName).map(
-      (subgroup) => ({ ...subgroup, creators: membersBeforeNonMembers(subgroup.creators) }),
+    subgroups: branchSubgroups(
+      branch,
+      filtered.filter((creator) => creator.branch === branch),
     ),
   })).filter((group) => group.subgroups.length > 0)
 }

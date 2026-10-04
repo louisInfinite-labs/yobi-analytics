@@ -38,7 +38,7 @@ from zoneinfo import ZoneInfo
 
 from api.holodex_client import holodex_get
 from api.holodex_normalization import normalize_holodex_archived_streams_response, normalize_holodex_live_response
-from tracking.creator_master import Creator, is_live_status_polling_eligible, is_my_oshi_eligible, load_creators
+from tracking.creator_master import Creator, is_current_member_eligible, is_live_status_polling_eligible, load_creators
 from analytics.subscriber_ranking import GROWTH_PERIODS, VALID_SUBSCRIBER_ORGANIZATIONS
 from stores.subscriber_ranking_store import S3SubscriberRankingStore
 from analytics.video_ranking import CONTENT_TYPE_SCOPE_ALL as VIDEO_RANKING_CONTENT_TYPE_ALL
@@ -90,10 +90,10 @@ class VideoNotFoundError(ClientError):
 
 
 class ScopeNotFoundError(ClientError):
-    """Raised when a requested creatorId doesn't resolve to a real, Oshi-eligible
+    """Raised when a requested creatorId doesn't resolve to a real, current-member
     creator -- get_recent_streams checks this against Creator Master
-    (is_my_oshi_eligible) before ever calling Holodex, so an unknown creatorId or a
-    group/staff channel gets a clean 404 instead of an empty result
+    (is_current_member_eligible) before ever calling Holodex, so an unknown or
+    ineligible creatorId gets a clean 404 instead of an empty result
     indistinguishable from "this real creator just has no archives right now."
     """
 
@@ -1173,12 +1173,10 @@ def get_recent_streams(query: dict[str, Any]) -> dict[str, Any]:
     selectLivestreamSlots, unchanged by this endpoint).
 
     creatorId is resolved and eligibility-checked against Creator Master
-    (is_my_oshi_eligible: an individual creator, including a graduated one --
-    archives are only ever requested for the creator a user has chosen as
-    their Oshi, so this is one request on demand, never polling) *before* ever
-    calling Holodex, so an unknown creatorId, or a group/staff channel, gets a
-    clean 404 (ScopeNotFoundError) rather than an empty result
-    indistinguishable from "this real creator just has no archives."
+    (is_current_member_eligible -- this endpoint's own member-only rule, unchanged
+    by the Live Status roster work) *before* ever calling Holodex, so an unknown
+    or ineligible creatorId gets a clean 404 (ScopeNotFoundError) rather than an
+    empty result indistinguishable from "this real creator just has no archives."
 
     Holodex request: GET /videos?channel_id=<real channel>&type=stream&
     status=past&sort=available_at&order=desc&limit=<limit>&offset=<offset> --
@@ -1202,7 +1200,7 @@ def get_recent_streams(query: dict[str, Any]) -> dict[str, Any]:
     offset = parse_offset(query.get("offset"))
 
     creator = _find_creator(creator_id)
-    if creator is None or not is_my_oshi_eligible(creator):
+    if creator is None or not is_current_member_eligible(creator):
         raise ScopeNotFoundError(f"No creator found for creatorId {creator_id!r}")
 
     raw_payload = holodex_get(

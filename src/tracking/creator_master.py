@@ -253,6 +253,8 @@ def find_creator_by_youtube_channel_id(youtube_channel_id: str, path: Path = DEF
 # a general "does this creator exist" filter for historical/analytics
 # consumers.
 #
+#   is_current_member_eligible        -- the original narrow "current member" rule
+#                                        (kept only for GET /recent-streams).
 #   is_live_status_display_eligible   -- does the channel get a Live Status row.
 #   is_live_status_polling_eligible   -- do we ask Holodex about it (API quota).
 #   is_my_oshi_eligible               -- may a user pick it as their Oshi.
@@ -287,6 +289,20 @@ _MY_OSHI_LIFECYCLE_STAGES = frozenset({"active", "pre_debut", "graduated"})
 # Deliberately not pinned to the real 24-character length -- the point is to refuse a
 # blank/whitespace/foreign value before it reaches Holodex, not to re-validate YouTube.
 YOUTUBE_CHANNEL_ID_PATTERN = re.compile(r"^UC[0-9A-Za-z_-]+$")
+
+
+def is_current_member_eligible(creator: Creator) -> bool:
+    """Whether `creator` is a CURRENT individual talent: still in the roster, an
+    individual member channel, and active or pre_debut. This is the original
+    "current member" rule, kept under its own name for the one backend caller that
+    still wants exactly that (GET /recent-streams) -- it is NOT the Live Status
+    display, Live Status polling or My Oshi rule above/below, which differ on
+    purpose. Mirrors the frontend's isCurrentMemberEligible."""
+    return (
+        creator.active
+        and creator.channel_type == "member"
+        and creator.lifecycle_stage in _POLLED_LIFECYCLE_STAGES
+    )
 
 
 def is_live_status_display_eligible(creator: Creator) -> bool:

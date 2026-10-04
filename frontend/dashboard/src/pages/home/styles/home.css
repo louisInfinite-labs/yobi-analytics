@@ -1539,6 +1539,18 @@
   opacity: 0.8;
 }
 
+/* Separator before a branch's organization-level channel row when it follows named groups
+   (Hololive JP: hololive Official after "Other"). */
+.live-status-group__org-divider {
+  height: 1px;
+
+  margin: 6px 12px 2px;
+
+  background: var(--oshi-text-3);
+
+  opacity: 0.25;
+}
+
 /* Swipe-to-favorite wrapper: houses the reveal layer (behind) and the
    draggable row (in front, same DOM order = on top, no z-index needed). */
 .live-status-member-swipe {
