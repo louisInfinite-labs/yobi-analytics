@@ -56,14 +56,24 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install backend dependencies
         run: python -m pip install -r requirements.txt
-      - name: Run the focused Home endpoint tests (explicit files only, not the full suite)
+      - name: Run the focused Home endpoint and pipeline tests (explicit files only, not the full suite)
         run: >
           python -m pytest -q -p no:cacheprovider
           tests/api/test_home_oshi_videos_api.py
           tests/api/test_video_ranking_api.py
           tests/api/test_oshi_status_api.py
+          tests/api/test_subscriber_leaderboard_api.py
           tests/api/test_history_bucket_read_paths.py
+          tests/api/test_retired_routes.py
           tests/test_api_gateway_routes.py
+          tests/test_terraform_lambda_env_structure.py
+          tests/stores/test_history_bucket.py
+          tests/stores/test_dynamodb_video_classification.py
+          tests/collection/test_history_worker_classification_catchup.py
+          tests/collection/test_youtube_client_skip_reasons.py
+          tests/test_history_worker_scheduler_state.py
+          tests/scripts/backfill/test_backfill_video_classification.py
+          tests/test_home_pipeline_end_to_end.py
 
   frontend-focused-tests:
     needs: detect-scope
