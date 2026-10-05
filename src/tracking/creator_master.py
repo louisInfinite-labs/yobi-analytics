@@ -346,6 +346,18 @@ def is_content_collection_eligible(creator: Creator) -> bool:
     return creator.active and creator.discovery_enabled
 
 
+# Graduated creators whose official YouTube uploads playlist is gone (YouTube answers playlistNotFound), so no
+# historical catalog can be built for them from the official source. Known and permanent for V1: they have no
+# ranking object and never will, which is a data-availability fact -- not a "not computed yet" pipeline state.
+# Their historical source is investigated separately; nothing is invented in the meantime.
+HISTORICAL_DATA_UNAVAILABLE_CREATOR_IDS = frozenset({"mano_aloe", "uruha_rushia", "yozora_mel"})
+
+
+def is_historical_data_unavailable(creator_id: str) -> bool:
+    """Whether `creator_id` is a creator whose historical catalog source is known to be unavailable."""
+    return creator_id in HISTORICAL_DATA_UNAVAILABLE_CREATOR_IDS
+
+
 def _parse_creator(raw: dict) -> Creator:
     """Convert a raw Creator Master JSON record into a Creator instance."""
     try:

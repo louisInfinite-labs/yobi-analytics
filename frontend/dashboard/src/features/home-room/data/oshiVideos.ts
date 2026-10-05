@@ -1,4 +1,4 @@
-import { apiRequest } from "../../../shared/api/apiClient"
+import { apiRequest, isHistoricalDataUnavailable } from "../../../shared/api/apiClient"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { buildOshiVideosRequest, type OshiVideosQuery } from "../model/oshiVideosQuery"
 
@@ -46,6 +46,16 @@ function toRecentVideo(dto: ShelfVideoDto): RecentVideo {
 }
 
 export async function fetchOshiVideos(query: OshiVideosQuery, offset = 0): Promise<OshiVideosPage> {
+  try {
+    return await fetchOshiVideosPage(query, offset)
+  } catch (err) {
+    // A creator with no available historical catalog is a valid empty shelf, not an error.
+    if (isHistoricalDataUnavailable(err)) return { videos: [], nextOffset: offset, hasMore: false }
+    throw err
+  }
+}
+
+async function fetchOshiVideosPage(query: OshiVideosQuery, offset: number): Promise<OshiVideosPage> {
   const request = buildOshiVideosRequest(query, offset)
 
   if (request.paged) {

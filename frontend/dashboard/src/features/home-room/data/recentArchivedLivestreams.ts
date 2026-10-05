@@ -1,4 +1,4 @@
-import { apiRequest } from "../../../shared/api/apiClient"
+import { apiRequest, isHistoricalDataUnavailable } from "../../../shared/api/apiClient"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 
 /** GET /creators/{creatorId}/videos/recent (Home "Latest Live" archive path):
@@ -54,14 +54,21 @@ export async function fetchArchivedLivestreams(
   creatorId: string,
   { offset = 0 }: { offset?: number } = {},
 ): Promise<ArchivedLivestreamPage> {
-  const response = await apiRequest<RecentCreatorVideosResponse>(
-    `/creators/${encodeURIComponent(creatorId)}/videos/recent?${new URLSearchParams({
-      contentType: "live",
-      liveStatus: "completed",
-      limit: String(ARCHIVE_PAGE_SIZE),
-      offset: String(offset),
-    })}`,
-  )
+  let response: RecentCreatorVideosResponse
+  try {
+    response = await apiRequest<RecentCreatorVideosResponse>(
+      `/creators/${encodeURIComponent(creatorId)}/videos/recent?${new URLSearchParams({
+        contentType: "live",
+        liveStatus: "completed",
+        limit: String(ARCHIVE_PAGE_SIZE),
+        offset: String(offset),
+      })}`,
+    )
+  } catch (err) {
+    // A creator with no available historical catalog is a valid empty archive, not an error.
+    if (isHistoricalDataUnavailable(err)) return { videos: [], nextOffset: offset, hasMore: false }
+    throw err
+  }
   return {
     videos: response.videos.map(toRecentVideo),
     nextOffset: offset + response.videos.length,

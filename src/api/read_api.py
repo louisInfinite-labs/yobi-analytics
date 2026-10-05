@@ -38,7 +38,13 @@ from zoneinfo import ZoneInfo
 
 from api.holodex_client import holodex_get
 from api.holodex_normalization import normalize_holodex_archived_streams_response, normalize_holodex_live_response
-from tracking.creator_master import Creator, is_current_member_eligible, is_live_status_polling_eligible, load_creators
+from tracking.creator_master import (
+    Creator,
+    is_current_member_eligible,
+    is_historical_data_unavailable,
+    is_live_status_polling_eligible,
+    load_creators,
+)
 from analytics.subscriber_ranking import GROWTH_PERIODS, VALID_SUBSCRIBER_ORGANIZATIONS
 from stores.subscriber_ranking_store import S3SubscriberRankingStore
 from analytics.video_ranking import CONTENT_TYPE_SCOPE_ALL as VIDEO_RANKING_CONTENT_TYPE_ALL
@@ -96,6 +102,24 @@ class ScopeNotFoundError(ClientError):
     ineligible creatorId gets a clean 404 instead of an empty result
     indistinguishable from "this real creator just has no archives right now."
     """
+
+
+class HistoricalDataUnavailableError(ClientError):
+    """Raised when a real creator's historical catalog source is known to be unavailable
+    (tracking.creator_master.HISTORICAL_DATA_UNAVAILABLE_CREATOR_IDS) and no result exists.
+
+    A permanent data-availability fact, not a transient server state, so api_handler.py maps it to a 404 with
+    "code": "HISTORICAL_DATA_UNAVAILABLE" instead of the 503 RANKING_NOT_READY a genuine "not computed yet" gets.
+    """
+
+
+def _raise_no_result(creator_id: str, message: str) -> None:
+    """Raise the right error for a per-creator read with no persisted result for any candidate date: the 404
+    data-unavailable condition for a creator whose source is known to be unavailable, otherwise RANKING_NOT_READY.
+    Only ever called when no result exists -- a stored result is always served, whoever the creator is."""
+    if is_historical_data_unavailable(creator_id):
+        raise HistoricalDataUnavailableError(f"Historical data for creatorId={creator_id!r} is unavailable")
+    raise RankingNotReadyError(message)
 
 
 class RankingNotReadyError(Exception):
@@ -504,10 +528,11 @@ def get_video_ranking(query: dict[str, Any]) -> dict[str, Any]:
         if result is not None:
             break
     if result is None:
-        raise RankingNotReadyError(
+        _raise_no_result(
+            creator_id,
             f"Video ranking for creatorId={creator_id!r} metric={metric!r} topic={topic!r} "
             f"contentType={content_type!r} liveStatus={live_status!r} "
-            f"reportDate={report_dates[0].isoformat()!r} is not yet computed"
+            f"reportDate={report_dates[0].isoformat()!r} is not yet computed",
         )
 
     # creator -> topic -> contentType -> liveStatus -> rank -> limit (rank_video_rows filters first, then ranks).
@@ -677,9 +702,10 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
         if result is not None:
             break
     if result is None:
-        raise RankingNotReadyError(
+        _raise_no_result(
+            creator_id,
             f"Recent videos for creatorId={creator_id!r} topic={topic!r} contentType={content_type!r} "
-            f"liveStatus={live_status!r} reportDate={report_dates[0].isoformat()!r} is not yet computed"
+            f"liveStatus={live_status!r} reportDate={report_dates[0].isoformat()!r} is not yet computed",
         )
 
     # Filter order is creator -> topic -> contentType -> liveStatus -> sort -> offset/limit, all over the
@@ -918,8 +944,9 @@ def get_oshi_status(query: dict[str, Any], *, now: datetime | None = None) -> di
         if result is not None:
             break
     if result is None:
-        raise RankingNotReadyError(
-            f"Oshi status for creatorId={creator_id!r} reportDate={report_dates[0].isoformat()!r} is not yet computed"
+        _raise_no_result(
+            creator_id,
+            f"Oshi status for creatorId={creator_id!r} reportDate={report_dates[0].isoformat()!r} is not yet computed",
         )
 
     periods = ("1d", "7d", "30d")

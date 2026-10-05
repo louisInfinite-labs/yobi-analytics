@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { fetchOshiVideos } from "./oshiVideos"
-import { apiRequest } from "../../../shared/api/apiClient"
+import { ApiError, apiRequest } from "../../../shared/api/apiClient"
 import type { OshiVideosQuery } from "../model/oshiVideosQuery"
 
-vi.mock("../../../shared/api/apiClient", () => ({ apiRequest: vi.fn() }))
+vi.mock("../../../shared/api/apiClient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../shared/api/apiClient")>()),
+  apiRequest: vi.fn(),
+}))
 
 const query: OshiVideosQuery = { creatorId: "aizawa_ema", topic: "sf6", contentType: "live", sort: "newest", viewWindow: "total" }
 
@@ -55,5 +58,21 @@ describe("fetchOshiVideos", () => {
     vi.mocked(apiRequest).mockRejectedValue(new Error("boom"))
 
     await expect(fetchOshiVideos(query)).rejects.toThrow("boom")
+  })
+
+  it.each([
+    ["the paged recent endpoint", query],
+    ["the ranking endpoint", { ...query, sort: "mostViews" as const, viewWindow: "7d" as const }],
+  ])("renders a creator with unavailable historical data as an empty shelf (%s)", async (_label, shelfQuery) => {
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError(404, "unavailable", "HISTORICAL_DATA_UNAVAILABLE"))
+
+    await expect(fetchOshiVideos(shelfQuery, 0)).resolves.toEqual({ videos: [], nextOffset: 0, hasMore: false })
+  })
+
+  it("still surfaces a real 503 or 500 as an error, and a 404 without the domain code too", async () => {
+    for (const error of [new ApiError(503, "x", "RANKING_NOT_READY"), new ApiError(500, "x"), new ApiError(404, "x")]) {
+      vi.mocked(apiRequest).mockRejectedValueOnce(error)
+      await expect(fetchOshiVideos(query)).rejects.toBe(error)
+    }
   })
 })

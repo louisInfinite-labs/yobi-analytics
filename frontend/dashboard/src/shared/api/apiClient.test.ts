@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { ApiError, ConfigError, apiRequest, describeApiFailure } from "./apiClient"
+import { ApiError, ConfigError, apiRequest, describeApiFailure, isHistoricalDataUnavailable } from "./apiClient"
 
 describe("apiRequest", () => {
   beforeEach(() => {
@@ -129,6 +129,25 @@ describe("apiRequest", () => {
 
     await expect(apiRequest("/foo")).rejects.toThrow("boom")
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("turns the backend's HISTORICAL_DATA_UNAVAILABLE 404 body into an error isHistoricalDataUnavailable recognizes, once", async () => {
+    const body = { error: "Historical data for creatorId='mano_aloe' is unavailable", code: "HISTORICAL_DATA_UNAVAILABLE" }
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404, json: () => Promise.resolve(body) })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const error = await apiRequest("/creators/mano_aloe/videos/recent").catch((e: unknown) => e)
+
+    expect(isHistoricalDataUnavailable(error)).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("recognizes only a 404 carrying exactly that code as unavailable historical data", () => {
+    expect(isHistoricalDataUnavailable(new ApiError(404, "x", "HISTORICAL_DATA_UNAVAILABLE"))).toBe(true)
+    expect(isHistoricalDataUnavailable(new ApiError(404, "x"))).toBe(false)
+    expect(isHistoricalDataUnavailable(new ApiError(404, "x", "SOMETHING_ELSE"))).toBe(false)
+    expect(isHistoricalDataUnavailable(new ApiError(503, "x", "HISTORICAL_DATA_UNAVAILABLE"))).toBe(false)
+    expect(isHistoricalDataUnavailable(new Error("HISTORICAL_DATA_UNAVAILABLE"))).toBe(false)
   })
 })
 
