@@ -117,7 +117,7 @@ resource "aws_lambda_function" "api" {
   reserved_concurrent_executions = 50
 
   environment {
-    variables = {
+    variables = merge({
       YOBI_ADMIN_API_KEY_SECRET_NAME = "yobi-analytics/admin-api-key"
       # YOBI_ADMIN_API_KEY_SSM_PARAMETER = local.ssm_parameter_prepared_not_applied.admin_api_key
       YOBI_STORAGE_BACKEND = "dynamodb"
@@ -135,7 +135,7 @@ resource "aws_lambda_function" "api" {
       LIVE_STREAMS_RETRY_ATTEMPTS           = tostring(var.live_streams_retry_attempts)
       LIVE_STREAMS_RETRY_BACKOFF_SECONDS    = tostring(var.live_streams_retry_backoff_seconds)
       LIVE_STREAMS_REFRESH_DEADLINE_SECONDS = tostring(var.live_streams_refresh_deadline_seconds)
-    }
+    }, local.attestation_environment)
   }
 
   # `environment` is deliberately NOT in ignore_changes here (unlike
@@ -149,6 +149,12 @@ resource "aws_lambda_function" "api" {
   # only changes what happens the next time this config changes.
   lifecycle {
     ignore_changes = [filename, source_code_hash]
+
+    # SEC-API-BOT-002: attestation can only be enabled with REAL deployment values (none is fabricated in the repository).
+    precondition {
+      condition     = !var.attestation_enabled || (can(regex("^[0-9]+$", var.appcheck_project_number)) && var.appcheck_app_id != "")
+      error_message = "attestation_enabled needs the numeric Firebase project number (appcheck_project_number) and the web app id (appcheck_app_id)."
+    }
   }
 }
 
@@ -187,4 +193,17 @@ resource "aws_lambda_function" "emergency_stop" {
   lifecycle {
     ignore_changes = [filename, source_code_hash]
   }
+}
+
+locals {
+  # App Check settings, present in the API Lambda's environment ONLY when attestation_enabled. Until then the code's default
+  # (mode off) applies, so deploying the backend before the Firebase values exist is not an outage. The mode can never be
+  # `off` once enabled (variables.tf validation), and the default mode is enforce.
+  attestation_environment = var.attestation_enabled ? {
+    YOBI_ATTESTATION_MODE         = var.attestation_mode
+    APPCHECK_PROJECT_NUMBER       = var.appcheck_project_number
+    APPCHECK_APP_ID               = var.appcheck_app_id
+    APPCHECK_JWKS_REFRESH_SECONDS = tostring(var.appcheck_jwks_refresh_seconds)
+    APPCHECK_JWKS_GRACE_SECONDS   = tostring(var.appcheck_jwks_grace_seconds)
+  } : {}
 }

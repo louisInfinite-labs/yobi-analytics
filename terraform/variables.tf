@@ -164,3 +164,53 @@ variable "live_streams_refresh_deadline_seconds" {
     error_message = "live_streams_refresh_deadline_seconds must be positive."
   }
 }
+
+# SEC-API-BOT-002 App Check (roadmap MT-28). No Firebase value is committed: the owner supplies them at implementation
+# time (MT-29). attestation_enabled stays false until then, so a deploy before the values exist cannot cause an outage.
+variable "attestation_enabled" {
+  description = "Put the App Check settings in the API Lambda environment. Requires appcheck_project_number and appcheck_app_id."
+  type        = bool
+  default     = false
+}
+
+variable "attestation_mode" {
+  description = "App Check mode once enabled: monitor (verify and log, never reject) or enforce. `off` is not allowed in a deployed environment."
+  type        = string
+  default     = "enforce"
+  validation {
+    condition     = contains(["monitor", "enforce"], var.attestation_mode)
+    error_message = "attestation_mode must be monitor or enforce; off is only for the local server."
+  }
+}
+
+variable "appcheck_project_number" {
+  description = "The NUMERIC Firebase project number (App Check token issuer/audience), not the project id. Supplied by the owner (MT-29)."
+  type        = string
+  default     = ""
+}
+
+variable "appcheck_app_id" {
+  description = "The pinned production web-app id (the App Check token subject). Supplied by the owner (MT-29)."
+  type        = string
+  default     = ""
+}
+
+variable "appcheck_jwks_refresh_seconds" {
+  description = "How often the signing keys are refreshed; must not exceed the documented 6 hour caching ceiling."
+  type        = number
+  default     = 10800
+  validation {
+    condition     = var.appcheck_jwks_refresh_seconds > 0 && var.appcheck_jwks_refresh_seconds <= 21600
+    error_message = "appcheck_jwks_refresh_seconds must be positive and at most 21600 (6 hours)."
+  }
+}
+
+variable "appcheck_jwks_grace_seconds" {
+  description = "How long still-trusted cached signing keys may be used after a failed refresh (bounded; never fail open)."
+  type        = number
+  default     = 3600
+  validation {
+    condition     = var.appcheck_jwks_grace_seconds >= 0 && var.appcheck_jwks_grace_seconds <= 86400
+    error_message = "appcheck_jwks_grace_seconds must be between 0 and 86400."
+  }
+}

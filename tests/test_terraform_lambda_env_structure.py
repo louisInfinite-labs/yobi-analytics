@@ -46,7 +46,8 @@ def _resource_block(source: str, resource_line: str) -> str:
 
 def _environment_variables(block: str) -> dict[str, str]:
     """Name -> value expression of every assignment in the block's `variables = {...}` map (comments ignored)."""
-    variables_map = re.search(r"variables\s*=\s*\{(.*?)\n\s*\}", block, re.DOTALL)
+    # The map may be wrapped as `merge({ ...literals... }, local.<optional extras>)`: the literal map is what is checked here.
+    variables_map = re.search(r"variables\s*=\s*(?:merge\(\s*)?\{(.*?)\n\s*\}", block, re.DOTALL)
     assert variables_map is not None, "no environment variables map found"
     assignments = {}
     for line in variables_map.group(1).splitlines():

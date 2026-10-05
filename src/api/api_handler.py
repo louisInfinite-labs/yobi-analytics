@@ -51,6 +51,7 @@ import hmac
 import json
 from typing import Any, Callable
 
+from api import attestation
 from api import client_credential_api
 from stores import client_credential_store
 from ops import config
@@ -122,6 +123,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return _json_response(404, {"error": f"No such route: {route_key!r}"})
 
     try:
+        # Order of checks (baseline section 10): route known -> App Check attestation -> route-class credential -> validation
+        # -> work. The attestation step uses only in-memory crypto and cached keys: a rejected request does no data-plane work.
+        attestation_error = _check_attestation(event, route_key)
+        if attestation_error is not None:
+            return attestation_error
+
         if route_key in _ADMIN_PROTECTED_ROUTES:
             auth_error = _check_admin_key(event)
             if auth_error is not None:
@@ -393,6 +400,88 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "PUT /clients/{clientId}/notification-preference": _handle_put_notification_preference,
     "GET /admin/heartbeat-stats": _handle_get_admin_heartbeat_stats,
 }
+
+
+_APP_CHECK_HEADER = "x-firebase-appcheck"
+# Per-container attestation state: (config, JWKS cache), or (None, error) when the configuration is unusable. Built lazily so
+# importing this module never needs the settings; tests replace it with _set_attestation_for_tests().
+_ATTESTATION: tuple[Any, Any] | None = None
+
+
+def _get_attestation() -> tuple[Any, Any]:
+    global _ATTESTATION
+    if _ATTESTATION is None:
+        try:
+            config_ = attestation.AttestationConfig.from_environment()
+            cache = None
+            if config_.mode != attestation.MODE_OFF:
+                cache = attestation.JwksCache(lambda: attestation.fetch_jwks_over_http(config_), config_)
+            _ATTESTATION = (config_, cache)
+        except attestation.AttestationConfigError as exc:
+            _ATTESTATION = (None, exc)
+    return _ATTESTATION
+
+
+def _set_attestation_for_tests(state: tuple[Any, Any] | None) -> None:
+    """Test hook: install (config, cache) or reset to lazy environment-based construction."""
+    global _ATTESTATION
+    _ATTESTATION = state
+
+
+def _log_security_event(event_class: str, route_key: str, mode: str) -> None:
+    """One structured line per attestation event: class, route template and mode only (never the token, headers or caller)."""
+    print(json.dumps({"securityEvent": event_class, "route": route_key, "mode": mode}))
+
+
+_ATTESTATION_EVENT_CLASSES = {
+    "APP_ATTESTATION_REQUIRED": "attest_missing",
+    "ATTESTATION_INVALID": "attest_invalid",
+    "ATTESTATION_EXPIRED": "attest_expired",
+    "ATTESTATION_UNAVAILABLE": "attest_unavailable",
+}
+
+
+def _attestation_failure_response(error: attestation.AttestationError) -> dict[str, Any]:
+    """403 for every App Check rejection (missing, invalid, expired); 503 when verification infrastructure is unavailable."""
+    status = 503 if isinstance(error, attestation.AttestationUnavailable) else 403
+    messages = {
+        "APP_ATTESTATION_REQUIRED": "Application attestation is required",
+        "ATTESTATION_INVALID": "Application attestation is invalid",
+        "ATTESTATION_EXPIRED": "Application attestation has expired",
+        "ATTESTATION_UNAVAILABLE": "Application attestation is temporarily unavailable",
+    }
+    return _json_response(status, {"error": messages[error.code], "code": error.code})
+
+
+def _check_attestation(event: dict[str, Any], route_key: str) -> dict[str, Any] | None:
+    """Verify the App Check token for a non-exempt route. Returns an error response, or None to continue.
+
+    Modes (YOBI_ATTESTATION_MODE): `off` skips verification (the local server only; production configuration must be
+    `enforce`, asserted by the Terraform structure test); `monitor` verifies and logs events but never rejects; `enforce`
+    rejects. An unusable configuration FAILS CLOSED (503) in enforce mode and is logged. A valid token proves attestation,
+    not a human.
+    """
+    config_, cache_or_error = _get_attestation()
+    if config_ is None:  # the configuration itself is broken: never silently open
+        _log_security_event("attest_config_error", route_key, "unknown")
+        return _json_response(503, {"error": "Application attestation is temporarily unavailable", "code": "ATTESTATION_UNAVAILABLE"})
+    if config_.mode == attestation.MODE_OFF:
+        return None
+
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    try:
+        attestation.verify_token(headers.get(_APP_CHECK_HEADER), config_, cache_or_error)
+        return None
+    except attestation.AttestationError as exc:
+        _log_security_event(_ATTESTATION_EVENT_CLASSES[exc.code], route_key, config_.mode)
+        if config_.mode == attestation.MODE_MONITOR:
+            return None
+        return _attestation_failure_response(exc)
+    except Exception as exc:  # noqa: BLE001 - any unexpected verifier failure is treated as invalid, never as a 500 or a pass
+        _log_security_event("attest_invalid", route_key, config_.mode)
+        if config_.mode == attestation.MODE_MONITOR:
+            return None
+        return _attestation_failure_response(attestation.AttestationInvalid(str(type(exc).__name__)))
 
 
 def _check_admin_key(event: dict[str, Any]) -> dict[str, Any] | None:

@@ -101,6 +101,9 @@ def main() -> None:
     args = parser.parse_args()
 
     os.environ.pop("YOBI_STORAGE_BACKEND", None)  # always the local backend
+    # The local server has no Firebase project: attestation is explicitly OFF here and nowhere else (production
+    # configuration must be `enforce`; see terraform/variables.tf and tests/security).
+    os.environ["YOBI_ATTESTATION_MODE"] = "off"
     sys.path.insert(0, str(ROOT / "src"))
 
     from api import api_handler
