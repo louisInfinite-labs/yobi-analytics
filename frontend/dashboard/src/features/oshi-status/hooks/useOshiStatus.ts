@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { isHistoricalDataUnavailable } from "../../../shared/api/apiClient"
 import { fetchOshiStatus, type OshiStatusData } from "../data/oshiStatus"
 
 interface OshiStatusResult {
@@ -37,7 +38,9 @@ export function useOshiStatus(creatorId: string | undefined, since: Date | null)
       })
       .catch((err: unknown) => {
         if (generation === generationRef.current) {
-          setResult({ key, data: null, error: err instanceof Error ? err : new Error(String(err)) })
+          // A creator with no available historical catalog shows the panel's empty placeholders, not an error.
+          const error = isHistoricalDataUnavailable(err) ? null : err instanceof Error ? err : new Error(String(err))
+          setResult({ key, data: null, error })
         }
       })
   }, [creatorId, sinceKey, key])

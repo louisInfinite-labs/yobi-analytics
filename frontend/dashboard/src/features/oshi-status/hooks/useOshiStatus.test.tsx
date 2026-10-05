@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { useOshiStatus } from "./useOshiStatus"
 import { fetchOshiStatus, type OshiStatusData } from "../data/oshiStatus"
+import { ApiError } from "../../../shared/api/apiClient"
 
 vi.mock("../data/oshiStatus", () => ({ fetchOshiStatus: vi.fn() }))
 
@@ -102,6 +103,24 @@ describe("useOshiStatus", () => {
 
     expect(result.current.error).toBeNull()
     expect(result.current.data?.subscriberCount).toBe(222)
+  })
+
+  it("a creator with unavailable historical data resolves to no data and NO error (the empty placeholders)", async () => {
+    fetchMock.mockRejectedValue(new ApiError(404, "unavailable", "HISTORICAL_DATA_UNAVAILABLE"))
+
+    const { result } = renderHook(() => useOshiStatus("mano_aloe", VISIT))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current).toEqual({ data: null, loading: false, error: null })
+  })
+
+  it("a real 503 is still an error", async () => {
+    fetchMock.mockRejectedValue(new ApiError(503, "not ready", "RANKING_NOT_READY"))
+
+    const { result } = renderHook(() => useOshiStatus("aizawa_ema", VISIT))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.error).toBeInstanceOf(ApiError)
   })
 
   it("a failed request gives no data and the error, never another creator's numbers", async () => {

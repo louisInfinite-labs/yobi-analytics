@@ -132,6 +132,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return _json_response(404, {"error": str(exc)})
     except read_api.ScopeNotFoundError as exc:
         return _json_response(404, {"error": str(exc)})
+    except read_api.HistoricalDataUnavailableError as exc:
+        return _json_response(404, {"error": str(exc), "code": "HISTORICAL_DATA_UNAVAILABLE"})
     except read_api.RankingNotReadyError as exc:
         return _json_response(503, {"error": str(exc), "code": "RANKING_NOT_READY"})
     except (HolodexAPIError, HolodexNormalizationError, MissingHolodexApiKeyError) as exc:

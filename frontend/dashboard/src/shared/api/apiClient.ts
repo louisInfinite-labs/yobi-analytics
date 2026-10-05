@@ -20,6 +20,14 @@ export class ApiError extends Error {
   }
 }
 
+/** The backend's `code` for a creator whose historical catalog source is known to be unavailable (a 404): not an
+ * outage, so callers render their normal empty state for it instead of an error. */
+export const HISTORICAL_DATA_UNAVAILABLE_CODE = "HISTORICAL_DATA_UNAVAILABLE"
+
+export function isHistoricalDataUnavailable(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404 && error.code === HISTORICAL_DATA_UNAVAILABLE_CODE
+}
+
 /** Thrown when the app itself is misconfigured (e.g. `VITE_API_BASE_URL` is
  * unset) — distinct from a plain `Error`/network failure so `describeApiFailure`
  * doesn't tell a visitor to check their own connection for a deployment
