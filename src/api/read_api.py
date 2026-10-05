@@ -33,11 +33,13 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from api import identifiers
+from api.live_streams_protection import ProtectedResult
 from api.holodex_client import holodex_get
 from api.holodex_normalization import normalize_holodex_archived_streams_response, normalize_holodex_live_response
 from tracking.creator_master import (
@@ -1085,11 +1087,9 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     recover an eligible stream that never made it into `/live`'s response in
     the first place if its (undocumented, platform-wide) result was ever
     truncated. `/users/live` is genuinely channel-scoped instead, so no such
-    risk applies. Holodex is queried directly here rather than through any
-    persisted store (DynamoDB/S3/cache): this is read-path integration only,
-    matching TrendingNotReadyError's "no live fallback" precedent in reverse
-    -- here Holodex itself *is* the live source, with no persistence layer in
-    front of it yet.
+    risk applies. Holodex is the live source, but a request is answered
+    from a shared cache whenever it can be (SEC-API-005, api.live_streams_protection):
+    upstream calls follow a configurable refresh window, not the request rate.
 
     Which channels are asked about is Creator Master's own
     is_live_status_polling_eligible (tracking/creator_master.py): displayed,
@@ -1113,10 +1113,26 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     api_handler.py's dispatch maps these to 503, the same "external
     dependency temporarily unavailable" treatment as TrendingNotReadyError.
     """
+    result = get_live_streams_protected()
+    body = LiveStreamsBody(streams=result.streams)
+    body.stale = result.stale
+    return body
+
+
+class LiveStreamsBody(dict):
+    """The public `{"streams": [...]}` body. `stale` is internal metadata (never serialized): the handler uses it to stop
+    a downstream cache from extending the life of stale data (SEC-API-005)."""
+
+    stale: bool = False
+
+
+def _fetch_live_streams_from_holodex() -> list[dict[str, Any]]:
+    """One aggregate Holodex `/users/live` request, normalized to the public stream dicts (the upstream call that the
+    SEC-API-005 protection decides whether to make; see api.live_streams_protection)."""
     eligible_creators = [creator for creator in load_creators() if is_live_status_polling_eligible(creator)]
     channel_index = {creator.youtube_channel_id: creator for creator in eligible_creators}
     if not channel_index:
-        return {"streams": []}
+        return []
 
     raw_payload = holodex_get("/users/live", {"channels": ",".join(channel_index)})
     normalized_streams = normalize_holodex_live_response(raw_payload)
@@ -1141,7 +1157,40 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
                 "thumbnailUrl": stream.thumbnail_url,
             }
         )
-    return {"streams": streams}
+    return streams
+
+
+# The shared-cache store (one per container: its L1 copy must live across invocations). Created lazily so importing this
+# module never touches AWS; tests replace it with an in-memory store.
+_LIVE_STREAMS_STORE: Any = None
+
+
+def _live_streams_store() -> Any:
+    global _LIVE_STREAMS_STORE
+    if _LIVE_STREAMS_STORE is None:
+        from stores.live_streams_cache_store import S3LiveStreamsCacheStore
+
+        _LIVE_STREAMS_STORE = S3LiveStreamsCacheStore()
+    return _LIVE_STREAMS_STORE
+
+
+def _live_streams_now() -> float:
+    """Wall-clock seconds for the protection policy (resolved at call time so tests can substitute the clock)."""
+    return time.time()
+
+
+def get_live_streams_protected() -> "ProtectedResult":
+    """The SEC-API-005-protected `/live-streams` answer: shared cache, stale-if-error, shared 429 cooldown, bounded
+    timeout/retries and metrics. The returned result says whether the data is stale (internal; the public body is unchanged)."""
+    from api.live_streams_protection import LiveStreamsProtection, ProtectionConfig
+
+    protection = LiveStreamsProtection(
+        store=_live_streams_store(),
+        fetch=_fetch_live_streams_from_holodex,
+        config=ProtectionConfig.from_environment(),
+        clock=_live_streams_now,
+    )
+    return protection.get()
 
 
 # GET /recent-streams' own limit -- deliberately its own constant, not

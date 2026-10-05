@@ -79,6 +79,7 @@ jobs:
           tests/api/test_read_api.py
           tests/api/test_historical_data_unavailable.py
           tests/scripts/backfill/test_backfill_graduated_history.py
+          tests/api/test_holodex_client.py
       - name: Run the security-marked tests (always; independent of the explicit file list above)
         run: python -m pytest -q -p no:cacheprovider -m security tests/security
 
@@ -140,6 +141,8 @@ jobs:
           src/features/home-room/data/recentArchivedLivestreams.test.ts
           src/shared/api/apiClient.test.ts
           scripts/check-bundle-secrets.test.ts
+          src/shared/api/jitter.test.ts
+          src/shared/api/hooks/useHeartbeat.test.ts
 
   # The stable required check. Always runs (even when a test group failed or was skipped) and decides from the results:
   # a group whose scope was detected MUST have succeeded; a group whose scope was not detected must have been skipped.

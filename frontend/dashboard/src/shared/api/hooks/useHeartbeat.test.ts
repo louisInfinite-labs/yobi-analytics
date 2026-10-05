@@ -10,6 +10,7 @@ describe("useHeartbeat", () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.clearAllMocks()
+    vi.spyOn(Math, "random").mockReturnValue(0.5) // jitter midpoint: exactly the base interval
     vi.spyOn(clientId, "getOrCreateClientId").mockReturnValue("client-1")
     vi.mocked(apiClient.apiRequest).mockResolvedValue(undefined)
   })
@@ -58,5 +59,46 @@ describe("useHeartbeat", () => {
     // test exits, rather than leaking an unhandled-rejection warning.
     await Promise.resolve()
     await Promise.resolve()
+  })
+})
+
+describe("useHeartbeat jitter (periodic only)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.clearAllMocks()
+    vi.spyOn(clientId, "getOrCreateClientId").mockReturnValue("client-1")
+    vi.mocked(apiClient.apiRequest).mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it("sends the first heartbeat immediately regardless of the random draw", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.99)
+
+    renderHook(() => useHeartbeat())
+
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it("delays a repeat within +/-20 percent of 60 s: nothing before the lower bound, always sent by the upper bound", () => {
+    const random = vi.spyOn(Math, "random")
+    random.mockReturnValue(0) // earliest repeat: 48 s
+    const early = renderHook(() => useHeartbeat())
+    vi.advanceTimersByTime(47_999)
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(1)
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(2)
+    early.unmount()
+
+    vi.clearAllMocks()
+    random.mockReturnValue(1) // latest repeat: 72 s
+    renderHook(() => useHeartbeat())
+    vi.advanceTimersByTime(71_999)
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(1)
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(2)
   })
 })

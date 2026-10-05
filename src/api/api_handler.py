@@ -158,7 +158,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         print(f"Unhandled error in api_handler for route {route_key!r}: {exc!r}")
         return _json_response(500, {"error": "Internal server error"})
 
-    return _json_response(200, result)
+    response = _json_response(200, result)
+    response["headers"].update(getattr(result, "response_headers", {}))
+    return response
 
 
 def _handle_get_video_growth(event: dict[str, Any]) -> dict[str, Any]:
@@ -189,8 +191,20 @@ def _handle_get_oshi_status(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_oshi_status(_merged_params(event))
 
 
+class _HeaderedResult(dict):
+    """A handler result that also asks lambda_handler to add response headers (used for a stale /live-streams answer)."""
+
+    response_headers: dict[str, str]
+
+
 def _handle_get_live_streams(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_live_streams(_merged_params(event))
+    result = read_api.get_live_streams(_merged_params(event))
+    if getattr(result, "stale", False):
+        # Stale data is never presented as fresh: a stale answer must not be extended by a downstream cache (SEC-API-005).
+        headered = _HeaderedResult(result)
+        headered.response_headers = {"Cache-Control": "no-store"}
+        return headered
+    return result
 
 
 def _handle_get_recent_streams(event: dict[str, Any]) -> dict[str, Any]:

@@ -22,11 +22,19 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 LAMBDA_TF = (REPO_ROOT / "terraform" / "lambda.tf").read_text()
 
 WRITER_LAMBDAS = ("collector", "history_worker", "ranking_reducer")
-# The API Lambda's environment as last applied (4c0e3c8): everything here must stay exactly as it is.
+# The API Lambda's environment: the last applied values (4c0e3c8) stay exactly as they are; the SEC-API-005 /live-streams
+# protection parameters are the only additions and come from Terraform variables (variables.tf), never literals.
 API_ENVIRONMENT = {
     "YOBI_ADMIN_API_KEY_SECRET_NAME": '"yobi-analytics/admin-api-key"',
     "YOBI_STORAGE_BACKEND": '"dynamodb"',
     "HOLODEX_SECRET_NAME": '"yobi-analytics/holodex-api-key"',
+    "LIVE_STREAMS_REFRESH_WINDOW_SECONDS": "tostring(var.live_streams_refresh_window_seconds)",
+    "LIVE_STREAMS_MAX_STALE_SECONDS": "tostring(var.live_streams_max_stale_seconds)",
+    "LIVE_STREAMS_COOLDOWN_BASE_SECONDS": "tostring(var.live_streams_cooldown_base_seconds)",
+    "LIVE_STREAMS_COOLDOWN_MAX_SECONDS": "tostring(var.live_streams_cooldown_max_seconds)",
+    "LIVE_STREAMS_RETRY_ATTEMPTS": "tostring(var.live_streams_retry_attempts)",
+    "LIVE_STREAMS_RETRY_BACKOFF_SECONDS": "tostring(var.live_streams_retry_backoff_seconds)",
+    "LIVE_STREAMS_REFRESH_DEADLINE_SECONDS": "tostring(var.live_streams_refresh_deadline_seconds)",
 }
 
 

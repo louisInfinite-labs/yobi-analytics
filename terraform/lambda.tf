@@ -126,6 +126,15 @@ resource "aws_lambda_function" "api" {
       # an optional override. Keeping it out of this block means deploying the API needs no change to
       # this Lambda's live environment.
       HOLODEX_SECRET_NAME = "yobi-analytics/holodex-api-key"
+      # SEC-API-005: /live-streams upstream-protection parameters. Configuration, not code constants; none is derived from
+      # a provider quota. The in-code defaults equal these variable defaults, so an unset value behaves identically.
+      LIVE_STREAMS_REFRESH_WINDOW_SECONDS   = tostring(var.live_streams_refresh_window_seconds)
+      LIVE_STREAMS_MAX_STALE_SECONDS        = tostring(var.live_streams_max_stale_seconds)
+      LIVE_STREAMS_COOLDOWN_BASE_SECONDS    = tostring(var.live_streams_cooldown_base_seconds)
+      LIVE_STREAMS_COOLDOWN_MAX_SECONDS     = tostring(var.live_streams_cooldown_max_seconds)
+      LIVE_STREAMS_RETRY_ATTEMPTS           = tostring(var.live_streams_retry_attempts)
+      LIVE_STREAMS_RETRY_BACKOFF_SECONDS    = tostring(var.live_streams_retry_backoff_seconds)
+      LIVE_STREAMS_REFRESH_DEADLINE_SECONDS = tostring(var.live_streams_refresh_deadline_seconds)
     }
   }
 

@@ -25,6 +25,43 @@ resource "aws_apigatewayv2_stage" "default" {
     throttling_burst_limit = 20
     throttling_rate_limit  = 10
   }
+
+  # SEC-API-003 (layer 5): per-route abuse-oriented throttles for the launch route set. `rate` (sustained average) and
+  # `burst` (bucket capacity for one synchronized wave) are two separate, separately derived parameters
+  # (var.launch_route_throttles). Unlisted routes keep the stage default above as a safety net.
+  dynamic "route_settings" {
+    for_each = var.launch_route_throttles
+    content {
+      route_key              = route_settings.key
+      throttling_rate_limit  = route_settings.value.rate
+      throttling_burst_limit = route_settings.value.burst
+    }
+  }
+
+  # SEC-AWS-001: API access logging. The fields are a forensic/tuning allowlist: no request headers, no raw path or query
+  # string (they carry identifiers), no user-agent. The route key is the TEMPLATE (e.g. `GET /live-streams`), not the
+  # concrete path. Retention is explicit (var.api_access_log_retention_days).
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access.arn
+    format = jsonencode({
+      requestId               = "$context.requestId"
+      requestTimeEpoch        = "$context.requestTimeEpoch"
+      routeKey                = "$context.routeKey"
+      httpMethod              = "$context.httpMethod"
+      status                  = "$context.status"
+      responseLatency         = "$context.responseLatency"
+      integrationLatency      = "$context.integrationLatency"
+      integrationStatus       = "$context.integrationStatus"
+      integrationErrorMessage = "$context.integrationErrorMessage"
+      responseLength          = "$context.responseLength"
+      sourceIp                = "$context.identity.sourceIp"
+    })
+  }
+}
+
+resource "aws_cloudwatch_log_group" "api_access" {
+  name              = "/aws/apigateway/${aws_apigatewayv2_api.http_api.name}-access"
+  retention_in_days = var.api_access_log_retention_days
 }
 
 locals {

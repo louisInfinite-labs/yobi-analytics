@@ -18,6 +18,7 @@ const STREAM = {
 beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
+  vi.spyOn(Math, "random").mockReturnValue(0.5) // jitter midpoint: exactly the base interval
   vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue([STREAM])
 })
 

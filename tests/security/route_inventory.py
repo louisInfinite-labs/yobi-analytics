@@ -50,3 +50,17 @@ def routes_in_class(*classes: str) -> set[str]:
 ATTESTED_ROUTES: set[str] = set(ROUTE_CLASSES) - routes_in_class(RETIRED)
 CLIENT_SCOPED_ROUTES: set[str] = routes_in_class(CLIENT_SCOPED)
 ADMIN_ROUTES: set[str] = routes_in_class(ADMIN)
+
+# SEC-API-003 launch route set: the public write routes, the admin routes, the Holodex-backed routes and the creator-read
+# routes that can starve shared availability. Each needs an explicit `rate` AND `burst` (terraform var.launch_route_throttles).
+LAUNCH_THROTTLED_ROUTES: set[str] = {
+    "POST /heartbeat",
+    "POST /clients/{clientId}/credential",
+    "GET /live-streams",
+    "GET /recent-streams",
+    "GET /creators/{creatorId}/videos/ranking",
+    "GET /creators/{creatorId}/videos/recent",
+    "GET /creators/{creatorId}/oshi-status",
+    "POST /remote-config",
+    "GET /admin/heartbeat-stats",
+}

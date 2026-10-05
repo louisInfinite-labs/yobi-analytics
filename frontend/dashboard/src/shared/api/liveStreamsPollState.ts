@@ -1,8 +1,10 @@
-let subscriberCount = 0
-let intervalHandle: ReturnType<typeof setInterval> | null = null
+import { startJitteredInterval } from "./jitter"
 
-/** Ref-counted shared interval: `tick` runs once immediately and then every
- * `intervalMs` while at least one subscriber is acquired, regardless of how
+let subscriberCount = 0
+let cancelInterval: (() => void) | null = null
+
+/** Ref-counted shared interval: `tick` runs once immediately (never delayed) and then roughly every
+ * `intervalMs` (jittered, see jitter.ts) while at least one subscriber is acquired, regardless of how
  * many consumers overlap -- starts on the first, stops after the last.
  * Deliberately dependency-free (no fetch/apiClient import) so
  * resetLiveStreamsPollingForTests can be wired into the global test setup
@@ -13,13 +15,13 @@ export function acquirePolling(intervalMs: number, tick: () => void): () => void
   subscriberCount += 1
   if (subscriberCount === 1) {
     tick()
-    intervalHandle = setInterval(tick, intervalMs)
+    cancelInterval = startJitteredInterval(tick, intervalMs)
   }
   return () => {
     subscriberCount -= 1
-    if (subscriberCount === 0 && intervalHandle !== null) {
-      clearInterval(intervalHandle)
-      intervalHandle = null
+    if (subscriberCount === 0 && cancelInterval !== null) {
+      cancelInterval()
+      cancelInterval = null
     }
   }
 }
@@ -28,7 +30,7 @@ export function acquirePolling(intervalMs: number, tick: () => void): () => void
  * same singleton-leaks-across-tests problem useLiveDockExpanded's own
  * resetLiveDockExpandedForTests solves. */
 export function resetLiveStreamsPollingForTests(): void {
-  if (intervalHandle !== null) clearInterval(intervalHandle)
-  intervalHandle = null
+  if (cancelInterval !== null) cancelInterval()
+  cancelInterval = null
   subscriberCount = 0
 }

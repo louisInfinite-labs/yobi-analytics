@@ -8,7 +8,8 @@ from api.holodex_client import HOLODEX_BASE_URL, HolodexAPIError, holodex_get
 class _FakeResponse:
     """Minimal stand-in for requests.Response, just enough for holodex_get's use of it."""
 
-    def __init__(self, *, status_code=200, json_data=None, text="", json_raises=False):
+    def __init__(self, *, status_code=200, json_data=None, text="", json_raises=False, headers=None):
+        self.headers = headers or {}
         self.status_code = status_code
         self.ok = 200 <= status_code < 400
         self.text = text
@@ -119,3 +120,45 @@ def test_no_real_network_call_is_reachable_without_a_mocked_session(monkeypatch)
     monkeypatch.setattr(holodex_client._HOLODEX_SESSION, "get", lambda *a, **k: _FakeResponse(json_data=[]))
 
     holodex_get("/live", {"channel_id": "abc123"})
+
+
+def test_a_429_carries_its_status_and_a_numeric_retry_after(monkeypatch):
+    monkeypatch.setattr(
+        holodex_client._HOLODEX_SESSION,
+        "get",
+        lambda *a, **k: _FakeResponse(status_code=429, text="slow down", headers={"Retry-After": "17"}),
+    )
+
+    with pytest.raises(HolodexAPIError) as raised:
+        holodex_get("/users/live")
+
+    assert raised.value.status_code == 429
+    assert raised.value.retry_after_seconds == 17.0
+    assert raised.value.timed_out is False
+
+
+@pytest.mark.parametrize("header", [None, "", "soon", "-5", "Wed, 21 Oct 2026 07:28:00 GMT"])
+def test_a_missing_or_non_numeric_retry_after_is_none(monkeypatch, header):
+    headers = {} if header is None else {"Retry-After": header}
+    monkeypatch.setattr(
+        holodex_client._HOLODEX_SESSION, "get", lambda *a, **k: _FakeResponse(status_code=429, headers=headers)
+    )
+
+    with pytest.raises(HolodexAPIError) as raised:
+        holodex_get("/users/live")
+
+    assert raised.value.status_code == 429
+    assert raised.value.retry_after_seconds is None
+
+
+def test_a_timeout_is_flagged_as_timed_out(monkeypatch):
+    def fake_get(*args, **kwargs):
+        raise requests.Timeout("read timed out")
+
+    monkeypatch.setattr(holodex_client._HOLODEX_SESSION, "get", fake_get)
+
+    with pytest.raises(HolodexAPIError) as raised:
+        holodex_get("/users/live")
+
+    assert raised.value.timed_out is True
+    assert raised.value.status_code is None

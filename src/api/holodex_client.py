@@ -36,7 +36,35 @@ class HolodexAPIError(RuntimeError):
     Always raised, never swallowed into an empty result — distinguishing a
     Holodex outage from a genuine empty Live/Upcoming result is the calling
     handler's job (H4), not this client's.
+
+    `status_code`, `retry_after_seconds` and `timed_out` let the /live-streams
+    upstream protection (SEC-API-005) tell a 429 and a timeout apart from other
+    failures without parsing the message; they are None/False when not known.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retry_after_seconds: float | None = None,
+        timed_out: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after_seconds = retry_after_seconds
+        self.timed_out = timed_out
+
+
+def _parse_retry_after(raw: str | None) -> float | None:
+    """The Retry-After header as seconds when it is a plain non-negative number, else None (HTTP-dates are ignored)."""
+    if raw is None:
+        return None
+    try:
+        value = float(raw.strip())
+    except ValueError:
+        return None
+    return value if value >= 0 else None
 
 
 def holodex_get(path: str, params: dict[str, str] | None = None) -> Any:
@@ -58,13 +86,15 @@ def holodex_get(path: str, params: dict[str, str] | None = None) -> Any:
             timeout=_HOLODEX_REQUEST_TIMEOUT_SECONDS,
         )
     except requests.Timeout as exc:
-        raise HolodexAPIError(f"Holodex API request to {path!r} timed out: {exc}") from exc
+        raise HolodexAPIError(f"Holodex API request to {path!r} timed out: {exc}", timed_out=True) from exc
     except requests.RequestException as exc:
         raise HolodexAPIError(f"Holodex API request to {path!r} failed: {exc}") from exc
 
     if not response.ok:
         raise HolodexAPIError(
-            f"Holodex API request to {path!r} failed with status {response.status_code}: {response.text}"
+            f"Holodex API request to {path!r} failed with status {response.status_code}: {response.text}",
+            status_code=response.status_code,
+            retry_after_seconds=_parse_retry_after(response.headers.get("Retry-After")),
         )
 
     try:
