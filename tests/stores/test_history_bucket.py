@@ -137,14 +137,22 @@ def test_write_side_from_environment_still_has_no_default(monkeypatch, store_cla
 
 
 def test_write_side_modules_never_import_the_fallback():
-    """Only the two read-side stores may import the resolver: writers/backfills must keep requiring an explicit bucket."""
+    """Only the API-side stores may import the resolver: writers/backfills must keep requiring an explicit bucket.
+
+    The two ranking stores are read-side. The /live-streams shared-cache store (SEC-API-005) is API-side too: the API Lambda has no
+    bucket variable by design and owns exactly one small cache object, so it resolves the fixed bucket the same way.
+    """
     importers = sorted(
         path.relative_to(SRC).as_posix()
         for path in SRC.rglob("*.py")
         if "history_bucket import" in path.read_text(encoding="utf-8") and path.name != "history_bucket.py"
     )
 
-    assert importers == ["stores/subscriber_ranking_store.py", "stores/video_ranking_store.py"]
+    assert importers == [
+        "stores/live_streams_cache_store.py",
+        "stores/subscriber_ranking_store.py",
+        "stores/video_ranking_store.py",
+    ]
 
 
 def test_the_fallback_literal_has_exactly_one_home_in_src():

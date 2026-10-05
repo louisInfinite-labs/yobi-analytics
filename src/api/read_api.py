@@ -1187,7 +1187,7 @@ def get_live_streams_protected() -> "ProtectedResult":
     protection = LiveStreamsProtection(
         store=_live_streams_store(),
         fetch=_fetch_live_streams_from_holodex,
-        config=ProtectionConfig.from_environment(),
+        config=ProtectionConfig.from_environment(os.environ),
         clock=_live_streams_now,
     )
     return protection.get()
