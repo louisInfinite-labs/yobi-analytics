@@ -37,6 +37,7 @@ describe("scanDirectory", () => {
     ["an AWS access key id", FAKE_AWS_KEY, "aws-access-key-id"],
     ["a private key block", "-----BEGIN " + "PRIVATE KEY-----", "private-key-block"],
     ["a reference to a secret-bearing build variable", "VITE_" + "HOLODEX_API_KEY", "secret-bearing-build-variable"],
+    ["the App Check debug-token build variable", "VITE_" + "APPCHECK_DEBUG_TOKEN", "appcheck-debug-token"],
   ])("fails a build containing %s, without printing the full value", (_label, value, rule) => {
     writeFileSync(join(dist, "assets", "leak.js"), `var x="${value}";`)
 

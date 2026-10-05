@@ -19,6 +19,9 @@ export const RULES = [
   { name: "slack-token", pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
   { name: "bearer-or-secret-assignment", pattern: /\b(?:secret|api[_-]?key|access[_-]?token)["']?\s*[:=]\s*["'][A-Za-z0-9_\-/+=]{24,}["']/gi },
   { name: "secret-bearing-build-variable", pattern: /VITE_[A-Z0-9_]*(?:KEY|SECRET|TOKEN)[A-Z0-9_]*/g },
+  // An App Check debug token must never ship: our debug-provider code is development-only and absent from a production
+  // build, so its build variable must not appear either. (The SDK itself contains the global's name; that is not our token.)
+  { name: "appcheck-debug-token", pattern: /VITE_APPCHECK_DEBUG_TOKEN/g },
 ]
 
 function redact(value) {

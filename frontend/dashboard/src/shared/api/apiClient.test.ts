@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError, ConfigError, apiRequest, describeApiFailure, isHistoricalDataUnavailable } from "./apiClient"
+import { getAppCheckToken } from "./appCheck"
+
+vi.mock("./appCheck", () => ({ getAppCheckToken: vi.fn().mockResolvedValue(null) }))
 
 describe("apiRequest", () => {
   beforeEach(() => {
@@ -182,5 +185,109 @@ describe("describeApiFailure", () => {
     expect(code).toBe("403")
     expect(description).toContain("403")
     expect(description).toContain("Missing or invalid admin API key")
+  })
+})
+
+describe("apiRequest App Check", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_API_BASE_URL", "https://api.example.com")
+    vi.mocked(getAppCheckToken).mockReset()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  const reject = (status: number, code: string) => ({ ok: false, status, json: () => Promise.resolve({ error: "x", code }) })
+  const ok = { ok: true, status: 200, json: () => Promise.resolve({ fine: true }) }
+  const headersOf = (fetchMock: ReturnType<typeof vi.fn>, call: number) =>
+    (fetchMock.mock.calls[call][1] as { headers: Record<string, string> }).headers
+
+  it("sends the token in X-Firebase-AppCheck alongside the caller's own headers", async () => {
+    vi.mocked(getAppCheckToken).mockResolvedValue("tok-1")
+    const fetchMock = vi.fn().mockResolvedValue(ok)
+    vi.stubGlobal("fetch", fetchMock)
+
+    await apiRequest("/foo", { headers: { "X-Client-Secret": "s" } })
+
+    expect(headersOf(fetchMock, 0)).toEqual({
+      "Content-Type": "application/json",
+      "X-Client-Secret": "s",
+      "X-Firebase-AppCheck": "tok-1",
+    })
+  })
+
+  it("adds no header when App Check yields no token (not configured)", async () => {
+    vi.mocked(getAppCheckToken).mockResolvedValue(null)
+    const fetchMock = vi.fn().mockResolvedValue(ok)
+    vi.stubGlobal("fetch", fetchMock)
+
+    await apiRequest("/foo")
+
+    expect(headersOf(fetchMock, 0)).not.toHaveProperty("X-Firebase-AppCheck")
+  })
+
+  it.each(["APP_ATTESTATION_REQUIRED", "ATTESTATION_INVALID", "ATTESTATION_EXPIRED"])(
+    "recovers ONCE on %s: forces a brand-new token and retries a single time",
+    async (code) => {
+      vi.mocked(getAppCheckToken).mockResolvedValueOnce("stale").mockResolvedValueOnce("fresh")
+      const fetchMock = vi.fn().mockResolvedValueOnce(reject(403, code)).mockResolvedValueOnce(ok)
+      vi.stubGlobal("fetch", fetchMock)
+
+      await expect(apiRequest("/foo")).resolves.toEqual({ fine: true })
+
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(vi.mocked(getAppCheckToken).mock.calls).toEqual([[false], [true]])
+      expect(headersOf(fetchMock, 0)["X-Firebase-AppCheck"]).toBe("stale")
+      expect(headersOf(fetchMock, 1)["X-Firebase-AppCheck"]).toBe("fresh")
+    },
+  )
+
+  it("never loops: a second attestation rejection is surfaced as an error", async () => {
+    vi.mocked(getAppCheckToken).mockResolvedValue("tok")
+    const fetchMock = vi.fn().mockResolvedValue(reject(403, "ATTESTATION_INVALID"))
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(apiRequest("/foo")).rejects.toMatchObject({ status: 403, code: "ATTESTATION_INVALID" })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not refresh or retry on ATTESTATION_UNAVAILABLE (an infrastructure failure, not an auth failure)", async () => {
+    vi.mocked(getAppCheckToken).mockResolvedValue("tok")
+    const fetchMock = vi.fn().mockResolvedValue(reject(503, "ATTESTATION_UNAVAILABLE"))
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(apiRequest("/foo")).rejects.toMatchObject({ status: 503, code: "ATTESTATION_UNAVAILABLE" })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(getAppCheckToken).mock.calls).toEqual([[false]])
+  })
+
+  it("does not treat an unrelated 403 (for example a wrong client secret) as an attestation failure", async () => {
+    vi.mocked(getAppCheckToken).mockResolvedValue("tok")
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 403, json: () => Promise.resolve({ error: "Missing or invalid client secret" }) })
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(apiRequest("/foo")).rejects.toMatchObject({ status: 403 })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps the 429 retries, and the recovery attempt does not consume one", async () => {
+    vi.mocked(getAppCheckToken).mockResolvedValue("tok")
+    vi.stubGlobal("setTimeout", ((fn: () => void) => fn()) as unknown as typeof setTimeout)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(reject(403, "ATTESTATION_EXPIRED"))
+      .mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({ error: "throttled" }) })
+      .mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({ error: "throttled" }) })
+      .mockResolvedValueOnce(ok)
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(apiRequest("/foo")).resolves.toEqual({ fine: true })
+
+    expect(fetchMock).toHaveBeenCalledTimes(4)
   })
 })

@@ -1,4 +1,5 @@
 import { t, type Locale } from "../i18n/translations"
+import { getAppCheckToken } from "./appCheck"
 
 /** A non-2xx response from the Yobi Analytics backend (Roadmap 4.1/4.4/4.5/4.6).
  * `message` is the backend's own `{"error": "..."}` body (api_handler.py's
@@ -27,6 +28,9 @@ export const HISTORICAL_DATA_UNAVAILABLE_CODE = "HISTORICAL_DATA_UNAVAILABLE"
 export function isHistoricalDataUnavailable(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404 && error.code === HISTORICAL_DATA_UNAVAILABLE_CODE
 }
+
+/** Backend codes for which one forced App Check token refresh is attempted (baseline section 13.1). */
+const ATTESTATION_RECOVERABLE_CODES = new Set(["APP_ATTESTATION_REQUIRED", "ATTESTATION_INVALID", "ATTESTATION_EXPIRED"])
 
 /** Thrown when the app itself is misconfigured (e.g. `VITE_API_BASE_URL` is
  * unset) — distinct from a plain `Error`/network failure so `describeApiFailure`
@@ -72,12 +76,20 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     throw new ConfigError("VITE_API_BASE_URL is not configured")
   }
 
+  let attestationRecoveryUsed = false
+  let forceTokenRefresh = false
+
   for (let attempt = 0; ; attempt++) {
+    // The App Check token (when configured) rides in X-Firebase-AppCheck. After an attestation rejection the single recovery
+    // attempt asks for a brand-new token; it is never retried more than once per request, and never to evade a rate limit.
+    const attestationToken = await getAppCheckToken(forceTokenRefresh)
+    forceTokenRefresh = false
     const response = await fetch(`${baseUrl}${path}`, {
       method: options.method ?? "GET",
       headers: {
         "Content-Type": "application/json",
         ...options.headers,
+        ...(attestationToken ? { "X-Firebase-AppCheck": attestationToken } : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     })
@@ -99,6 +111,14 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
         payload !== null && typeof payload === "object" && "code" in payload && typeof payload.code === "string"
           ? payload.code
           : undefined
+      if (!attestationRecoveryUsed && response.status === 403 && code !== undefined && ATTESTATION_RECOVERABLE_CODES.has(code)) {
+        // ATTESTATION_UNAVAILABLE (503) is deliberately NOT here: it is an infrastructure failure, not an auth failure,
+        // so refreshing the token cannot help.
+        attestationRecoveryUsed = true
+        forceTokenRefresh = true
+        attempt -= 1 // the recovery attempt does not consume a 429 retry
+        continue
+      }
       throw new ApiError(response.status, message, code)
     }
 

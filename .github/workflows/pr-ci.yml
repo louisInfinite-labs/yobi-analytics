@@ -143,6 +143,8 @@ jobs:
           scripts/check-bundle-secrets.test.ts
           src/shared/api/jitter.test.ts
           src/shared/api/hooks/useHeartbeat.test.ts
+          src/shared/api/appCheck.test.ts
+          scripts/firebase-config.test.ts
 
   # The stable required check. Always runs (even when a test group failed or was skipped) and decides from the results:
   # a group whose scope was detected MUST have succeeded; a group whose scope was not detected must have been skipped.
