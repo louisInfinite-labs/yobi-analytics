@@ -108,6 +108,15 @@ def test_the_429_signal_comes_from_the_access_log_the_stage_writes():
     assert 'namespace     = "YobiAnalytics/Security"' in filter_block
 
 
+def test_lambda_alarms_reference_the_api_function_by_name_so_a_targeted_apply_does_not_pull_in_the_lambda():
+    lambda_tf = (TERRAFORM / "lambda.tf").read_text(encoding="utf-8")
+    declared = re.search(r'resource "aws_lambda_function" "api" \{\s*function_name\s*=\s*"([^"]+)"', lambda_tf)
+    named = re.search(r'api_function_name\s*=\s*"([^"]+)"', MONITORING_CODE)
+
+    assert declared and named and declared.group(1) == named.group(1)
+    assert "aws_lambda_function.api" not in MONITORING_CODE
+
+
 def test_alarm_thresholds_are_variables_not_hardcoded():
     for name, block in _alarms().items():
         assert re.search(r"threshold\s*=\s*var\.alarm_", block), f"{name} threshold must be a tunable variable"

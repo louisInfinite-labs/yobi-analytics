@@ -31,6 +31,12 @@ resource "aws_cloudwatch_log_metric_filter" "api_throttled_429" {
   }
 }
 
+# The API Lambda is referenced by NAME, not by resource attribute: an alarm must not pull the Lambda resource (and any
+# pending Lambda configuration change) into an apply that targets the alarm. tests/security asserts the name matches.
+locals {
+  api_function_name = "yobi-analytics-api"
+}
+
 # --- Category 1: API 5xx -------------------------------------------------------------------------------------------
 
 resource "aws_cloudwatch_metric_alarm" "api_5xx" {
@@ -55,7 +61,7 @@ resource "aws_cloudwatch_metric_alarm" "api_lambda_errors" {
   alarm_description   = "API Lambda invocation errors (SEC-AWS-004)"
   namespace           = "AWS/Lambda"
   metric_name         = "Errors"
-  dimensions          = { FunctionName = aws_lambda_function.api.function_name }
+  dimensions          = { FunctionName = local.api_function_name }
   statistic           = "Sum"
   period              = 300
   evaluation_periods  = 1
@@ -87,7 +93,7 @@ resource "aws_cloudwatch_metric_alarm" "api_lambda_throttles" {
   alarm_description   = "API Lambda concurrency throttles (SEC-AWS-004)"
   namespace           = "AWS/Lambda"
   metric_name         = "Throttles"
-  dimensions          = { FunctionName = aws_lambda_function.api.function_name }
+  dimensions          = { FunctionName = local.api_function_name }
   statistic           = "Sum"
   period              = 300
   evaluation_periods  = 1

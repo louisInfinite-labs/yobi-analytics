@@ -27,12 +27,14 @@ def _variable(name: str) -> str:
     return VARIABLES_TF[start : nxt if nxt != -1 else len(VARIABLES_TF)]
 
 
-def test_cors_allows_the_app_check_header_and_keeps_the_existing_ones():
-    headers = re.search(r"allow_headers\s*=\s*\[(.*?)\]", API_GATEWAY_TF, re.DOTALL)
+def test_cors_keeps_the_existing_headers_and_adds_the_app_check_header_only_when_attestation_is_enabled():
+    allow = re.search(r"allow_headers\s*=\s*concat\((.*?)\)\n", API_GATEWAY_TF, re.DOTALL)
 
-    assert headers is not None
-    allowed = set(re.findall(r'"([^"]+)"', headers.group(1)))
-    assert {"content-type", "x-admin-key", "x-client-secret", "x-firebase-appcheck"} <= allowed
+    assert allow is not None
+    always, conditional = allow.group(1).split("var.attestation_enabled", 1)
+    assert {"content-type", "x-admin-key", "x-client-secret"} <= set(re.findall(r'"([^"]+)"', always))
+    assert "x-firebase-appcheck" not in always, "the App Check header ships with the attestation configuration (MT-31)"
+    assert re.findall(r'"([^"]+)"', conditional) == ["x-firebase-appcheck"]
 
 
 def test_the_mode_can_only_be_monitor_or_enforce_and_defaults_to_enforce():

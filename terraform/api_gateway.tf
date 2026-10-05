@@ -5,9 +5,10 @@ resource "aws_apigatewayv2_api" "http_api" {
   cors_configuration {
     allow_origins = ["*"]
     allow_methods = ["GET", "POST", "PUT", "DELETE"]
-    # x-firebase-appcheck: the App Check token header (SEC-API-BOT-002). CORS is browser-compatibility hygiene only; it is
+    # x-firebase-appcheck: the App Check token header (SEC-API-BOT-002), allowed only once attestation is enabled so the CORS
+    # change ships with the attestation configuration (roadmap MT-31). CORS is browser-compatibility hygiene only; it is
     # neither authorization nor bot protection.
-    allow_headers = ["content-type", "x-admin-key", "x-client-secret", "x-firebase-appcheck"]
+    allow_headers = concat(["content-type", "x-admin-key", "x-client-secret"], var.attestation_enabled ? ["x-firebase-appcheck"] : [])
   }
 }
 
