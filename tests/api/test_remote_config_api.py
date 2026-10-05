@@ -38,10 +38,10 @@ def test_parse_config_key_rejects_missing_or_non_string_values(bad_value):
 def test_write_remote_config_accepts_any_json_typed_value(value):
     """The backend treats `value` as opaque — it must never reject a value
     for its type/shape, only for being absent entirely."""
-    record = write_remote_config({"clientId": "client-1", "key": "notification.aizawa_ema", "value": value}, now=FIXED_NOW)
+    record = write_remote_config({"clientId": "00000000-0000-4000-8000-000000000001", "key": "notification.aizawa_ema", "value": value}, now=FIXED_NOW)
 
     assert record == {
-        "clientId": "client-1",
+        "clientId": "00000000-0000-4000-8000-000000000001",
         "key": "notification.aizawa_ema",
         "value": value,
         "updatedAt": FIXED_NOW.isoformat(),
@@ -52,7 +52,7 @@ def test_write_remote_config_rejects_a_body_with_no_value_key_at_all():
     """A value of None is a legitimate stored value (see the parametrized
     test above) — the field must be present, not merely non-null."""
     with pytest.raises(ClientError):
-        write_remote_config({"clientId": "client-1", "key": "notification.aizawa_ema"}, now=FIXED_NOW)
+        write_remote_config({"clientId": "00000000-0000-4000-8000-000000000001", "key": "notification.aizawa_ema"}, now=FIXED_NOW)
 
 
 @pytest.mark.parametrize(
@@ -60,9 +60,9 @@ def test_write_remote_config_rejects_a_body_with_no_value_key_at_all():
     [
         {},
         {"key": "notification.aizawa_ema", "value": "off"},
-        {"clientId": "client-1", "value": "off"},
+        {"clientId": "00000000-0000-4000-8000-000000000001", "value": "off"},
         {"clientId": 123, "key": "notification.aizawa_ema", "value": "off"},
-        {"clientId": "client-1", "key": "", "value": "off"},
+        {"clientId": "00000000-0000-4000-8000-000000000001", "key": "", "value": "off"},
     ],
 )
 def test_write_remote_config_rejects_a_malformed_body(bad_body):
@@ -75,12 +75,12 @@ def test_write_remote_config_rejects_a_malformed_body(bad_body):
 
 def test_parse_read_query_returns_client_id_with_no_key_when_key_is_absent():
     """Absent key means "every stored key for this client", not an error."""
-    assert parse_read_query({"clientId": "client-1"}) == ("client-1", None)
+    assert parse_read_query({"clientId": "00000000-0000-4000-8000-000000000001"}) == ("00000000-0000-4000-8000-000000000001", None)
 
 
 def test_parse_read_query_returns_client_id_and_key_when_both_are_present():
-    assert parse_read_query({"clientId": "client-1", "key": "notification.aizawa_ema"}) == (
-        "client-1",
+    assert parse_read_query({"clientId": "00000000-0000-4000-8000-000000000001", "key": "notification.aizawa_ema"}) == (
+        "00000000-0000-4000-8000-000000000001",
         "notification.aizawa_ema",
     )
 
@@ -93,7 +93,7 @@ def test_parse_read_query_rejects_a_missing_or_malformed_client_id(bad_client_id
 
 def test_parse_read_query_rejects_a_non_string_key_when_present():
     with pytest.raises(ClientError):
-        parse_read_query({"clientId": "client-1", "key": 123})
+        parse_read_query({"clientId": "00000000-0000-4000-8000-000000000001", "key": 123})
 
 
 def test_parse_read_query_rejects_an_explicitly_empty_key():
@@ -101,4 +101,4 @@ def test_parse_read_query_rejects_an_explicitly_empty_key():
     documented "all keys" behavior applies only when key is absent entirely,
     so an empty string must be rejected rather than silently treated the same."""
     with pytest.raises(ClientError):
-        parse_read_query({"clientId": "client-1", "key": ""})
+        parse_read_query({"clientId": "00000000-0000-4000-8000-000000000001", "key": ""})

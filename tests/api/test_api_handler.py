@@ -51,11 +51,11 @@ def test_get_video_growth_returns_200_with_the_read_api_response(monkeypatch):
     monkeypatch.setattr(read_api, "get_video_growth", lambda query: {"videoId": query["videoId"], "status": "ok"})
 
     response = lambda_handler(
-        _event("GET /videos/{videoId}/growth", query={"reportDate": "2026-09-01"}, path={"videoId": "v1"}), None
+        _event("GET /videos/{videoId}/growth", query={"reportDate": "2026-09-01"}, path={"videoId": "vid00000001"}), None
     )
 
     assert response["statusCode"] == 200
-    assert _body(response) == {"videoId": "v1", "status": "ok"}
+    assert _body(response) == {"videoId": "vid00000001", "status": "ok"}
 
 
 def test_get_video_growth_maps_video_not_found_to_404(monkeypatch):
@@ -64,7 +64,7 @@ def test_get_video_growth_maps_video_not_found_to_404(monkeypatch):
 
     monkeypatch.setattr(read_api, "get_video_growth", _boom)
 
-    response = lambda_handler(_event("GET /videos/{videoId}/growth", path={"videoId": "no_such"}), None)
+    response = lambda_handler(_event("GET /videos/{videoId}/growth", path={"videoId": "no_such_vid"}), None)
 
     assert response["statusCode"] == 404
     assert _body(response)["error"] == "no such video"
@@ -76,7 +76,7 @@ def test_get_video_growth_maps_client_error_to_400(monkeypatch):
 
     monkeypatch.setattr(read_api, "get_video_growth", _boom)
 
-    response = lambda_handler(_event("GET /videos/{videoId}/growth", path={"videoId": "v1"}), None)
+    response = lambda_handler(_event("GET /videos/{videoId}/growth", path={"videoId": "vid00000001"}), None)
 
     assert response["statusCode"] == 400
     assert _body(response)["error"] == "bad reportDate"
@@ -92,10 +92,10 @@ def test_path_parameters_take_precedence_over_same_named_query_parameters(monkey
     monkeypatch.setattr(read_api, "get_video_growth", _capture)
 
     lambda_handler(
-        _event("GET /videos/{videoId}/growth", query={"videoId": "from_query"}, path={"videoId": "from_path"}), None
+        _event("GET /videos/{videoId}/growth", query={"videoId": "from_query1"}, path={"videoId": "from_path_1"}), None
     )
 
-    assert captured["videoId"] == "from_path"
+    assert captured["videoId"] == "from_path_1"
 
 
 def test_an_unexpected_exception_returns_500_without_leaking_details(monkeypatch):
@@ -104,7 +104,7 @@ def test_an_unexpected_exception_returns_500_without_leaking_details(monkeypatch
 
     monkeypatch.setattr(read_api, "get_video_growth", _boom)
 
-    response = lambda_handler(_event("GET /videos/{videoId}/growth", path={"videoId": "v1"}), None)
+    response = lambda_handler(_event("GET /videos/{videoId}/growth", path={"videoId": "vid00000001"}), None)
 
     assert response["statusCode"] == 500
     assert "something internal broke" not in _body(response)["error"]
@@ -121,12 +121,12 @@ def test_post_heartbeat_persists_the_record_and_returns_it(monkeypatch):
     monkeypatch.setattr(heartbeat_store, "put_heartbeat", lambda record: stored.update(record))
 
     response = lambda_handler(
-        _event("POST /heartbeat", body=json.dumps({"clientId": "c1", "appVersion": "1.0"})), None
+        _event("POST /heartbeat", body=json.dumps({"clientId": "00000000-0000-4000-8000-000000000001", "appVersion": "1.0"})), None
     )
 
     assert response["statusCode"] == 200
-    assert _body(response) == {"clientId": "c1", "lastSeenAt": "t", "appVersion": "1.0"}
-    assert stored == {"clientId": "c1", "lastSeenAt": "t", "appVersion": "1.0"}
+    assert _body(response) == {"clientId": "00000000-0000-4000-8000-000000000001", "lastSeenAt": "t", "appVersion": "1.0"}
+    assert stored == {"clientId": "00000000-0000-4000-8000-000000000001", "lastSeenAt": "t", "appVersion": "1.0"}
 
 
 def test_post_heartbeat_rejects_a_malformed_body(monkeypatch):
@@ -145,7 +145,7 @@ def test_post_heartbeat_decodes_a_base64_body(monkeypatch):
         heartbeat_api, "record_heartbeat", lambda body: {"clientId": body["clientId"], "lastSeenAt": "t", "appVersion": "1.0"}
     )
     monkeypatch.setattr(heartbeat_store, "put_heartbeat", lambda record: None)
-    encoded = base64.b64encode(json.dumps({"clientId": "c1", "appVersion": "1.0"}).encode("utf-8")).decode("ascii")
+    encoded = base64.b64encode(json.dumps({"clientId": "00000000-0000-4000-8000-000000000001", "appVersion": "1.0"}).encode("utf-8")).decode("ascii")
 
     response = lambda_handler(_event("POST /heartbeat", body=encoded, is_base64=True), None)
 
@@ -199,16 +199,16 @@ def test_get_heartbeat_status_returns_the_stored_status(monkeypatch):
     monkeypatch.setattr(heartbeat_store, "get_heartbeat", lambda client_id: {"lastSeenAt": "t", "appVersion": "1.0"})
     monkeypatch.setattr(heartbeat_api, "online_status", lambda last_seen_at: "online")
 
-    response = lambda_handler(_event("GET /heartbeat/{clientId}/status", path={"clientId": "c1"}), None)
+    response = lambda_handler(_event("GET /heartbeat/{clientId}/status", path={"clientId": "00000000-0000-4000-8000-000000000001"}), None)
 
     assert response["statusCode"] == 200
-    assert _body(response) == {"clientId": "c1", "status": "online", "lastSeenAt": "t", "appVersion": "1.0"}
+    assert _body(response) == {"clientId": "00000000-0000-4000-8000-000000000001", "status": "online", "lastSeenAt": "t", "appVersion": "1.0"}
 
 
 def test_get_heartbeat_status_for_an_unknown_client_returns_400(monkeypatch):
     monkeypatch.setattr(heartbeat_store, "get_heartbeat", lambda client_id: None)
 
-    response = lambda_handler(_event("GET /heartbeat/{clientId}/status", path={"clientId": "no_such"}), None)
+    response = lambda_handler(_event("GET /heartbeat/{clientId}/status", path={"clientId": "00000000-0000-4000-8000-0000000000aa"}), None)
 
     assert response["statusCode"] == 400
 
@@ -229,7 +229,7 @@ def client_secret(monkeypatch):
     secret = "c1-secret"
     stored_hash = client_credential_api.hash_secret(secret)
     monkeypatch.setattr(
-        client_credential_store, "get_secret_hash", lambda client_id: stored_hash if client_id == "c1" else None
+        client_credential_store, "get_secret_hash", lambda client_id: stored_hash if client_id == "00000000-0000-4000-8000-000000000001" else None
     )
     return secret
 
@@ -246,15 +246,15 @@ def test_post_remote_config_persists_the_record_and_returns_it(monkeypatch, admi
     response = lambda_handler(
         _event(
             "POST /remote-config",
-            body=json.dumps({"clientId": "c1", "key": "enabled", "value": True}),
+            body=json.dumps({"clientId": "00000000-0000-4000-8000-000000000001", "key": "enabled", "value": True}),
             headers={"x-admin-key": admin_key},
         ),
         None,
     )
 
     assert response["statusCode"] == 200
-    assert _body(response) == {"clientId": "c1", "key": "enabled", "value": True, "updatedAt": "t"}
-    assert stored["clientId"] == "c1"
+    assert _body(response) == {"clientId": "00000000-0000-4000-8000-000000000001", "key": "enabled", "value": True, "updatedAt": "t"}
+    assert stored["clientId"] == "00000000-0000-4000-8000-000000000001"
 
 
 def test_post_remote_config_rejects_a_malformed_body(monkeypatch, admin_key):
@@ -264,7 +264,7 @@ def test_post_remote_config_rejects_a_malformed_body(monkeypatch, admin_key):
     monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
 
     response = lambda_handler(
-        _event("POST /remote-config", body=json.dumps({"clientId": "c1"}), headers={"x-admin-key": admin_key}), None
+        _event("POST /remote-config", body=json.dumps({"clientId": "00000000-0000-4000-8000-000000000001"}), headers={"x-admin-key": admin_key}), None
     )
 
     assert response["statusCode"] == 400
@@ -276,7 +276,7 @@ def test_post_remote_config_without_an_admin_key_header_returns_403(monkeypatch,
 
     monkeypatch.setattr(remote_config_api, "write_remote_config", _boom)
 
-    response = lambda_handler(_event("POST /remote-config", body=json.dumps({"clientId": "c1"})), None)
+    response = lambda_handler(_event("POST /remote-config", body=json.dumps({"clientId": "00000000-0000-4000-8000-000000000001"})), None)
 
     assert response["statusCode"] == 403
 
@@ -288,7 +288,7 @@ def test_post_remote_config_with_a_wrong_admin_key_returns_403(monkeypatch, admi
     monkeypatch.setattr(remote_config_api, "write_remote_config", _boom)
 
     response = lambda_handler(
-        _event("POST /remote-config", body=json.dumps({"clientId": "c1"}), headers={"x-admin-key": "wrong"}), None
+        _event("POST /remote-config", body=json.dumps({"clientId": "00000000-0000-4000-8000-000000000001"}), headers={"x-admin-key": "wrong"}), None
     )
 
     assert response["statusCode"] == 403
@@ -301,7 +301,7 @@ def test_post_remote_config_with_a_non_ascii_admin_key_header_returns_403_not_50
     monkeypatch.setattr(remote_config_api, "write_remote_config", lambda body: (_ for _ in ()).throw(AssertionError))
 
     response = lambda_handler(
-        _event("POST /remote-config", body=json.dumps({"clientId": "c1"}), headers={"x-admin-key": "wröng"}), None
+        _event("POST /remote-config", body=json.dumps({"clientId": "00000000-0000-4000-8000-000000000001"}), headers={"x-admin-key": "wröng"}), None
     )
 
     assert response["statusCode"] == 403
@@ -318,7 +318,7 @@ def test_post_remote_config_admin_key_check_is_case_insensitive_on_header_name(m
     response = lambda_handler(
         _event(
             "POST /remote-config",
-            body=json.dumps({"clientId": "c1", "key": "enabled", "value": True}),
+            body=json.dumps({"clientId": "00000000-0000-4000-8000-000000000001", "key": "enabled", "value": True}),
             headers={"X-Admin-Key": admin_key},
         ),
         None,
@@ -335,7 +335,7 @@ def test_post_remote_config_returns_503_when_admin_key_is_not_configured(monkeyp
     monkeypatch.delenv("YOBI_ADMIN_API_KEY", raising=False)
 
     response = lambda_handler(
-        _event("POST /remote-config", body=json.dumps({"clientId": "c1"}), headers={"x-admin-key": "anything"}), None
+        _event("POST /remote-config", body=json.dumps({"clientId": "00000000-0000-4000-8000-000000000001"}), headers={"x-admin-key": "anything"}), None
     )
 
     assert response["statusCode"] == 503
@@ -351,7 +351,7 @@ def test_post_heartbeat_does_not_require_an_admin_key(monkeypatch):
     monkeypatch.delenv("YOBI_ADMIN_API_KEY", raising=False)
 
     response = lambda_handler(
-        _event("POST /heartbeat", body=json.dumps({"clientId": "c1", "appVersion": "1.0"})), None
+        _event("POST /heartbeat", body=json.dumps({"clientId": "00000000-0000-4000-8000-000000000001", "appVersion": "1.0"})), None
     )
 
     assert response["statusCode"] == 200
@@ -371,13 +371,13 @@ def test_post_client_credential_issues_a_secret_and_persists_only_its_hash(monke
         lambda client_id, secret_hash: stored.update(clientId=client_id, secretHash=secret_hash) or True,
     )
 
-    response = lambda_handler(_event("POST /clients/{clientId}/credential", path={"clientId": "c1"}), None)
+    response = lambda_handler(_event("POST /clients/{clientId}/credential", path={"clientId": "00000000-0000-4000-8000-000000000001"}), None)
 
     assert response["statusCode"] == 200
     body = _body(response)
-    assert body["clientId"] == "c1"
+    assert body["clientId"] == "00000000-0000-4000-8000-000000000001"
     assert isinstance(body["clientSecret"], str) and len(body["clientSecret"]) > 20
-    assert stored["clientId"] == "c1"
+    assert stored["clientId"] == "00000000-0000-4000-8000-000000000001"
     # The stored value is a hash, not the raw secret returned to the caller.
     assert stored["secretHash"] != body["clientSecret"]
     assert stored["secretHash"] == client_credential_api.hash_secret(body["clientSecret"])
@@ -386,7 +386,7 @@ def test_post_client_credential_issues_a_secret_and_persists_only_its_hash(monke
 def test_post_client_credential_rejects_a_clientid_that_already_has_one(monkeypatch):
     monkeypatch.setattr(client_credential_store, "create_secret", lambda client_id, secret_hash: False)
 
-    response = lambda_handler(_event("POST /clients/{clientId}/credential", path={"clientId": "c1"}), None)
+    response = lambda_handler(_event("POST /clients/{clientId}/credential", path={"clientId": "00000000-0000-4000-8000-000000000001"}), None)
 
     assert response["statusCode"] == 400
 
@@ -408,14 +408,14 @@ def test_get_remote_config_with_a_key_returns_a_single_item_list(monkeypatch, cl
     )
 
     response = lambda_handler(
-        _event("GET /remote-config", query={"clientId": "c1", "key": "enabled"}, headers={"x-client-secret": client_secret}),
+        _event("GET /remote-config", query={"clientId": "00000000-0000-4000-8000-000000000001", "key": "enabled"}, headers={"x-client-secret": client_secret}),
         None,
     )
 
     assert response["statusCode"] == 200
     assert _body(response) == {
-        "clientId": "c1",
-        "configs": [{"clientId": "c1", "key": "enabled", "value": True, "updatedAt": "t"}],
+        "clientId": "00000000-0000-4000-8000-000000000001",
+        "configs": [{"clientId": "00000000-0000-4000-8000-000000000001", "key": "enabled", "value": True, "updatedAt": "t"}],
     }
 
 
@@ -423,12 +423,12 @@ def test_get_remote_config_with_an_unset_key_returns_an_empty_list(monkeypatch, 
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
 
     response = lambda_handler(
-        _event("GET /remote-config", query={"clientId": "c1", "key": "enabled"}, headers={"x-client-secret": client_secret}),
+        _event("GET /remote-config", query={"clientId": "00000000-0000-4000-8000-000000000001", "key": "enabled"}, headers={"x-client-secret": client_secret}),
         None,
     )
 
     assert response["statusCode"] == 200
-    assert _body(response) == {"clientId": "c1", "configs": []}
+    assert _body(response) == {"clientId": "00000000-0000-4000-8000-000000000001", "configs": []}
 
 
 def test_get_remote_config_without_a_key_returns_every_stored_key(monkeypatch, client_secret):
@@ -439,11 +439,11 @@ def test_get_remote_config_without_a_key_returns_every_stored_key(monkeypatch, c
     )
 
     response = lambda_handler(
-        _event("GET /remote-config", query={"clientId": "c1"}, headers={"x-client-secret": client_secret}), None
+        _event("GET /remote-config", query={"clientId": "00000000-0000-4000-8000-000000000001"}, headers={"x-client-secret": client_secret}), None
     )
 
     assert response["statusCode"] == 200
-    assert _body(response)["configs"] == [{"clientId": "c1", "key": "enabled", "value": True, "updatedAt": "t"}]
+    assert _body(response)["configs"] == [{"clientId": "00000000-0000-4000-8000-000000000001", "key": "enabled", "value": True, "updatedAt": "t"}]
 
 
 def test_get_remote_config_without_a_key_excludes_the_push_subscription_entry(monkeypatch, client_secret):
@@ -465,7 +465,7 @@ def test_get_remote_config_without_a_key_excludes_the_push_subscription_entry(mo
     )
 
     response = lambda_handler(
-        _event("GET /remote-config", query={"clientId": "c1"}, headers={"x-client-secret": client_secret}), None
+        _event("GET /remote-config", query={"clientId": "00000000-0000-4000-8000-000000000001"}, headers={"x-client-secret": client_secret}), None
     )
 
     assert response["statusCode"] == 200
@@ -483,7 +483,7 @@ def test_get_remote_config_with_an_explicit_push_subscription_key_still_returns_
     response = lambda_handler(
         _event(
             "GET /remote-config",
-            query={"clientId": "c1", "key": "pushSubscription"},
+            query={"clientId": "00000000-0000-4000-8000-000000000001", "key": "pushSubscription"},
             headers={"x-client-secret": client_secret},
         ),
         None,
@@ -500,14 +500,14 @@ def test_get_remote_config_rejects_a_missing_client_id():
 
 
 def test_get_remote_config_without_a_client_secret_header_returns_403(client_secret):
-    response = lambda_handler(_event("GET /remote-config", query={"clientId": "c1"}), None)
+    response = lambda_handler(_event("GET /remote-config", query={"clientId": "00000000-0000-4000-8000-000000000001"}), None)
 
     assert response["statusCode"] == 403
 
 
 def test_get_remote_config_with_a_wrong_client_secret_returns_403(client_secret):
     response = lambda_handler(
-        _event("GET /remote-config", query={"clientId": "c1"}, headers={"x-client-secret": "wrong"}), None
+        _event("GET /remote-config", query={"clientId": "00000000-0000-4000-8000-000000000001"}, headers={"x-client-secret": "wrong"}), None
     )
 
     assert response["statusCode"] == 403
@@ -517,7 +517,7 @@ def test_get_remote_config_for_a_clientid_with_no_registered_credential_returns_
     monkeypatch.setattr(client_credential_store, "get_secret_hash", lambda client_id: None)
 
     response = lambda_handler(
-        _event("GET /remote-config", query={"clientId": "never-registered"}, headers={"x-client-secret": "anything"}), None
+        _event("GET /remote-config", query={"clientId": "00000000-0000-4000-8000-000000000003"}, headers={"x-client-secret": "anything"}), None
     )
 
     assert response["statusCode"] == 403
@@ -537,7 +537,7 @@ def test_put_push_subscription_persists_it_with_a_valid_client_secret(monkeypatc
     response = lambda_handler(
         _event(
             "PUT /clients/{clientId}/push-subscription",
-            path={"clientId": "c1"},
+            path={"clientId": "00000000-0000-4000-8000-000000000001"},
             body=json.dumps(_subscription_body()),
             headers={"x-client-secret": client_secret},
         ),
@@ -545,7 +545,7 @@ def test_put_push_subscription_persists_it_with_a_valid_client_secret(monkeypatc
     )
 
     assert response["statusCode"] == 200
-    assert stored["clientId"] == "c1"
+    assert stored["clientId"] == "00000000-0000-4000-8000-000000000001"
     assert stored["key"] == "pushSubscription"
     assert stored["value"]["endpoint"] == _subscription_body()["endpoint"]
 
@@ -557,7 +557,7 @@ def test_put_push_subscription_without_a_client_secret_returns_403(monkeypatch, 
     monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
 
     response = lambda_handler(
-        _event("PUT /clients/{clientId}/push-subscription", path={"clientId": "c1"}, body=json.dumps(_subscription_body())),
+        _event("PUT /clients/{clientId}/push-subscription", path={"clientId": "00000000-0000-4000-8000-000000000001"}, body=json.dumps(_subscription_body())),
         None,
     )
 
@@ -573,7 +573,7 @@ def test_put_push_subscription_rejects_a_malformed_subscription(monkeypatch, cli
     response = lambda_handler(
         _event(
             "PUT /clients/{clientId}/push-subscription",
-            path={"clientId": "c1"},
+            path={"clientId": "00000000-0000-4000-8000-000000000001"},
             body=json.dumps({"endpoint": "not-https"}),
             headers={"x-client-secret": client_secret},
         ),
@@ -588,12 +588,12 @@ def test_delete_push_subscription_with_a_valid_client_secret(monkeypatch, client
     monkeypatch.setattr(remote_config_store, "delete_remote_config", lambda client_id, key: deleted.update(clientId=client_id, key=key))
 
     response = lambda_handler(
-        _event("DELETE /clients/{clientId}/push-subscription", path={"clientId": "c1"}, headers={"x-client-secret": client_secret}),
+        _event("DELETE /clients/{clientId}/push-subscription", path={"clientId": "00000000-0000-4000-8000-000000000001"}, headers={"x-client-secret": client_secret}),
         None,
     )
 
     assert response["statusCode"] == 200
-    assert deleted == {"clientId": "c1", "key": "pushSubscription"}
+    assert deleted == {"clientId": "00000000-0000-4000-8000-000000000001", "key": "pushSubscription"}
 
 
 def test_delete_push_subscription_without_a_client_secret_returns_403(monkeypatch, client_secret):
@@ -602,7 +602,7 @@ def test_delete_push_subscription_without_a_client_secret_returns_403(monkeypatc
 
     monkeypatch.setattr(remote_config_store, "delete_remote_config", _boom)
 
-    response = lambda_handler(_event("DELETE /clients/{clientId}/push-subscription", path={"clientId": "c1"}), None)
+    response = lambda_handler(_event("DELETE /clients/{clientId}/push-subscription", path={"clientId": "00000000-0000-4000-8000-000000000001"}), None)
 
     assert response["statusCode"] == 403
 
@@ -626,7 +626,7 @@ def test_put_notification_preference_persists_it_with_a_valid_client_secret(monk
     response = lambda_handler(
         _event(
             "PUT /clients/{clientId}/notification-preference",
-            path={"clientId": "c1"},
+            path={"clientId": "00000000-0000-4000-8000-000000000001"},
             body=json.dumps(_preference_body()),
             headers={"x-client-secret": client_secret},
         ),
@@ -634,7 +634,7 @@ def test_put_notification_preference_persists_it_with_a_valid_client_secret(monk
     )
 
     assert response["statusCode"] == 200
-    assert stored["clientId"] == "c1"
+    assert stored["clientId"] == "00000000-0000-4000-8000-000000000001"
     assert stored["key"] == "notificationPreference"
     assert stored["value"]["enabled"] is True
 
@@ -648,7 +648,7 @@ def test_put_notification_preference_without_a_client_secret_returns_403(monkeyp
     response = lambda_handler(
         _event(
             "PUT /clients/{clientId}/notification-preference",
-            path={"clientId": "c1"},
+            path={"clientId": "00000000-0000-4000-8000-000000000001"},
             body=json.dumps(_preference_body()),
         ),
         None,
@@ -666,7 +666,7 @@ def test_put_notification_preference_rejects_a_malformed_preference(monkeypatch,
     response = lambda_handler(
         _event(
             "PUT /clients/{clientId}/notification-preference",
-            path={"clientId": "c1"},
+            path={"clientId": "00000000-0000-4000-8000-000000000001"},
             body=json.dumps({"enabled": "not-a-bool"}),
             headers={"x-client-secret": client_secret},
         ),
@@ -684,8 +684,8 @@ def test_get_admin_heartbeat_stats_requires_an_admin_key(monkeypatch, admin_key)
         heartbeat_store,
         "list_all",
         lambda: [
-            {"clientId": "c1", "lastSeenAt": "2026-09-03T00:00:00+00:00"},
-            {"clientId": "c2", "lastSeenAt": "2020-01-01T00:00:00+00:00"},
+            {"clientId": "00000000-0000-4000-8000-000000000001", "lastSeenAt": "2026-09-03T00:00:00+00:00"},
+            {"clientId": "00000000-0000-4000-8000-000000000002", "lastSeenAt": "2020-01-01T00:00:00+00:00"},
         ],
     )
     monkeypatch.setattr(heartbeat_api, "online_status", lambda last_seen_at: "online" if last_seen_at.startswith("2026") else "offline")

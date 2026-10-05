@@ -32,10 +32,12 @@ before its own onboarding, rather than the less precise `pending`.
 from __future__ import annotations
 
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from api import identifiers
 from api.holodex_client import holodex_get
 from api.holodex_normalization import normalize_holodex_archived_streams_response, normalize_holodex_live_response
 from tracking.creator_master import (
@@ -187,11 +189,10 @@ MAX_IDENTIFIER_LENGTH = 128
 
 def parse_video_id(raw: Any) -> str:
     """Validate a videoId query parameter is a non-empty string of a plausible length."""
-    if not isinstance(raw, str) or not raw:
-        raise ClientError("videoId is required and must be a non-empty string")
-    if len(raw) > MAX_IDENTIFIER_LENGTH:
-        raise ClientError(f"videoId must be at most {MAX_IDENTIFIER_LENGTH} characters, got {len(raw)}")
-    return raw
+    try:
+        return identifiers.check_identifier(raw, "videoId", identifiers.VIDEO_ID_PATTERN, "an 11-character YouTube video id")
+    except identifiers.IdentifierError as exc:
+        raise ClientError(str(exc)) from None
 
 
 def parse_creator_id(raw: Any) -> str:
@@ -201,11 +202,12 @@ def parse_creator_id(raw: Any) -> str:
     syntactically valid but unknown creatorId is a separate ClientError),
     not hardcoded here.
     """
-    if not isinstance(raw, str) or not raw:
-        raise ClientError("creatorId is required and must be a non-empty string")
-    if len(raw) > MAX_IDENTIFIER_LENGTH:
-        raise ClientError(f"creatorId must be at most {MAX_IDENTIFIER_LENGTH} characters, got {len(raw)}")
-    return raw
+    try:
+        return identifiers.check_identifier(
+            raw, "creatorId", identifiers.CREATOR_ID_PATTERN, "1-64 lowercase letters, digits or underscores"
+        )
+    except identifiers.IdentifierError as exc:
+        raise ClientError(str(exc)) from None
 
 
 # R5: the subscriber leaderboard's own metric enum, distinct from
@@ -1173,16 +1175,26 @@ def parse_recent_streams_limit(raw: Any) -> int:
     return value
 
 
+# SEC-API-001: pagination depth is bounded. The deepest legitimate catalog (a few thousand rows) fits well inside it;
+# anything deeper is offset-walking, not browsing, and is rejected before any data-plane work.
+MAX_OFFSET = 5000
+
+
 def parse_offset(raw: Any) -> int:
-    """Validate an optional offset query parameter: a non-negative integer, defaulting to 0."""
+    """Validate an optional offset query parameter: an integer in 0..MAX_OFFSET, defaulting to 0."""
     if raw is None or raw == "":
         return 0
+    if isinstance(raw, str) and re.fullmatch(r"[0-9]{1,6}", raw, re.ASCII) is None:
+        # int() would also accept whitespace, signs, underscores and non-ASCII digits; the API takes plain digits only.
+        raise ClientError(f"offset must be a non-negative integer, got {identifiers.safe_echo(raw)}")
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        raise ClientError(f"offset must be a non-negative integer, got {raw!r}") from None
+        raise ClientError(f"offset must be a non-negative integer, got {identifiers.safe_echo(raw)}") from None
     if isinstance(raw, bool) or value < 0:
-        raise ClientError(f"offset must be a non-negative integer, got {raw!r}")
+        raise ClientError(f"offset must be a non-negative integer, got {identifiers.safe_echo(raw)}")
+    if value > MAX_OFFSET:
+        raise ClientError(f"offset must be at most {MAX_OFFSET}, got {value}")
     return value
 
 

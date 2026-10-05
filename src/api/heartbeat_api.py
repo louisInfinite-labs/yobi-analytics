@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from api import identifiers
+
 # Roadmap 4.4: lastSeenAt within 2 minutes => ONLINE, older => OFFLINE.
 ONLINE_THRESHOLD_SECONDS = 120
 
@@ -28,17 +30,21 @@ class ClientError(ValueError):
 
 
 def parse_client_id(raw: Any) -> str:
-    """Validate a clientId field is a non-empty string (Roadmap 4.3's anonymous UUID)."""
-    if not isinstance(raw, str) or not raw:
-        raise ClientError("clientId is required and must be a non-empty string")
-    return raw
+    """Validate a clientId is a lowercase UUID v4 (Roadmap 4.3's anonymous id; SEC-API-001)."""
+    try:
+        return identifiers.check_identifier(raw, "clientId", identifiers.CLIENT_ID_PATTERN, "a lowercase UUID v4")
+    except identifiers.IdentifierError as exc:
+        raise ClientError(str(exc)) from None
 
 
 def parse_app_version(raw: Any) -> str:
-    """Validate an appVersion field is a non-empty string."""
-    if not isinstance(raw, str) or not raw:
-        raise ClientError("appVersion is required and must be a non-empty string")
-    return raw
+    """Validate an appVersion is a bounded version string (SEC-API-001)."""
+    try:
+        return identifiers.check_identifier(
+            raw, "appVersion", identifiers.APP_VERSION_PATTERN, "1-32 characters of letters, digits and . _ + -"
+        )
+    except identifiers.IdentifierError as exc:
+        raise ClientError(str(exc)) from None
 
 
 def record_heartbeat(body: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:

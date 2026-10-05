@@ -22,6 +22,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from api import identifiers
+
 
 class ClientError(ValueError):
     """A clean, safe-to-surface 4xx error for a malformed/invalid remote-config request.
@@ -34,10 +36,11 @@ class ClientError(ValueError):
 
 
 def parse_client_id(raw: Any) -> str:
-    """Validate a clientId field is a non-empty string (Roadmap 4.3's anonymous UUID)."""
-    if not isinstance(raw, str) or not raw:
-        raise ClientError("clientId is required and must be a non-empty string")
-    return raw
+    """Validate a clientId is a lowercase UUID v4 (Roadmap 4.3's anonymous id; SEC-API-001)."""
+    try:
+        return identifiers.check_identifier(raw, "clientId", identifiers.CLIENT_ID_PATTERN, "a lowercase UUID v4")
+    except identifiers.IdentifierError as exc:
+        raise ClientError(str(exc)) from None
 
 
 def parse_config_key(raw: Any) -> str:
@@ -47,9 +50,12 @@ def parse_config_key(raw: Any) -> str:
     "creatorOverride.aizawa_ema") is defined by whichever client reads it
     back, not by this module.
     """
-    if not isinstance(raw, str) or not raw:
-        raise ClientError("key is required and must be a non-empty string")
-    return raw
+    try:
+        return identifiers.check_identifier(
+            raw, "key", identifiers.CONFIG_KEY_PATTERN, "1-64 characters of letters, digits and . _ : -"
+        )
+    except identifiers.IdentifierError as exc:
+        raise ClientError(str(exc)) from None
 
 
 def write_remote_config(body: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:

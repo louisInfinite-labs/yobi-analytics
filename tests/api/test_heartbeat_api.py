@@ -24,7 +24,7 @@ def test_parse_client_id_rejects_missing_or_non_string_values(bad_value):
 
 
 def test_parse_client_id_accepts_a_uuid_string():
-    assert parse_client_id("c1a2b3c4-0000-0000-0000-000000000000") == "c1a2b3c4-0000-0000-0000-000000000000"
+    assert parse_client_id("c1a2b3c4-0000-4000-8000-000000000000") == "c1a2b3c4-0000-4000-8000-000000000000"
 
 
 @pytest.mark.parametrize("bad_value", [None, 123, ""])
@@ -37,10 +37,10 @@ def test_parse_app_version_rejects_missing_or_non_string_values(bad_value):
 
 
 def test_record_heartbeat_returns_the_normalized_record():
-    record = record_heartbeat({"clientId": "client-1", "appVersion": "1.2.3"}, now=FIXED_NOW)
+    record = record_heartbeat({"clientId": "00000000-0000-4000-8000-000000000001", "appVersion": "1.2.3"}, now=FIXED_NOW)
 
     assert record == {
-        "clientId": "client-1",
+        "clientId": "00000000-0000-4000-8000-000000000001",
         "lastSeenAt": FIXED_NOW.isoformat(),
         "appVersion": "1.2.3",
     }
@@ -50,14 +50,14 @@ def test_record_heartbeat_ignores_a_client_supplied_lastSeenAt():
     """lastSeenAt must always be the server's own clock — a client could
     otherwise misreport its own online status with a skewed/spoofed clock."""
     record = record_heartbeat(
-        {"clientId": "client-1", "appVersion": "1.2.3", "lastSeenAt": "2000-01-01T00:00:00+00:00"},
+        {"clientId": "00000000-0000-4000-8000-000000000001", "appVersion": "1.2.3", "lastSeenAt": "2000-01-01T00:00:00+00:00"},
         now=FIXED_NOW,
     )
 
     assert record["lastSeenAt"] == FIXED_NOW.isoformat()
 
 
-@pytest.mark.parametrize("bad_body", [{}, {"clientId": "client-1"}, {"appVersion": "1.2.3"}, {"clientId": 123, "appVersion": "1.2.3"}])
+@pytest.mark.parametrize("bad_body", [{}, {"clientId": "00000000-0000-4000-8000-000000000001"}, {"appVersion": "1.2.3"}, {"clientId": 123, "appVersion": "1.2.3"}])
 def test_record_heartbeat_rejects_a_malformed_body(bad_body):
     with pytest.raises(ClientError):
         record_heartbeat(bad_body, now=FIXED_NOW)

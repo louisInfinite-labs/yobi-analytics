@@ -30,7 +30,7 @@ from tracking.video_master import Video
 def _video(**overrides) -> Video:
     """Build a minimal Video for a test, overriding only the given fields."""
     fields = {
-        "video_id": "v1",
+        "video_id": "vid00000001",
         "creator_id": "aizawa_ema",
         "title": "Test Video",
         "published_at": "2026-08-20T00:00:00Z",
@@ -63,7 +63,7 @@ def _snapshot(snapshot_date: str, view_count: int, **overrides) -> Snapshot:
         "snapshot_date": snapshot_date,
         "observed_at": f"{snapshot_date}T18:00:05+09:00",
         "creator_id": "aizawa_ema",
-        "video_id": "v1",
+        "video_id": "vid00000001",
         "title": "Test Video",
         "published_at": "2026-08-20T00:00:00Z",
         "view_count": view_count,
@@ -152,7 +152,7 @@ def test_get_video_growth_returns_normalized_response(monkeypatch):
     )
     monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
 
-    response = get_video_growth({"videoId": "v1", "reportDate": "2026-09-01", "timeZone": "Europe/London", "period": "7d"})
+    response = get_video_growth({"videoId": "vid00000001", "reportDate": "2026-09-01", "timeZone": "Europe/London", "period": "7d"})
 
     assert response == {
         "timeZone": "Europe/London",
@@ -161,7 +161,7 @@ def test_get_video_growth_returns_normalized_response(monkeypatch):
         "period": "7d",
         "status": "ok",
         "lastUpdatedAt": "2026-09-01T18:00:05+09:00",
-        "videoId": "v1",
+        "videoId": "vid00000001",
         "title": "Test Video",
         "creatorId": "aizawa_ema",
         "channelName": "藍沢エマ",
@@ -192,7 +192,7 @@ def test_get_video_growth_carries_creator_theme_color_when_verified(monkeypatch)
     )
     monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(theme_color="#B4F1F9")])
 
-    response = get_video_growth({"videoId": "v1", "reportDate": "2026-09-01", "timeZone": "Europe/London", "period": "7d"})
+    response = get_video_growth({"videoId": "vid00000001", "reportDate": "2026-09-01", "timeZone": "Europe/London", "period": "7d"})
 
     assert response["themeColor"] == "#B4F1F9"
 
@@ -203,7 +203,7 @@ def test_get_video_growth_raises_for_unknown_video_id(monkeypatch):
     monkeypatch.setattr(read_api, "get_video", lambda video_id: None)
 
     with pytest.raises(VideoNotFoundError):
-        get_video_growth({"videoId": "no_such_video", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d"})
+        get_video_growth({"videoId": "no_such_vid", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d"})
 
 
 def test_get_video_growth_tolerates_a_video_with_no_creator_master_record(monkeypatch):
@@ -213,7 +213,7 @@ def test_get_video_growth_tolerates_a_video_with_no_creator_master_record(monkey
     monkeypatch.setattr(read_api, "get_snapshot", lambda video_id, snapshot_date: None)
     monkeypatch.setattr(read_api, "load_creators", lambda: [])
 
-    response = get_video_growth({"videoId": "v1", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d"})
+    response = get_video_growth({"videoId": "vid00000001", "reportDate": "2026-09-01", "timeZone": "UTC", "period": "1d"})
 
     assert response["organization"] is None
     assert response["branch"] is None
@@ -230,7 +230,7 @@ def test_get_video_growth_reports_not_available_for_dates_before_the_videos_own_
     monkeypatch.setattr(read_api, "get_snapshot", lambda video_id, snapshot_date: None)
     monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
 
-    response = get_video_growth({"videoId": "v1", "reportDate": "2026-08-30", "timeZone": "UTC", "period": "1d"})
+    response = get_video_growth({"videoId": "vid00000001", "reportDate": "2026-08-30", "timeZone": "UTC", "period": "1d"})
 
     assert response["status"] == "not_available"
 
@@ -245,7 +245,7 @@ def test_get_video_growth_rejects_malformed_report_date_before_touching_storage(
     monkeypatch.setattr(read_api, "get_video", _boom)
 
     with pytest.raises(ClientError):
-        get_video_growth({"videoId": "v1", "reportDate": "not-a-date", "timeZone": "UTC", "period": "1d"})
+        get_video_growth({"videoId": "vid00000001", "reportDate": "not-a-date", "timeZone": "UTC", "period": "1d"})
 
 
 # --- parse_creator_id --------------------------------
