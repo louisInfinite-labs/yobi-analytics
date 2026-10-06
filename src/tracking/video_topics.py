@@ -45,17 +45,14 @@ TOPICS: tuple[Topic, ...] = (
         rf"(?<![a-z0-9])apex(?![a-z0-9])|apex ?legends|(?<![{_KATAKANA}])エーペックス|(?<![{_KATAKANA}])エペ(?![{_KATAKANA}])",
     ),
     Topic("minecraft", {"zh-TW": "Minecraft", "en": "Minecraft", "ja": "Minecraft"}, r"minecraft|マインクラフト|マイクラ"),
-    # 歌ってみた (an uploaded cover) is deliberately singing, not other -- and,
-    # because singing is checked before mv below, it also wins over a title
-    # that additionally carries a cover/MV marker (e.g. "covered by ..."):
-    # this is an explicit product decision, not an oversight. See
-    # test_uploaded_cover_is_singing and test_multi_match_precedence_follows_canonical_order.
+    # Livestream/archive singing only. 歌ってみた (an uploaded cover) is a published music work, so it is mv,
+    # not singing -- see the mv topic below and test_uploaded_cover_is_mv.
     Topic(
         "singing",
         {"zh-TW": "歌回", "en": "Singing", "ja": "歌枠"},
-        r"歌枠|歌回|歌配信|歌ってみた|karaoke|カラオケ|(?<![a-z])singing(?![a-z])",
+        r"歌枠|歌回|歌配信|karaoke|カラオケ|(?<![a-z])singing(?![a-z])",
     ),
-    # Published music works -- covers and original songs alike share this one
+    # Published music works -- uploaded covers (歌ってみた, cover) and original songs alike share this one
     # id (no separate cover/original_song/music_video values). Deliberately
     # narrow, explicit markers only: no bare "歌"/"original"/"song"/"music",
     # which would false-positive on unrelated titles (e.g. "空月の歌" must stay
@@ -66,7 +63,7 @@ TOPICS: tuple[Topic, ...] = (
         r"(?<![a-z0-9])mv(?![a-z0-9])|(?<![a-z0-9])music ?video(?![a-z0-9])"
         r"|(?<![a-z0-9])cover(?:ed)?(?![a-z0-9])"
         r"|(?<![a-z0-9])original ?song(?![a-z0-9])"
-        r"|オリジナル曲|原創曲|原創歌曲",
+        r"|歌ってみた|オリジナル曲|原創曲|原創歌曲",
     ),
     Topic("chatting", {"zh-TW": "雜談", "en": "Chatting", "ja": "雑談"}, r"雑談|zatsudan|free ?talk|(?<![a-z])chatting(?![a-z])"),
     Topic(OTHER_TOPIC, {"zh-TW": "其他", "en": "Other", "ja": "その他"}, None),

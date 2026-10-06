@@ -929,3 +929,125 @@ def test_execute_with_invalid_and_malformed_records_is_partial_and_non_zero(env,
     assert "errors: 2" in out and "RESULT: PARTIAL" in out and "RESULT: COMPLETE" not in out
     topics = _vm_topics()
     assert topics["v1"] == "valorant" and topics["bad_topic"] == "not_a_topic" and topics["no_title"] is None
+
+
+# --- MV taxonomy rollout: --only-topic, topicTransitions, --report-file -----------------------------------------------
+
+
+def _seed_mv_rollout(env):
+    """Persisted state before the MV rollout: covers stored as `other`, 歌ってみた stored as `singing`."""
+    upsert_videos(
+        [
+            _video("cover", "【Cover】新曲", topic="other"),
+            _video("utamita", "【歌ってみた】新曲", topic="singing"),
+            _video("original", "Original Song 公開", topic="other"),
+            _video("karaoke", "【歌枠】karaoke", topic="singing"),
+            _video("falsepos", "空月の歌", topic="other"),
+            _video("game", "【VALORANT】ランク", topic="valorant"),
+            _video("stale_chat", "【VALORANT】雑談", topic="chatting"),  # an unrelated stale topic: must stay untouched
+        ]
+    )
+    _seed_manifest(
+        env,
+        [
+            _full_entry("cover", topic="other"),
+            _full_entry("utamita", topic="singing"),
+            _full_entry("original", topic="other"),
+            _full_entry("karaoke", topic="singing"),
+            _full_entry("falsepos", topic="other"),
+            _full_entry("game", topic="valorant"),
+            _full_entry("stale_chat", topic="chatting"),
+        ]
+    )
+
+
+def test_only_topic_mv_moves_music_works_and_leaves_every_unrelated_record_untouched(env):
+    _seed_mv_rollout(env)
+
+    summary = backfill_video_topics.backfill_topics(execute=True, reclassify=True, manifest_store=env, only_topic="mv")
+
+    assert _vm_topics() == {
+        "cover": "mv",
+        "utamita": "mv",
+        "original": "mv",
+        "karaoke": "singing",
+        "falsepos": "other",
+        "game": "valorant",
+        "stale_chat": "chatting",
+    }
+    manifest = _manifest(env)
+    assert {video_id: entry.topic for video_id, entry in manifest.items()} == _vm_topics()
+    assert summary["topicTransitions"] == {"other->mv": 2, "singing->mv": 1}
+    assert (summary["scanned"], summary["updated"], summary["alreadyClassified"], summary["outOfScope"]) == (7, 3, 0, 4)  # 4 = records not involving mv
+    assert summary["status"] == "COMPLETE"
+
+
+def test_only_topic_mv_dry_run_reports_the_transitions_and_writes_nothing(env):
+    _seed_mv_rollout(env)
+    before_manifest = _manifest(env)
+    before_vm = _vm_topics()
+
+    summary = backfill_video_topics.backfill_topics(execute=False, reclassify=True, manifest_store=env, only_topic="mv")
+
+    assert summary["topicTransitions"] == {"other->mv": 2, "singing->mv": 1}
+    assert summary["wouldUpdate"] == 3 and summary["updated"] == 0
+    assert summary["manifestEntriesPatchable"] == 3
+    assert _vm_topics() == before_vm and _manifest(env) == before_manifest
+
+
+def test_only_topic_mv_second_run_is_a_no_op(env):
+    _seed_mv_rollout(env)
+    backfill_video_topics.backfill_topics(execute=True, reclassify=True, manifest_store=env, only_topic="mv")
+    after_first_vm, after_first_manifest = _vm_topics(), _manifest(env)
+
+    second = backfill_video_topics.backfill_topics(execute=True, reclassify=True, manifest_store=env, only_topic="mv")
+
+    assert second["topicTransitions"] == {} and second["wouldUpdate"] == 0 and second["updated"] == 0
+    assert second["manifestEntriesPatchable"] == 0 and second["manifestEntriesPatched"] == 0
+    assert _vm_topics() == after_first_vm and _manifest(env) == after_first_manifest
+
+
+def test_only_topic_never_rewrites_other_fields(env):
+    upsert_videos([_video("cover", "【Cover】新曲", topic="other")])
+    _seed_manifest(env, [_full_entry("cover", topic="other")])
+    before = _manifest(env)["cover"]
+
+    backfill_video_topics.backfill_topics(execute=True, reclassify=True, manifest_store=env, only_topic="mv")
+
+    assert _manifest(env)["cover"] == replace(before, topic="mv")
+
+
+def test_only_topic_rejects_an_unknown_topic_id():
+    with pytest.raises(ValueError):
+        backfill_video_topics.backfill_topics(execute=False, reclassify=True, only_topic="not_a_topic")
+
+
+def test_main_only_topic_requires_reclassify(env, monkeypatch, capsys):
+    _use_store(monkeypatch, env)
+
+    assert backfill_video_topics.main(["--only-topic", "mv"]) == 2
+    assert "--only-topic only applies together with --reclassify" in capsys.readouterr().out
+
+
+def test_main_report_file_is_written_outside_the_repo_and_carries_the_transitions(env, monkeypatch, tmp_path, capsys):
+    _seed_mv_rollout(env)
+    _use_store(monkeypatch, env)
+    report = tmp_path / "report.json"
+
+    assert backfill_video_topics.main(["--reclassify", "--only-topic", "mv", "--report-file", str(report)]) == 0
+
+    import json
+
+    written = json.loads(report.read_text(encoding="utf-8"))
+    assert written["topicTransitions"] == {"other->mv": 2, "singing->mv": 1}
+    assert written["status"] == "DRY RUN" and "DRY RUN" in written["mode"]
+
+
+def test_main_refuses_a_report_file_inside_the_repository_before_doing_anything(env, monkeypatch, capsys):
+    _use_store(monkeypatch, env)
+    inside = backfill_video_topics.REPO_ROOT / "mv_backfill_report.json"
+
+    assert backfill_video_topics.main(["--report-file", str(inside)]) == 2
+
+    assert "outside the repository" in capsys.readouterr().out
+    assert not inside.exists()

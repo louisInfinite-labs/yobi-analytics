@@ -62,6 +62,14 @@ Result status (always printed, together with the full summary):
                 errors.
 A recoverable partial run is NOT reported as success.
 
+--only-topic TOPIC (with --reclassify) restricts a run to the records whose OLD
+or NEW topic is TOPIC (e.g. `--only-topic mv` for the MV taxonomy change):
+every other record, and every manifest entry not involving TOPIC, is left
+exactly as it is and is counted in outOfScope. The summary always carries
+topicTransitions ("old->new" counts of the changes made or planned).
+--report-file PATH writes the full summary as JSON; the path must be OUTSIDE
+this repository (a report can name production videos and must never be committed).
+
 The video-ranking S3 result is NOT written here. analytics.ranking_reducer
 rebuilds each creator's result from the manifest's `topic` on every daily
 ReduceRankings run, so ranking rows pick the backfilled topics up on the next
@@ -115,6 +123,7 @@ and none is ever described as "fully reconciled"):
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from collections import Counter
@@ -122,7 +131,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from botocore.exceptions import ClientError  # noqa: E402
 
@@ -180,7 +190,9 @@ def _preflight_manifest(store: S3TrackingManifestStore) -> int:
     return total
 
 
-def _patched_entry(entry: ManifestEntry, topic_by_video: dict[str, str], *, reclassify: bool) -> ManifestEntry:
+def _patched_entry(
+    entry: ManifestEntry, topic_by_video: dict[str, str], *, reclassify: bool, only_topic: str | None = None
+) -> ManifestEntry:
     """Return `entry` with only `topic` changed, or `entry` itself when nothing applies.
 
     Sets topic when the entry has none, or (reclassify only) when it differs
@@ -189,14 +201,22 @@ def _patched_entry(entry: ManifestEntry, topic_by_video: dict[str, str], *, recl
     target = topic_by_video.get(entry.video_id)
     if target is None or entry.topic == target:
         return entry
+    if only_topic is not None and only_topic not in (entry.topic, target):
+        return entry
     if entry.topic is None or reclassify:
         return replace(entry, topic=target)
     return entry
 
 
-def _count_patchable(entries: list[ManifestEntry], topic_by_video: dict[str, str], *, reclassify: bool) -> int:
+def _count_patchable(
+    entries: list[ManifestEntry], topic_by_video: dict[str, str], *, reclassify: bool, only_topic: str | None = None
+) -> int:
     """How many of `entries` would still change under _patched_entry."""
-    return sum(1 for entry in entries if _patched_entry(entry, topic_by_video, reclassify=reclassify) is not entry)
+    return sum(
+        1
+        for entry in entries
+        if _patched_entry(entry, topic_by_video, reclassify=reclassify, only_topic=only_topic) is not entry
+    )
 
 
 def _backfill_manifest_topics(
@@ -206,6 +226,7 @@ def _backfill_manifest_topics(
     execute: bool,
     reclassify: bool,
     summary: dict[str, Any],
+    only_topic: str | None = None,
 ) -> None:
     """Report (and, only with execute=True, patch) manifest entries whose topic should be set from Video Master.
 
@@ -250,7 +271,7 @@ def _backfill_manifest_topics(
         summary["manifestEntriesInspected"] += len(entries)
 
         missing = [entry for entry in entries if entry.topic is None]
-        patchable_count = _count_patchable(entries, topic_by_video, reclassify=reclassify)
+        patchable_count = _count_patchable(entries, topic_by_video, reclassify=reclassify, only_topic=only_topic)
         summary["manifestEntriesMissingTopic"] += len(missing)
         summary["manifestEntriesPatchable"] += patchable_count
         summary["manifestEntriesStillMissingTopic"] += sum(1 for entry in missing if entry.video_id not in topic_by_video)
@@ -272,7 +293,10 @@ def _backfill_manifest_topics(
         def _apply(current_entries: list[ManifestEntry]) -> list[ManifestEntry]:
             """Patch the shard's current entries; recounts on a retry so only the final attempt's count is kept."""
             nonlocal patched_count
-            patched = [_patched_entry(entry, topic_by_video, reclassify=reclassify) for entry in current_entries]
+            patched = [
+                _patched_entry(entry, topic_by_video, reclassify=reclassify, only_topic=only_topic)
+                for entry in current_entries
+            ]
             patched_count = sum(1 for before, after in zip(current_entries, patched) if before is not after)
             return patched
 
@@ -292,7 +316,7 @@ def _backfill_manifest_topics(
             summary["manifestEntriesRemainingPatchable"] += patchable_count
             continue
         summary["manifestEntriesRemainingPatchable"] += _count_patchable(
-            verified_entries, topic_by_video, reclassify=reclassify
+            verified_entries, topic_by_video, reclassify=reclassify, only_topic=only_topic
         )
 
     if execute:
@@ -332,7 +356,11 @@ def _final_status(summary: dict[str, Any], *, execute: bool, reclassify: bool) -
 
 
 def backfill_topics(
-    *, execute: bool, reclassify: bool, manifest_store: S3TrackingManifestStore | None = None
+    *,
+    execute: bool,
+    reclassify: bool,
+    manifest_store: S3TrackingManifestStore | None = None,
+    only_topic: str | None = None,
 ) -> dict[str, Any]:
     """Classify Video Master titles missing a topic and, when `manifest_store` is given, mirror them onto the manifest.
 
@@ -342,6 +370,8 @@ def backfill_topics(
     summary, including when the run is aborted (see "status"/"abortedReason");
     execute=True with a manifest preflights all shards before the first write.
     """
+    if only_topic is not None and only_topic not in TOPIC_IDS:
+        raise ValueError(f"Unknown topic id for only_topic: {only_topic!r}")
     topic_counts: Counter[str] = Counter()
     topic_by_video: dict[str, str] = {}
     summary: dict[str, Any] = {
@@ -354,13 +384,21 @@ def backfill_topics(
         "skippedConcurrent": 0,
         "writeErrors": 0,
         "errors": 0,
+        "outOfScope": 0,
+        "topicTransitions": {},
     }
     if manifest_store is None:
         summary["manifestSkipped"] = True
 
     try:
         _run_backfill(
-            summary, topic_counts, topic_by_video, execute=execute, reclassify=reclassify, manifest_store=manifest_store
+            summary,
+            topic_counts,
+            topic_by_video,
+            execute=execute,
+            reclassify=reclassify,
+            manifest_store=manifest_store,
+            only_topic=only_topic,
         )
     except KeyboardInterrupt:
         # Progress already counted in `summary` is kept. Every write so far is complete (one atomic
@@ -381,6 +419,7 @@ def _run_backfill(
     execute: bool,
     reclassify: bool,
     manifest_store: S3TrackingManifestStore | None,
+    only_topic: str | None = None,
 ) -> None:
     """The preflight -> scan -> Video Master writes -> manifest patch work of backfill_topics.
 
@@ -402,6 +441,7 @@ def _run_backfill(
         summary["abortedReason"] = f"Video Master scan failed ({_safe_error(exc)})"
         return
 
+    transitions: Counter[str] = Counter()
     consecutive_write_errors = 0
     for item in items:
         summary["scanned"] += 1
@@ -421,6 +461,12 @@ def _run_backfill(
             summary["errors"] += 1
             continue
         topic = classify_video_topic(title)
+        if only_topic is not None and only_topic not in (existing if has_valid_topic else None, topic):
+            # Not a scoped (e.g. MV) change: leave the record and its manifest entry exactly as they are.
+            summary["outOfScope"] += 1
+            if has_valid_topic:
+                topic_by_video[item["videoId"]] = existing
+            continue
         if existing is None:
             summary["missingTopic"] += 1
         elif existing == topic:
@@ -429,7 +475,9 @@ def _run_backfill(
             continue
         summary["wouldUpdate"] += 1
         topic_counts[topic] += 1
+        transition = (existing if has_valid_topic else "(none)") + "->" + topic
         if not execute:
+            transitions[transition] += 1
             topic_by_video[item["videoId"]] = topic
             continue
 
@@ -453,6 +501,7 @@ def _run_backfill(
         consecutive_write_errors = 0
         if written:
             summary["updated"] += 1
+            transitions[transition] += 1
             topic_by_video[item["videoId"]] = topic
         else:
             # Conditional write rejected: the video was deleted, or already got a
@@ -461,10 +510,16 @@ def _run_backfill(
 
     summary["topicCounts"] = {topic: topic_counts[topic] for topic in sorted(topic_counts)}
     summary["otherCount"] = topic_counts["other"]
+    summary["topicTransitions"] = {name: transitions[name] for name in sorted(transitions)}
 
     if manifest_store is not None and not summary.get("abortedReason"):
         _backfill_manifest_topics(
-            manifest_store, topic_by_video, execute=execute, reclassify=reclassify, summary=summary
+            manifest_store,
+            topic_by_video,
+            execute=execute,
+            reclassify=reclassify,
+            summary=summary,
+            only_topic=only_topic,
         )
 
 
@@ -495,6 +550,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Re-derive the topic of records that already have one, rewriting only those that change.",
     )
     parser.add_argument(
+        "--only-topic",
+        choices=sorted(TOPIC_IDS),
+        help="With --reclassify: only change records whose old or new topic is this one; leave everything else untouched.",
+    )
+    parser.add_argument(
+        "--report-file",
+        type=Path,
+        help="Write the full summary as JSON to this path. Must be outside the repository (never commit a production report).",
+    )
+    parser.add_argument(
         "--skip-manifest",
         action="store_true",
         help="Video Master only: do not preflight, read or patch the tracking manifest (local/dev, no S3 manifest).",
@@ -506,6 +571,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.only_topic and not args.reclassify:
+        print("--only-topic only applies together with --reclassify (nothing was written).")
+        return 2
+    if args.report_file is not None and args.report_file.resolve().is_relative_to(REPO_ROOT):
+        print("--report-file must be outside the repository (a production report must never be committed); nothing was written.")
+        return 2
     bucket_name = os.environ.get("YOBI_HISTORY_BUCKET")
     mode = ("EXECUTE (writes)" if args.execute else "DRY RUN (no writes)") + (" + RECLASSIFY" if args.reclassify else "")
     manifest_target = "skipped (--skip-manifest)" if args.skip_manifest else (bucket_name or "NOT CONFIGURED")
@@ -532,9 +603,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if manifest_store is None and not args.execute:
         print("Manifest: skipped (--skip-manifest or YOBI_HISTORY_BUCKET not configured)\n")
-    summary = backfill_topics(execute=args.execute, reclassify=args.reclassify, manifest_store=manifest_store)
+    summary = backfill_topics(
+        execute=args.execute, reclassify=args.reclassify, manifest_store=manifest_store, only_topic=args.only_topic
+    )
     for key, value in summary.items():
         print(f"{key}: {value}")
+    if args.report_file is not None:
+        args.report_file.parent.mkdir(parents=True, exist_ok=True)
+        args.report_file.write_text(json.dumps({"mode": mode, **summary}, indent=2, sort_keys=True), encoding="utf-8")
+        print(f"Report written to {args.report_file}")
     if args.execute:
         print(
             "\nRanking S3 is not written here: the new topic values appear in ranking S3 on the next "

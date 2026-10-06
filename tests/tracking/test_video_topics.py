@@ -46,6 +46,13 @@ def test_every_topic_has_a_label_for_every_frontend_locale():
         ("カラオケ配信", "singing"),
         ("Singing stream", "singing"),
         ("Cover", "mv"),
+        ("【Cover】新曲", "mv"),
+        ("歌ってみた", "mv"),
+        ("【歌ってみた】新曲", "mv"),
+        ("【歌ってみた】空月の歌", "mv"),
+        ("歌配信", "singing"),
+        ("歌枠 Cover 配信", "singing"),
+        ("singing livestream", "singing"),
         ("covered", "mv"),
         ("MV", "mv"),
         ("Music Video", "mv"),
@@ -64,8 +71,8 @@ def test_aliases_map_to_their_topic(title, expected):
     assert classify_video_topic(title) == expected
 
 
-def test_uploaded_cover_is_singing():
-    assert classify_video_topic("【歌ってみた】新曲 covered by 白上フブキ") == "singing"
+def test_uploaded_cover_is_mv():
+    assert classify_video_topic("【歌ってみた】新曲 covered by 白上フブキ") == "mv"
 
 
 @pytest.mark.parametrize("title", ["", "   ", "unrelated title", "料理配信", "Weekly update"])
@@ -123,7 +130,7 @@ def test_false_positive_sensitive_titles(title):
         ("VALORANT × APEX", "valorant"),  # earlier canonical game wins
         ("Apex vs Minecraft", "apex"),
         ("マイクラ SF6", "sf6"),
-        ("【歌ってみた】Cover", "singing"),  # explicit owner decision: 歌ってみた always wins over a cover marker
+        ("【歌ってみた】Cover", "mv"),  # 歌ってみた is a music work (mv), never livestream singing
         ("APEX Cover", "apex"),  # game beats mv, same precedence family as game beats singing/chatting
         ("歌枠 MV", "singing"),  # singing beats mv
         ("MV 雑談", "mv"),  # mv beats chatting
