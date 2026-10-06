@@ -92,6 +92,17 @@ function installApi() {
       api.requests.push(path)
 
       if (url.pathname === "/live-streams") return json({ streams: [] })
+      // Real shape (src/api/dashboard_catalog_api.py's get_topics): the tag bar's own
+      // GET /topics fetch (useVideoTopicCatalog) -- "valorant"/"VALO" is the one id/label
+      // this file's own tests click through the rendered tag bar.
+      if (url.pathname === "/topics") {
+        return json({
+          topics: [
+            { id: "valorant", labels: { en: "VALO" } },
+            { id: "sf6", labels: { en: "SF6" } },
+          ],
+        })
+      }
 
       const creatorMatch = url.pathname.match(/^\/creators\/([^/]+)\/(videos\/recent|oshi-status)$/)
       if (!creatorMatch) {
@@ -162,7 +173,7 @@ describe("Home -> real API: open", () => {
     expect(paramOf(first, "offset")).toBe("0")
     expect(paramOf(first, "limit")).toBe(String(PAGE))
     expect(api.requests.some((path) => path.startsWith(`/creators/${CREATOR_A.creatorId}/oshi-status`))).toBe(true)
-    expect(api.unexpected).toEqual([]) // Home calls no endpoint other than the ones above and /live-streams
+    expect(api.unexpected).toEqual([]) // Home calls no endpoint other than the ones above, /live-streams and /topics
     expect(creatorsRequested(api.requests)).toEqual(new Set([CREATOR_A.creatorId])) // only the current creator
   })
 

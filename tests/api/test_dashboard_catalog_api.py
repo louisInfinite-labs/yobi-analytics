@@ -68,15 +68,53 @@ def test_topics_returns_the_canonical_list_in_display_order():
     assert response["headers"]["Content-Type"] == "application/json"
     assert _body(response) == {
         "topics": [
-            {"id": "valorant", "label": "VALORANT"},
-            {"id": "sf6", "label": "SF6"},
-            {"id": "apex", "label": "APEX"},
-            {"id": "minecraft", "label": "Minecraft"},
-            {"id": "singing", "label": "Singing"},
-            {"id": "chatting", "label": "Chatting"},
-            {"id": "other", "label": "Other"},
+            {"id": "valorant", "label": "VALORANT", "labels": {"zh-TW": "VALO", "en": "VALO", "ja": "VALO"}},
+            {"id": "sf6", "label": "SF6", "labels": {"zh-TW": "SF6", "en": "SF6", "ja": "SF6"}},
+            {"id": "apex", "label": "APEX", "labels": {"zh-TW": "Apex", "en": "Apex", "ja": "Apex"}},
+            {"id": "minecraft", "label": "Minecraft", "labels": {"zh-TW": "Minecraft", "en": "Minecraft", "ja": "Minecraft"}},
+            {"id": "singing", "label": "Singing", "labels": {"zh-TW": "歌回", "en": "Singing", "ja": "歌枠"}},
+            {"id": "mv", "label": "MV", "labels": {"zh-TW": "MV", "en": "MV", "ja": "MV"}},
+            {"id": "chatting", "label": "Chatting", "labels": {"zh-TW": "雜談", "en": "Chatting", "ja": "雑談"}},
+            {"id": "other", "label": "Other", "labels": {"zh-TW": "其他", "en": "Other", "ja": "その他"}},
         ]
     }
+
+
+def test_topics_label_matches_the_endpoints_pre_labels_contract_byte_for_byte():
+    """`label` is additive-only backward compatibility (see
+    dashboard_catalog_api._LEGACY_TOPIC_LABELS) -- this pins it to the exact
+    strings the endpoint returned before `labels` existed, independently of
+    the display-order assertion above, so a future refactor of that assertion
+    can't accidentally stop covering this compatibility guarantee."""
+    response = lambda_handler(_event("GET /topics"), None)
+    labels_by_id = {topic["id"]: topic["label"] for topic in _body(response)["topics"]}
+
+    assert labels_by_id == {
+        "valorant": "VALORANT",
+        "sf6": "SF6",
+        "apex": "APEX",
+        "minecraft": "Minecraft",
+        "singing": "Singing",
+        "mv": "MV",
+        "chatting": "Chatting",
+        "other": "Other",
+    }
+
+
+def test_topics_label_is_never_the_frontends_source_and_falls_back_safely_for_an_unmapped_future_topic(monkeypatch):
+    """A topic added after `labels` existed has no historical `label` to preserve --
+    confirms the fallback (English label, else id) rather than a KeyError."""
+    import api.dashboard_catalog_api as dashboard_catalog_api
+    from tracking.video_topics import Topic
+
+    monkeypatch.setattr(
+        dashboard_catalog_api,
+        "TOPICS",
+        (Topic("asmr", {"zh-TW": "ASMR", "en": "ASMR", "ja": "ASMR"}, None),),
+    )
+
+    response = lambda_handler(_event("GET /topics"), None)
+    assert _body(response) == {"topics": [{"id": "asmr", "label": "ASMR", "labels": {"zh-TW": "ASMR", "en": "ASMR", "ja": "ASMR"}}]}
 
 
 def test_topics_needs_no_storage_and_is_stable_across_calls(monkeypatch):

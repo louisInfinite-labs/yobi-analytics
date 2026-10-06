@@ -8,17 +8,20 @@ import { t, type Locale } from "../../../shared/i18n/translations"
 import { formatCompactCount } from "../../oshi-status/utils/oshiActivity"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import type { VideoSortOption } from "../utils/recentVideosSelection"
-import { VIDEO_SECTION_TAGS, VIDEO_SECTION_TAG_LABEL_KEYS, type VideoSectionTag } from "../model/videoCategories"
+import { SPECIAL_VIDEO_FILTERS, SPECIAL_VIDEO_FILTER_LABEL_KEYS, type VideoSectionSelection } from "../model/specialVideoFilters"
+import { topicLabel } from "../model/videoTopicCatalog"
 import {
   VIDEO_CONTENT_TYPES,
   VIDEO_VIEW_WINDOWS,
   buildShelfQuery,
-  isQuickFilterTag,
+  isQuickFilterSelection,
   oshiVideosQueryKey,
   type VideoContentType,
   type VideoViewWindow,
 } from "../model/oshiVideosQuery"
 import { useOshiVideos } from "../hooks/useOshiVideos"
+import { useVideoTopicCatalog } from "../hooks/useVideoTopicCatalog"
+import { fetchVideoTopics } from "../data/videoTopics"
 
 interface RecentVideosSectionProps {
   creatorId: string
@@ -237,29 +240,34 @@ function VideoTrack({
   )
 }
 
-/** The 10-tag filter bar -- fixed order (not alphabetical/count/recency/
- * LIVE-status based), rendered as one Ant Design Segmented control (not ten
- * independent buttons) so the whole list reads as a single continuous
- * selector. `trailing` (the sort control) renders as the next sibling in
- * this same flex row, sharing its existing `gap` instead of a margin of its
- * own. Deliberately NOT the shared .shared-filter-segmented skin used by
- * Notification Settings/Favorites/Live Status (confirmed with the user):
- * this bar keeps its own compact "small" sizing, and its colors/radius
- * come from the ConfigProvider component tokens below -- fixed, never
- * creator-tinted (confirmed with the user: the selected tag's own color
- * must not shift when currentOshi changes). trackBg matches .oshi-videos's
- * own panel background (--oshi-surface-1) rather than the shared skin's
- * surface tone, so the track reads as part of the panel instead of a
- * separately-colored control sitting on it. */
+/** The filter bar -- the 3 frontend-owned special filters followed by
+ * whatever backend topics GET /topics returned, in that fixed order
+ * (not alphabetical/count/recency/LIVE-status based), rendered as one Ant
+ * Design Segmented control (not N independent buttons) so the whole list
+ * reads as a single continuous selector regardless of how many backend
+ * topics there currently are. `options` is computed by the caller (it alone
+ * knows the current locale and the current backend topic catalog state);
+ * this component just renders whatever list it's given. `trailing` (the
+ * sort control) renders as the next sibling in this same flex row, sharing
+ * its existing `gap` instead of a margin of its own. Deliberately NOT the
+ * shared .shared-filter-segmented skin used by Notification Settings/
+ * Favorites/Live Status (confirmed with the user): this bar keeps its own
+ * compact "small" sizing, and its colors/radius come from the ConfigProvider
+ * component tokens below -- fixed, never creator-tinted (confirmed with the
+ * user: the selected tag's own color must not shift when currentOshi
+ * changes). trackBg matches .oshi-videos's own panel background
+ * (--oshi-surface-1) rather than the shared skin's surface tone, so the
+ * track reads as part of the panel instead of a separately-colored control
+ * sitting on it. */
 function VideoSectionTagBar({
   selected,
   onSelect,
-  locale,
+  options,
   trailing,
 }: {
-  selected: VideoSectionTag
-  onSelect: (tag: VideoSectionTag) => void
-  locale: Locale
+  selected: VideoSectionSelection
+  onSelect: (selection: VideoSectionSelection) => void
+  options: { value: VideoSectionSelection; label: string }[]
   trailing?: ReactNode
 }) {
   return (
@@ -284,7 +292,7 @@ function VideoSectionTagBar({
           },
         }}
       >
-        <Segmented<VideoSectionTag>
+        <Segmented<VideoSectionSelection>
           size="small"
           classNames={{
             root: "oshi-videos__segmented",
@@ -293,10 +301,7 @@ function VideoSectionTagBar({
           }}
           value={selected}
           onChange={onSelect}
-          options={VIDEO_SECTION_TAGS.map((tag) => ({
-            value: tag,
-            label: t(locale, VIDEO_SECTION_TAG_LABEL_KEYS[tag]),
-          }))}
+          options={options}
         />
       </ConfigProvider>
       {trailing}
@@ -441,10 +446,20 @@ function ViewAllButton({ locale }: { locale: Locale }) {
  * (最新影片 = uploads, 最新直播 = completed livestream archives, both newest first). */
 export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSectionProps) {
   const [locale] = useLocale()
-  const [selectedTag, setSelectedTag] = useState<VideoSectionTag>("latestVideos")
+  const [selectedTag, setSelectedTag] = useState<VideoSectionSelection>("latestVideos")
   const [sortOption, setSortOption] = useState<VideoSortOption>("newest")
   const [viewWindow, setViewWindow] = useState<VideoViewWindow>("total")
   const [contentType, setContentType] = useState<VideoContentType>("all")
+  const topicCatalog = useVideoTopicCatalog(fetchVideoTopics)
+
+  // The 3 special filters always render; backend topics only once GET /topics has actually
+  // succeeded -- never a stale/hardcoded topic list while loading or on a failed fetch (the
+  // special filters alone stay usable in both of those states, per the architecture this models).
+  const tagOptions = useMemo(() => {
+    const special = SPECIAL_VIDEO_FILTERS.map((filter) => ({ value: filter as VideoSectionSelection, label: t(locale, SPECIAL_VIDEO_FILTER_LABEL_KEYS[filter]) }))
+    if (topicCatalog.state.status !== "success") return special
+    return [...special, ...topicCatalog.state.topics.map((topic) => ({ value: topic.id, label: topicLabel(topic, locale) }))]
+  }, [locale, topicCatalog.state])
 
   const canonicalCreatorId = resolveCreatorKey(creatorId)?.creatorId
   const shelfQuery = useMemo(
@@ -454,7 +469,7 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   const shelf = useOshiVideos(shelfQuery)
 
   // The dropdowns only apply to the topic tags; the period dropdown only to the most-viewed sort.
-  const showShelfFilters = !isQuickFilterTag(selectedTag)
+  const showShelfFilters = !isQuickFilterSelection(selectedTag)
   const showViewWindow = showShelfFilters && sortOption === "mostViews"
 
   const emptyLabel = shelf.loading
@@ -471,7 +486,7 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
         <VideoSectionTagBar
           selected={selectedTag}
           onSelect={setSelectedTag}
-          locale={locale}
+          options={tagOptions}
           trailing={
             <>
               <ContentTypeDropdown value={contentType} onChange={setContentType} locale={locale} hidden={!showShelfFilters} />

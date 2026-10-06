@@ -6,20 +6,22 @@ import {
   VIDEO_VIEW_WINDOWS,
   buildOshiVideosRequest,
   buildShelfQuery,
-  isQuickFilterTag,
+  isQuickFilterSelection,
   effectiveViewWindow,
   oshiVideosQueryKey,
-  topicForTag,
   type OshiVideosQuery,
   type VideoContentType,
-  type VideoTopic,
   type VideoViewWindow,
 } from "./oshiVideosQuery"
-import { VIDEO_SECTION_TAGS } from "./videoCategories"
+import { SPECIAL_VIDEO_FILTERS } from "./specialVideoFilters"
 import type { VideoSortOption } from "../utils/recentVideosSelection"
 
 const CREATOR = "aizawa_ema"
-const TOPICS: VideoTopic[] = ["all", "chatting", "singing", "valorant", "apex", "sf6", "minecraft", "other"]
+// A representative sample, deliberately not an exhaustive copy of the real backend
+// taxonomy -- these functions must treat `topic` as opaque backend data (GET /topics),
+// never a frontend-known set, so "some-future-topic" (not a real backend id) is included
+// on purpose to prove nothing here special-cases the topics that happen to exist today.
+const SAMPLE_TOPICS = ["all", "sf6", "singing", "mv", "some-future-topic"]
 
 function query(overrides: Partial<OshiVideosQuery> = {}): OshiVideosQuery {
   return { creatorId: CREATOR, topic: "all", contentType: "all", sort: "newest", viewWindow: "total", ...overrides }
@@ -31,24 +33,17 @@ function parse(path: string) {
   return { pathname: url.pathname, params: Object.fromEntries(url.searchParams) }
 }
 
-describe("topicForTag", () => {
-  it("maps ALL and the 7 category tags to the backend's canonical topic ids", () => {
-    expect(topicForTag("all")).toBe("all")
-    expect(topicForTag("valo")).toBe("valorant") // the UI's VALO is the backend's valorant
-    expect(topicForTag("sf6")).toBe("sf6")
-    expect(topicForTag("minecraft")).toBe("minecraft")
-    expect(topicForTag("apex")).toBe("apex")
-    expect(topicForTag("singing")).toBe("singing")
-    expect(topicForTag("chatting")).toBe("chatting")
-    expect(topicForTag("other")).toBe("other")
+describe("buildShelfQuery / buildOshiVideosRequest treat topic as opaque backend data", () => {
+  it("passes a topic id straight through, including one that isn't a real backend topic yet", () => {
+    const shelf = buildShelfQuery("some-future-topic", CREATOR, { contentType: "all", sort: "newest", viewWindow: "total" })
+    expect(shelf).toEqual({ creatorId: CREATOR, topic: "some-future-topic", contentType: "all", sort: "newest", viewWindow: "total" })
+    const { params } = parse(buildOshiVideosRequest(shelf!).path)
+    expect(params.topic).toBe("some-future-topic")
   })
 
-  it("gives the quick filters no topic: they are fixed shortcuts (see buildShelfQuery), not topic tags", () => {
-    expect(topicForTag("latestVideos")).toBeNull()
-    expect(topicForTag("latestLive")).toBeNull()
-    // every tag is either a quick filter or maps to exactly one of the 8 topics
-    const mapped = VIDEO_SECTION_TAGS.map(topicForTag).filter((topic) => topic !== null)
-    expect(new Set(mapped)).toEqual(new Set(TOPICS))
+  it("never translates one backend topic id into another (no frontend alias table)", () => {
+    expect(buildShelfQuery("valorant", CREATOR, { contentType: "all", sort: "newest", viewWindow: "total" })).toMatchObject({ topic: "valorant" })
+    expect(buildShelfQuery("singing", CREATOR, { contentType: "all", sort: "newest", viewWindow: "total" })).toMatchObject({ topic: "singing" })
   })
 })
 
@@ -108,7 +103,7 @@ describe("buildOshiVideosRequest: views use the ranking endpoint", () => {
   })
 })
 
-describe("capability matrix: every topic x content type supports every sort and view window", () => {
+describe("capability matrix: every sampled topic x content type supports every sort and view window", () => {
   const sorts: { sort: VideoSortOption; window: VideoViewWindow }[] = [
     { sort: "newest", window: "total" },
     { sort: "oldest", window: "total" },
@@ -118,9 +113,9 @@ describe("capability matrix: every topic x content type supports every sort and 
     { sort: "mostViews", window: "30d" },
   ]
 
-  it("builds a creator-scoped, correctly filtered request for all 8 topics x 3 content types x 6 sorts", () => {
+  it(`builds a creator-scoped, correctly filtered request for all sampled topics x 3 content types x 6 sorts`, () => {
     let cells = 0
-    for (const topic of TOPICS) {
+    for (const topic of SAMPLE_TOPICS) {
       for (const contentType of VIDEO_CONTENT_TYPES) {
         for (const { sort, window } of sorts) {
           const { path } = buildOshiVideosRequest(query({ topic, contentType, sort, viewWindow: window }))
@@ -141,30 +136,18 @@ describe("capability matrix: every topic x content type supports every sort and 
         }
       }
     }
-    expect(cells).toBe(8 * 3 * 6)
+    expect(cells).toBe(SAMPLE_TOPICS.length * VIDEO_CONTENT_TYPES.length * sorts.length)
   })
 
-  it("covers the explicit acceptance cases", () => {
-    const cases: [VideoTopic, VideoContentType, VideoSortOption, VideoViewWindow, string, Record<string, string>][] = [
+  it("covers the explicit acceptance cases, including the real singing/mv ids", () => {
+    const cases: [string, VideoContentType, VideoSortOption, VideoViewWindow, string, Record<string, string>][] = [
       ["all", "all", "newest", "total", "recent", { topic: "all", contentType: "all", sort: "newest" }],
       ["all", "live", "oldest", "total", "recent", { topic: "all", contentType: "live", sort: "oldest" }],
       ["other", "live", "mostViews", "7d", "ranking", { topic: "other", contentType: "live", metric: "7d" }],
-      ["sf6", "live", "newest", "total", "recent", { topic: "sf6", contentType: "live", sort: "newest" }],
-      ["sf6", "live", "oldest", "total", "recent", { topic: "sf6", contentType: "live", sort: "oldest" }],
+      ["singing", "upload", "newest", "total", "recent", { topic: "singing", contentType: "upload", sort: "newest" }],
+      ["mv", "upload", "newest", "total", "recent", { topic: "mv", contentType: "upload", sort: "newest" }],
       ["sf6", "live", "mostViews", "total", "ranking", { topic: "sf6", contentType: "live", metric: "total" }],
-      ["sf6", "live", "mostViews", "1d", "ranking", { topic: "sf6", contentType: "live", metric: "1d" }],
-      ["sf6", "live", "mostViews", "7d", "ranking", { topic: "sf6", contentType: "live", metric: "7d" }],
-      ["sf6", "live", "mostViews", "30d", "ranking", { topic: "sf6", contentType: "live", metric: "30d" }],
-      ["sf6", "upload", "newest", "total", "recent", { topic: "sf6", contentType: "upload", sort: "newest" }],
-      ["sf6", "upload", "oldest", "total", "recent", { topic: "sf6", contentType: "upload", sort: "oldest" }],
-      ["valorant", "live", "newest", "total", "recent", { topic: "valorant", contentType: "live", sort: "newest" }],
-      ["valorant", "live", "oldest", "total", "recent", { topic: "valorant", contentType: "live", sort: "oldest" }],
-      ["valorant", "upload", "newest", "total", "recent", { topic: "valorant", contentType: "upload", sort: "newest" }],
-      ["valorant", "upload", "oldest", "total", "recent", { topic: "valorant", contentType: "upload", sort: "oldest" }],
-      ["valorant", "upload", "mostViews", "total", "ranking", { topic: "valorant", contentType: "upload", metric: "total" }],
-      ["valorant", "upload", "mostViews", "1d", "ranking", { topic: "valorant", contentType: "upload", metric: "1d" }],
       ["valorant", "upload", "mostViews", "7d", "ranking", { topic: "valorant", contentType: "upload", metric: "7d" }],
-      ["valorant", "upload", "mostViews", "30d", "ranking", { topic: "valorant", contentType: "upload", metric: "30d" }],
     ]
 
     for (const [topic, contentType, sort, window, endpoint, expected] of cases) {
@@ -196,7 +179,7 @@ describe("oshiVideosQueryKey", () => {
   })
 })
 
-describe("buildShelfQuery: quick filters and topic tags, always for the current creator", () => {
+describe("buildShelfQuery: quick filters and backend topic ids, always for the current creator", () => {
   const controls = { contentType: "live" as const, sort: "mostViews" as const, viewWindow: "7d" as const }
 
   it("最新影片 = this creator + all topics + upload + archived + newest, ignoring the dropdown controls", () => {
@@ -222,9 +205,9 @@ describe("buildShelfQuery: quick filters and topic tags, always for the current 
     expect(buildShelfQuery("latestLive", "subaru", controls)?.creatorId).toBe("subaru")
   })
 
-  it("a topic tag takes the user's content type, sort and period", () => {
+  it("a backend topic id takes the user's content type, sort and period, sent through unchanged", () => {
     expect(buildShelfQuery("sf6", CREATOR, controls)).toEqual({ creatorId: CREATOR, topic: "sf6", ...controls })
-    expect(buildShelfQuery("valo", CREATOR, { contentType: "upload", sort: "oldest", viewWindow: "30d" })).toMatchObject({
+    expect(buildShelfQuery("valorant", CREATOR, { contentType: "upload", sort: "oldest", viewWindow: "30d" })).toMatchObject({
       topic: "valorant",
       contentType: "upload",
       sort: "oldest",
@@ -236,7 +219,8 @@ describe("buildShelfQuery: quick filters and topic tags, always for the current 
     expect(buildShelfQuery("sf6", undefined, controls)).toBeNull()
   })
 
-  it("knows which tags are quick filters", () => {
-    expect(VIDEO_SECTION_TAGS.filter(isQuickFilterTag)).toEqual(["latestVideos", "latestLive"])
+  it("knows which special filters are quick filters -- 'all' is not one (it uses the dropdown controls)", () => {
+    expect(SPECIAL_VIDEO_FILTERS.filter(isQuickFilterSelection)).toEqual(["latestVideos", "latestLive"])
+    expect(isQuickFilterSelection("sf6")).toBe(false)
   })
 })

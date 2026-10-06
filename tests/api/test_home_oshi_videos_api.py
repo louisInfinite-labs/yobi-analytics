@@ -14,7 +14,7 @@ from tracking.creator_master import Creator
 from tracking.video_topics import TOPIC_IDS
 
 REPORT_DATE = "2026-10-01"
-TOPICS = sorted(TOPIC_IDS)  # apex, chatting, minecraft, other, sf6, singing, valorant
+TOPICS = sorted(TOPIC_IDS)  # apex, chatting, minecraft, mv, other, sf6, singing, valorant
 CONTENT_TYPES = ("all", "live", "upload")
 WINDOWS = ("total", "1d", "7d", "30d")
 
@@ -271,7 +271,7 @@ def test_the_full_topic_by_content_type_by_sort_by_window_matrix_matches_an_inde
             assert _ids(_ranking(metric=period, limit="100", **query), "rows") == ranked
         checked += 1
 
-    assert checked == len(CONTENT_TYPES) * (len(TOPICS) + 1) == 24  # every capability-matrix cell
+    assert checked == len(CONTENT_TYPES) * (len(TOPICS) + 1) == 27  # every capability-matrix cell
 
 
 # --- 3. oldest is a true ascending sort, never a reversed truncated newest page ----------------------
