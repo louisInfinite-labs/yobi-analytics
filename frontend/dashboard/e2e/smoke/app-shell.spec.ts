@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { test, expect } from "./helpers"
 import { pinEnglishLocale, trackPageErrors, trackConsoleErrors } from "../helpers/common"
 
 /** docs/testing/V1_PRODUCTION_E2E_SMOKE_TEST.md, case A (Application
@@ -23,17 +24,9 @@ function mainNavbar(page: Page) {
  * deployed backend has real data behind every one of those routes and
  * should see zero such messages too -- this filter exists for the local
  * fixture's own known data gap, not to hide a genuine app-level warning.
- *
- * The Dashboard page separately fires a real `POST /heartbeat` ping on
- * mount (pre-existing app behavior, unrelated to this smoke suite). The
- * local fixture only ever implements do_GET/do_OPTIONS (see
- * local_api_server.py's module docstring -- intentionally no write path),
- * so that POST is CORS-blocked by the browser itself against this fixture,
- * which is the same category of local-only noise as the 404s above. Real
- * production supports this write path with proper CORS, so a run against
- * SMOKE_API_BASE_URL/SMOKE_FRONTEND_URL should see zero such messages too. */
+ */
 function isKnownLocalFixtureNoise(message: string): boolean {
-  return message.startsWith("Failed to load resource:") || (message.includes("blocked by CORS policy") && message.includes("/heartbeat"))
+  return message.startsWith("Failed to load resource:")
 }
 
 /** A1-A6's shared assertion: zero uncaught exceptions, zero real

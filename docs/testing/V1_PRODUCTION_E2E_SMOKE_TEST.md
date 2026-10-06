@@ -128,9 +128,23 @@ npm run test:smoke
 |---|---|
 | Both variables required together | `playwright.smoke.config.ts` throws a config-time error if only one is set — there is no way to run with a local frontend against a real backend, or vice versa, by accident |
 | Local fixture servers | Not started at all — `webServer` is `undefined` in this mode |
-| Write operations | None — every smoke assertion uses `request.get(...)` or read-only page navigation; nothing in this suite submits a form, calls a mutating endpoint, or exercises a write-capable UI flow |
+| Write operations | None expected or permitted — production smoke mode is read-only. The API-contract spec only uses `request.get(...)`. Page navigation can still make the app itself attempt writes (the Dashboard sends `POST /heartbeat` on mount), so every non-GET request a smoke page makes to the API target is intercepted and stubbed by the test harness and never forwarded (see *Write policy* below) |
 | Production-only historical-data-unavailable case | Now executes for real (the `test.skip` guard above is keyed on exactly this env var) |
 | Security-dependent cases | Still `BLOCKED / PENDING SECURITY MERGE` until that work is actually merged and deployed — pointing at a real URL does not change what code is running behind it |
+
+### Write policy (both modes)
+
+The smoke suite never writes to its API target, and that is enforced by the harness rather than by trusting the specs:
+
+- `e2e/smoke/helpers.ts` exports a `test` (a thin wrapper over Playwright's) with an automatic fixture that installs `installReadOnlyApiGuard` on every test's `page`. All browser specs must import `test` from there, not from `@playwright/test`.
+- The guard routes every request whose origin equals the smoke API target (`SMOKE_API_BASE_URL`, else the local fixture). `GET`/`HEAD` pass through untouched. Every other method (`POST`/`PUT`/`PATCH`/`DELETE`/…) is answered locally with a `200` stub carrying an `x-smoke-guard: blocked` header and is **never forwarded**, so it cannot reach the real API. CORS preflights for routed requests are answered by Playwright itself.
+- `e2e/smoke/write-guard.spec.ts` proves it: the Dashboard's own `POST /heartbeat` is attempted, answered by the guard (not the API), and recorded as blocked; `POST`/`PUT`/`PATCH`/`DELETE` to an arbitrary API path are stubbed while a `GET` still reaches the API.
+- The guard covers browser pages only (`request.get(...)` in `api-contract.spec.ts` is GET-only by construction). It matches on the API origin, so **`SMOKE_API_BASE_URL` must be the same API the target frontend is built against**; if they differ, the frontend's writes would go to an origin the guard does not cover.
+- No production write is expected or permitted. If a future spec needs a write-capable flow, it does not belong in this suite.
+
+### CI
+
+The smoke suite is **not run by PR CI** (`pr-ci.yml` has no Playwright step, and neither does the existing `test:browser` suite). It needs the local smoke environment — the repo `.venv` for the API fixture, an installed Playwright Chromium and a Vite dev server — and is run manually (`npm run test:smoke`). This is an intentional current limitation, not an oversight.
 
 **No secrets belong in this document or in either script it describes.** `SMOKE_FRONTEND_URL`/
 `SMOKE_API_BASE_URL` are plain URLs, not credentials — the production API's GET routes are

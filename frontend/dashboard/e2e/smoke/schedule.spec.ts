@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test"
+import { test, expect } from "./helpers"
 import { pinEnglishLocale, trackPageErrors } from "../helpers/common"
 
 /** docs/testing/V1_PRODUCTION_E2E_SMOKE_TEST.md, case I1/I6 -- the current
