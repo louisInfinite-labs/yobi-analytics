@@ -1,4 +1,4 @@
-import { mockCreators } from "../../entities/creator/data/mockCreators"
+import { resolveCreatorKey } from "../../entities/creator/data/creatorRegistry"
 import { creatorThemeStyle } from "../../shared/theme/creatorThemeStyle"
 import { useBreakpoint } from "../../shared/hooks/useBreakpoint"
 import { useCreatorStatuses } from "../../features/live-status/hooks/useCreatorStatuses"
@@ -44,11 +44,8 @@ function LiveEmbedPlayer({ videoId, title, autoplay }: { videoId: string; title:
  * exposes that state to CSS. */
 export function HomePage() {
   const [creatorId] = useSelectedCreator()
-  // The one lookup into Home's current mock creator source needed to bind
-  // the global theme below -- creatorThemeStyle itself takes the resolved
-  // themeColor rather than performing this same lookup a second time
-  // internally (see that helper's own docstring).
-  const currentCreator = mockCreators.find((entry) => entry.channelId === creatorId)
+  // The theme color is read from the canonical Creator Registry (generated from the backend
+  // creators.json) -- there is no second, frontend-owned color map to drift from it.
   const { statuses, now } = useCreatorStatuses()
   // Only the player's auto-selected video (live now / a just-ended archive) reads this pool. The Oshi Videos
   // shelf and Oshi Status fetch their own backend data for the current creator.
@@ -67,7 +64,7 @@ export function HomePage() {
 
   return (
     <div className="oshi-home" data-live-status-open={liveStatusOpen}>
-      <main className="oshi-home__canvas" style={creatorThemeStyle(creatorId, currentCreator?.themeColor)}>
+      <main className="oshi-home__canvas" style={creatorThemeStyle(creatorId, resolveCreatorKey(creatorId)?.themeColor)}>
         <section className="oshi-stream">
           <div className="oshi-player-frame" data-live={status.kind === "live"}>
             <div className="oshi-player-frame__stage">

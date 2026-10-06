@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import creatorMasterFile from "./generated/creatorMaster.json"
+import { mockCreators } from "./mockCreators"
 import {
   getCreatorById,
   getCreatorByYoutubeChannelId,
@@ -283,5 +284,35 @@ describe("isLiveStatusDisplayEligible / isMyOshiEligible are separate from the c
       expect(isLiveStatusDisplayEligible(c), c.creatorId).toBe(c.active)
       expect(isMyOshiEligible(c), c.creatorId).toBe(c.active && c.channelType === "member")
     }
+  })
+})
+
+describe("Hololive creator theme colors come from the canonical backend data", () => {
+  const colorOf = (creatorId: string) => getCreators().find((creator) => creator.creatorId === creatorId)?.themeColor?.toLowerCase()
+
+  it("天音かなた is #76c0ea (Oshimark's first Image Color), where the registry used to have none", () => {
+    expect(colorOf("amane_kanata")).toBe("#76c0ea")
+  })
+
+  it.each([
+    ["hoshimachi_suisei", "#2dcde4"], // Hololive JP
+    ["takanashi_kiara", "#dc3907"], // Hololive EN
+    ["kobo_kanaeru", "#161c4f"], // Hololive ID
+    ["hiodoshi_ao", "#16264b"], // graduated
+  ])("%s uses %s", (creatorId, expected) => {
+    expect(colorOf(creatorId)).toBe(expected)
+  })
+
+  it("every Hololive individual that has a canonical color has a valid #RRGGBB one", () => {
+    const hololiveIndividuals = getCreators().filter((creator) => creator.organization === "hololive" && creator.channelType === "member")
+    expect(hololiveIndividuals.length).toBeGreaterThan(70)
+    for (const creator of hololiveIndividuals.filter((candidate) => candidate.themeColor !== null)) {
+      expect(creator.themeColor, creator.creatorId).toMatch(/^#[0-9a-fA-F]{6}$/)
+    }
+  })
+
+  it("no frontend-owned map duplicates the canonical colors: mockCreators carries no themeColor at all", () => {
+    expect(mockCreators.length).toBeGreaterThan(0)
+    expect(mockCreators.filter((creator) => "themeColor" in creator)).toEqual([])
   })
 })

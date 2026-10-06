@@ -80,6 +80,7 @@ jobs:
           tests/scripts/backfill/test_backfill_video_classification.py
           tests/test_home_pipeline_end_to_end.py
           tests/tracking/test_creator_master.py
+          tests/tracking/test_hololive_theme_colors.py
           tests/codegen/test_generate_creator_registry.py
           tests/api/test_read_api.py
           tests/api/test_historical_data_unavailable.py
@@ -128,6 +129,7 @@ jobs:
           src/pages/home/HomePage.apiCutover.test.tsx
           src/features/live-status/model/creatorStatusSelection.test.ts
           src/features/live-status/hooks/useCreatorStatuses.test.tsx
+          src/features/live-status/components/CreatorStatusList.canonicalColor.test.tsx
           src/shared/api/liveStreams.test.ts
           src/shared/api/liveStreamsStore.test.ts
           src/shared/api/hooks/useLiveStreams.test.ts

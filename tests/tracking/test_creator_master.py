@@ -527,19 +527,21 @@ def test_non_string_avatar_url_is_rejected(tmp_path):
 
 
 def test_production_roster_theme_color_coverage():
-    """98 of the 119 production creators carry a verified themeColor
-    (Justice/ReGLOSS/FLOWGLOW, every VSPO JP/EN member, and all four
-    アソビ★まわり隊！ pre-debut members included); the remaining 21 (graduated
-    members, pre-debut mekPark units, staff/group channels -- including the
-    hololive Official channel -- with no verified color) are correctly left
-    unset for the frontend hashed-palette fallback."""
+    """100 of the 119 production creators carry a verified themeColor
+    (Justice/ReGLOSS/FLOWGLOW, every VSPO JP/EN member, all four
+    アソビ★まわり隊！ pre-debut members, and the Hololive individuals Oshimark
+    provides a color for -- including graduated 天音かなた and 火威青); the
+    remaining 19 (the other graduated members with no Oshimark page, pre-debut
+    mekPark units, staff/group channels -- including the hololive Official
+    channel -- with no verified color) are correctly left unset for the frontend
+    hashed-palette fallback."""
     creators = load_creators()
 
     with_color = [c for c in creators if c.theme_color is not None]
     without_color = [c for c in creators if c.theme_color is None]
 
-    assert len(with_color) == 98
-    assert len(without_color) == 21
+    assert len(with_color) == 100
+    assert len(without_color) == 19
 
 
 def test_production_roster_has_avatar_url_populated_for_every_creator():

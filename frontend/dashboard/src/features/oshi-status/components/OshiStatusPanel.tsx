@@ -123,7 +123,7 @@ function LiveOrNext({ status, now }: { status: CreatorStatus; now: Date }) {
  * GET /creators/{creatorId}/oshi-status read model for the CURRENT creator. */
 export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlayingTitle }: OshiStatusPanelProps) {
   const creator = mockCreators.find((entry) => entry.channelId === creatorId)
-  const accent = getMemberAccent(creatorId, creator?.themeColor)
+  const accent = getMemberAccent(creatorId, resolveCreatorKey(creatorId)?.themeColor)
   const previousVisit = usePreviousVisit()
   const [locale] = useLocale()
   const [timeFormat] = useTimeFormat()
