@@ -227,6 +227,7 @@ def _backfill_manifest_topics(
     reclassify: bool,
     summary: dict[str, Any],
     only_topic: str | None = None,
+    out_of_scope_ids: set[str] | None = None,
 ) -> None:
     """Report (and, only with execute=True, patch) manifest entries whose topic should be set from Video Master.
 
@@ -274,7 +275,11 @@ def _backfill_manifest_topics(
         patchable_count = _count_patchable(entries, topic_by_video, reclassify=reclassify, only_topic=only_topic)
         summary["manifestEntriesMissingTopic"] += len(missing)
         summary["manifestEntriesPatchable"] += patchable_count
-        summary["manifestEntriesStillMissingTopic"] += sum(1 for entry in missing if entry.video_id not in topic_by_video)
+        # A video deliberately left alone by --only-topic is out of scope, not "still missing".
+        skipped = out_of_scope_ids or set()
+        summary["manifestEntriesStillMissingTopic"] += sum(
+            1 for entry in missing if entry.video_id not in topic_by_video and entry.video_id not in skipped
+        )
         # An existing manifest topic that disagrees with Video Master's: only --reclassify overwrites it.
         summary["manifestEntriesDivergent"] += sum(
             1
@@ -373,6 +378,8 @@ def backfill_topics(
     if only_topic is not None and only_topic not in TOPIC_IDS:
         raise ValueError(f"Unknown topic id for only_topic: {only_topic!r}")
     topic_counts: Counter[str] = Counter()
+    transitions: Counter[str] = Counter()
+    out_of_scope_ids: set[str] = set()
     topic_by_video: dict[str, str] = {}
     summary: dict[str, Any] = {
         "scanned": 0,
@@ -399,6 +406,8 @@ def backfill_topics(
             reclassify=reclassify,
             manifest_store=manifest_store,
             only_topic=only_topic,
+            transitions=transitions,
+            out_of_scope_ids=out_of_scope_ids,
         )
     except KeyboardInterrupt:
         # Progress already counted in `summary` is kept. Every write so far is complete (one atomic
@@ -407,6 +416,8 @@ def backfill_topics(
         summary["abortedReason"] = "interrupted (Ctrl-C)"
         summary.setdefault("topicCounts", {topic: topic_counts[topic] for topic in sorted(topic_counts)})
         summary.setdefault("otherCount", topic_counts["other"])
+    # Set here (not inside _run_backfill) so a Ctrl-C mid-run still reports the transitions already made.
+    summary["topicTransitions"] = {name: transitions[name] for name in sorted(transitions)}
     summary["status"] = _final_status(summary, execute=execute, reclassify=reclassify)
     return summary
 
@@ -420,6 +431,8 @@ def _run_backfill(
     reclassify: bool,
     manifest_store: S3TrackingManifestStore | None,
     only_topic: str | None = None,
+    transitions: Counter[str] | None = None,
+    out_of_scope_ids: set[str] | None = None,
 ) -> None:
     """The preflight -> scan -> Video Master writes -> manifest patch work of backfill_topics.
 
@@ -441,7 +454,8 @@ def _run_backfill(
         summary["abortedReason"] = f"Video Master scan failed ({_safe_error(exc)})"
         return
 
-    transitions: Counter[str] = Counter()
+    transitions = Counter() if transitions is None else transitions
+    out_of_scope_ids = set() if out_of_scope_ids is None else out_of_scope_ids
     consecutive_write_errors = 0
     for item in items:
         summary["scanned"] += 1
@@ -464,6 +478,7 @@ def _run_backfill(
         if only_topic is not None and only_topic not in (existing if has_valid_topic else None, topic):
             # Not a scoped (e.g. MV) change: leave the record and its manifest entry exactly as they are.
             summary["outOfScope"] += 1
+            out_of_scope_ids.add(item["videoId"])
             if has_valid_topic:
                 topic_by_video[item["videoId"]] = existing
             continue
@@ -510,7 +525,6 @@ def _run_backfill(
 
     summary["topicCounts"] = {topic: topic_counts[topic] for topic in sorted(topic_counts)}
     summary["otherCount"] = topic_counts["other"]
-    summary["topicTransitions"] = {name: transitions[name] for name in sorted(transitions)}
 
     if manifest_store is not None and not summary.get("abortedReason"):
         _backfill_manifest_topics(
@@ -520,6 +534,7 @@ def _run_backfill(
             reclassify=reclassify,
             summary=summary,
             only_topic=only_topic,
+            out_of_scope_ids=out_of_scope_ids,
         )
 
 

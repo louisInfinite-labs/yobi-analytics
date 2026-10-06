@@ -1051,3 +1051,35 @@ def test_main_refuses_a_report_file_inside_the_repository_before_doing_anything(
 
     assert "outside the repository" in capsys.readouterr().out
     assert not inside.exists()
+
+
+def test_only_topic_leaves_an_out_of_scope_video_with_a_missing_manifest_topic_out_of_the_still_missing_count(env):
+    upsert_videos([_video("cover", "【Cover】新曲", topic="other"), _video("game", "【VALORANT】ランク", topic="valorant")])
+    _seed_manifest(env, [_full_entry("cover", topic="other"), _full_entry("game")])  # game: manifest topic missing, out of scope
+
+    summary = backfill_video_topics.backfill_topics(execute=True, reclassify=True, manifest_store=env, only_topic="mv")
+
+    assert summary["manifestEntriesMissingTopic"] == 1
+    assert summary["manifestEntriesStillMissingTopic"] == 0
+    assert _manifest(env)["game"].topic is None  # untouched: not an mv change
+    assert summary["status"] == "COMPLETE"
+
+
+def test_a_ctrl_c_mid_run_still_reports_the_transitions_already_made(table, monkeypatch):
+    _put(table, "a", "【Cover】一", topic="other")
+    _put(table, "b", "【Cover】二", topic="other")
+    real_set = backfill_video_topics.set_video_topic
+    calls = []
+
+    def interrupt_on_second(*args, **kwargs):
+        calls.append(args[0])
+        if len(calls) == 2:
+            raise KeyboardInterrupt
+        return real_set(*args, **kwargs)
+
+    monkeypatch.setattr(backfill_video_topics, "set_video_topic", interrupt_on_second)
+
+    summary = backfill_video_topics.backfill_topics(execute=True, reclassify=True, only_topic="mv")
+
+    assert summary["updated"] == 1 and summary["abortedReason"] == "interrupted (Ctrl-C)"
+    assert summary["topicTransitions"] == {"other->mv": 1}
