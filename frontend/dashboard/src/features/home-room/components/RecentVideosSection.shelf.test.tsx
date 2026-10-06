@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { RecentVideosSection } from "./RecentVideosSection"
 import { fetchOshiVideos, type OshiVideosPage } from "../data/oshiVideos"
+import { fetchVideoTopics } from "../data/videoTopics"
+import type { BackendVideoTopic } from "../model/videoTopicCatalog"
 import { getCreators, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 import { buildOshiVideosRequest, type OshiVideosQuery, type VideoContentType, type VideoViewWindow } from "../model/oshiVideosQuery"
 import type { VideoSortOption } from "../utils/recentVideosSelection"
@@ -13,8 +15,24 @@ Element.prototype.releasePointerCapture ??= () => {}
 Element.prototype.hasPointerCapture ??= () => false
 
 vi.mock("../data/oshiVideos", () => ({ fetchOshiVideos: vi.fn() }))
+vi.mock("../data/videoTopics", () => ({ fetchVideoTopics: vi.fn() }))
 
 const fetchMock = vi.mocked(fetchOshiVideos)
+const fetchTopicsMock = vi.mocked(fetchVideoTopics)
+
+/** Today's real backend taxonomy (src/tracking/video_topics.py's TOPICS), in its real order --
+ * this file's own fixture for "what GET /topics happens to return right now", not a frontend
+ * hardcoded topic list: RecentVideosSection itself has no knowledge of these ids or labels. */
+const REAL_BACKEND_TOPICS: BackendVideoTopic[] = [
+  { id: "valorant", labels: { en: "VALO" } },
+  { id: "sf6", labels: { en: "SF6" } },
+  { id: "apex", labels: { en: "Apex" } },
+  { id: "minecraft", labels: { en: "Minecraft" } },
+  { id: "singing", labels: { en: "Singing" } },
+  { id: "mv", labels: { en: "MV" } },
+  { id: "chatting", labels: { en: "Chatting" } },
+  { id: "other", labels: { en: "Other" } },
+]
 
 const [CREATOR_A, CREATOR_B] = getCreators()
 const LEGACY_A = toLegacyRosterId(CREATOR_A)
@@ -50,8 +68,12 @@ type User = ReturnType<typeof userEvent.setup>
 const lastQuery = (): OshiVideosQuery => fetchMock.mock.calls.at(-1)![0]
 const lastRequest = () => buildOshiVideosRequest(lastQuery())
 
+/** Backend topic tags render only after GET /topics resolves (data/videoTopics.ts's
+ * fetchVideoTopics, mocked above) -- findByText waits for that, same as any other
+ * async-appearing element; the 3 special filters are present immediately, and waiting
+ * for them resolves on the very next check. */
 async function pickTag(user: User, label: string) {
-  await user.click(screen.getByText(label))
+  await user.click(await screen.findByText(label))
 }
 const contentTypeSelect = () => screen.getByRole("combobox", { name: "Content type" })
 const sortSelect = () => screen.getByRole("combobox", { name: "Sort videos" })
@@ -73,6 +95,8 @@ const optionLabels = (select: HTMLElement) => Array.from(select.querySelectorAll
 beforeEach(() => {
   fetchMock.mockReset()
   fetchMock.mockResolvedValue(page([]))
+  fetchTopicsMock.mockReset()
+  fetchTopicsMock.mockResolvedValue(REAL_BACKEND_TOPICS)
 })
 
 describe("Home Oshi Videos: quick filters are backend queries for the current creator", () => {
@@ -271,7 +295,7 @@ describe("Home Oshi Videos: Sort, period and content type controls", () => {
     renderSection(LEGACY_A)
     const expected: [string, string][] = [
       ["ALL", "all"], ["SF6", "sf6"], ["VALO", "valorant"], ["Minecraft", "minecraft"],
-      ["Apex", "apex"], ["Singing", "singing"], ["Chatting", "chatting"], ["Other", "other"],
+      ["Apex", "apex"], ["Singing", "singing"], ["MV", "mv"], ["Chatting", "chatting"], ["Other", "other"],
     ]
 
     for (const [label, topic] of expected) {

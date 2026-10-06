@@ -5,7 +5,12 @@ import { apiRequest } from "../../../shared/api/apiClient"
  * re-sorts or re-derives rank/growth itself. */
 export type VideoRankingMetric = "total" | "1d" | "7d" | "30d"
 
-export type VideoRankingTopic = "all" | "valorant" | "sf6" | "apex" | "minecraft" | "singing" | "chatting" | "other"
+/** A backend topic id (video_topics.TOPICS, GET /topics) or "all" -- not a
+ * closed frontend union, so a new backend topic needs no change here. No
+ * caller currently passes one (CreatorVideoRankingWidget always uses the
+ * "all" default); see home-room/model/videoTopicCatalog.ts for the
+ * dynamically-fetched topic list this same id space comes from. */
+export type VideoRankingTopic = string
 
 export interface VideoRankingRow {
   rank: number

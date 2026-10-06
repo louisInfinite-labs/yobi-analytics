@@ -3,18 +3,16 @@ import pytest
 from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS, TOPICS, classify_video_topic, resolve_video_topics
 
 
-def test_taxonomy_ids_labels_and_order_are_stable():
-    assert [(topic.id, topic.label) for topic in TOPICS] == [
-        ("valorant", "VALORANT"),
-        ("sf6", "SF6"),
-        ("apex", "APEX"),
-        ("minecraft", "Minecraft"),
-        ("singing", "Singing"),
-        ("chatting", "Chatting"),
-        ("other", "Other"),
-    ]
+def test_taxonomy_ids_and_order_are_stable():
+    assert [topic.id for topic in TOPICS] == ["valorant", "sf6", "apex", "minecraft", "singing", "mv", "chatting", "other"]
     assert TOPIC_IDS == {topic.id for topic in TOPICS}
     assert OTHER_TOPIC == "other"
+
+
+def test_every_topic_has_a_label_for_every_frontend_locale():
+    for topic in TOPICS:
+        assert set(topic.labels) == {"zh-TW", "en", "ja"}
+        assert all(isinstance(label, str) and label for label in topic.labels.values())
 
 
 @pytest.mark.parametrize(
@@ -47,6 +45,14 @@ def test_taxonomy_ids_labels_and_order_are_stable():
         ("karaoke stream", "singing"),
         ("カラオケ配信", "singing"),
         ("Singing stream", "singing"),
+        ("Cover", "mv"),
+        ("covered", "mv"),
+        ("MV", "mv"),
+        ("Music Video", "mv"),
+        ("オリジナル曲", "mv"),
+        ("Original Song", "mv"),
+        ("原創曲", "mv"),
+        ("原創歌曲", "mv"),
         ("【雑談】おはよう", "chatting"),
         ("雑談配信", "chatting"),
         ("just chatting", "chatting"),
@@ -64,6 +70,20 @@ def test_uploaded_cover_is_singing():
 
 @pytest.mark.parametrize("title", ["", "   ", "unrelated title", "料理配信", "Weekly update"])
 def test_unmatched_or_empty_titles_are_other(title):
+    assert classify_video_topic(title) == "other"
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "空月の歌",  # bare 歌 only -- must not become singing or mv
+        "歌うことが好き",  # bare 歌 only, different inflection
+        "my original idea",  # bare "original" alone must not trigger mv
+        "today's song request",  # bare "song" alone must not trigger mv
+        "music corner chat",  # bare "music" alone must not trigger mv
+    ],
+)
+def test_bare_uta_and_generic_music_words_are_not_singing_or_mv(title):
     assert classify_video_topic(title) == "other"
 
 
@@ -103,6 +123,10 @@ def test_false_positive_sensitive_titles(title):
         ("VALORANT × APEX", "valorant"),  # earlier canonical game wins
         ("Apex vs Minecraft", "apex"),
         ("マイクラ SF6", "sf6"),
+        ("【歌ってみた】Cover", "singing"),  # explicit owner decision: 歌ってみた always wins over a cover marker
+        ("APEX Cover", "apex"),  # game beats mv, same precedence family as game beats singing/chatting
+        ("歌枠 MV", "singing"),  # singing beats mv
+        ("MV 雑談", "mv"),  # mv beats chatting
     ],
 )
 def test_multi_match_precedence_follows_canonical_order(title, expected):

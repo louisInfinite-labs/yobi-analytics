@@ -65,7 +65,7 @@ def test_module_exposes_the_expected_metric_and_topic_constants():
     assert GROWTH_METRICS == ("1d", "7d", "30d")
     assert TOPIC_SCOPE_ALL == "all"
     assert VALID_TOPIC_SCOPES == frozenset(
-        {"all", "valorant", "sf6", "apex", "minecraft", "singing", "chatting", "other"}
+        {"all", "valorant", "sf6", "apex", "minecraft", "singing", "mv", "chatting", "other"}
     )
 
 

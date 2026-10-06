@@ -1,12 +1,11 @@
 import type { VideoSortOption } from "../utils/recentVideosSelection"
-import type { VideoSectionTag } from "./videoCategories"
+import { isSpecialVideoFilter, type SpecialVideoFilter, type VideoSectionSelection } from "./specialVideoFilters"
 
 /** Home's Oshi Videos shelf query. It is ALWAYS one creator's own content:
  * `creatorId` is the current Home Oshi's canonical creatorId, and the backend
  * applies creator -> topic -> contentType -> sort/ranking -> limit in that
  * order over that creator's whole persisted catalog. Nothing here ever
  * aggregates across creators. */
-export type VideoTopic = "all" | "chatting" | "singing" | "valorant" | "apex" | "sf6" | "minecraft" | "other"
 /** The backend's canonical content types: the UI shows "upload" as 影片 / Videos (label only). */
 export type VideoContentType = "all" | "live" | "upload"
 /** "total" = lifetime views; 1d/7d/30d = absolute view growth over that window.
@@ -18,28 +17,12 @@ export const VIDEO_VIEW_WINDOWS: readonly VideoViewWindow[] = ["total", "1d", "7
 
 export interface OshiVideosQuery {
   creatorId: string
-  topic: VideoTopic
+  /** A backend topic id as GET /topics returned it, or "all" -- never a
+   * closed frontend union (see model/videoTopicCatalog.ts). */
+  topic: string
   contentType: VideoContentType
   sort: VideoSortOption
   viewWindow: VideoViewWindow
-}
-
-/** The topic tags (ALL + the 7 categories) map onto the backend's canonical
- * topic ids; "latestVideos"/"latestLive" are quick filters (fixed queries, below), not
- * topic tags, so they have no topic. */
-const TAG_TOPIC: Partial<Record<VideoSectionTag, VideoTopic>> = {
-  all: "all",
-  sf6: "sf6",
-  valo: "valorant",
-  minecraft: "minecraft",
-  apex: "apex",
-  singing: "singing",
-  chatting: "chatting",
-  other: "other",
-}
-
-export function topicForTag(tag: VideoSectionTag): VideoTopic | null {
-  return TAG_TOPIC[tag] ?? null
 }
 
 /** The user-adjustable shelf controls (the topic tags' content type / sort / view window). */
@@ -54,28 +37,31 @@ export interface OshiVideosControls {
  *   最新影片 = this creator + topic all + upload + archived + newest
  *   最新直播 = this creator + topic all + live   + archived + newest   (completed archives only,
  *              never the currently-live/upcoming stream -- that is GET /live-streams' job). */
-const QUICK_FILTER_CONTROLS: Partial<Record<VideoSectionTag, OshiVideosControls>> = {
+const QUICK_FILTER_CONTROLS: Partial<Record<SpecialVideoFilter, OshiVideosControls>> = {
   latestVideos: { contentType: "upload", sort: "newest", viewWindow: "total" },
   latestLive: { contentType: "live", sort: "newest", viewWindow: "total" },
 }
 
 /** True for 最新影片 / 最新直播: their controls are fixed, so the content-type / sort / period dropdowns do not apply. */
-export function isQuickFilterTag(tag: VideoSectionTag): boolean {
-  return tag in QUICK_FILTER_CONTROLS
+export function isQuickFilterSelection(selection: VideoSectionSelection): boolean {
+  return isSpecialVideoFilter(selection) && selection in QUICK_FILTER_CONTROLS
 }
 
-/** The one place a selected tag + the user's controls become a backend query for the CURRENT
- * creator. Null only when the creator has no canonical id (nothing to ask the backend for). */
+/** The one place a selected tag (a frontend special filter, or a backend topic id from
+ * GET /topics) + the user's controls become a backend query for the CURRENT creator. Null
+ * only when the creator has no canonical id (nothing to ask the backend for). */
 export function buildShelfQuery(
-  tag: VideoSectionTag,
+  selection: VideoSectionSelection,
   creatorId: string | undefined,
   controls: OshiVideosControls,
 ): OshiVideosQuery | null {
   if (!creatorId) return null
-  const quick = QUICK_FILTER_CONTROLS[tag]
-  if (quick) return { creatorId, topic: "all", ...quick }
-  const topic = topicForTag(tag)
-  return topic ? { creatorId, topic, ...controls } : null
+  if (isSpecialVideoFilter(selection)) {
+    const quick = QUICK_FILTER_CONTROLS[selection]
+    return { creatorId, topic: "all", ...(quick ?? controls) }
+  }
+  // Any other string is a backend topic id (GET /topics), sent through unchanged.
+  return { creatorId, topic: selection, ...controls }
 }
 
 /** The window that actually applies: only a "mostViews" sort uses one, so
