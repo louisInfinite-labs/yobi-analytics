@@ -378,3 +378,18 @@ describe("Home has no reachable mock-video fallback", () => {
     expect(catalogs).toEqual([])
   })
 })
+
+describe("Home theme color is the canonical creator color", () => {
+  const legacyIdOf = (creatorId: string) => toLegacyRosterId(getCreators().find((creator) => creator.creatorId === creatorId)!)
+  const accentOnCanvas = () => document.querySelector<HTMLElement>(".oshi-home__canvas")!.style.getPropertyValue("--creator-main").toLowerCase()
+
+  it("天音かなた binds #76c0ea, and switching creator re-binds to that creator's canonical color", async () => {
+    selectCreator(legacyIdOf("amane_kanata"))
+    render(<HomePage />)
+
+    expect(accentOnCanvas()).toBe("#76c0ea")
+
+    selectCreator(legacyIdOf("hoshimachi_suisei"))
+    await waitFor(() => expect(accentOnCanvas()).toBe("#2dcde4"))
+  })
+})

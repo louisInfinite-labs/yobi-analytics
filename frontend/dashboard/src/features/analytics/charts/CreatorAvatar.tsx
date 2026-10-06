@@ -1,4 +1,5 @@
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
+import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
 
 interface CreatorAvatarProps {
@@ -11,7 +12,7 @@ const creatorsById = new Map(mockCreators.map((creator) => [creator.channelId, c
 
 export function getCreatorAvatarVisual(channelId: string, channelName: string) {
   const creator = creatorsById.get(channelId)
-  const accent = getMemberAccent(channelId, creator?.themeColor)
+  const accent = getMemberAccent(channelId, resolveCreatorKey(channelId)?.themeColor)
   return {
     avatarUrl: creator?.avatarUrl,
     initial: channelName.trim().charAt(0).toUpperCase() || "?",

@@ -260,3 +260,13 @@ describe("OshiStatusPanel DEV reset", () => {
     expect(localStorage.getItem("yobi.locale")).toBe("en")
   })
 })
+
+describe("OshiStatusPanel: accent color is the canonical creator color", () => {
+  it("天音かなた's avatar fallback uses the canonical #76c0ea, not a frontend-owned color", () => {
+    renderPanel("ch_amane_kanata")
+
+    const avatar = document.querySelector<HTMLElement>(".oshi-status__creator-avatar")!
+
+    expect(avatar.style.background).toBe("rgb(118, 192, 234)")
+  })
+})

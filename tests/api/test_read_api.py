@@ -197,6 +197,28 @@ def test_get_video_growth_carries_creator_theme_color_when_verified(monkeypatch)
     assert response["themeColor"] == "#B4F1F9"
 
 
+def test_get_video_growth_serves_the_canonical_hololive_theme_color_from_the_real_creator_master(monkeypatch):
+    """The API response carries the backend canonical themeColor: 天音かなた is Oshimark's first Image Color,
+    #76c0ea (the loader's own normalization writes it uppercase; it is the same hex)."""
+    from tracking.creator_master import load_creators
+
+    monkeypatch.setattr(read_api, "get_video", lambda video_id: _video(video_id=video_id, creator_id="amane_kanata"))
+    monkeypatch.setattr(
+        read_api,
+        "get_snapshot",
+        lambda video_id, snapshot_date: {
+            "2026-09-01": _snapshot("2026-09-01", 1240),
+            "2026-08-25": _snapshot("2026-08-25", 1000),
+        }.get(snapshot_date.isoformat()),
+    )
+    monkeypatch.setattr(read_api, "load_creators", load_creators)
+
+    response = get_video_growth({"videoId": "v1", "reportDate": "2026-09-01", "timeZone": "Europe/London", "period": "7d"})
+
+    assert response["creatorId"] == "amane_kanata"
+    assert response["themeColor"].lower() == "#76c0ea"
+
+
 def test_get_video_growth_raises_for_unknown_video_id(monkeypatch):
     """A syntactically valid but nonexistent videoId is a clean client error,
     not a KeyError/crash further down the pipeline."""

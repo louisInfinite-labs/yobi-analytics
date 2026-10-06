@@ -42,7 +42,7 @@
         "1期生"
       ],
       "channelType": "member",
-      "themeColor": "#7EDD0B",
+      "themeColor": "#7BDF0E",
       "lifecycleStage": "active",
       "displayOrder": 4,
       "active": true,
@@ -74,7 +74,7 @@
         "1期生"
       ],
       "channelType": "member",
-      "themeColor": "#D90629",
+      "themeColor": "#D9062A",
       "lifecycleStage": "active",
       "displayOrder": 39,
       "active": true,
@@ -90,7 +90,7 @@
         "1期生"
       ],
       "channelType": "member",
-      "themeColor": "#D40680",
+      "themeColor": "#DC0485",
       "lifecycleStage": "active",
       "displayOrder": 38,
       "active": true,
@@ -106,7 +106,7 @@
         "4期生"
       ],
       "channelType": "member",
-      "themeColor": null,
+      "themeColor": "#76C0EA",
       "lifecycleStage": "graduated",
       "displayOrder": 53,
       "active": true,
@@ -138,7 +138,7 @@
         "2期生"
       ],
       "channelType": "member",
-      "themeColor": "#E79F11",
+      "themeColor": "#E89C0F",
       "lifecycleStage": "active",
       "displayOrder": 106,
       "active": true,
@@ -170,7 +170,7 @@
         "1期生"
       ],
       "channelType": "member",
-      "themeColor": "#ED8282",
+      "themeColor": "#EF8381",
       "lifecycleStage": "active",
       "displayOrder": 103,
       "active": true,
@@ -347,7 +347,7 @@
         "Promise"
       ],
       "channelType": "member",
-      "themeColor": "#FB3D29",
+      "themeColor": "#FE3A2D",
       "lifecycleStage": "active",
       "displayOrder": 94,
       "active": true,
@@ -363,7 +363,7 @@
         "6期生"
       ],
       "channelType": "member",
-      "themeColor": "#FF68AD",
+      "themeColor": "#FE68AD",
       "lifecycleStage": "active",
       "displayOrder": 64,
       "active": true,
@@ -395,7 +395,7 @@
         "4期生"
       ],
       "channelType": "member",
-      "themeColor": "#DE6DAE",
+      "themeColor": "#DB6CAD",
       "lifecycleStage": "active",
       "displayOrder": 56,
       "active": true,
@@ -411,7 +411,7 @@
         "ReGLOSS"
       ],
       "channelType": "member",
-      "themeColor": null,
+      "themeColor": "#16264B",
       "lifecycleStage": "graduated",
       "displayOrder": 67,
       "active": true,
@@ -507,7 +507,7 @@
         "0期生"
       ],
       "channelType": "member",
-      "themeColor": "#6A98D0",
+      "themeColor": "#2DCDE4",
       "lifecycleStage": "active",
       "displayOrder": 36,
       "active": true,
@@ -523,7 +523,7 @@
         "3期生"
       ],
       "channelType": "member",
-      "themeColor": "#A82413",
+      "themeColor": "#A72413",
       "lifecycleStage": "active",
       "displayOrder": 52,
       "active": true,
@@ -603,7 +603,7 @@
         "Promise"
       ],
       "channelType": "member",
-      "themeColor": "#BC96B0",
+      "themeColor": "#991150",
       "lifecycleStage": "active",
       "displayOrder": 90,
       "active": true,
@@ -619,7 +619,7 @@
         "FLOWGLOW"
       ],
       "channelType": "member",
-      "themeColor": "#C92655",
+      "themeColor": "#C92654",
       "lifecycleStage": "active",
       "displayOrder": 72,
       "active": true,
@@ -747,7 +747,7 @@
         "6期生"
       ],
       "channelType": "member",
-      "themeColor": "#45BFB6",
+      "themeColor": "#44BFB7",
       "lifecycleStage": "active",
       "displayOrder": 66,
       "active": true,
@@ -763,7 +763,7 @@
         "FLOWGLOW"
       ],
       "channelType": "member",
-      "themeColor": "#E6499B",
+      "themeColor": "#E34899",
       "lifecycleStage": "active",
       "displayOrder": 76,
       "active": true,
@@ -811,7 +811,7 @@
         "3期生"
       ],
       "channelType": "member",
-      "themeColor": "#93BFE4",
+      "themeColor": "#161C4F",
       "lifecycleStage": "active",
       "displayOrder": 110,
       "active": true,
@@ -859,7 +859,7 @@
         "Advent"
       ],
       "channelType": "member",
-      "themeColor": "#4B44DE",
+      "themeColor": "#4B43DF",
       "lifecycleStage": "active",
       "displayOrder": 96,
       "active": true,
@@ -891,7 +891,7 @@
         "2期生"
       ],
       "channelType": "member",
-      "themeColor": "#D90C52",
+      "themeColor": "#B7030E",
       "lifecycleStage": "active",
       "displayOrder": 105,
       "active": true,
@@ -923,7 +923,7 @@
         "6期生"
       ],
       "channelType": "member",
-      "themeColor": "#471497",
+      "themeColor": "#441495",
       "lifecycleStage": "active",
       "displayOrder": 62,
       "active": true,
@@ -987,7 +987,7 @@
         "5期生"
       ],
       "channelType": "member",
-      "themeColor": "#FF7810",
+      "themeColor": "#FE7A0F",
       "lifecycleStage": "active",
       "displayOrder": 58,
       "active": true,
@@ -1003,7 +1003,7 @@
         "1期生"
       ],
       "channelType": "member",
-      "themeColor": "#794EBE",
+      "themeColor": "#784DBE",
       "lifecycleStage": "active",
       "displayOrder": 104,
       "active": true,
@@ -1019,7 +1019,7 @@
         "Myth"
       ],
       "channelType": "member",
-      "themeColor": "#A1030D",
+      "themeColor": "#A1020B",
       "lifecycleStage": "active",
       "displayOrder": 87,
       "active": true,
@@ -1051,7 +1051,7 @@
         "2期生"
       ],
       "channelType": "member",
-      "themeColor": "#CD233A",
+      "themeColor": "#CA223A",
       "lifecycleStage": "active",
       "displayOrder": 43,
       "active": true,
@@ -1099,7 +1099,7 @@
         "1期生"
       ],
       "channelType": "member",
-      "themeColor": "#FF5506",
+      "themeColor": "#FF5606",
       "lifecycleStage": "active",
       "displayOrder": 40,
       "active": true,
@@ -1115,7 +1115,7 @@
         "ゲーマーズ"
       ],
       "channelType": "member",
-      "themeColor": "#BF66E8",
+      "themeColor": "#BF65E8",
       "lifecycleStage": "active",
       "displayOrder": 47,
       "active": true,
@@ -1147,7 +1147,7 @@
         "Advent"
       ],
       "channelType": "member",
-      "themeColor": "#2D3799",
+      "themeColor": "#1E27AC",
       "lifecycleStage": "active",
       "displayOrder": 97,
       "active": true,
@@ -1163,7 +1163,7 @@
         "Myth"
       ],
       "channelType": "member",
-      "themeColor": "#3F3F6A",
+      "themeColor": "#3F3E69",
       "lifecycleStage": "active",
       "displayOrder": 89,
       "active": true,
@@ -1179,7 +1179,7 @@
         "5期生"
       ],
       "channelType": "member",
-      "themeColor": "#AA0909",
+      "themeColor": "#AB0808",
       "lifecycleStage": "active",
       "displayOrder": 60,
       "active": true,
@@ -1195,7 +1195,7 @@
         "ゲーマーズ"
       ],
       "channelType": "member",
-      "themeColor": "#4F5072",
+      "themeColor": "#DC1935",
       "lifecycleStage": "active",
       "displayOrder": 46,
       "active": true,
@@ -1211,7 +1211,7 @@
         "2期生"
       ],
       "channelType": "member",
-      "themeColor": "#BCE717",
+      "themeColor": "#BDE717",
       "lifecycleStage": "active",
       "displayOrder": 45,
       "active": true,
@@ -1243,7 +1243,7 @@
         "Promise"
       ],
       "channelType": "member",
-      "themeColor": "#1B189B",
+      "themeColor": "#1D1797",
       "lifecycleStage": "active",
       "displayOrder": 92,
       "active": true,
@@ -1339,7 +1339,7 @@
         "0期生"
       ],
       "channelType": "member",
-      "themeColor": "#804F7F",
+      "themeColor": "#804E7F",
       "lifecycleStage": "active",
       "displayOrder": 33,
       "active": true,
@@ -1371,7 +1371,7 @@
         "0期生"
       ],
       "channelType": "member",
-      "themeColor": "#FF4B74",
+      "themeColor": "#FE4B74",
       "lifecycleStage": "active",
       "displayOrder": 35,
       "active": true,
@@ -1419,7 +1419,7 @@
         "Advent"
       ],
       "channelType": "member",
-      "themeColor": "#8D81AE",
+      "themeColor": "#8C80AE",
       "lifecycleStage": "active",
       "displayOrder": 95,
       "active": true,
@@ -1436,7 +1436,7 @@
         "ゲーマーズ"
       ],
       "channelType": "member",
-      "themeColor": "#2BCDFF",
+      "themeColor": "#53C7EA",
       "lifecycleStage": "active",
       "displayOrder": 1,
       "active": true,
@@ -1468,7 +1468,7 @@
         "3期生"
       ],
       "channelType": "member",
-      "themeColor": "#DB3A11",
+      "themeColor": "#DC3813",
       "lifecycleStage": "active",
       "displayOrder": 50,
       "active": true,
@@ -1484,7 +1484,7 @@
         "3期生"
       ],
       "channelType": "member",
-      "themeColor": "#8A939E",
+      "themeColor": "#89939D",
       "lifecycleStage": "active",
       "displayOrder": 51,
       "active": true,
@@ -1500,7 +1500,7 @@
         "5期生"
       ],
       "channelType": "member",
-      "themeColor": "#5FCFA7",
+      "themeColor": "#5FCFA6",
       "lifecycleStage": "active",
       "displayOrder": 59,
       "active": true,
@@ -1580,7 +1580,7 @@
         "Myth"
       ],
       "channelType": "member",
-      "themeColor": "#FF511C",
+      "themeColor": "#DC3907",
       "lifecycleStage": "active",
       "displayOrder": 88,
       "active": true,
@@ -1596,7 +1596,7 @@
         "6期生"
       ],
       "channelType": "member",
-      "themeColor": "#52363E",
+      "themeColor": "#28040D",
       "lifecycleStage": "active",
       "displayOrder": 63,
       "active": true,
@@ -1644,7 +1644,7 @@
         "0期生"
       ],
       "channelType": "member",
-      "themeColor": "#0146E9",
+      "themeColor": "#0146EA",
       "lifecycleStage": "active",
       "displayOrder": 32,
       "active": true,
@@ -1660,7 +1660,7 @@
         "4期生"
       ],
       "channelType": "member",
-      "themeColor": "#A9A2EB",
+      "themeColor": "#A7A2EA",
       "lifecycleStage": "active",
       "displayOrder": 55,
       "active": true,
@@ -1692,7 +1692,7 @@
         "4期生"
       ],
       "channelType": "member",
-      "themeColor": "#DBDB89",
+      "themeColor": "#DBDA89",
       "lifecycleStage": "active",
       "displayOrder": 54,
       "active": true,
@@ -1740,7 +1740,7 @@
         "3期生"
       ],
       "channelType": "member",
-      "themeColor": "#65BBEB",
+      "themeColor": "#65BAEA",
       "lifecycleStage": "active",
       "displayOrder": 2,
       "active": true,
@@ -1772,7 +1772,7 @@
         "3期生"
       ],
       "channelType": "member",
-      "themeColor": "#98A1AC",
+      "themeColor": "#97A1AE",
       "lifecycleStage": "active",
       "displayOrder": 108,
       "active": true,
@@ -1868,7 +1868,7 @@
         "5期生"
       ],
       "channelType": "member",
-      "themeColor": "#47B4DF",
+      "themeColor": "#48B5E3",
       "lifecycleStage": "active",
       "displayOrder": 57,
       "active": true,
@@ -1900,7 +1900,7 @@
         "2期生"
       ],
       "channelType": "member",
-      "themeColor": "#E9BB5D",
+      "themeColor": "#DC5686",
       "lifecycleStage": "active",
       "displayOrder": 44,
       "active": true,
