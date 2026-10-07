@@ -70,6 +70,13 @@ def test_parse_stream_schedule_snapshot_rejects_a_missing_refreshed_at():
         parse_stream_schedule_snapshot({"entries": {}})
 
 
+def test_parse_stream_schedule_snapshot_rejects_a_refreshed_at_without_a_utc_offset():
+    """A naive timestamp can't be compared with the dispatcher's timezone-aware
+    "now" (TypeError), so it must be rejected here and treated as an absent snapshot."""
+    with pytest.raises(ClientError):
+        parse_stream_schedule_snapshot({"entries": {}, "refreshedAt": "2026-01-01T00:00:00"})
+
+
 # --- resolve_effective_setting (spec section 4) --------------------------
 
 

@@ -51,6 +51,10 @@ export function markFetchStarted(): void {
   fetchStarted = true
 }
 
+export function resetFetchStarted(): void {
+  fetchStarted = false
+}
+
 export function setCache(next: StreamNotificationOverrideCache): void {
   cache = next
   listeners.forEach((listener) => listener())

@@ -228,6 +228,10 @@ def parse_stream_schedule_snapshot(raw: Any) -> StreamScheduleSnapshot:
         refreshed_at = datetime.fromisoformat(refreshed_at_raw)
     except ValueError:
         raise ClientError(f"streamSchedule.refreshedAt is not a valid ISO 8601 timestamp: {refreshed_at_raw!r}") from None
+    if refreshed_at.tzinfo is None:
+        # The dispatcher compares this against a timezone-aware "now"; a naive
+        # value would raise TypeError there and fail every dispatcher run.
+        raise ClientError(f"streamSchedule.refreshedAt must include a UTC offset: {refreshed_at_raw!r}")
     return StreamScheduleSnapshot(entries=entries, refreshed_at=refreshed_at)
 
 

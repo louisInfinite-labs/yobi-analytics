@@ -194,6 +194,7 @@ export type TranslationKey =
   | "liveSchedule.streamReminderExplanationLine1"
   | "liveSchedule.streamReminderExplanationLine2"
   | "liveSchedule.saveReminderButton"
+  | "liveSchedule.saveReminderFailed"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -385,6 +386,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.streamReminderExplanationLine1": "此設定只適用於這一次直播。",
     "liveSchedule.streamReminderExplanationLine2": "儲存後，這場直播會使用此處的通知設定，取代該創作者原本的直播通知設定。",
     "liveSchedule.saveReminderButton": "儲存",
+    "liveSchedule.saveReminderFailed": "無法儲存提醒設定,請稍後再試。",
   },
   en: {
     "common.cancel": "Cancel",
@@ -575,6 +577,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.streamReminderExplanationLine1": "This setting applies only to this livestream.",
     "liveSchedule.streamReminderExplanationLine2": "Once saved, this livestream will use the notification setting here, replacing the creator's usual live notification setting for this stream only.",
     "liveSchedule.saveReminderButton": "Save",
+    "liveSchedule.saveReminderFailed": "Couldn't save this reminder. Please try again.",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -765,6 +768,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.streamReminderExplanationLine1": "この設定はこの配信にのみ適用されます。",
     "liveSchedule.streamReminderExplanationLine2": "保存すると、この配信はここでの通知設定が優先され、クリエイター本来の配信通知設定の代わりに使用されます。",
     "liveSchedule.saveReminderButton": "保存",
+    "liveSchedule.saveReminderFailed": "リマインダーを保存できませんでした。もう一度お試しください。",
   },
 }
 

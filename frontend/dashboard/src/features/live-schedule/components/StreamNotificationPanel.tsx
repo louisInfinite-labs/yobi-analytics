@@ -37,10 +37,12 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
   // nothing the user picked is waiting to be saved.
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
 
   useEffect(() => {
     setDirty(false)
     setSaving(false)
+    setSaveFailed(false)
   }, [stream?.videoId])
 
   useEffect(() => {
@@ -54,9 +56,14 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
   async function handleSave() {
     if (!stream || draft === null) return
     setSaving(true)
+    setSaveFailed(false)
     try {
       await saveOverride(stream, draft)
       onClose()
+    } catch {
+      // Keep the drawer open (the user's pick is still in `draft`) and say so,
+      // rather than leaving an unhandled rejection and a silent no-op.
+      setSaveFailed(true)
     } finally {
       setSaving(false)
     }
@@ -78,6 +85,11 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
           aria-label={t(locale, "liveSchedule.setReminderButton")}
         />
       </section>
+      {saveFailed ? (
+        <p role="alert" className="stream-reminder-error">
+          {t(locale, "liveSchedule.saveReminderFailed")}
+        </p>
+      ) : null}
       <div className="stream-reminder-actions">
         <Button type="primary" onClick={handleSave} disabled={saving} loading={saving}>
           {t(locale, "liveSchedule.saveReminderButton")}

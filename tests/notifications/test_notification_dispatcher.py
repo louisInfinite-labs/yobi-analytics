@@ -394,10 +394,9 @@ def test_a_failed_send_releases_its_delivery_claim(monkeypatch):
 
 
 def _harmless_discovery_event():
-    """One already-delivered discovery event so _recent_events is non-empty
-    (lambda_handler short-circuits to {checked: 0, delivered: 0} otherwise,
-    before even loading preferences) -- these reminder tests are only
-    interested in the stream-override loop below it, not this one."""
+    """One unrelated discovery event for the discovery loop to evaluate --
+    these reminder tests are only interested in the stream-override loop
+    below it, not this one."""
     return _event_item(videoId="unrelated_v0")
 
 

@@ -11,7 +11,7 @@ import {
 } from "../../notifications/api/liveReminderApi"
 import { INITIAL_MEMBER_REMINDER, type ReminderTimeValue } from "../../notifications/model/notificationTopics"
 import type { ScheduledStream } from "../model/scheduledStream"
-import { getCache, getGeneration, isFetchStarted, markFetchStarted, setCache, subscribe } from "./streamNotificationOverrideCache"
+import { getCache, getGeneration, isFetchStarted, markFetchStarted, resetFetchStarted, setCache, subscribe } from "./streamNotificationOverrideCache"
 
 function ensureLoaded(): void {
   if (isFetchStarted()) return
@@ -26,7 +26,10 @@ function ensureLoaded(): void {
       // Best-effort initial load: a failed fetch leaves the cache empty, so
       // every lookup below falls back to the system default -- a later
       // saveOverride call still attempts its own real backend write
-      // regardless of whether this initial read succeeded.
+      // regardless of whether this initial read succeeded. The started flag
+      // is released (for this generation only) so the next mount retries
+      // instead of staying empty until a full page reload.
+      if (startedAtGeneration === getGeneration()) resetFetchStarted()
     },
   )
 }
@@ -76,7 +79,7 @@ export function useStreamNotificationOverride() {
   const saveOverride = useCallback(
     async (stream: ScheduledStream, value: ReminderTimeValue): Promise<void> => {
       const creator = resolveCreatorKey(stream.channelId)
-      if (!creator) return
+      if (!creator) throw new Error(`Cannot save a reminder for a stream with no resolvable creator (channelId ${stream.channelId})`)
       const override: StreamNotificationOverride = { ...reminderValueToSetting(value), creatorId: creator.creatorId }
       await saveStreamNotificationOverride(stream.videoId, override)
       setCache({ ...getCache(), streamOverrides: { ...getCache().streamOverrides, [stream.videoId]: override } })

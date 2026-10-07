@@ -696,6 +696,13 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   margin-top: 6px;
 }
 
+.stream-reminder-error {
+  margin: 12px 0 0;
+  color: var(--live-red);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .stream-reminder-actions {
   margin-top: 24px;
   display: flex;

@@ -107,6 +107,24 @@ describe("StreamNotificationPanel", () => {
     )
   })
 
+  it("a failed save keeps the drawer open, shows an error, and does not close", async () => {
+    vi.mocked(liveReminderApi.saveStreamNotificationOverride).mockRejectedValue(new Error("500"))
+    const onClose = vi.fn()
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    render(<StreamNotificationPanel stream={stream} onClose={onClose} />)
+    await screen.findAllByRole("radio")
+
+    await user.click(screen.getByRole("radio", { name: "1 hour before" }))
+    await user.click(screen.getByRole("button", { name: "Save" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't save this reminder. Please try again.")
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole("radio", { name: "1 hour before" })).toBeChecked()
+    // Save is usable again so the user can retry. Matched loosely: in jsdom antd's
+    // loading-icon exit motion never finishes, so the name stays "loading Save".
+    await waitFor(() => expect(screen.getByRole("button", { name: /Save/ })).toBeEnabled())
+  })
+
   it("reopening the panel for the same stream shows the saved override, not the creator's recurring setting", async () => {
     vi.mocked(liveReminderApi.fetchCreatorLiveReminders).mockResolvedValue({
       aizawa_ema: { notifyAtStart: true, advanceReminder: "30min" },

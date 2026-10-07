@@ -89,4 +89,30 @@ describe("useStreamNotificationOverride", () => {
     await waitFor(() => expect(result.current.getEffectiveReminderValue(stream)).toBe("1hour"))
     expect(result.current.getEffectiveReminderValue(otherStream)).toBe(INITIAL_MEMBER_REMINDER)
   })
+
+  it("retries the initial load on the next mount after a failed fetch, instead of staying empty for the rest of the session", async () => {
+    vi.mocked(liveReminderApi.fetchStreamNotificationOverrides).mockClear()
+    vi.mocked(liveReminderApi.fetchStreamNotificationOverrides).mockRejectedValueOnce(new Error("403"))
+    const first = renderHook(() => useStreamNotificationOverride())
+    await waitFor(() => expect(liveReminderApi.fetchStreamNotificationOverrides).toHaveBeenCalledTimes(1))
+    // Let the rejection handler release the started flag before the next mount.
+    await waitFor(() => expect(first.result.current.getOverride("v1")).toBeNull())
+    first.unmount()
+
+    vi.mocked(liveReminderApi.fetchStreamNotificationOverrides).mockResolvedValue({
+      v1: { creatorId: "aizawa_ema", notifyAtStart: true, advanceReminder: "1hour" },
+    })
+    const second = renderHook(() => useStreamNotificationOverride())
+    await waitFor(() => expect(second.result.current.getEffectiveReminderValue(stream)).toBe("1hour"))
+    expect(liveReminderApi.fetchStreamNotificationOverrides).toHaveBeenCalledTimes(2)
+  })
+
+  it("saveOverride rejects (and never calls the backend) for a stream whose creator cannot be resolved", async () => {
+    const { result } = renderHook(() => useStreamNotificationOverride())
+    await waitFor(() => expect(liveReminderApi.fetchStreamNotificationOverrides).toHaveBeenCalled())
+    vi.mocked(liveReminderApi.saveStreamNotificationOverride).mockClear()
+
+    await expect(result.current.saveOverride({ ...stream, channelId: "unknown-channel" }, "1hour")).rejects.toThrow()
+    expect(liveReminderApi.saveStreamNotificationOverride).not.toHaveBeenCalled()
+  })
 })
