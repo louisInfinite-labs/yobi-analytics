@@ -9,7 +9,10 @@ from stores.remote_config_store import (
     get_remote_config,
     list_by_key,
     list_remote_config,
+    list_remote_config_by_prefix,
     put_remote_config,
+    put_remote_config_if_absent,
+    update_remote_config_fields,
 )
 
 AWS_REGION = "ap-northeast-1"
@@ -172,3 +175,59 @@ def test_put_raises_remote_config_store_error_when_table_is_missing(aws_credenti
     with mock_aws():
         with pytest.raises(RemoteConfigStoreError):
             put_remote_config({"clientId": "c1", "key": "enabled", "value": True, "updatedAt": "2026-09-03T00:00:00+00:00"})
+
+
+def _record(client_id, key, value, updated_at="2026-09-03T00:00:00+00:00"):
+    return {"clientId": client_id, "key": key, "value": value, "updatedAt": updated_at}
+
+
+def test_put_if_absent_creates_a_missing_record_and_never_overwrites_an_existing_one(remote_config_table):
+    assert put_remote_config_if_absent(_record("c1", "k", {"a": 1})) is True
+    assert put_remote_config_if_absent(_record("c1", "k", {"a": 2})) is False
+
+    assert get_remote_config("c1", "k")["value"] == {"a": 1}
+
+
+def test_update_fields_sets_only_the_named_fields_and_leaves_every_other_field_alone(remote_config_table):
+    put_remote_config(_record("c1", "pref", {"enabled": True, "quietHours": ["22:00", "07:00"], "deliveryWindows": ["08:00"]}))
+
+    assert update_remote_config_fields("c1", "pref", {"enabled": False}, "2026-09-03T01:00:00+00:00") is True
+
+    record = get_remote_config("c1", "pref")
+    assert record["value"] == {"enabled": False, "quietHours": ["22:00", "07:00"], "deliveryWindows": ["08:00"]}
+    assert record["updatedAt"] == "2026-09-03T01:00:00+00:00"
+
+
+def test_update_fields_can_set_a_field_to_null(remote_config_table):
+    put_remote_config(_record("c1", "pref", {"enabled": True, "quietHours": ["22:00", "07:00"]}))
+
+    update_remote_config_fields("c1", "pref", {"quietHours": None}, "2026-09-03T01:00:00+00:00")
+
+    assert get_remote_config("c1", "pref")["value"] == {"enabled": True, "quietHours": None}
+
+
+def test_update_fields_reports_false_and_writes_nothing_when_the_record_does_not_exist(remote_config_table):
+    assert update_remote_config_fields("c1", "missing", {"enabled": True}, "2026-09-03T01:00:00+00:00") is False
+
+    assert get_remote_config("c1", "missing") is None
+
+
+def test_update_fields_requires_at_least_one_field(remote_config_table):
+    with pytest.raises(ValueError):
+        update_remote_config_fields("c1", "pref", {}, "2026-09-03T01:00:00+00:00")
+
+
+def test_list_by_prefix_returns_only_that_clients_matching_keys(remote_config_table):
+    put_remote_config(_record("c1", "creatorReminder#ema#all", {"advanceReminder": "30min"}))
+    put_remote_config(_record("c1", "creatorReminder#ema#sf6", {"advanceReminder": "10min"}))
+    put_remote_config(_record("c1", "streamOverride#v1", {"advanceReminder": "1hour"}))
+    put_remote_config(_record("c1", "notificationPreference", {"enabled": True}))
+    put_remote_config(_record("c2", "creatorReminder#ema#all", {"advanceReminder": "1min"}))
+
+    records = list_remote_config_by_prefix("c1", "creatorReminder#")
+
+    assert sorted(r["key"] for r in records) == ["creatorReminder#ema#all", "creatorReminder#ema#sf6"]
+
+
+def test_list_by_prefix_returns_empty_list_when_nothing_matches(remote_config_table):
+    assert list_remote_config_by_prefix("c1", "creatorReminder#") == []

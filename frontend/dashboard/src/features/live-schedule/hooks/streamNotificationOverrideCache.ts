@@ -1,12 +1,14 @@
-import type { LiveReminderSetting, StreamNotificationOverride } from "../../notifications/api/liveReminderApi"
+import type { ReminderSettingsSnapshot } from "../../notifications/api/liveReminderApi"
 
-export interface StreamNotificationOverrideCache {
-  creatorReminders: Record<string, LiveReminderSetting>
-  streamOverrides: Record<string, StreamNotificationOverride>
+export type StreamNotificationOverrideCache = ReminderSettingsSnapshot
+
+function emptyCache(): StreamNotificationOverrideCache {
+  return { creatorAll: {}, creatorTopics: {}, streamOverrides: {} }
 }
 
-/** Module-scoped singleton cache of the REAL backend-persisted creator
- * recurring reminders / single-stream overrides (src/notifications/live_reminder.py) --
+/** Module-scoped singleton cache of the REAL backend-persisted reminder settings
+ * (creator 全部, creator + topic, single-stream overrides --
+ * src/notifications/live_reminder.py) --
  * not localStorage: the backend notification dispatcher is the actual
  * source of truth this must reflect, and a browser-only store it can't see
  * is explicitly insufficient for this feature. Same reactive module-level-
@@ -24,7 +26,7 @@ export interface StreamNotificationOverrideCache {
  * vi.mock of it ever gets a chance to apply, since a module already
  * evaluated once for a real dependency isn't retroactively swapped for a
  * later-registered mock of the same path. */
-let cache: StreamNotificationOverrideCache = { creatorReminders: {}, streamOverrides: {} }
+let cache: StreamNotificationOverrideCache = emptyCache()
 let fetchStarted = false
 // Bumped on every test reset so a fetch kicked off by an earlier test (still
 // in flight when that test ended) can tell, once its promise finally
@@ -71,6 +73,6 @@ export function subscribe(listener: () => void): () => void {
  * doesn't get recreated per test the way a component-local useState would). */
 export function resetStreamNotificationOverrideCacheForTests(): void {
   generation += 1
-  cache = { creatorReminders: {}, streamOverrides: {} }
+  cache = emptyCache()
   fetchStarted = false
 }

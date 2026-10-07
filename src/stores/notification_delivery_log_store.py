@@ -6,12 +6,16 @@ notification to the same client twice — no matter how many scheduled runs
 re-scan the same still-recent notification_events_store.py event before
 every subscribed client has been reached.
 
-Each (clientId, videoId) record moves through two states:
+Each (clientId, videoId) record moves through these states:
 
     claimed   -- notification_dispatcher.py has committed to sending this
                  (mark_delivered's atomic conditional write), but the push
                  hasn't been confirmed sent yet.
     delivered -- confirm_delivered() was called after a successful send.
+    suppressed -- mark_suppressed() recorded that the notification fell under
+                 a mute / quiet-hours window and was deliberately skipped. It
+                 is permanent, exactly like delivered: a skipped notification
+                 is never retried or replayed after the window ends.
 
 A "claimed" record older than _CLAIM_EXPIRY is treated as abandoned — the
 dispatcher invocation that claimed it terminated (Lambda timeout, crash)
@@ -40,6 +44,7 @@ _CLAIM_EXPIRY = timedelta(minutes=20)
 
 _STATUS_CLAIMED = "claimed"
 _STATUS_DELIVERED = "delivered"
+_STATUS_SUPPRESSED = "suppressed"
 
 
 class NotificationDeliveryLogStoreError(Exception):
@@ -65,7 +70,8 @@ def _resource():
 
 
 def already_delivered(client_id: str, video_id: str, *, now: datetime | None = None) -> bool:
-    """Whether client_id has a confirmed delivery, or a still-live (unexpired) in-flight claim, for video_id.
+    """Whether client_id has already been handled for video_id: a confirmed delivery, a deliberate
+    mute / quiet-hours suppression, or a still-live (unexpired) in-flight claim.
 
     An expired "claimed" record (see module docstring) is reported as
     False — not yet delivered — so notification_dispatcher.py's pre-check
@@ -79,7 +85,7 @@ def already_delivered(client_id: str, video_id: str, *, now: datetime | None = N
         raise NotificationDeliveryLogStoreError(f"Failed to read {NOTIFICATION_DELIVERY_LOG_TABLE}: {exc}") from exc
     if item is None:
         return False
-    if item["status"] == _STATUS_DELIVERED:
+    if item["status"] in (_STATUS_DELIVERED, _STATUS_SUPPRESSED):
         return True
     return not _is_expired(item["claimedAt"], now=now)
 
@@ -110,6 +116,28 @@ def mark_delivered(client_id: str, video_id: str, claimed_at: str, *, now: datet
             ConditionExpression="attribute_not_exists(clientId) OR (#status = :claimed AND claimedAt < :cutoff)",
             ExpressionAttributeNames={"#status": "status"},
             ExpressionAttributeValues={":claimed": _STATUS_CLAIMED, ":cutoff": cutoff},
+        )
+        return True
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise NotificationDeliveryLogStoreError(f"Failed to write to {NOTIFICATION_DELIVERY_LOG_TABLE}: {exc}") from exc
+
+
+def mark_suppressed(client_id: str, video_id: str, suppressed_at: str) -> bool:
+    """Permanently record that video_id's notification to client_id was skipped
+    because it fell under a mute / quiet-hours window. Returns True if this
+    call recorded it, False if any record (delivered, claimed or suppressed)
+    already existed -- in which case nothing is overwritten.
+
+    A suppressed record makes already_delivered() report True forever, so the
+    skipped notification is never retried or replayed after the window ends.
+    """
+    table = _resource().Table(NOTIFICATION_DELIVERY_LOG_TABLE)
+    try:
+        table.put_item(
+            Item={"clientId": client_id, "videoId": video_id, "status": _STATUS_SUPPRESSED, "suppressedAt": suppressed_at},
+            ConditionExpression="attribute_not_exists(clientId)",
         )
         return True
     except ClientError as exc:

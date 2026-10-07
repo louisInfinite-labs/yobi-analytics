@@ -14,19 +14,21 @@ own precise hold-and-refire scheduling machinery instead. Each run:
 2. Loads every client that has a stored NotificationPreference (Roadmap
    4.6's opaque value, under remote_config_store.py's generic store).
 3. For each (client, event) pair not already recorded in
-   notification_delivery_log_store.py: skips it — without marking anything
-   delivered, so a later run naturally retries — if the event's own next
+   notification_delivery_log_store.py: skips it -- without marking anything
+   delivered, so a later run naturally retries -- if the event's own next
    eligible delivery window (notification_dispatch.next_delivery_window_utc)
-   hasn't arrived yet, or if notification_dispatch.should_notify_now says
-   this client is currently suppressed (disabled/overridden creator,
-   temporary mute, quiet hours). Otherwise atomically claims the pair via
+   hasn't arrived yet, or if the creator is disabled for this client. If the
+   client is under a temporary mute or inside quiet hours
+   (notification_dispatch.is_muted_or_quiet) the notification is SKIPPED FOR
+   GOOD: recorded as suppressed so it is never delayed or replayed once the
+   mute / quiet window ends. Otherwise atomically claims the pair via
    notification_delivery_log_store.mark_delivered's conditional write
-   *before* sending — closing the race where two overlapping runs could
-   both see "not yet delivered" and both push — then sends via
+   *before* sending -- closing the race where two overlapping runs could
+   both see "not yet delivered" and both push -- then sends via
    push_sender.py: a successful send calls confirm_delivered() to make the
    record permanent, while a send that didn't actually succeed calls
    release_claim() so a later run can retry immediately. A claim that gets
-   neither call (the invocation that made it terminated first — Lambda
+   neither call (the invocation that made it terminated first -- Lambda
    timeout, crash) expires on its own after
    notification_delivery_log_store._CLAIM_EXPIRY and becomes reclaimable,
    rather than looking permanently delivered with nothing ever actually
@@ -36,22 +38,22 @@ A client with a stored preference but no stored push subscription is
 skipped entirely (nothing to deliver to), not treated as an error — Roadmap
 4.5/4.6 don't require subscribing to push before holding a preference.
 
-Same run, same per-client loop: also resolves each client's
-"streamNotificationOverrides" AND, for a creator the client has a
-"creatorLiveReminders" entry for, every one of that creator's NORMAL
-(never-overridden) upcoming/live streams -- for BOTH, the CURRENT
-scheduledStartMs always comes from the system-wide "streamSchedule"
+Same run, same per-client loop: also resolves, for every stream in the
+system-wide "streamSchedule" snapshot, which single reminder setting (if any)
+applies to this client -- per-stream override > creator 全部 > creator +
+the stream's matched topic > unset (live_reminder.resolve_effective_setting).
+The CURRENT scheduledStartMs and the stream's topic always come from that
 snapshot (live_reminder.StreamScheduleEntry), never from anything stored
-inside an override itself: a single-stream override is notification
-preference only, not a frozen copy of the stream's own timing, so a
-Holodex reschedule after an override is saved is picked up automatically on
-this snapshot's next refresh. Sends any due start/advance live-reminder,
+inside a setting: a Holodex reschedule is picked up automatically on the
+snapshot's next refresh. Sends any due start/advance live-reminder,
 independent of the discovery-event loop above (a genuinely different
-trigger: a stream's own scheduledStartMs, never discoveredAt). This reuses
-this cadence as-is rather than a second schedule -- now rate(1 minute),
-prepared in terraform/eventbridge.tf (not yet applied) so _REMINDER_WINDOW
-can shrink to match and actually honour "1min"/"10min" precisely, not just
-"30min"/"1hour".
+trigger: a stream's own scheduledStartMs, never discoveredAt). A reminder
+is skipped -- never delayed or replayed -- if the client is muted or in
+quiet hours at the moment it was meant to fire, or at the moment this run
+would send it. This reuses this cadence as-is rather than a second schedule
+-- now rate(1 minute), prepared in terraform/eventbridge.tf (not yet
+applied) so _REMINDER_WINDOW can shrink to match and actually honour
+"1min"/"10min" precisely, not just "30min"/"1hour".
 
 Reminder EVALUATION (every dispatcher run) is deliberately decoupled from
 how often Holodex is actually QUERIED: _refresh_and_load_stream_schedule
@@ -90,6 +92,7 @@ from api.holodex_client import HolodexAPIError
 from api.holodex_normalization import HolodexNormalizationError
 from ops.config import get_vapid_credentials, MissingHolodexApiKeyError
 from tracking.creator_master import load_creators
+from tracking.video_topics import OTHER_TOPIC, classify_video_topic
 
 _NOTIFICATION_PREFERENCE_KEY = "notificationPreference"
 _PUSH_SUBSCRIPTION_KEY = "pushSubscription"
@@ -165,7 +168,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             ):
                 delivered += 1
 
-        for video_id, resolved_reminder in _relevant_reminders_for_client(client_id, stream_schedule).items():
+        for video_id, resolved_reminder in _resolve_reminders_for_client(client_id, stream_schedule).items():
             checked += 1
             if _deliver_reminders_if_due(
                 video_id,
@@ -223,7 +226,14 @@ def _refresh_and_load_stream_schedule(*, now: datetime) -> dict[str, live_remind
             scheduled_start_ms = int(datetime.fromisoformat(start_iso).timestamp() * 1000)
         except ValueError:
             continue
-        fresh_entries[stream["videoId"]] = {"creatorId": stream["creatorId"], "scheduledStartMs": scheduled_start_ms}
+        topic = classify_video_topic(stream.get("title") or "")
+        fresh_entries[stream["videoId"]] = {
+            "creatorId": stream["creatorId"],
+            "scheduledStartMs": scheduled_start_ms,
+            # None (not "other") when no topic matched: such a stream can only
+            # get creator 全部 or a stream override.
+            "topic": None if topic == OTHER_TOPIC else topic,
+        }
 
     fresh_value = {"entries": fresh_entries, "refreshedAt": now.isoformat()}
     record = remote_config_api.write_remote_config(
@@ -233,53 +243,35 @@ def _refresh_and_load_stream_schedule(*, now: datetime) -> dict[str, live_remind
     return live_reminder.parse_stream_schedule_snapshot(fresh_value).entries
 
 
-def _relevant_reminders_for_client(
+def _resolve_reminders_for_client(
     client_id: str, stream_schedule: dict[str, live_reminder.StreamScheduleEntry]
 ) -> dict[str, live_reminder.ResolvedReminder]:
-    """Every (videoId -> fully-resolved reminder) pair worth evaluating for
-    one client this run: the union of their saved stream overrides and every
-    normal (not-overridden) stream in the system-wide schedule whose creator
-    they have a saved recurring "creatorLiveReminders" entry for. Precedence
-    (stream override > creator recurring, never merged) is resolved via
-    resolve_effective_setting; scheduledStartMs ALWAYS comes from
-    stream_schedule (the CURRENT, possibly-rescheduled timing) -- never from
-    anything stored inside an override -- for both overridden and
-    non-overridden streams alike. A videoId no longer present in
-    stream_schedule (ended, or Holodex stopped returning it) is skipped
-    entirely: there is no current scheduledStartMs left to evaluate it
-    against, override or not.
+    """Every (videoId -> fully-resolved reminder) pair this client has a
+    reminder for this run.
+
+    Loads the client's stored reminder items (one remote-config item per
+    setting -- see live_reminder.py) and, for each stream in the system-wide
+    schedule, resolves the one setting that applies: per-stream override >
+    creator 全部 > creator + the stream's topic > unset
+    (live_reminder.resolve_effective_setting). A stream with no applicable
+    setting is simply absent from the result (unset = no reminder). The
+    CURRENT scheduledStartMs always comes from stream_schedule, never from a
+    stored setting. A stored item that fails validation is skipped and logged;
+    it never affects the client's other settings.
     """
-    stream_overrides: dict[str, live_reminder.StreamReminderOverride] = {}
-    override_record = remote_config_store.get_remote_config(client_id, live_reminder.STREAM_NOTIFICATION_OVERRIDES_KEY)
-    if override_record is not None:
-        try:
-            stream_overrides = live_reminder.parse_stream_notification_overrides(override_record["value"])
-        except live_reminder.ClientError as exc:
-            print(f"Warning: skipping client {client_id!r} with invalid stored stream notification overrides: {exc}")
-
-    creator_reminders: dict[str, live_reminder.LiveReminderSetting] = {}
-    creator_reminders_record = remote_config_store.get_remote_config(client_id, live_reminder.CREATOR_LIVE_REMINDERS_KEY)
-    if creator_reminders_record is not None:
-        try:
-            creator_reminders = live_reminder.parse_creator_live_reminders(creator_reminders_record["value"])
-        except live_reminder.ClientError as exc:
-            print(f"Warning: skipping client {client_id!r} with invalid stored creator live reminders: {exc}")
-
-    relevant_video_ids = set(stream_overrides) | {
-        video_id for video_id, entry in stream_schedule.items() if entry.creator_id in creator_reminders
-    }
+    creator_records = remote_config_store.list_remote_config_by_prefix(client_id, live_reminder.CREATOR_REMINDER_KEY_PREFIX)
+    override_records = remote_config_store.list_remote_config_by_prefix(client_id, live_reminder.STREAM_OVERRIDE_KEY_PREFIX)
+    settings = live_reminder.parse_reminder_settings(creator_records, override_records)
+    for key in settings.invalid_keys:
+        print(f"Warning: skipping invalid stored reminder item {key!r} for client {client_id!r}")
 
     resolved: dict[str, live_reminder.ResolvedReminder] = {}
-    for video_id in relevant_video_ids:
-        schedule_entry = stream_schedule.get(video_id)
-        if schedule_entry is None:
-            continue
+    for video_id, schedule_entry in stream_schedule.items():
         setting = live_reminder.resolve_effective_setting(
-            video_id=video_id,
-            creator_id=schedule_entry.creator_id,
-            stream_overrides=stream_overrides,
-            creator_reminders=creator_reminders,
+            video_id=video_id, creator_id=schedule_entry.creator_id, topic=schedule_entry.topic, settings=settings
         )
+        if setting is None:
+            continue
         resolved[video_id] = live_reminder.ResolvedReminder(
             creator_id=schedule_entry.creator_id, scheduled_start_ms=schedule_entry.scheduled_start_ms, setting=setting
         )
@@ -306,7 +298,12 @@ def _deliver_if_due(
     eligible_at = notification_dispatch.next_delivery_window_utc(preference, after=discovered_at)
     if now < eligible_at:
         return False
-    if not notification_dispatch.should_notify_now(preference, candidate["creatorId"], now=now):
+    if notification_dispatch.is_muted_or_quiet(preference, now=now):
+        # Highest-priority suppression: skip for good. Recorded so that once
+        # the mute / quiet window ends this event is NOT sent late.
+        notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
+        return False
+    if not notification_dispatch.is_creator_enabled(preference, candidate["creatorId"]):
         return False
 
     # Claimed *before* sending (not just recorded after a successful send):
@@ -352,22 +349,30 @@ def _deliver_reminders_if_due(
     vapid_claims: dict[str, str],
 ) -> bool:
     """Send whichever of this stream's start/advance reminders are currently
-    due for one client. Both are evaluated independently (spec section 1/8):
-    a single stream can legitimately send both in the same run. Returns
-    whether anything was sent.
+    due for one client. Both are evaluated independently: a single stream can
+    legitimately send both in the same run. Returns whether anything was sent.
 
-    Reuses should_notify_now (the same creator enable/override, temporaryMute,
-    and quietHours suppression already applied to every other notification in
-    this dispatcher, spec section 12) -- an override never bypasses a
-    disabled creator.
+    Suppression: a disabled creator blocks both; a temporary mute or quiet
+    hours block a reminder if they apply EITHER at the moment that reminder
+    was meant to fire OR right now -- the reminder is skipped, never delayed
+    and never replayed (a late "10 minutes before" is wrong), and nothing is
+    recorded for it, so it cannot fire later either. Browser push permission
+    does not enter into it: mute is a product-level preference that wins.
     """
-    if not notification_dispatch.should_notify_now(preference, override.creator_id, now=now):
+    if not notification_dispatch.is_creator_enabled(preference, override.creator_id):
+        return False
+    if notification_dispatch.is_muted_or_quiet(preference, now=now):
         return False
 
     now_ms = int(now.timestamp() * 1000)
     window_ms = int(_REMINDER_WINDOW.total_seconds() * 1000)
+    setting = override.setting
+    start_ms = override.scheduled_start_ms
     sent_any = False
-    if live_reminder.is_advance_reminder_due(override.setting, override.scheduled_start_ms, now_ms=now_ms, window_ms=window_ms):
+    advance_fire_at_ms = live_reminder.advance_reminder_fire_at_ms(setting, start_ms)
+    if live_reminder.is_advance_reminder_due(setting, start_ms, now_ms=now_ms, window_ms=window_ms) and not _muted_at(
+        preference, advance_fire_at_ms
+    ):
         if _send_reminder(
             video_id,
             "advance",
@@ -380,7 +385,9 @@ def _deliver_reminders_if_due(
             vapid_claims=vapid_claims,
         ):
             sent_any = True
-    if live_reminder.is_start_reminder_due(override.setting, override.scheduled_start_ms, now_ms=now_ms, window_ms=window_ms):
+    if live_reminder.is_start_reminder_due(setting, start_ms, now_ms=now_ms, window_ms=window_ms) and not _muted_at(
+        preference, start_ms
+    ):
         if _send_reminder(
             video_id,
             "start",
@@ -394,6 +401,14 @@ def _deliver_reminders_if_due(
         ):
             sent_any = True
     return sent_any
+
+
+def _muted_at(preference: notification_dispatch.NotificationPreference, instant_ms: int | None) -> bool:
+    """Whether a temporary mute or quiet hours applied at the given instant (epoch ms)."""
+    if instant_ms is None:
+        return False
+    instant = datetime.fromtimestamp(instant_ms / 1000, tz=timezone.utc)
+    return notification_dispatch.is_muted_or_quiet(preference, now=instant)
 
 
 def _send_reminder(

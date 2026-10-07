@@ -7,35 +7,41 @@ export interface TopicCatalogEntry {
   labelKey: TranslationKey
 }
 
-/** Local-dev mock catalog. Two groups:
- * - The 5 permanent default topics (confirmed with the user: 全部/SF6/VALO/
- *   APEX/Minecraft must stay pre-saved and are never offered again via "+"
- *   -- see useTopicNotificationPreferences.ts's own INITIAL_SAVED_TOPIC_IDS).
- *   "all" keeps its own dedicated notificationSettings.topic.all label
- *   (restored -- this used to be the fixed topic list's own "全部" entry);
- *   sf6/apex/minecraft reuse recentVideos.tag.* exactly like they always
- *   did before topics became dynamic.
- * - The 4 topics actually addable through "+" (GTA/7 DAYS TO DIE/雀魂/終末地
- *   -- the user's own confirmed local-dev catalog). GTA/7 DAYS TO DIE/雀魂
- *   have no existing translation anywhere in the project -- per the user's
- *   own instruction, they keep the exact same literal string in every
- *   locale (same treatment "VALO"/"SF6" already get). 終末地 gets real
- *   per-locale labels (zh-TW/en/ja differ).
- * "valo" is both a permanent default AND was the original catalog's own
- * VALO entry -- one array entry serves both, since a permanent default is
- * simply pre-added to savedTopicIds from the start (getSelectableTopics
- * already excludes anything in savedTopicIds, so it's automatically never
- * offered again via "+" either, the same as any other saved topic).
- *
- * No backend topic/category endpoint exists yet (confirmed with the user:
- * don't invent one) -- getAvailableTopics() is the one seam a future real
- * fetch would replace, without any caller needing to change. */
+/** The special topic id of the creator-level 全部 scope. NOT a video topic:
+ * the backend never classifies a stream as "all" -- it is the reminder scope
+ * that applies to every stream of a creator (and shadows that creator's
+ * topic-specific reminders). */
+export const ALL_TOPICS_ID = "all"
+
+/** Topic ids are the machine contract shared with the backend
+ * (src/tracking/video_topics.py, GET /topics): a topic that backend
+ * returns uses its exact id here, with a frontend-chosen display label.
+ * Ids from before this contract existed are migrated, never dropped. */
+export const LEGACY_TOPIC_ID_ALIASES: Readonly<Record<string, TopicCatalogId>> = { valo: "valorant" }
+
+/** The display catalog. Two kinds of entry:
+ * - Backend-supported topics (sf6/valorant/apex/minecraft/singing/mv/chatting):
+ *   their `id` is the backend canonical id, so a creator + topic reminder can
+ *   be stored and resolved against it. Whether a topic is currently supported
+ *   is decided at runtime by GET /topics (see useReminderTopicSupport), not
+ *   by this list.
+ * - Display-only categories (gta/seven_days_to_die/mahjong_soul/endfield):
+ *   shown for organising members, but the backend does not classify streams
+ *   into them, so they get no independent reminder (they follow the creator's
+ *   全部 setting) until the backend taxonomy includes them.
+ * "all" (全部) is the creator-level scope above, a permanent default card.
+ * The 5 permanent default topics (confirmed with the user: 全部/SF6/VALO/APEX/
+ * Minecraft) are pre-saved and never offered again via "+" -- see
+ * useTopicNotificationPreferences.ts's own INITIAL_SAVED_TOPIC_IDS. */
 const MOCK_TOPIC_CATALOG: readonly TopicCatalogEntry[] = [
-  { id: "all", labelKey: "notificationSettings.topic.all" },
+  { id: ALL_TOPICS_ID, labelKey: "notificationSettings.topic.all" },
   { id: "sf6", labelKey: "recentVideos.tag.sf6" },
-  { id: "valo", labelKey: "recentVideos.tag.valo" },
+  { id: "valorant", labelKey: "recentVideos.tag.valo" },
   { id: "apex", labelKey: "recentVideos.tag.apex" },
   { id: "minecraft", labelKey: "recentVideos.tag.minecraft" },
+  { id: "singing", labelKey: "notificationSettings.topicCatalog.singing" },
+  { id: "mv", labelKey: "notificationSettings.topicCatalog.mv" },
+  { id: "chatting", labelKey: "notificationSettings.topicCatalog.chatting" },
   { id: "gta", labelKey: "notificationSettings.topicCatalog.gta" },
   { id: "seven_days_to_die", labelKey: "notificationSettings.topicCatalog.sevenDaysToDie" },
   { id: "mahjong_soul", labelKey: "notificationSettings.topicCatalog.mahjongSoul" },

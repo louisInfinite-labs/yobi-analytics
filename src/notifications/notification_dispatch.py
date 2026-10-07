@@ -176,6 +176,17 @@ def is_within_quiet_hours(preference: NotificationPreference, *, now: datetime) 
     return local_time >= start or local_time < end
 
 
+def is_muted_or_quiet(preference: NotificationPreference, *, now: datetime) -> bool:
+    """Whether `now` falls under a temporaryMute or inside quietHours.
+
+    The highest-priority suppression: it applies to every notification type
+    (new-video and live reminders alike) and beats every reminder setting.
+    A caller that is suppressed by it must SKIP the notification -- never
+    delay it, never replay it once the mute / quiet window ends.
+    """
+    return is_temporarily_muted(preference, now=now) or is_within_quiet_hours(preference, now=now)
+
+
 def should_notify_now(preference: NotificationPreference, creator_id: str, *, now: datetime) -> bool:
     """Whether a notification for creator_id should fire for this client right now.
 
@@ -185,9 +196,7 @@ def should_notify_now(preference: NotificationPreference, creator_id: str, *, no
     """
     if not is_creator_enabled(preference, creator_id):
         return False
-    if is_temporarily_muted(preference, now=now):
-        return False
-    if is_within_quiet_hours(preference, now=now):
+    if is_muted_or_quiet(preference, now=now):
         return False
     return True
 

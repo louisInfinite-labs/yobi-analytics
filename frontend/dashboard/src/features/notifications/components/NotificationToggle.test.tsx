@@ -133,6 +133,21 @@ describe("NotificationToggle", () => {
     )
   })
 
+  it("sends only the fields the toggle owns, so it can never wipe mute, quiet hours or creator overrides", async () => {
+    const user = userEvent.setup()
+    vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("subscribed")
+    vi.mocked(pushNotifications.unsubscribeFromPush).mockResolvedValue(true)
+
+    render(<NotificationToggle />)
+    await user.click(await screen.findByRole("button", { name: /notifications on/i }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /enable notifications/i })).toBeInTheDocument())
+
+    const preferenceCall = vi.mocked(apiClient.apiRequest).mock.calls.find(([path]) => String(path).endsWith("/notification-preference"))
+    const body = (preferenceCall?.[1] as { body: Record<string, unknown> }).body
+    expect(Object.keys(body).sort()).toEqual(["enabled", "notificationTimeZone"])
+    expect(body.enabled).toBe(false)
+  })
+
   it("does not persist anything to the backend when the user denies the permission prompt", async () => {
     const user = userEvent.setup()
     vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")

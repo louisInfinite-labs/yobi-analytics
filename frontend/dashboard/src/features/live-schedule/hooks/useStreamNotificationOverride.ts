@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import {
-  fetchCreatorLiveReminders,
-  fetchStreamNotificationOverrides,
+  fetchReminderSettings,
   reminderValueToSetting,
   saveStreamNotificationOverride,
   settingToReminderValue,
-  type LiveReminderSetting,
   type StreamNotificationOverride,
 } from "../../notifications/api/liveReminderApi"
-import { INITIAL_MEMBER_REMINDER, type ReminderTimeValue } from "../../notifications/model/notificationTopics"
+import { ALL_TOPICS_ID } from "../../notifications/model/notificationTopicCatalog"
+import type { ReminderSetting, ReminderTimeValue } from "../../notifications/model/notificationTopics"
 import type { ScheduledStream } from "../model/scheduledStream"
 import { getCache, getGeneration, isFetchStarted, markFetchStarted, resetFetchStarted, setCache, subscribe } from "./streamNotificationOverrideCache"
 
@@ -17,14 +16,14 @@ function ensureLoaded(): void {
   if (isFetchStarted()) return
   markFetchStarted()
   const startedAtGeneration = getGeneration()
-  void Promise.all([fetchCreatorLiveReminders(), fetchStreamNotificationOverrides()]).then(
-    ([creatorReminders, streamOverrides]) => {
+  void fetchReminderSettings().then(
+    (settings) => {
       if (startedAtGeneration !== getGeneration()) return
-      setCache({ creatorReminders, streamOverrides })
+      setCache(settings)
     },
     () => {
       // Best-effort initial load: a failed fetch leaves the cache empty, so
-      // every lookup below falls back to the system default -- a later
+      // every lookup below reports "no reminder set" -- a later
       // saveOverride call still attempts its own real backend write
       // regardless of whether this initial read succeeded. The started flag
       // is released (for this generation only) so the next mount retries
@@ -42,40 +41,40 @@ function useCache() {
 }
 
 /** Schedule's single-stream notification override, backed by the real
- * backend creator-recurring-reminder / stream-override records -- never
- * localStorage as the source of truth. Precedence (never merged): stream
- * override > creator recurring setting > system default
- * (INITIAL_MEMBER_REMINDER). */
+ * backend reminder settings -- never localStorage as the source of truth.
+ * Precedence (never merged), highest first: this stream's own override >
+ * the creator's 全部 reminder > the creator + this stream's topic reminder >
+ * unset (no reminder). Mute / Quiet Hours sits above all of these on the
+ * backend and is not shown here. */
 export function useStreamNotificationOverride() {
   const state = useCache()
 
   const getOverride = useCallback((videoId: string): StreamNotificationOverride | null => state.streamOverrides[videoId] ?? null, [state])
 
-  const getCreatorRecurring = useCallback(
-    (creatorId: string): LiveReminderSetting | null => state.creatorReminders[creatorId] ?? null,
-    [state],
-  )
-
-  /** The single ReminderTimeValue the shared Segmented control shows: this
-   * stream's own saved override if one exists, else its creator's recurring
-   * setting, else the existing system default -- never a merge of the two. */
+  /** The single ReminderTimeValue the shared Segmented control shows -- the reminder that
+   * actually applies to this stream per the precedence above -- or `null` when none is set
+   * (no reminder; never defaulted to a time). */
   const getEffectiveReminderValue = useCallback(
-    (stream: ScheduledStream): ReminderTimeValue => {
+    (stream: ScheduledStream): ReminderSetting => {
       const override = getOverride(stream.videoId)
-      if (override) return settingToReminderValue(override) ?? INITIAL_MEMBER_REMINDER
+      if (override) return settingToReminderValue(override)
       const creator = resolveCreatorKey(stream.channelId)
-      const recurring = creator ? getCreatorRecurring(creator.creatorId) : null
-      return settingToReminderValue(recurring) ?? INITIAL_MEMBER_REMINDER
+      if (!creator) return null
+      const all = state.creatorAll[creator.creatorId]
+      if (all) return settingToReminderValue(all)
+      const topic = stream.topics[0]
+      const topicSetting = topic && topic !== ALL_TOPICS_ID ? state.creatorTopics[creator.creatorId]?.[topic] : undefined
+      return settingToReminderValue(topicSetting)
     },
-    [getOverride, getCreatorRecurring],
+    [getOverride, state],
   )
 
-  /** Persists this one stream's override through the real backend API --
-   * replaces, never combines with, the creator's recurring setting. Carries
-   * no scheduledStartMs: the backend always resolves the CURRENT scheduled
-   * start from its own system-wide schedule snapshot at dispatch time, so a
-   * later Holodex reschedule is picked up automatically rather than this
-   * override freezing the stream's timing as of when it was saved. */
+  /** Persists this one stream's override through the real backend API. It outranks the
+   * creator's 全部 and topic reminders for THIS stream only, and writes one backend item
+   * of its own -- it never changes those settings. Carries no scheduledStartMs: the
+   * backend always resolves the CURRENT scheduled start from its own system-wide schedule
+   * snapshot at dispatch time, so a later Holodex reschedule is picked up automatically
+   * rather than this override freezing the stream's timing as of when it was saved. */
   const saveOverride = useCallback(
     async (stream: ScheduledStream, value: ReminderTimeValue): Promise<void> => {
       const creator = resolveCreatorKey(stream.channelId)
@@ -87,5 +86,5 @@ export function useStreamNotificationOverride() {
     [],
   )
 
-  return { getOverride, getCreatorRecurring, getEffectiveReminderValue, saveOverride }
+  return { getOverride, getEffectiveReminderValue, saveOverride }
 }

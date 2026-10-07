@@ -9,11 +9,6 @@ import { VAPID_PUBLIC_KEY } from "../push/vapidPublicKey"
 
 type Status = "checking" | "unsupported" | "subscribed" | "unsubscribed"
 
-// Roadmap 4.6's own worked example uses these as the default local delivery
-// windows during Japanese development; a real per-window settings UI is
-// future work — this toggle only ever sets the on/off half of a preference.
-const DEFAULT_DELIVERY_WINDOWS = ["08:00", "18:00"]
-
 /** Persist this browser's own push subscription under its own clientId
  * (Roadmap 4.6, self-service). `clientSecret` (PR #18 CodeRabbit
  * hardening, from clientCredential.ts) proves this call actually owns
@@ -36,16 +31,21 @@ function syncSubscriptionToBackend(
 
 /** Persist this browser's own on/off notification preference under its own
  * clientId (Roadmap 4.6, self-service). See syncSubscriptionToBackend's
- * docstring — same clientSecret/coordination reasoning. */
+ * docstring -- same clientSecret/coordination reasoning.
+ *
+ * Sends ONLY the fields this toggle owns -- `enabled`, plus the device's time zone (which
+ * the first write for a client needs) -- never the whole preference. The backend updates
+ * just those fields, so toggling notifications on or off can no longer wipe out a mute,
+ * quiet hours, per-creator overrides or delivery windows saved elsewhere (defaults for
+ * notificationLevel/deliveryWindows are filled in by the backend only when the record is
+ * first created). */
 function syncNotificationEnabledToBackend(clientId: string, clientSecret: string | null, enabled: boolean): Promise<unknown> {
   return apiRequest(`/clients/${encodeURIComponent(clientId)}/notification-preference`, {
     method: "PUT",
     headers: clientSecret ? { "X-Client-Secret": clientSecret } : undefined,
     body: {
       enabled,
-      notificationLevel: "all",
       notificationTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      deliveryWindows: DEFAULT_DELIVERY_WINDOWS,
     },
   })
 }

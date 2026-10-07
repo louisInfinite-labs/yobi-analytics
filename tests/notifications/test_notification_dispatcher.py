@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -87,24 +87,54 @@ def _schedule_value(entries: dict, *, refreshed_at: datetime) -> dict:
     return {"entries": entries, "refreshedAt": refreshed_at.isoformat()}
 
 
-def _remote_config_stub(*, subscription=None, overrides=None, creator_reminders=None, schedule=None):
-    """A get_remote_config stand-in that returns a different stored value
-    per key, mirroring the real store (unlike most of this file's existing
-    single-value-regardless-of-key lambdas, which only ever exercise the
-    discovery-event path and never reach the reminder lookup below it)."""
+# Every stored reminder item of the (single) client under test, keyed by its
+# remote-config key. Filled by _remote_config_stub and served by the autouse
+# stub_reminder_items fixture's list_remote_config_by_prefix stand-in, so a
+# test declares reminder settings the same way it always did.
+_STORED_REMINDER_ITEMS: dict[str, dict] = {}
+
+
+def _remote_config_stub(*, subscription=None, overrides=None, creator_reminders=None, topic_reminders=None, schedule=None):
+    """A get_remote_config stand-in for the keys the dispatcher reads one at a
+    time (push subscription, system schedule), mirroring the real store.
+
+    The reminder settings themselves are one stored item each (see
+    live_reminder.py) and are read by prefix, so they are recorded into
+    _STORED_REMINDER_ITEMS instead: `overrides` (videoId -> value) are
+    per-stream overrides, `creator_reminders` (creatorId -> value) are the
+    creator-level 全部 setting, and `topic_reminders`
+    ((creatorId, topicId) -> value) are creator + topic settings."""
+    _STORED_REMINDER_ITEMS.clear()
+    for video_id, value in (overrides or {}).items():
+        _STORED_REMINDER_ITEMS[live_reminder.stream_override_key(video_id)] = value
+    for creator_id, value in (creator_reminders or {}).items():
+        _STORED_REMINDER_ITEMS[live_reminder.creator_reminder_key(creator_id, "all")] = value
+    for (creator_id, topic), value in (topic_reminders or {}).items():
+        _STORED_REMINDER_ITEMS[live_reminder.creator_reminder_key(creator_id, topic)] = value
 
     def _get(client_id: str, key: str):
         if key == notification_dispatcher._PUSH_SUBSCRIPTION_KEY:
             return {"value": subscription} if subscription is not None else None
-        if key == live_reminder.STREAM_NOTIFICATION_OVERRIDES_KEY:
-            return {"value": overrides} if overrides is not None else None
-        if key == live_reminder.CREATOR_LIVE_REMINDERS_KEY:
-            return {"value": creator_reminders} if creator_reminders is not None else None
         if key == live_reminder.STREAM_SCHEDULE_KEY:
             return {"value": schedule} if schedule is not None else None
         return None
 
     return _get
+
+
+@pytest.fixture(autouse=True)
+def stub_reminder_items(monkeypatch):
+    """Serve _STORED_REMINDER_ITEMS through list_remote_config_by_prefix (empty unless a test fills it)."""
+    _STORED_REMINDER_ITEMS.clear()
+
+    def _list(client_id: str, key_prefix: str):
+        return [
+            {"clientId": client_id, "key": key, "value": value, "updatedAt": "2026-01-01T00:00:00+00:00"}
+            for key, value in _STORED_REMINDER_ITEMS.items()
+            if key.startswith(key_prefix)
+        ]
+
+    monkeypatch.setattr(remote_config_store, "list_remote_config_by_prefix", _list)
 
 
 @pytest.fixture(autouse=True)
@@ -750,7 +780,7 @@ def test_schedule_snapshot_refreshes_on_every_run_independent_of_any_saved_overr
 
     assert written["clientId"] == live_reminder.SYSTEM_CLIENT_ID
     assert written["key"] == live_reminder.STREAM_SCHEDULE_KEY
-    assert written["value"]["entries"] == {"v2": {"creatorId": "aizawa_ema", "scheduledStartMs": 1_000_000_000_000}}
+    assert written["value"]["entries"] == {"v2": {"creatorId": "aizawa_ema", "scheduledStartMs": 1_000_000_000_000, "topic": None}}
 
 
 def test_stale_schedule_entries_are_dropped_on_the_next_successful_refresh(monkeypatch):
@@ -894,6 +924,273 @@ def test_reminder_dedupe_prevents_duplicate_send_for_a_normal_stream_with_no_ove
     response = lambda_handler({}, None)
 
     assert response["delivered"] == 0
+
+
+# --- reminder precedence end to end: stream override > 全部 > creator+topic > unset ---
+
+_START_MS = 1_000_000_000_000  # _holodex_stream's default scheduledStart
+
+
+def _at(offset_minutes_before_start: int) -> datetime:
+    return datetime.fromtimestamp((_START_MS - offset_minutes_before_start * 60_000) / 1000, tz=timezone.utc)
+
+
+def _run_reminder_scenario(monkeypatch, *, now, streams, preference=None, **reminders):
+    """Run one dispatcher pass at `now` for one subscribed client whose
+    stored reminder settings are `reminders` (overrides / creator_reminders /
+    topic_reminders, see _remote_config_stub); returns the (data payloads of)
+    pushes it sent. The system schedule is refreshed from `streams`, so a
+    stream's topic comes from the real title classifier."""
+    monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": streams})
+    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
+    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [])
+    monkeypatch.setattr(
+        remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": preference or _preference_value()}]
+    )
+    monkeypatch.setattr(remote_config_store, "get_remote_config", _remote_config_stub(subscription=_subscription_value(), **reminders))
+    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
+    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
+    monkeypatch.setattr(notification_delivery_log_store, "confirm_delivered", lambda client_id, video_id, delivered_at: None)
+    sent = []
+    monkeypatch.setattr(
+        push_sender,
+        "send_push_notification",
+        lambda *a, **kw: (sent.append(kw["data"]), PushResult(sent=True, subscription_expired=False))[1],
+    )
+    lambda_handler({}, None)
+    return sent
+
+
+def _sf6_stream(**overrides) -> dict:
+    return _holodex_stream(videoId="sf6_stream", title="SF6 ranked grind", **overrides)
+
+
+def _singing_stream(**overrides) -> dict:
+    return _holodex_stream(videoId="singing_stream", title="【歌枠】singing stream", **overrides)
+
+
+def _other_stream(**overrides) -> dict:
+    return _holodex_stream(videoId="other_stream", title="Ranked grind", **overrides)
+
+
+_ALL_THREE = {
+    "creator_reminders": {"aizawa_ema": _creator_reminder_value(advanceReminder="30min")},
+    "topic_reminders": {
+        ("aizawa_ema", "sf6"): _creator_reminder_value(advanceReminder="10min"),
+        ("aizawa_ema", "singing"): _creator_reminder_value(advanceReminder="1hour"),
+    },
+}
+_TOPICS_ONLY = {"topic_reminders": _ALL_THREE["topic_reminders"]}
+_ALL_STREAMS = [_sf6_stream(), _singing_stream(), _other_stream()]
+
+
+def _advance_videos(sent) -> set[str]:
+    return {data["videoId"] for data in sent if data["reminderKind"] == "advance"}
+
+
+def test_creator_all_shadows_topic_reminders_for_every_stream_of_that_creator(monkeypatch):
+    """エマ 全部=30m, SF6=10m, 歌回=1h: at the 30m mark SF6, 歌回 and an
+    unmatched-topic stream ALL get their reminder; the 10m and 1h topic
+    moments never fire because they are shadowed."""
+    at_30 = _run_reminder_scenario(monkeypatch, now=_at(30), streams=_ALL_STREAMS, **_ALL_THREE)
+    assert _advance_videos(at_30) == {"sf6_stream", "singing_stream", "other_stream"}
+
+    at_10 = _run_reminder_scenario(monkeypatch, now=_at(10), streams=_ALL_STREAMS, **_ALL_THREE)
+    at_60 = _run_reminder_scenario(monkeypatch, now=_at(60), streams=_ALL_STREAMS, **_ALL_THREE)
+    assert at_10 == []
+    assert at_60 == []
+
+
+def test_without_creator_all_each_topic_uses_its_own_reminder_and_unmatched_streams_get_none(monkeypatch):
+    """Same settings with 全部 unset: SF6 -> 10m, 歌回 -> 1h, unmatched -> no reminder."""
+    at_10 = _run_reminder_scenario(monkeypatch, now=_at(10), streams=_ALL_STREAMS, **_TOPICS_ONLY)
+    at_60 = _run_reminder_scenario(monkeypatch, now=_at(60), streams=_ALL_STREAMS, **_TOPICS_ONLY)
+    at_30 = _run_reminder_scenario(monkeypatch, now=_at(30), streams=_ALL_STREAMS, **_TOPICS_ONLY)
+    at_start = _run_reminder_scenario(monkeypatch, now=_at(0), streams=_ALL_STREAMS, **_TOPICS_ONLY)
+
+    assert _advance_videos(at_10) == {"sf6_stream"}
+    assert _advance_videos(at_60) == {"singing_stream"}
+    assert at_30 == []
+    # Both topic settings still notify at start (notifyAtStart is true); the
+    # unmatched stream has no applicable setting at all.
+    assert {d["videoId"] for d in at_start} == {"sf6_stream", "singing_stream"}
+
+
+def test_unsetting_creator_all_restores_the_topic_reminders_that_were_shadowed(monkeypatch):
+    """The topic items are never touched while 全部 is set: the very same
+    stored topic settings take effect again once 全部 is removed."""
+    shadowed = _run_reminder_scenario(monkeypatch, now=_at(10), streams=_ALL_STREAMS, **_ALL_THREE)
+    restored = _run_reminder_scenario(monkeypatch, now=_at(10), streams=_ALL_STREAMS, **_TOPICS_ONLY)
+
+    assert shadowed == []
+    assert _advance_videos(restored) == {"sf6_stream"}
+
+
+def test_a_stream_override_beats_creator_all_for_that_stream_only(monkeypatch):
+    """エマ 全部=30m, SF6=10m, one SF6 stream override=1h: that stream gets 1h
+    (and not 30m); the next SF6 stream with no override gets 30m."""
+    other_sf6 = _holodex_stream(videoId="sf6_next", title="SF6 ranked grind")
+    streams = [_sf6_stream(), other_sf6]
+    overrides = {"sf6_stream": _override_value(advanceReminder="1hour")}
+
+    at_60 = _run_reminder_scenario(monkeypatch, now=_at(60), streams=streams, overrides=overrides, **_ALL_THREE)
+    at_30 = _run_reminder_scenario(monkeypatch, now=_at(30), streams=streams, overrides=overrides, **_ALL_THREE)
+
+    assert _advance_videos(at_60) == {"sf6_stream"}
+    assert _advance_videos(at_30) == {"sf6_next"}
+
+
+def test_with_no_settings_stored_no_reminder_is_sent_at_any_time(monkeypatch):
+    """Unset = no reminder, never a default."""
+    for minutes_before in (60, 30, 10, 1, 0):
+        sent = _run_reminder_scenario(monkeypatch, now=_at(minutes_before), streams=_ALL_STREAMS)
+        assert sent == []
+
+
+def test_a_topic_setting_does_not_apply_to_a_stream_of_a_different_topic(monkeypatch):
+    sent = _run_reminder_scenario(monkeypatch, now=_at(10), streams=[_singing_stream()], **_TOPICS_ONLY)
+
+    assert sent == []
+
+
+# --- Mute / Quiet Hours beat every reminder setting, with no delay and no replay ---
+
+
+def test_a_temporary_mute_beats_every_reminder_setting(monkeypatch):
+    muted_until = (_at(30) + timedelta(hours=1)).isoformat()
+    preference = _preference_value(temporaryMute=muted_until)
+    overrides = {"sf6_stream": _override_value(advanceReminder="30min")}
+
+    sent = _run_reminder_scenario(
+        monkeypatch, now=_at(30), streams=[_sf6_stream()], preference=preference, overrides=overrides, **_ALL_THREE
+    )
+
+    assert sent == []
+
+
+def test_quiet_hours_beat_every_reminder_setting(monkeypatch):
+    # _at(30) is 2001-09-09 01:16:40 UTC = 10:16 JST; quiet hours 10:00-11:00 JST cover it.
+    preference = _preference_value(quietHours=["10:00", "11:00"])
+
+    sent = _run_reminder_scenario(monkeypatch, now=_at(30), streams=_ALL_STREAMS, preference=preference, **_ALL_THREE)
+
+    assert sent == []
+
+
+def test_a_reminder_whose_fire_time_was_muted_is_not_replayed_after_the_mute_ends(monkeypatch):
+    """The 30m reminder was meant to fire at T. The mute ends 30s later, still
+    inside that reminder's 1-minute window. Sending now would be a late
+    replay of a reminder that fell in the mute -- it must be skipped."""
+    fire_at = _at(30)
+    preference = _preference_value(temporaryMute=(fire_at + timedelta(seconds=30)).isoformat())
+
+    sent = _run_reminder_scenario(
+        monkeypatch,
+        now=fire_at + timedelta(seconds=45),
+        streams=[_sf6_stream()],
+        preference=preference,
+        creator_reminders={"aizawa_ema": _creator_reminder_value(advanceReminder="30min")},
+    )
+
+    assert sent == []
+
+
+def test_an_unmuted_reminder_is_still_sent_when_a_mute_ended_before_its_fire_time(monkeypatch):
+    fire_at = _at(30)
+    preference = _preference_value(temporaryMute=(fire_at - timedelta(minutes=5)).isoformat())
+
+    sent = _run_reminder_scenario(
+        monkeypatch,
+        now=fire_at,
+        streams=[_sf6_stream()],
+        preference=preference,
+        creator_reminders={"aizawa_ema": _creator_reminder_value(advanceReminder="30min")},
+    )
+
+    assert _advance_videos(sent) == {"sf6_stream"}
+
+
+def test_a_new_video_notification_under_mute_is_skipped_for_good_and_never_replayed(monkeypatch):
+    """Mute applies to ALL notification types: a new-video notification that
+    comes due during a mute is recorded as suppressed, so once the mute ends
+    a later run does not send it late."""
+    discovered = datetime(2026, 9, 2, 9, 0, tzinfo=timezone.utc)  # 18:00 JST
+    event = _event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")
+    during_mute = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)  # 18:05 JST, past the event's delivery window
+    after_mute = during_mute + timedelta(hours=2)
+    muted_until = during_mute + timedelta(hours=1)
+    assert discovered < during_mute
+
+    log: dict[str, str] = {}
+    monkeypatch.setattr(
+        notification_events_store, "list_events_for_date", lambda event_date: [event] if event_date == "2026-09-02" else []
+    )
+    monkeypatch.setattr(
+        remote_config_store,
+        "list_by_key",
+        lambda key: [{"clientId": "c1", "value": _preference_value(temporaryMute=muted_until.isoformat())}],
+    )
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
+    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: video_id in log)
+    monkeypatch.setattr(
+        notification_delivery_log_store,
+        "mark_suppressed",
+        lambda client_id, video_id, suppressed_at: log.setdefault(video_id, "suppressed") == "suppressed",
+    )
+    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
+    monkeypatch.setattr(notification_delivery_log_store, "confirm_delivered", lambda *a: log.update({a[1]: "delivered"}))
+    sent = []
+    monkeypatch.setattr(
+        push_sender, "send_push_notification", lambda *a, **kw: (sent.append(1), PushResult(sent=True, subscription_expired=False))[1]
+    )
+
+    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(during_mute))
+    lambda_handler({}, None)
+    assert sent == []
+    assert log == {"v1": "suppressed"}
+
+    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(after_mute))
+    lambda_handler({}, None)
+    assert sent == []
+
+
+def test_a_new_video_notification_inside_quiet_hours_is_skipped_for_good(monkeypatch):
+    event = _event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")
+    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)  # 18:05 JST
+    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
+    monkeypatch.setattr(
+        notification_events_store, "list_events_for_date", lambda event_date: [event] if event_date == "2026-09-02" else []
+    )
+    monkeypatch.setattr(
+        remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value(quietHours=["17:00", "19:00"])}]
+    )
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
+    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
+    suppressed = []
+    monkeypatch.setattr(
+        notification_delivery_log_store, "mark_suppressed", lambda client_id, video_id, at: suppressed.append(video_id) or True
+    )
+
+    def _boom(*a, **kw):
+        raise AssertionError("must not send a new-video notification during quiet hours")
+
+    monkeypatch.setattr(push_sender, "send_push_notification", _boom)
+
+    lambda_handler({}, None)
+
+    assert suppressed == ["v1"]
+
+
+def test_the_schedule_snapshot_records_each_streams_canonical_topic(monkeypatch):
+    written = {}
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: written.update(record))
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
+    monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": _ALL_STREAMS})
+
+    notification_dispatcher._refresh_and_load_stream_schedule(now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+    topics = {video_id: entry["topic"] for video_id, entry in written["value"]["entries"].items()}
+    assert topics == {"sf6_stream": "sf6", "singing_stream": "singing", "other_stream": None}
 
 
 def _frozen_datetime(fixed_now: datetime) -> type[datetime]:

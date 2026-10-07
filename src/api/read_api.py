@@ -56,6 +56,7 @@ from analytics.video_ranking import VALID_TOPIC_SCOPES as VALID_VIDEO_RANKING_TO
 from analytics.video_ranking import rank_video_rows
 from stores.video_ranking_store import S3VideoRankingStore
 from tracking.video_master import VALID_LIVE_STATUSES, Video
+from tracking.video_topics import OTHER_TOPIC, classify_video_topic
 from analytics.view_growth_analytics import (
     COLLECTION_START_DATE,
     PERIOD_DAYS,
@@ -1043,6 +1044,16 @@ def get_oshi_status(query: dict[str, Any], *, now: datetime | None = None) -> di
 _HOLODEX_MAX_UPCOMING_HOURS = 24 * 7
 
 
+def _live_stream_topic(title: str | None) -> str | None:
+    """The stream's canonical topic id (tracking.video_topics), or None when the title matches no topic.
+
+    The same classifier the notification dispatcher uses to resolve a creator + topic
+    reminder, so what the Dashboard shows for a stream matches what is actually sent.
+    """
+    topic = classify_video_topic(title or "")
+    return None if topic == OTHER_TOPIC else topic
+
+
 def _is_within_lookahead(scheduled_start: str | None, *, now: datetime) -> bool:
     """Whether an "upcoming" stream's scheduled_start falls within Yobi's lookahead window.
 
@@ -1137,6 +1148,7 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
                 "scheduledStart": stream.scheduled_start,
                 "actualStart": stream.actual_start,
                 "thumbnailUrl": stream.thumbnail_url,
+                "topic": _live_stream_topic(stream.title),
             }
         )
     return {"streams": streams}

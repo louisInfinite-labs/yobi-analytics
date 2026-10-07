@@ -1,9 +1,42 @@
-import { render, screen, within } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NotificationSettings } from "./NotificationSettings"
+import * as liveReminderApi from "../api/liveReminderApi"
+import { fetchVideoTopics } from "../../home-room/data/videoTopics"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
+
+vi.mock("../../home-room/data/videoTopics", () => ({ fetchVideoTopics: vi.fn() }))
+vi.mock("../api/liveReminderApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/liveReminderApi")>()),
+  saveCreatorReminder: vi.fn().mockResolvedValue(undefined),
+  deleteCreatorReminder: vi.fn().mockResolvedValue(undefined),
+}))
+
+const STORAGE_KEY = "yobi.topicNotificationPreferences.v2"
+
+/** What GET /topics returns: the backend's canonical topics (including its "other" fallback). */
+const BACKEND_TOPICS = ["valorant", "sf6", "apex", "minecraft", "singing", "mv", "chatting", "other"].map((id) => ({ id, labels: { en: id } }))
+
+const UNSUPPORTED_TOPIC_MESSAGE = "This topic doesn't support its own notification yet; it follows the \"All\" setting."
+
+beforeEach(() => {
+  vi.mocked(fetchVideoTopics).mockResolvedValue(BACKEND_TOPICS)
+  vi.mocked(liveReminderApi.saveCreatorReminder).mockClear()
+  vi.mocked(liveReminderApi.deleteCreatorReminder).mockClear()
+})
+
+function storedState() {
+  return JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
+}
+
+function seedState(state: unknown) {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  resetAllSharedStateForTests()
+}
+
+const DEFAULT_ORDER = ["all", "sf6", "valorant", "apex", "minecraft"]
 
 // NotificationSettings reads useMemberTheme() (for its own ConfigProvider
 // colorPrimary) -- MemberThemeProvider is self-contained (no network/
@@ -85,7 +118,7 @@ describe("NotificationSettings master-detail layout", () => {
     expect(detail.queryByRole("radiogroup", { name: /Live reminder time/ })).not.toBeInTheDocument()
   })
 
-  it("shows Save, Manage Members, Live reminder time, and Notification type once a draft topic is picked -- confirmed with the user: picking a topic only enables configuration, it doesn't save", async () => {
+  it("shows Save, Manage Members and Notification type once a draft topic is picked -- confirmed with the user: picking a topic only enables configuration, it doesn't save", async () => {
     const user = userEvent.setup()
     renderNotificationSettings()
 
@@ -99,8 +132,9 @@ describe("NotificationSettings master-detail layout", () => {
     // user: 管理成員 already owns all per-creator configuration, including
     // reminder overrides, so a second entry point implied two systems).
     expect(detail.getAllByRole("button", { name: /Manage Members/ })).toHaveLength(1)
-    expect(detail.getByRole("radiogroup", { name: /Live reminder time/ })).toBeInTheDocument()
     expect(detail.getByRole("radiogroup", { name: /Notification type/ })).toBeInTheDocument()
+    // No topic-level "forced time" control exists any more: reminders are set per creator.
+    expect(detail.queryByRole("radiogroup", { name: /Live reminder time/ })).not.toBeInTheDocument()
     // The topic still isn't a saved card -- picking it must not persist it.
     expect(screen.queryByRole("button", { name: /^GTA/ })).not.toBeInTheDocument()
   })
@@ -130,55 +164,23 @@ describe("NotificationSettings master-detail layout", () => {
     await pickGta(user)
 
     const detail = within(getDetailPanel())
-    expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeChecked()
+    expect(detail.getByRole("radio", { name: "Live + New Video" })).toBeChecked()
 
-    await user.click(detail.getByRole("radio", { name: "30 minutes before" }))
+    await user.click(detail.getByRole("radio", { name: "Live" }))
 
-    let stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
-    expect(stored.topics?.gta).toBeUndefined()
+    expect(storedState().topics?.gta).toBeUndefined()
 
     await user.click(detail.getByRole("button", { name: "Save" }))
-    stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
-    expect(stored.topics.gta.reminderMode).toBe("30min")
+    expect(storedState().topics.gta.notificationType).toBe("live")
   })
 
-  // Regression test for the reminder-semantics correction's "verify state,
-  // not just CSS" requirement: the underlying controlled value (and thus
-  // the accessible checked state real screen readers/assistive tech would
-  // see) must move to exactly one option per click, never leaving two
-  // checked or the previous one stuck checked.
-  it("Live reminder time is a real single-select: exactly one option is checked at a time as the value changes", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 })
+  it("has no topic-level reminder time control: each creator's reminder is set in Manage Members", async () => {
     renderNotificationSettings()
-    await user.click(screen.getByRole("button", { name: /^All/ }))
+
     const detail = within(getDetailPanel())
-
-    await user.click(detail.getByRole("radio", { name: "10 minutes before" }))
-    expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeChecked()
-    expect(detail.getByRole("radio", { name: "30 minutes before" })).not.toBeChecked()
-    expect(detail.getByRole("radio", { name: "1 hour before" })).not.toBeChecked()
-
-    await user.click(detail.getByRole("radio", { name: "30 minutes before" }))
-    expect(detail.getByRole("radio", { name: "10 minutes before" })).not.toBeChecked()
-    expect(detail.getByRole("radio", { name: "30 minutes before" })).toBeChecked()
-    expect(detail.getByRole("radio", { name: "1 hour before" })).not.toBeChecked()
-
-    await user.click(detail.getByRole("radio", { name: "1 hour before" }))
-    expect(detail.getByRole("radio", { name: "10 minutes before" })).not.toBeChecked()
-    expect(detail.getByRole("radio", { name: "30 minutes before" })).not.toBeChecked()
-    expect(detail.getByRole("radio", { name: "1 hour before" })).toBeChecked()
-  })
-
-  it("explains that the stream-start notification is guaranteed and reminder options are an additional pre-live notice", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 })
-    renderNotificationSettings()
-    await user.click(screen.getByRole("button", { name: /^All/ }))
-
-    expect(
-      within(getDetailPanel()).getByText(
-        "A notification is always sent when the stream starts. If you choose an earlier time, an additional reminder will be sent before the stream.",
-      ),
-    ).toBeInTheDocument()
+    expect(detail.queryByRole("radiogroup", { name: /Live reminder time/ })).not.toBeInTheDocument()
+    expect(detail.queryByText("Member's choice")).not.toBeInTheDocument()
+    expect(detail.getByRole("radiogroup", { name: /Notification type/ })).toBeInTheDocument()
   })
 
   it("discards an abandoned draft so reselecting that topic starts clean", async () => {
@@ -186,13 +188,13 @@ describe("NotificationSettings master-detail layout", () => {
     const first = renderNotificationSettings()
     await user.click(screen.getByRole("button", { name: "Add topic" }))
     await pickGta(user)
-    await user.click(within(getDetailPanel()).getByRole("radio", { name: "30 minutes before" }))
+    await user.click(within(getDetailPanel()).getByRole("radio", { name: "Live" }))
     first.unmount()
 
     renderNotificationSettings()
     await user.click(screen.getByRole("button", { name: "Add topic" }))
     await pickGta(user)
-    expect(within(getDetailPanel()).getByRole("radio", { name: "10 minutes before" })).toBeChecked()
+    expect(within(getDetailPanel()).getByRole("radio", { name: "Live + New Video" })).toBeChecked()
   })
 
   it("selecting an already-saved topic while a draft is open abandons the draft", async () => {
@@ -201,15 +203,14 @@ describe("NotificationSettings master-detail layout", () => {
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
     await pickGta(user)
-    await user.click(within(getDetailPanel()).getByRole("radio", { name: "30 minutes before" }))
+    await user.click(within(getDetailPanel()).getByRole("radio", { name: "Live" }))
 
     await user.click(screen.getByRole("button", { name: /^VALO/ }))
 
     expect(within(getDetailPanel()).getByRole("heading", { level: 2, name: "VALO" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add topic" })).toBeInTheDocument()
 
-    const stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
-    expect(stored.topics?.gta).toBeUndefined()
+    expect(storedState().topics?.gta).toBeUndefined()
   })
 
   it("opens the member-management drawer for the still-unsaved draft topic when Manage Members is clicked", async () => {
@@ -250,21 +251,20 @@ describe("NotificationSettings master-detail layout", () => {
     for (const alreadySaved of ["SF6", "VALO", "APEX", "Minecraft"]) {
       expect(screen.queryByTitle(alreadySaved)).not.toBeInTheDocument()
     }
-    expect(await screen.findByTitle("GTA")).toBeInTheDocument()
+    expect(await screen.findByTitle("Singing")).toBeInTheDocument()
+    expect(screen.getByTitle("MV")).toBeInTheDocument()
+    expect(screen.getByTitle("Chatting")).toBeInTheDocument()
+    expect(screen.getByTitle("GTA")).toBeInTheDocument()
     expect(screen.getByTitle("7 DAYS TO DIE")).toBeInTheDocument()
     expect(screen.getByTitle("雀魂")).toBeInTheDocument()
     expect(screen.getByTitle("Endfield")).toBeInTheDocument()
   })
 
   it("hides the Add topic tile when every catalog topic is already saved", () => {
-    window.localStorage.setItem(
-      "yobi.topicNotificationPreferences.v2",
-      JSON.stringify({
-        topicOrder: ["all", "sf6", "valo", "apex", "minecraft", "gta", "seven_days_to_die", "mahjong_soul", "endfield"],
-        topics: {},
-      }),
-    )
-    resetAllSharedStateForTests()
+    seedState({
+      topicOrder: [...DEFAULT_ORDER, "singing", "mv", "chatting", "gta", "seven_days_to_die", "mahjong_soul", "endfield"],
+      topics: {},
+    })
     renderNotificationSettings()
     expect(screen.queryByRole("button", { name: "Add topic" })).not.toBeInTheDocument()
   })
@@ -278,19 +278,7 @@ describe("NotificationSettings master-detail layout", () => {
 
     await user.click(detail.getByRole("radio", { name: "Live" }))
 
-    const stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
-    expect(stored.topics.all.notificationType).toBe("live")
-  })
-
-  it("offers 1 minute before as a Live reminder time option, alongside the existing four", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 })
-    renderNotificationSettings()
-
-    const detail = within(getDetailPanel())
-    await user.click(detail.getByRole("radio", { name: "1 minute before" }))
-
-    const stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
-    expect(stored.topics.all.reminderMode).toBe("1min")
+    expect(storedState().topics.all.notificationType).toBe("live")
   })
 
   // The per-member-overrides section that used to show this count in the
@@ -315,7 +303,7 @@ describe("NotificationSettings master-detail layout", () => {
     expect(await within(topicCard).findByText("1 custom")).toBeInTheDocument()
   })
 
-  it("Reset restores a saved topic's own reminder mode and notification type, without touching enabled members", async () => {
+  it("Reset restores a saved topic's notification type, without touching enabled members", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderNotificationSettings()
 
@@ -324,12 +312,10 @@ describe("NotificationSettings master-detail layout", () => {
     await user.keyboard("{Escape}")
 
     const detail = within(getDetailPanel())
-    await user.click(detail.getByRole("radio", { name: "30 minutes before" }))
     await user.click(detail.getByRole("radio", { name: "Live" }))
 
     await user.click(detail.getByRole("button", { name: /^Reset/ }))
 
-    expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeChecked()
     expect(detail.getByRole("radio", { name: "Live + New Video" })).toBeChecked()
     expect(detail.getByText("1 selected")).toBeInTheDocument()
   })
@@ -344,14 +330,10 @@ describe("NotificationSettings master-detail layout", () => {
 // feature where the drawer showed both switches unconditionally).
 describe("member drawer respects the topic's own notificationType", () => {
   function seedAllTopicType(notificationType: "live" | "newVideo" | "both") {
-    window.localStorage.setItem(
-      "yobi.topicNotificationPreferences.v2",
-      JSON.stringify({
-        topicOrder: ["all", "sf6", "valo", "apex", "minecraft"],
-        topics: { all: { reminderMode: "10min", live: [], newVideo: [], reminderOverrides: {}, notificationType } },
-      }),
-    )
-    resetAllSharedStateForTests()
+    seedState({
+      topicOrder: DEFAULT_ORDER,
+      topics: { all: { live: [], newVideo: [], reminderOverrides: {}, notificationType } },
+    })
   }
 
   it("newVideo topic: hides Live and reminder-time entirely, keeps New Video available", async () => {
@@ -367,70 +349,20 @@ describe("member drawer respects the topic's own notificationType", () => {
     expect(screen.queryByText("Reminder time")).not.toBeInTheDocument()
   })
 
-  // A newVideo-only topic never sends a live/stream-start notification, so
-  // this control has nothing to configure -- but per the user's correction
-  // it stays visible and disabled (not hidden, which made the section look
-  // like it had vanished) rather than being removed from the page; only
-  // the topic-list card's own summary badge (a separate, smaller claim)
-  // still disappears.
-  it("newVideo topic: keeps the top-level Live reminder time control visible but disabled, with its stored value preserved and untouchable", async () => {
-    seedAllTopicType("newVideo")
+  it("preserves members' reminders across a newVideo -> live round trip", async () => {
+    seedState({
+      topicOrder: DEFAULT_ORDER,
+      topics: { all: { live: ["aizawa_ema"], newVideo: [], reminderOverrides: { aizawa_ema: "1hour" }, notificationType: "live" } },
+    })
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderNotificationSettings()
 
     const detail = within(getDetailPanel())
-    const radiogroup = detail.getByRole("radiogroup", { name: /Live reminder time/ })
-    expect(radiogroup).toBeInTheDocument()
-    expect(radiogroup).toHaveClass("ant-segmented-disabled")
-    expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeChecked()
-    expect(detail.getByRole("radio", { name: "10 minutes before" })).toBeDisabled()
-    const helperText = detail.getByText("Live reminder timing is unavailable while only New Video notifications are enabled.")
-    expect(helperText).toBeInTheDocument()
-
-    // Section-level disabled state: the title/helper text/control all dim
-    // together as one unit, not just the control on its own.
-    const section = radiogroup.closest(".notification-reminder-section")
-    expect(section).toHaveClass("notification-reminder-section--disabled")
-    expect(section).toContainElement(helperText)
-
-    // Disabled means unclickable, not just visually dimmed -- clicking a
-    // different option must not change the stored value.
-    await user.click(detail.getByRole("radio", { name: "1 hour before" }))
-    const stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
-    expect(stored.topics.all.reminderMode).toBe("10min")
-
-    const topicCard = screen.getByRole("button", { name: /^All/ })
-    expect(within(topicCard).queryByText("10 minutes before")).not.toBeInTheDocument()
-  })
-
-  it("preserves the reminder mode across a newVideo -> live round trip", async () => {
-    window.localStorage.setItem(
-      "yobi.topicNotificationPreferences.v2",
-      JSON.stringify({
-        topicOrder: ["all", "sf6", "valo", "apex", "minecraft"],
-        topics: {
-          all: { reminderMode: "1hour", live: [], newVideo: [], reminderOverrides: {}, notificationType: "live" },
-        },
-      }),
-    )
-    resetAllSharedStateForTests()
-    const user = userEvent.setup({ pointerEventsCheck: 0 })
-    renderNotificationSettings()
-
-    const detail = within(getDetailPanel())
-    expect(detail.getByRole("radio", { name: "1 hour before" })).toBeChecked()
-
     await user.click(detail.getByRole("radio", { name: "New Video" }))
-    let stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
-    expect(stored.topics.all.reminderMode).toBe("1hour")
-    expect(detail.getByRole("radio", { name: "1 hour before" })).toBeChecked()
-    expect(detail.getByRole("radio", { name: "1 hour before" })).toBeDisabled()
+    expect(storedState().topics.all.reminderOverrides).toEqual({ aizawa_ema: "1hour" })
 
     await user.click(detail.getByRole("radio", { name: "Live" }))
-    stored = JSON.parse(window.localStorage.getItem("yobi.topicNotificationPreferences.v2") ?? "{}")
-    expect(stored.topics.all.reminderMode).toBe("1hour")
-    expect(detail.getByRole("radio", { name: "1 hour before" })).toBeChecked()
-    expect(detail.getByRole("radio", { name: "1 hour before" })).not.toBeDisabled()
+    expect(storedState().topics.all.reminderOverrides).toEqual({ aizawa_ema: "1hour" })
   })
 
   it("live topic: hides New Video, keeps Live and reminder-time available", async () => {
@@ -443,7 +375,6 @@ describe("member drawer respects the topic's own notificationType", () => {
     expect(screen.getByText("Notification type: Live")).toBeInTheDocument()
     expect(screen.getAllByRole("switch", { name: /live notifications/ }).length).toBeGreaterThan(0)
     expect(screen.getAllByText("Reminder time").length).toBeGreaterThan(0)
-    expect(within(getDetailPanel()).getByRole("radiogroup", { name: /Live reminder time/ })).toBeInTheDocument()
     expect(screen.queryByRole("switch", { name: /new video notifications/ })).not.toBeInTheDocument()
   })
 
@@ -457,11 +388,6 @@ describe("member drawer respects the topic's own notificationType", () => {
     expect(screen.getAllByRole("switch", { name: /live notifications/ }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole("switch", { name: /new video notifications/ }).length).toBeGreaterThan(0)
     expect(screen.getAllByText("Reminder time").length).toBeGreaterThan(0)
-
-    const detail = within(getDetailPanel())
-    const radiogroup = detail.getByRole("radiogroup", { name: /Live reminder time/ })
-    expect(radiogroup).not.toHaveClass("ant-segmented-disabled")
-    expect(radiogroup.closest(".notification-reminder-section")).not.toHaveClass("notification-reminder-section--disabled")
   })
 
   it("changing the topic's notification type updates the already-open drawer's columns immediately", async () => {
@@ -478,17 +404,198 @@ describe("member drawer respects the topic's own notificationType", () => {
   })
 
   it("a stale stored Live preference from before the topic excluded Live does not count as an effectively enabled member", async () => {
-    window.localStorage.setItem(
-      "yobi.topicNotificationPreferences.v2",
-      JSON.stringify({
-        topicOrder: ["all", "sf6", "valo", "apex", "minecraft"],
-        topics: { all: { reminderMode: "10min", live: ["aizawa_ema"], newVideo: [], reminderOverrides: {}, notificationType: "newVideo" } },
-      }),
-    )
-    resetAllSharedStateForTests()
+    seedState({
+      topicOrder: DEFAULT_ORDER,
+      topics: { all: { live: ["aizawa_ema"], newVideo: [], reminderOverrides: {}, notificationType: "newVideo" } },
+    })
     renderNotificationSettings()
 
     expect(within(getDetailPanel()).getByText("0 selected")).toBeInTheDocument()
+  })
+})
+
+// A creator's reminder is set per topic in Manage Members. "No reminder" (unset) is a real
+// choice and the default; the creator's 全部 reminder shadows that creator's topic reminders
+// without erasing them; a topic the backend doesn't support can't have its own reminder.
+describe("member drawer reminders", () => {
+  /** One Live-enabled creator in `topicId`, optionally with a reminder -- so the drawer shows exactly one reminder button. */
+  function seedReminders(topics: Record<string, { reminder?: string }>, order: string[] = DEFAULT_ORDER) {
+    seedState({
+      topicOrder: order,
+      topics: Object.fromEntries(
+        Object.entries(topics).map(([id, { reminder }]) => [
+          id,
+          { live: ["aizawa_ema"], newVideo: [], reminderOverrides: reminder ? { aizawa_ema: reminder } : {}, notificationType: "both" },
+        ]),
+      ),
+    })
+  }
+
+  async function openDrawerFor(user: ReturnType<typeof userEvent.setup>, topicButton: RegExp) {
+    await user.click(screen.getByRole("button", { name: topicButton }))
+    await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
+    return screen.findAllByRole("button", { name: /'s reminder time/ })
+  }
+
+  it("defaults a Live-enabled creator to 'No reminder' -- never to a time", async () => {
+    seedReminders({ sf6: {} })
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    const [trigger] = await openDrawerFor(user, /^SF6/)
+
+    expect(trigger).toHaveTextContent("No reminder")
+  })
+
+  it("offers 'No reminder' plus the five times, including 1 minute before", async () => {
+    seedReminders({ sf6: {} })
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    const [trigger] = await openDrawerFor(user, /^SF6/)
+    await user.click(trigger)
+
+    const labels = screen.getAllByRole("menuitem").map((item) => item.textContent)
+    expect(labels).toEqual(["No reminder", "At start", "1 minute before", "10 minutes before", "30 minutes before", "1 hour before"])
+  })
+
+  it("choosing a time stores it for that creator + topic and writes just that one backend item", async () => {
+    seedReminders({ sf6: {} })
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    const [trigger] = await openDrawerFor(user, /^SF6/)
+    await user.click(trigger)
+    await user.click(screen.getByRole("menuitem", { name: "1 minute before" }))
+
+    expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "1min" })
+    expect(liveReminderApi.saveCreatorReminder).toHaveBeenCalledTimes(1)
+    expect(liveReminderApi.saveCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "sf6", { notifyAtStart: true, advanceReminder: "1min" })
+  })
+
+  it("choosing 'No reminder' unsets it and deletes only that one backend item", async () => {
+    seedReminders({ sf6: { reminder: "10min" }, apex: { reminder: "30min" } })
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    const [trigger] = await openDrawerFor(user, /^SF6/)
+    expect(trigger).toHaveTextContent("10 minutes before")
+    await user.click(trigger)
+    await user.click(screen.getByRole("menuitem", { name: "No reminder" }))
+
+    expect(storedState().topics.sf6.reminderOverrides).toEqual({})
+    expect(storedState().topics.apex.reminderOverrides).toEqual({ aizawa_ema: "30min" })
+    expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledTimes(1)
+    expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "sf6")
+  })
+
+  it("shows a topic reminder as not in effect while the same creator's 全部 reminder is set, and keeps it stored", async () => {
+    seedReminders({ all: { reminder: "30min" }, sf6: { reminder: "10min" } })
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    const [trigger] = await openDrawerFor(user, /^SF6/)
+
+    expect(trigger).toHaveTextContent("10 minutes before")
+    expect(screen.getByText('Not in effect (overridden by the "All" setting)')).toBeInTheDocument()
+    expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "10min" })
+  })
+
+  it("does not show that hint on the 全部 reminder itself, or when 全部 is unset", async () => {
+    seedReminders({ all: { reminder: "30min" }, sf6: { reminder: "10min" } })
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    await openDrawerFor(user, /^All/)
+    expect(screen.queryByText('Not in effect (overridden by the "All" setting)')).not.toBeInTheDocument()
+  })
+
+  it("setting 全部 never touches the creator's topic reminders, in storage or on the backend", async () => {
+    seedReminders({ all: {}, sf6: { reminder: "10min" } })
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    const [trigger] = await openDrawerFor(user, /^All/)
+    await user.click(trigger)
+    await user.click(screen.getByRole("menuitem", { name: "30 minutes before" }))
+
+    expect(storedState().topics.all.reminderOverrides).toEqual({ aizawa_ema: "30min" })
+    expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "10min" })
+    expect(liveReminderApi.saveCreatorReminder).toHaveBeenCalledTimes(1)
+    expect(liveReminderApi.saveCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "all", { notifyAtStart: true, advanceReminder: "30min" })
+    expect(liveReminderApi.deleteCreatorReminder).not.toHaveBeenCalled()
+  })
+
+  it("turning Live off for a creator + topic deletes just that backend reminder item", async () => {
+    seedReminders({ all: { reminder: "30min" }, sf6: { reminder: "10min" } })
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    renderNotificationSettings()
+
+    await openDrawerFor(user, /^SF6/)
+    await user.click(screen.getAllByRole("switch", { name: /live notifications/ }).find((el) => el.getAttribute("aria-checked") === "true")!)
+
+    expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledTimes(1)
+    expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "sf6")
+    expect(storedState().topics.sf6.reminderOverrides).toEqual({})
+    expect(storedState().topics.all.reminderOverrides).toEqual({ aizawa_ema: "30min" })
+  })
+
+  describe("a category the backend doesn't classify (display-only)", () => {
+    const WITH_GTA = [...DEFAULT_ORDER, "gta"]
+
+    it("stays visible in the topic list", () => {
+      seedReminders({ gta: {} }, WITH_GTA)
+      renderNotificationSettings()
+
+      expect(screen.getByRole("button", { name: /^GTA/ })).toBeInTheDocument()
+    })
+
+    it("disables the reminder control and says it follows 全部", async () => {
+      seedReminders({ gta: {} }, WITH_GTA)
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderNotificationSettings()
+
+      const [trigger] = await openDrawerFor(user, /^GTA/)
+
+      expect(trigger).toBeDisabled()
+      expect(await screen.findByText(UNSUPPORTED_TOPIC_MESSAGE)).toBeInTheDocument()
+    })
+
+    it("never writes an independent backend reminder for it", async () => {
+      seedReminders({ gta: {} }, WITH_GTA)
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderNotificationSettings()
+
+      const [trigger] = await openDrawerFor(user, /^GTA/)
+      await user.click(trigger)
+
+      expect(screen.queryByRole("menuitem")).not.toBeInTheDocument()
+      expect(liveReminderApi.saveCreatorReminder).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("a category the backend classifies", () => {
+    it("has an enabled reminder control and no 'unsupported' message -- SF6 (a default) and Singing (added)", async () => {
+      seedReminders({ sf6: {}, singing: {} }, [...DEFAULT_ORDER, "singing"])
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderNotificationSettings()
+
+      const [sf6Trigger] = await openDrawerFor(user, /^SF6/)
+      await waitFor(() => expect(sf6Trigger).toBeEnabled())
+      expect(screen.queryByText(UNSUPPORTED_TOPIC_MESSAGE)).not.toBeInTheDocument()
+    })
+
+    it("treats the 全部 scope as always supported, even if GET /topics fails", async () => {
+      vi.mocked(fetchVideoTopics).mockRejectedValue(new Error("offline"))
+      seedReminders({ all: {} })
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      renderNotificationSettings()
+
+      const [trigger] = await openDrawerFor(user, /^All/)
+
+      expect(trigger).toBeEnabled()
+      expect(screen.queryByText(UNSUPPORTED_TOPIC_MESSAGE)).not.toBeInTheDocument()
+    })
   })
 })
 

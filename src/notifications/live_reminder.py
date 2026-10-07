@@ -1,67 +1,89 @@
-"""Per-creator recurring live-reminder timing and per-stream single-stream
-overrides (Dashboard spec: "Schedule single-stream notification override"),
-layered on the same remote-config/notification-preference architecture as
+"""Live-reminder settings and the effective-reminder resolver, layered on the
+same remote-config/notification-preference architecture as
 notification_dispatch.py (Roadmap 4.6) rather than a second notification
 service.
 
-Three sibling (clientId, key) remote-config records, read by the same
-notification_dispatcher.py poll that already resolves NotificationPreference:
+Every reminder setting is its OWN (clientId, configKey) remote-config item,
+never a field of a shared map -- so changing one setting is a single-item
+write that cannot read, rewrite or overwrite any other setting, and two
+devices changing different settings can never clobber each other:
 
-    "creatorLiveReminders"         -- per client, creatorId -> LiveReminderSetting
-    "streamNotificationOverrides"  -- per client, videoId   -> StreamReminderOverride
-                                       (notification preference only -- NOT a frozen
-                                       copy of the stream's own schedule)
-    "streamSchedule"               -- NOT per client (stored under SYSTEM_CLIENT_ID),
-                                       {entries: videoId -> StreamScheduleEntry,
-                                       refreshedAt} -- the SOLE source of
-                                       scheduledStartMs at dispatch time, for
-                                       overridden and non-overridden streams alike,
-                                       so a reschedule is always picked up and a
-                                       creator's recurring reminder can resolve a
-                                       normal, never-overridden stream without any
-                                       client's browser ever having been open.
-                                       refreshedAt backs the staleness check that
-                                       decouples how often reminders are EVALUATED
-                                       (every dispatcher run) from how often Holodex
-                                       is actually QUERIED (see
-                                       notification_dispatcher.py's
-                                       _SCHEDULE_REFRESH_INTERVAL) -- never per
-                                       client, never per stream, one aggregate
-                                       refresh per dispatcher run at most.
+    "creatorReminder#<creatorId>#all"        -- creator-level 全部 reminder
+    "creatorReminder#<creatorId>#<topicId>"  -- creator + topic reminder
+                                                 (<topicId> is a canonical
+                                                 tracking.video_topics id)
+    "streamOverride#<videoId>"               -- one exact stream's override
+                                                 (set from Schedule/Timeline)
 
-Kept as separate keys from "notificationPreference" deliberately: that
-record is always a full-overwrite write (remote_config_store.put_remote_config's
-own contract) from NotificationToggle's on/off sync, which has no field for
-either of these -- folding them into the same blob would make every plain
-notification on/off toggle silently wipe out a saved reminder configuration.
+An item's value is a LiveReminderSetting ({notifyAtStart, advanceReminder});
+a stream override additionally carries the stream's creatorId. "Unset" is
+the item being ABSENT -- there is no stored "unset" value, and an unset
+setting never falls back to any default reminder.
+
+Plus one system-wide record, NOT scoped to any one client (stored under
+SYSTEM_CLIENT_ID):
+
+    "streamSchedule"  -- {entries: videoId -> StreamScheduleEntry, refreshedAt}
+                         -- the SOLE source of scheduledStartMs (and of a
+                         stream's topic) at dispatch time. refreshedAt backs
+                         the staleness check that decouples how often
+                         reminders are EVALUATED (every dispatcher run) from
+                         how often Holodex is actually QUERIED (see
+                         notification_dispatcher.py's _SCHEDULE_REFRESH_INTERVAL).
+
+Precedence, highest first (the first two live outside this module, in
+notification_dispatch.should_notify_now / the dispatcher):
+
+    1. Mute / Quiet Hours (also creator disabled) -- suppress, never delay
+    2. per-stream override    -- applies to that exact stream only
+    3. creator 全部           -- shadows every topic of that creator
+    4. creator + matched topic
+    5. unset                  -- no reminder
+
+Shadowing happens ONLY here, at resolve time: setting creator 全部 never
+touches a topic item, and unsetting it makes the topic items take effect
+again exactly as they were.
+
+Kept as separate keys from "notificationPreference" deliberately (mute, quiet
+hours and the on/off switch live there).
 
 Reminder-time values mirror the Dashboard's own
 notificationTopics.ts/REMINDER_TIME_VALUES exactly -- no second list, no new
 values. "at_start" is represented here as advance_reminder=None (no extra
 reminder); every other value is an ADDITIONAL pre-start reminder. notify_at_start
-and advance_reminder are independent, both-can-apply dimensions (spec section 1):
-a stream can legitimately get both an advance reminder and a start reminder,
-never a choice between them.
+and advance_reminder are independent, both-can-apply dimensions: a stream can
+legitimately get both an advance reminder and a start reminder.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-CREATOR_LIVE_REMINDERS_KEY = "creatorLiveReminders"
-STREAM_NOTIFICATION_OVERRIDES_KEY = "streamNotificationOverrides"
+from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS
 
-# A third sibling remote-config record, NOT scoped to any one client --
-# stored under this fixed sentinel clientId in the same generic
+CREATOR_REMINDER_KEY_PREFIX = "creatorReminder#"
+STREAM_OVERRIDE_KEY_PREFIX = "streamOverride#"
+KEY_SEPARATOR = "#"
+
+# The creator-level scope. NOT a video topic: it is never returned by the
+# title classifier and is not in tracking.video_topics.TOPIC_IDS.
+ALL_TOPICS_SCOPE = "all"
+
+# The canonical topics a creator + topic reminder can target: every
+# classifier topic except the "nothing matched" fallback, which names no
+# game/genre a user could pick (a stream classified "other" is simply
+# topic-less: only creator 全部 or a stream override can apply to it).
+REMINDER_TOPIC_IDS = frozenset(TOPIC_IDS - {OTHER_TOPIC})
+
+# A system-wide remote-config record, NOT scoped to any one client -- stored
+# under this fixed sentinel clientId in the same generic
 # (clientId, configKey) -> value table everything else in this module uses,
 # rather than a new DynamoDB table. Refreshed every dispatcher run from the
 # existing Holodex-backed live/upcoming read path (read_api.get_live_streams,
-# the same data GET /live-streams already serves the Dashboard), so a
-# creator's recurring reminder can resolve scheduledStartMs for a normal
-# stream nobody ever opened Schedule for -- see notification_dispatcher.py's
-# _refresh_and_load_stream_schedule.
+# the same data GET /live-streams already serves the Dashboard) -- see
+# notification_dispatcher.py's _refresh_and_load_stream_schedule.
 STREAM_SCHEDULE_KEY = "streamSchedule"
 SYSTEM_CLIENT_ID = "__system__"
 
@@ -80,15 +102,11 @@ class ClientError(ValueError):
 
 @dataclass(frozen=True)
 class LiveReminderSetting:
-    """One creator's recurring reminder config, or one stream override's --
-    the identical shape either way (spec section 4: an override must contain
-    the same relevant fields as the creator setting it replaces)."""
+    """One reminder setting -- the identical shape at every level (creator
+    全部, creator + topic, and a single stream's override)."""
 
     notify_at_start: bool
     advance_reminder: str | None  # one of ADVANCE_REMINDER_OFFSET_MINUTES, or None
-
-
-DEFAULT_LIVE_REMINDER_SETTING = LiveReminderSetting(notify_at_start=True, advance_reminder=None)
 
 
 @dataclass(frozen=True)
@@ -97,9 +115,7 @@ class StreamReminderOverride:
     frozen copy of the stream's own schedule. A livestream can be
     rescheduled after an override is saved -- the override does NOT carry
     its own scheduledStartMs; dispatch time always resolves the CURRENT
-    scheduledStartMs from the system-wide streamSchedule snapshot, for both
-    overridden and non-overridden streams alike (see
-    notification_dispatcher.py's _relevant_reminders_for_client)."""
+    scheduledStartMs from the system-wide streamSchedule snapshot."""
 
     creator_id: str
     setting: LiveReminderSetting
@@ -108,13 +124,13 @@ class StreamReminderOverride:
 @dataclass(frozen=True)
 class StreamScheduleEntry:
     """One stream's identity/timing in the system-wide schedule snapshot --
-    just enough for the dispatcher to resolve a normal (non-overridden)
-    stream's reminder: which creator it belongs to and when it starts. The
-    SOLE source of scheduledStartMs at dispatch time, for overridden streams
-    too -- see StreamReminderOverride's own docstring."""
+    just enough for the dispatcher to resolve its reminder: which creator it
+    belongs to, when it starts, and its canonical topic (None when the title
+    classifier matched no topic). The SOLE source of scheduledStartMs."""
 
     creator_id: str
     scheduled_start_ms: int
+    topic: str | None = None
 
 
 @dataclass(frozen=True)
@@ -134,14 +150,59 @@ class ResolvedReminder:
     """One (videoId, client) pair's fully-resolved, ready-to-dispatch
     reminder: the CURRENT scheduledStartMs (always from StreamScheduleEntry,
     never from a stored override) plus whichever LiveReminderSetting won
-    (stream override, else creator recurring, see resolve_effective_setting)."""
+    (see resolve_effective_setting)."""
 
     creator_id: str
     scheduled_start_ms: int
     setting: LiveReminderSetting
 
 
-def _parse_live_reminder_setting(raw: Any, *, context: str) -> LiveReminderSetting:
+@dataclass(frozen=True)
+class ReminderSettings:
+    """Every reminder setting one client has stored, parsed. `invalid_keys`
+    names stored items that failed validation and were skipped -- one bad
+    item degrades only itself, never the client's other settings."""
+
+    creator_all: dict[str, LiveReminderSetting] = field(default_factory=dict)
+    creator_topics: dict[tuple[str, str], LiveReminderSetting] = field(default_factory=dict)
+    stream_overrides: dict[str, StreamReminderOverride] = field(default_factory=dict)
+    invalid_keys: tuple[str, ...] = ()
+
+
+def parse_key_part(raw: Any, *, name: str) -> str:
+    """Validate one component of a reminder config key: a non-empty string
+    that cannot contain the key separator (it would make the key ambiguous)."""
+    if not isinstance(raw, str) or not raw:
+        raise ClientError(f"{name} is required and must be a non-empty string")
+    if KEY_SEPARATOR in raw:
+        raise ClientError(f"{name} must not contain {KEY_SEPARATOR!r}, got {raw!r}")
+    return raw
+
+
+def parse_reminder_scope(raw: Any) -> str:
+    """Validate a reminder scope: "all" (creator-level 全部) or a canonical
+    video topic id (REMINDER_TOPIC_IDS) -- the same machine id
+    the frontend and GET /topics use. A topic the backend doesn't classify
+    is rejected: it cannot match any stream, so a stored item would be dead."""
+    if raw == ALL_TOPICS_SCOPE or (isinstance(raw, str) and raw in REMINDER_TOPIC_IDS):
+        return raw
+    raise ClientError(f"scope must be {ALL_TOPICS_SCOPE!r} or one of {sorted(REMINDER_TOPIC_IDS)}, got {raw!r}")
+
+
+def creator_reminder_key(creator_id: str, scope: str) -> str:
+    """The config key of one creator-level (scope "all") or creator + topic reminder item."""
+    creator_id = parse_key_part(creator_id, name="creatorId")
+    scope = parse_reminder_scope(scope)
+    return f"{CREATOR_REMINDER_KEY_PREFIX}{creator_id}{KEY_SEPARATOR}{scope}"
+
+
+def stream_override_key(video_id: str) -> str:
+    """The config key of one stream's override item."""
+    return f"{STREAM_OVERRIDE_KEY_PREFIX}{parse_key_part(video_id, name='videoId')}"
+
+
+def parse_live_reminder_setting(raw: Any, *, context: str = "reminder setting") -> LiveReminderSetting:
+    """Validate an incoming/stored LiveReminderSetting value."""
     if not isinstance(raw, dict):
         raise ClientError(f"{context} must be an object")
     notify_at_start = raw.get("notifyAtStart")
@@ -155,40 +216,61 @@ def _parse_live_reminder_setting(raw: Any, *, context: str) -> LiveReminderSetti
     return LiveReminderSetting(notify_at_start=notify_at_start, advance_reminder=advance_reminder)
 
 
-def parse_creator_live_reminders(raw: Any) -> dict[str, LiveReminderSetting]:
-    """Validate a stored/incoming "creatorLiveReminders" value: creatorId -> LiveReminderSetting."""
+def parse_stream_override(raw: Any, *, context: str = "stream override") -> StreamReminderOverride:
+    """Validate an incoming/stored stream override: a reminder setting plus the stream's creatorId."""
     if not isinstance(raw, dict):
-        raise ClientError("creatorLiveReminders must be an object mapping creatorId to a reminder setting")
-    result: dict[str, LiveReminderSetting] = {}
-    for creator_id, value in raw.items():
-        if not isinstance(creator_id, str) or not creator_id:
-            raise ClientError(f"creatorLiveReminders keys must be non-empty creatorId strings, got {creator_id!r}")
-        result[creator_id] = _parse_live_reminder_setting(value, context=f"creatorLiveReminders[{creator_id!r}]")
-    return result
+        raise ClientError(f"{context} must be an object")
+    creator_id = raw.get("creatorId")
+    if not isinstance(creator_id, str) or not creator_id:
+        raise ClientError(f"{context}.creatorId is required and must be a non-empty string")
+    return StreamReminderOverride(creator_id=creator_id, setting=parse_live_reminder_setting(raw, context=context))
 
 
-def parse_stream_notification_overrides(raw: Any) -> dict[str, StreamReminderOverride]:
-    """Validate a stored/incoming "streamNotificationOverrides" value: videoId -> StreamReminderOverride.
+def parse_reminder_settings(
+    creator_reminder_records: list[dict[str, Any]], stream_override_records: list[dict[str, Any]]
+) -> ReminderSettings:
+    """Parse one client's stored reminder items (records as returned by
+    remote_config_store: {clientId, key, value, updatedAt}) into
+    ReminderSettings. An item whose key or value is malformed is skipped and
+    reported in `invalid_keys`; it never affects any other item."""
+    creator_all: dict[str, LiveReminderSetting] = {}
+    creator_topics: dict[tuple[str, str], LiveReminderSetting] = {}
+    stream_overrides: dict[str, StreamReminderOverride] = {}
+    invalid: list[str] = []
 
-    Deliberately has no scheduledStartMs field (see StreamReminderOverride's
-    own docstring) -- a stored override predating this change may still
-    carry a stray "scheduledStartMs" key; it's simply ignored, not rejected,
-    so an old record doesn't suddenly fail to parse.
-    """
-    if not isinstance(raw, dict):
-        raise ClientError("streamNotificationOverrides must be an object mapping videoId to an override")
-    result: dict[str, StreamReminderOverride] = {}
-    for video_id, value in raw.items():
-        if not isinstance(video_id, str) or not video_id:
-            raise ClientError(f"streamNotificationOverrides keys must be non-empty videoId strings, got {video_id!r}")
-        if not isinstance(value, dict):
-            raise ClientError(f"streamNotificationOverrides[{video_id!r}] must be an object")
-        creator_id = value.get("creatorId")
-        if not isinstance(creator_id, str) or not creator_id:
-            raise ClientError(f"streamNotificationOverrides[{video_id!r}].creatorId is required and must be a non-empty string")
-        setting = _parse_live_reminder_setting(value, context=f"streamNotificationOverrides[{video_id!r}]")
-        result[video_id] = StreamReminderOverride(creator_id=creator_id, setting=setting)
-    return result
+    for record in creator_reminder_records:
+        key = record["key"]
+        try:
+            parts = key.split(KEY_SEPARATOR)
+            if len(parts) != 3 or parts[0] + KEY_SEPARATOR != CREATOR_REMINDER_KEY_PREFIX:
+                raise ClientError(f"malformed creator reminder key {key!r}")
+            creator_id = parse_key_part(parts[1], name="creatorId")
+            scope = parse_reminder_scope(parts[2])
+            setting = parse_live_reminder_setting(record["value"], context=key)
+        except ClientError:
+            invalid.append(key)
+            continue
+        if scope == ALL_TOPICS_SCOPE:
+            creator_all[creator_id] = setting
+        else:
+            creator_topics[(creator_id, scope)] = setting
+
+    for record in stream_override_records:
+        key = record["key"]
+        try:
+            if not key.startswith(STREAM_OVERRIDE_KEY_PREFIX):
+                raise ClientError(f"malformed stream override key {key!r}")
+            video_id = parse_key_part(key[len(STREAM_OVERRIDE_KEY_PREFIX) :], name="videoId")
+            stream_overrides[video_id] = parse_stream_override(record["value"], context=key)
+        except ClientError:
+            invalid.append(key)
+
+    return ReminderSettings(
+        creator_all=creator_all,
+        creator_topics=creator_topics,
+        stream_overrides=stream_overrides,
+        invalid_keys=tuple(invalid),
+    )
 
 
 def _parse_schedule_entries(raw: Any) -> dict[str, StreamScheduleEntry]:
@@ -206,7 +288,11 @@ def _parse_schedule_entries(raw: Any) -> dict[str, StreamScheduleEntry]:
         scheduled_start_ms = value.get("scheduledStartMs")
         if not isinstance(scheduled_start_ms, int) or isinstance(scheduled_start_ms, bool):
             raise ClientError(f"streamSchedule[{video_id!r}].scheduledStartMs is required and must be an integer (epoch ms)")
-        result[video_id] = StreamScheduleEntry(creator_id=creator_id, scheduled_start_ms=scheduled_start_ms)
+        # Optional: a snapshot written before topics were tracked has none.
+        topic = value.get("topic")
+        if topic is not None and (not isinstance(topic, str) or topic not in REMINDER_TOPIC_IDS):
+            raise ClientError(f"streamSchedule[{video_id!r}].topic must be one of {sorted(REMINDER_TOPIC_IDS)} or null, got {topic!r}")
+        result[video_id] = StreamScheduleEntry(creator_id=creator_id, scheduled_start_ms=scheduled_start_ms, topic=topic)
     return result
 
 
@@ -236,23 +322,34 @@ def parse_stream_schedule_snapshot(raw: Any) -> StreamScheduleSnapshot:
 
 
 def resolve_effective_setting(
-    *,
-    video_id: str,
-    creator_id: str,
-    stream_overrides: dict[str, StreamReminderOverride],
-    creator_reminders: dict[str, LiveReminderSetting],
-    default: LiveReminderSetting = DEFAULT_LIVE_REMINDER_SETTING,
-) -> LiveReminderSetting:
-    """Stream override > creator recurring setting > default (spec section 4).
+    *, video_id: str, creator_id: str, topic: str | None, settings: ReminderSettings
+) -> LiveReminderSetting | None:
+    """The one reminder setting that applies to this stream, or None for "no reminder".
 
-    A present override REPLACES the creator's recurring setting wholesale --
-    it is never merged with it (e.g. creator 30min + override 1hour must
-    resolve to exactly 1hour, not "1hour and 30min and start").
+    Per-stream override > creator 全部 > creator + matched topic > unset.
+    The winning setting REPLACES the others wholesale -- it is never merged
+    with them (e.g. 全部 30min + topic 10min resolves to exactly 30min). The
+    shadowed settings are only skipped here, never modified: unsetting 全部
+    makes the topic setting win again. `topic` is the stream's canonical
+    topic id, or None when the classifier matched none (only 全部 or an
+    override can then apply). Unset never falls back to a default.
     """
-    override = stream_overrides.get(video_id)
+    override = settings.stream_overrides.get(video_id)
     if override is not None:
         return override.setting
-    return creator_reminders.get(creator_id, default)
+    creator_all = settings.creator_all.get(creator_id)
+    if creator_all is not None:
+        return creator_all
+    if topic is not None:
+        return settings.creator_topics.get((creator_id, topic))
+    return None
+
+
+def advance_reminder_fire_at_ms(setting: LiveReminderSetting, scheduled_start_ms: int) -> int | None:
+    """When this setting's advance reminder is meant to fire, or None if it has none."""
+    if setting.advance_reminder is None:
+        return None
+    return scheduled_start_ms - ADVANCE_REMINDER_OFFSET_MINUTES[setting.advance_reminder] * 60_000
 
 
 def is_advance_reminder_due(setting: LiveReminderSetting, scheduled_start_ms: int, *, now_ms: int, window_ms: int) -> bool:
@@ -264,10 +361,9 @@ def is_advance_reminder_due(setting: LiveReminderSetting, scheduled_start_ms: in
     window_ms), never earlier than the configured offset, possibly up to
     window_ms late.
     """
-    if setting.advance_reminder is None:
+    fire_at = advance_reminder_fire_at_ms(setting, scheduled_start_ms)
+    if fire_at is None:
         return False
-    offset_ms = ADVANCE_REMINDER_OFFSET_MINUTES[setting.advance_reminder] * 60_000
-    fire_at = scheduled_start_ms - offset_ms
     return fire_at <= now_ms < fire_at + window_ms
 
 
@@ -275,10 +371,8 @@ def is_start_reminder_due(setting: LiveReminderSetting, scheduled_start_ms: int,
     """Whether the start reminder's fire window currently contains now_ms.
 
     Uses the stream's own scheduledStartMs, not any discovery timestamp --
-    section 7/item H of the single-stream override spec requires this
-    explicitly, since discoveredAt (notification_events_store.py) can be
-    recorded well before or independent of a stream's actual scheduled
-    start time.
+    discoveredAt (notification_events_store.py) can be recorded well before
+    or independent of a stream's actual scheduled start time.
     """
     if not setting.notify_at_start:
         return False

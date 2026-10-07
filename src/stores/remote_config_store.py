@@ -77,6 +77,66 @@ def put_remote_config(record: dict[str, Any]) -> None:
         raise RemoteConfigStoreError(f"Failed to write to {REMOTE_CONFIG_TABLE}: {exc}") from exc
 
 
+def put_remote_config_if_absent(record: dict[str, Any]) -> bool:
+    """Create one (clientId, key) record only if nothing is stored under it yet.
+
+    Returns True if this call created it, False if a record already existed
+    (left untouched). The atomic "first write wins" half of a create-or-
+    update pair with update_remote_config_fields: two devices racing to
+    create the same record can't overwrite each other.
+    """
+    table = _resource().Table(REMOTE_CONFIG_TABLE)
+    item = {
+        "clientId": record["clientId"],
+        "configKey": record["key"],
+        "value": _floats_to_decimal(record["value"]),
+        "updatedAt": record["updatedAt"],
+    }
+    try:
+        table.put_item(Item=item, ConditionExpression="attribute_not_exists(clientId)")
+        return True
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise RemoteConfigStoreError(f"Failed to write to {REMOTE_CONFIG_TABLE}: {exc}") from exc
+
+
+def update_remote_config_fields(client_id: str, key: str, fields: dict[str, Any], updated_at: str) -> bool:
+    """Atomically set individual fields of an EXISTING record's map `value`.
+
+    Each entry of `fields` becomes its own `SET #value.#field = :v` clause,
+    so only the named fields change -- every other field of the stored value
+    (and every other record) is left exactly as it is, even if another
+    writer changed one of them since this caller last read the record.
+    Returns False, writing nothing, if no record exists under (client_id,
+    key) yet; the caller then creates it with put_remote_config_if_absent.
+    `fields` must be non-empty and the stored `value` must be a map.
+    """
+    if not fields:
+        raise ValueError("fields must name at least one field to update")
+    table = _resource().Table(REMOTE_CONFIG_TABLE)
+    names = {"#value": "value", "#updatedAt": "updatedAt"}
+    values: dict[str, Any] = {":updatedAt": updated_at}
+    clauses = ["#updatedAt = :updatedAt"]
+    for index, (field, field_value) in enumerate(fields.items()):
+        names[f"#f{index}"] = field
+        values[f":v{index}"] = _floats_to_decimal(field_value)
+        clauses.append(f"#value.#f{index} = :v{index}")
+    try:
+        table.update_item(
+            Key={"clientId": client_id, "configKey": key},
+            UpdateExpression="SET " + ", ".join(clauses),
+            ConditionExpression="attribute_exists(clientId)",
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+        )
+        return True
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise RemoteConfigStoreError(f"Failed to update {REMOTE_CONFIG_TABLE}: {exc}") from exc
+
+
 def get_remote_config(client_id: str, key: str) -> dict[str, Any] | None:
     """Return one stored {clientId, key, value, updatedAt} record, or None if unset."""
     table = _resource().Table(REMOTE_CONFIG_TABLE)
@@ -99,6 +159,27 @@ def list_remote_config(client_id: str) -> list[dict[str, Any]]:
                 KeyConditionExpression=Key("clientId").eq(client_id),
                 ExclusiveStartKey=response["LastEvaluatedKey"],
             )
+            items.extend(response.get("Items", []))
+    except ClientError as exc:
+        raise RemoteConfigStoreError(f"Failed to query {REMOTE_CONFIG_TABLE}: {exc}") from exc
+    return [_item_to_record(item) for item in items]
+
+
+def list_remote_config_by_prefix(client_id: str, key_prefix: str) -> list[dict[str, Any]]:
+    """Return every stored record for one clientId whose key starts with key_prefix.
+
+    A Query on the table's (clientId, configKey) primary key with
+    `begins_with` on the sort key -- cost scales with the matching records
+    only, never the client's other keys or other clients.
+    """
+    table = _resource().Table(REMOTE_CONFIG_TABLE)
+    condition = Key("clientId").eq(client_id) & Key("configKey").begins_with(key_prefix)
+    items: list[dict] = []
+    try:
+        response = table.query(KeyConditionExpression=condition)
+        items.extend(response.get("Items", []))
+        while "LastEvaluatedKey" in response:
+            response = table.query(KeyConditionExpression=condition, ExclusiveStartKey=response["LastEvaluatedKey"])
             items.extend(response.get("Items", []))
     except ClientError as exc:
         raise RemoteConfigStoreError(f"Failed to query {REMOTE_CONFIG_TABLE}: {exc}") from exc

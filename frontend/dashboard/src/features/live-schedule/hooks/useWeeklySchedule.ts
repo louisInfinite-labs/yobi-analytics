@@ -30,7 +30,7 @@ function toScheduledStream(dto: LiveStreamDto): ScheduledStream | null {
     description: "",
     status: dto.status,
     scheduledStartMs,
-    topics: [],
+    topics: dto.topic ? [dto.topic] : [],
   }
 }
 
