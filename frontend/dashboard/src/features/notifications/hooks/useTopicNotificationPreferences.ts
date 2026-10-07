@@ -1,5 +1,6 @@
 import { useCallback } from "react"
 import { createSharedState, useSharedState } from "../../../shared/state/sharedState"
+import { reminderValueToSetting, saveCreatorLiveReminder } from "../api/liveReminderApi"
 import { getAvailableTopics, type TopicCatalogId } from "../model/notificationTopicCatalog"
 import {
   INITIAL_MEMBER_REMINDER,
@@ -205,6 +206,15 @@ export function useTopicNotificationPreferences() {
     (topicId: TopicCatalogId, creatorId: string, value: ReminderTimeValue) => {
       const topic = topicState(topicId)
       setTopicState(topicId, { ...topic, reminderOverrides: { ...topic.reminderOverrides, [creatorId]: value } })
+      // Best-effort write-through to this creator's real backend-persisted
+      // recurring live-reminder setting (src/notifications/live_reminder.py),
+      // so the notification dispatcher -- and Schedule's single-stream
+      // override fallback -- can see it without this browser needing to be
+      // open. This local per-topic store remains the Settings page's own
+      // display/edit state (unchanged); a write failure here is swallowed
+      // rather than surfaced, the same posture NotificationToggle's own
+      // backend sync failures take for a non-critical background sync.
+      void saveCreatorLiveReminder(creatorId, reminderValueToSetting(value)).catch(() => {})
     },
     [topicState, setTopicState],
   )

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { ScheduleGrid } from "../../features/live-schedule/components/ScheduleGrid"
 import { ScheduleToolbar } from "../../features/live-schedule/components/ScheduleToolbar"
 import { StreamDetailModal } from "../../features/live-schedule/components/StreamDetailModal"
+import { StreamNotificationPanel } from "../../features/live-schedule/components/StreamNotificationPanel"
 import { useWeeklySchedule } from "../../features/live-schedule/hooks/useWeeklySchedule"
 import type { ScheduledStream } from "../../features/live-schedule/model/scheduledStream"
 import { VideoPlayerModal } from "../../features/media-player/components/VideoPlayerModal"
@@ -17,6 +18,7 @@ export function LiveSchedulePage() {
   const [locale] = useLocale()
   const { weekStart, days, now } = useWeeklySchedule()
   const [selectedStream, setSelectedStream] = useState<ScheduledStream | null>(null)
+  const [reminderStream, setReminderStream] = useState<ScheduledStream | null>(null)
   const [embed, setEmbed] = useState<{ videoId: string; title: string } | null>(null)
 
   // Scopes the document scrollbar's reference-matched style (schedule.css's
@@ -51,7 +53,10 @@ export function LiveSchedulePage() {
           setSelectedStream(null)
           setEmbed({ videoId: stream.videoId, title: stream.title })
         }}
+        onSetReminder={(stream) => setReminderStream(stream)}
       />
+
+      <StreamNotificationPanel stream={reminderStream} onClose={() => setReminderStream(null)} />
 
       {embed && <VideoPlayerModal videoId={embed.videoId} title={embed.title} variant="player-only" onClose={() => setEmbed(null)} />}
     </div>

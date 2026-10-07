@@ -676,6 +676,155 @@ def test_put_notification_preference_rejects_a_malformed_preference(monkeypatch,
     assert response["statusCode"] == 400
 
 
+# --- PUT /clients/{clientId}/creator-live-reminder/{creatorId} (client-scoped) ---
+
+
+def test_put_creator_live_reminder_persists_a_new_entry_without_an_existing_record(monkeypatch, client_secret):
+    stored = {}
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: stored.update(record))
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/creator-live-reminder/{creatorId}",
+            path={"clientId": "c1", "creatorId": "aizawa_ema"},
+            body=json.dumps({"notifyAtStart": True, "advanceReminder": "30min"}),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert stored["key"] == "creatorLiveReminders"
+    assert stored["value"] == {"aizawa_ema": {"notifyAtStart": True, "advanceReminder": "30min"}}
+
+
+def test_put_creator_live_reminder_merges_with_another_creators_existing_entry(monkeypatch, client_secret):
+    stored = {}
+    monkeypatch.setattr(
+        remote_config_store,
+        "get_remote_config",
+        lambda client_id, key: {"value": {"other_creator": {"notifyAtStart": True, "advanceReminder": "10min"}}},
+    )
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: stored.update(record))
+
+    lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/creator-live-reminder/{creatorId}",
+            path={"clientId": "c1", "creatorId": "aizawa_ema"},
+            body=json.dumps({"notifyAtStart": True, "advanceReminder": "30min"}),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+
+    assert stored["value"] == {
+        "other_creator": {"notifyAtStart": True, "advanceReminder": "10min"},
+        "aizawa_ema": {"notifyAtStart": True, "advanceReminder": "30min"},
+    }
+
+
+def test_put_creator_live_reminder_without_a_client_secret_returns_403(monkeypatch, client_secret):
+    def _boom(record):
+        raise AssertionError("should never persist without a valid client secret")
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/creator-live-reminder/{creatorId}",
+            path={"clientId": "c1", "creatorId": "aizawa_ema"},
+            body=json.dumps({"notifyAtStart": True, "advanceReminder": "30min"}),
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 403
+
+
+def test_put_creator_live_reminder_rejects_a_malformed_setting(monkeypatch, client_secret):
+    def _boom(record):
+        raise AssertionError("should never persist an invalid setting")
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/creator-live-reminder/{creatorId}",
+            path={"clientId": "c1", "creatorId": "aizawa_ema"},
+            body=json.dumps({"notifyAtStart": "not-a-bool"}),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 400
+
+
+# --- PUT /clients/{clientId}/stream-notification-override/{videoId} (client-scoped) ---
+
+
+def test_put_stream_notification_override_persists_it(monkeypatch, client_secret):
+    """An override is notification preference only -- it carries no
+    scheduledStartMs of its own (that always comes from the system-wide
+    streamSchedule snapshot at dispatch time instead, so a reschedule is
+    never stale)."""
+    stored = {}
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: stored.update(record))
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/stream-notification-override/{videoId}",
+            path={"clientId": "c1", "videoId": "v1"},
+            body=json.dumps({"creatorId": "aizawa_ema", "notifyAtStart": True, "advanceReminder": "1hour"}),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert stored["key"] == "streamNotificationOverrides"
+    assert stored["value"] == {"v1": {"creatorId": "aizawa_ema", "notifyAtStart": True, "advanceReminder": "1hour"}}
+
+
+def test_put_stream_notification_override_without_a_client_secret_returns_403(monkeypatch, client_secret):
+    def _boom(record):
+        raise AssertionError("should never persist without a valid client secret")
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/stream-notification-override/{videoId}",
+            path={"clientId": "c1", "videoId": "v1"},
+            body=json.dumps({"creatorId": "aizawa_ema", "notifyAtStart": True, "advanceReminder": "1hour"}),
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 403
+
+
+def test_put_stream_notification_override_rejects_a_missing_creator_id(monkeypatch, client_secret):
+    def _boom(record):
+        raise AssertionError("should never persist an invalid override")
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/stream-notification-override/{videoId}",
+            path={"clientId": "c1", "videoId": "v1"},
+            body=json.dumps({"notifyAtStart": True, "advanceReminder": "1hour"}),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 400
+
+
 # --- GET /admin/heartbeat-stats (admin-protected) ---
 
 

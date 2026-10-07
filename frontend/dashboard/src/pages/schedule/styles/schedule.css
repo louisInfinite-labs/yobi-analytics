@@ -684,3 +684,20 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
 
   cursor: pointer;
 }
+
+.stream-reminder-section__description {
+  margin: 0 0 10px;
+  color: var(--schedule-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.stream-reminder-options {
+  margin-top: 6px;
+}
+
+.stream-reminder-actions {
+  margin-top: 24px;
+  display: flex;
+  justify-content: flex-end;
+}

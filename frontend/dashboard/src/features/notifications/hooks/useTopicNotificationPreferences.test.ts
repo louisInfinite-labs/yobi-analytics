@@ -1,7 +1,13 @@
 import { renderHook, act } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { useTopicNotificationPreferences } from "./useTopicNotificationPreferences"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
+import * as liveReminderApi from "../api/liveReminderApi"
+
+vi.mock("../api/liveReminderApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/liveReminderApi")>()),
+  saveCreatorLiveReminder: vi.fn().mockResolvedValue(undefined),
+}))
 
 // Each mutation gets its OWN act() call (never batched together) — same
 // convention as useFavoriteCreators.test.ts. The hook's setters close over
@@ -99,6 +105,12 @@ describe("useTopicNotificationPreferences", () => {
     act(() => result.current.setLiveEnabled("valo", "aizawa_ema", true))
     expect(result.current.getMemberReminder("valo", "aizawa_ema")).toBe("10min")
     expect(result.current.getEffectiveReminder("valo", "aizawa_ema")).toBe("10min")
+  })
+
+  it("setting a member's own reminder also write-throughs to the creator's real backend recurring setting", () => {
+    const { result } = renderHook(() => useTopicNotificationPreferences())
+    act(() => result.current.setMemberReminder("valo", "aizawa_ema", "30min"))
+    expect(liveReminderApi.saveCreatorLiveReminder).toHaveBeenCalledWith("aizawa_ema", { notifyAtStart: true, advanceReminder: "30min" })
   })
 
   it("turning Live off drops that creator's own stored reminder, not just their Live enablement", () => {

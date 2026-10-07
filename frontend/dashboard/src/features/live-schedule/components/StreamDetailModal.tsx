@@ -4,6 +4,7 @@ import { getScheduleCreatorAvatarVisual } from "../utils/creatorAvatar"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { shouldShowLiveBadge, type ScheduledStream } from "../model/scheduledStream"
 import { t, type Locale } from "../../../shared/i18n/translations"
+import { formatCountdown } from "../../live-status/model/creatorStatusFormat"
 
 const creatorsById = new Map(mockCreators.map((creator) => [creator.channelId, creator]))
 
@@ -13,14 +14,20 @@ interface StreamDetailModalProps {
   now: Date
   onClose: () => void
   onOpenStream: (stream: ScheduledStream) => void
+  onSetReminder: (stream: ScheduledStream) => void
 }
 
+/** "Starts in ..." reuses creatorStatusFormat's shared countdown formatter
+ * (already used by Home/Live Status for this exact kind of display) instead
+ * of this file's own former plain-minutes duplicate. "Started ... ago" has
+ * no shared equivalent to reuse, so that branch's calculation is unchanged. */
 function startedTimeText(stream: ScheduledStream, locale: Locale, nowMs: number): string | null {
   if (stream.status === "ended") return null
-  const minutes = Math.max(0, Math.round(Math.abs(nowMs - stream.scheduledStartMs) / 60_000))
-  return stream.status === "live"
-    ? t(locale, "liveSchedule.startedMinutesAgo", { minutes: String(minutes) })
-    : t(locale, "liveSchedule.startsInMinutes", { minutes: String(minutes) })
+  if (stream.status === "live") {
+    const minutes = Math.max(0, Math.round(Math.abs(nowMs - stream.scheduledStartMs) / 60_000))
+    return t(locale, "liveSchedule.startedMinutesAgo", { minutes: String(minutes) })
+  }
+  return formatCountdown(new Date(stream.scheduledStartMs).toISOString(), new Date(nowMs), locale)
 }
 
 /** 16:9 real YouTube/Holodex thumbnail ratio (spec's own correction over an
@@ -46,7 +53,7 @@ function StreamThumbnail({ stream, locale }: { stream: ScheduledStream; locale: 
   )
 }
 
-export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream }: StreamDetailModalProps) {
+export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream, onSetReminder }: StreamDetailModalProps) {
   if (!stream) return null
   const creator = creatorsById.get(stream.channelId)
   const visual = getScheduleCreatorAvatarVisual(stream.channelId, creator?.channelName ?? stream.channelId)
@@ -76,7 +83,7 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream }
         <h2 className="stream-detail-title">{stream.title}</h2>
 
         <div className="stream-modal-actions">
-          <button type="button" className="reminder-button" disabled>
+          <button type="button" className="reminder-button" onClick={() => onSetReminder(stream)}>
             {t(locale, "liveSchedule.setReminderButton")}
           </button>
           <button type="button" className="open-stream-button" onClick={() => onOpenStream(stream)}>

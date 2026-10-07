@@ -95,7 +95,7 @@ describe("LiveSchedulePage timetable", () => {
     const dialog = screen.getByRole("dialog")
     expect(dialog.querySelector(".creator-detail-name")?.textContent).toBeTruthy()
     expect(dialog.querySelector(".stream-detail-title")?.textContent).toBeTruthy()
-    expect(within(dialog).getByRole("button", { name: "Set Reminder" })).toBeDisabled()
+    expect(within(dialog).getByRole("button", { name: "Set Reminder" })).toBeEnabled()
     expect(within(dialog).getByRole("button", { name: "Open Stream" })).toBeEnabled()
 
     await user.keyboard("{Escape}")
