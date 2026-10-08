@@ -676,6 +676,186 @@ def test_put_notification_preference_rejects_a_malformed_preference(monkeypatch,
     assert response["statusCode"] == 400
 
 
+# --- PUT/DELETE /clients/{clientId}/creator-reminder/{creatorId}/{scope} (client-scoped) ---
+# One remote-config item per setting: nothing is read, merged or rewritten.
+
+
+def _boom(*_a, **_kw):
+    raise AssertionError("must not be called")
+
+
+def _put_creator_reminder(creator_id, scope, body, client_secret, *, with_secret=True):
+    return lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/creator-reminder/{creatorId}/{scope}",
+            path={"clientId": "c1", "creatorId": creator_id, "scope": scope},
+            body=json.dumps(body),
+            headers={"x-client-secret": client_secret} if with_secret else {},
+        ),
+        None,
+    )
+
+
+def _delete_creator_reminder(creator_id, scope, client_secret, *, with_secret=True):
+    return lambda_handler(
+        _event(
+            "DELETE /clients/{clientId}/creator-reminder/{creatorId}/{scope}",
+            path={"clientId": "c1", "creatorId": creator_id, "scope": scope},
+            headers={"x-client-secret": client_secret} if with_secret else {},
+        ),
+        None,
+    )
+
+
+def test_put_creator_reminder_writes_exactly_one_item_for_creator_all(monkeypatch, client_secret):
+    puts = []
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: puts.append(record))
+    for reader in ("get_remote_config", "list_remote_config", "list_remote_config_by_prefix", "delete_remote_config"):
+        monkeypatch.setattr(remote_config_store, reader, _boom)
+
+    response = _put_creator_reminder("aizawa_ema", "all", {"notifyAtStart": True, "advanceReminder": "30min"}, client_secret)
+
+    assert response["statusCode"] == 200
+    assert [(r["clientId"], r["key"], r["value"]) for r in puts] == [
+        ("c1", "creatorReminder#aizawa_ema#all", {"notifyAtStart": True, "advanceReminder": "30min"})
+    ]
+
+
+def test_put_creator_reminder_writes_a_creator_topic_item_under_the_canonical_topic_id(monkeypatch, client_secret):
+    puts = []
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: puts.append(record))
+
+    response = _put_creator_reminder("aizawa_ema", "singing", {"notifyAtStart": True, "advanceReminder": "1hour"}, client_secret)
+
+    assert response["statusCode"] == 200
+    assert [r["key"] for r in puts] == ["creatorReminder#aizawa_ema#singing"]
+
+
+@pytest.mark.parametrize("scope", ["valo", "gta", "other", "ALL"])
+def test_put_creator_reminder_rejects_a_scope_that_is_not_all_or_a_canonical_topic(monkeypatch, client_secret, scope):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = _put_creator_reminder("aizawa_ema", scope, {"notifyAtStart": True, "advanceReminder": None}, client_secret)
+
+    assert response["statusCode"] == 400
+
+
+def test_put_creator_reminder_rejects_a_creator_id_that_would_make_the_key_ambiguous(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = _put_creator_reminder("ema#all", "sf6", {"notifyAtStart": True, "advanceReminder": None}, client_secret)
+
+    assert response["statusCode"] == 400
+
+
+def test_put_creator_reminder_rejects_a_malformed_setting(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    assert _put_creator_reminder("aizawa_ema", "all", {"notifyAtStart": "not-a-bool"}, client_secret)["statusCode"] == 400
+    assert _put_creator_reminder("aizawa_ema", "all", {"notifyAtStart": True, "advanceReminder": "2hours"}, client_secret)[
+        "statusCode"
+    ] == 400
+
+
+def test_put_creator_reminder_without_a_client_secret_returns_403(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = _put_creator_reminder("aizawa_ema", "all", {"notifyAtStart": True, "advanceReminder": None}, client_secret, with_secret=False)
+
+    assert response["statusCode"] == 403
+
+
+def test_delete_creator_reminder_deletes_only_that_one_item(monkeypatch, client_secret):
+    deleted = []
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", lambda client_id, key: deleted.append((client_id, key)))
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+    monkeypatch.setattr(remote_config_store, "list_remote_config_by_prefix", _boom)
+
+    response = _delete_creator_reminder("aizawa_ema", "all", client_secret)
+
+    assert response["statusCode"] == 200
+    assert deleted == [("c1", "creatorReminder#aizawa_ema#all")]
+
+
+def test_delete_creator_reminder_for_a_topic_leaves_creator_all_alone(monkeypatch, client_secret):
+    deleted = []
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", lambda client_id, key: deleted.append(key))
+
+    _delete_creator_reminder("aizawa_ema", "sf6", client_secret)
+
+    assert deleted == ["creatorReminder#aizawa_ema#sf6"]
+
+
+def test_delete_creator_reminder_rejects_a_bad_scope_and_requires_a_client_secret(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", _boom)
+
+    assert _delete_creator_reminder("aizawa_ema", "gta", client_secret)["statusCode"] == 400
+    assert _delete_creator_reminder("aizawa_ema", "all", client_secret, with_secret=False)["statusCode"] == 403
+
+
+# --- PUT /clients/{clientId}/stream-notification-override/{videoId} (client-scoped) ---
+
+
+def test_put_stream_notification_override_writes_exactly_one_item_for_that_stream(monkeypatch, client_secret):
+    """An override is notification preference only -- it carries no
+    scheduledStartMs of its own (that always comes from the system-wide
+    streamSchedule snapshot at dispatch time, so a reschedule is never
+    stale) -- and is its own item, so it can never touch the creator 全部 /
+    topic reminders it outranks or another stream's override."""
+    puts = []
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: puts.append(record))
+    for reader in ("get_remote_config", "list_remote_config", "list_remote_config_by_prefix", "delete_remote_config"):
+        monkeypatch.setattr(remote_config_store, reader, _boom)
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/stream-notification-override/{videoId}",
+            path={"clientId": "c1", "videoId": "v1"},
+            body=json.dumps({"creatorId": "aizawa_ema", "notifyAtStart": True, "advanceReminder": "1hour"}),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert [(r["key"], r["value"]) for r in puts] == [
+        ("streamOverride#v1", {"creatorId": "aizawa_ema", "notifyAtStart": True, "advanceReminder": "1hour"})
+    ]
+
+
+def test_put_stream_notification_override_without_a_client_secret_returns_403(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/stream-notification-override/{videoId}",
+            path={"clientId": "c1", "videoId": "v1"},
+            body=json.dumps({"creatorId": "aizawa_ema", "notifyAtStart": True, "advanceReminder": "1hour"}),
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 403
+
+
+def test_put_stream_notification_override_rejects_a_missing_creator_id_and_an_ambiguous_video_id(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    def _put(video_id, body):
+        return lambda_handler(
+            _event(
+                "PUT /clients/{clientId}/stream-notification-override/{videoId}",
+                path={"clientId": "c1", "videoId": video_id},
+                body=json.dumps(body),
+                headers={"x-client-secret": client_secret},
+            ),
+            None,
+        )
+
+    assert _put("v1", {"notifyAtStart": True, "advanceReminder": "1hour"})["statusCode"] == 400
+    assert _put("a#b", {"creatorId": "aizawa_ema", "notifyAtStart": True, "advanceReminder": None})["statusCode"] == 400
+
+
 # --- GET /admin/heartbeat-stats (admin-protected) ---
 
 

@@ -101,6 +101,28 @@ describe("useWeeklySchedule real stream data", () => {
     expect(todayStreams[0]).toMatchObject({ videoId: "v1", status: "live", channelId: "ch_aizawa_ema" })
   })
 
+  it("carries a stream's canonical backend topic through (so a creator + topic reminder can be resolved), and none when it has none", () => {
+    startAt(2026, 8, 23, 10, 0, 0)
+    const base = {
+      creatorId: CREATOR_ID,
+      channelName: "藍沢エマ",
+      status: "live" as const,
+      scheduledStart: null,
+      actualStart: new Date(2026, 8, 23, 12, 0, 0).toISOString(),
+      thumbnailUrl: "https://img.youtube.com/vi/v1/hqdefault.jpg",
+    }
+    mockStreams([
+      { ...base, videoId: "v_sf6", title: "SF6 ranked", topic: "sf6" },
+      { ...base, videoId: "v_none", title: "Ranked", topic: null },
+      { ...base, videoId: "v_old_api", title: "Ranked" },
+    ])
+
+    const { result } = renderHook(() => useWeeklySchedule())
+
+    const byId = Object.fromEntries(result.current.days[0].slots.flat().map((stream) => [stream.videoId, stream.topics]))
+    expect(byId).toEqual({ v_sf6: ["sf6"], v_none: [], v_old_api: [] })
+  })
+
   it("drops a stream whose creatorId isn't in the canonical registry", () => {
     startAt(2026, 8, 23, 10, 0, 0)
     mockStreams([

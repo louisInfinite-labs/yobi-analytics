@@ -1,14 +1,13 @@
 import { useCallback } from "react"
 import { createSharedState, useSharedState } from "../../../shared/state/sharedState"
-import { getAvailableTopics, type TopicCatalogId } from "../model/notificationTopicCatalog"
+import { deleteCreatorReminder, reminderValueToSetting, saveCreatorReminder } from "../api/liveReminderApi"
+import { ALL_TOPICS_ID, getAvailableTopics, LEGACY_TOPIC_ID_ALIASES, type TopicCatalogId } from "../model/notificationTopicCatalog"
 import {
-  INITIAL_MEMBER_REMINDER,
   INITIAL_TOPIC_NOTIFICATION_TYPE,
-  INITIAL_TOPIC_REMINDER_MODE,
-  MEMBER_CHOICE_MODE,
+  REMINDER_TIME_VALUES,
+  type ReminderSetting,
   type ReminderTimeValue,
   type TopicNotificationType,
-  type TopicReminderMode,
 } from "../model/notificationTopics"
 
 // Bumped to v2 -- a browser that already used the dynamic-topics feature
@@ -20,13 +19,16 @@ import {
 // constant alone silently does nothing for anyone with existing data. A
 // new key forces every browser to start fresh from the new defaults once,
 // consistent with this feature's own "local-only persistence, no
-// migration contract" framing.
+// migration contract" framing. (Topic ids renamed since -- valo ->
+// valorant -- are migrated in place by readState instead, never dropped.)
 const STORAGE_KEY = "yobi.topicNotificationPreferences.v2"
 
 interface TopicPreferenceState {
-  reminderMode: TopicReminderMode
   live: string[]
   newVideo: string[]
+  /** creatorId -> that creator's reminder for this topic. A creator with no
+   * entry has NO reminder ("unset") -- there is no default value. For the
+   * "all" topic this is the creator-level 全部 reminder. */
   reminderOverrides: Record<string, ReminderTimeValue>
   notificationType: TopicNotificationType
 }
@@ -35,7 +37,7 @@ interface TopicPreferenceState {
  * (confirmed with the user: 全部/SF6/VALO/APEX/Minecraft, never reordered or
  * removed) -- everything else is added by the user via "+", appended after
  * these. */
-const INITIAL_SAVED_TOPIC_IDS: readonly TopicCatalogId[] = ["all", "sf6", "valo", "apex", "minecraft"]
+const INITIAL_SAVED_TOPIC_IDS: readonly TopicCatalogId[] = [ALL_TOPICS_ID, "sf6", "valorant", "apex", "minecraft"]
 
 interface TopicPreferencesState {
   /** Every topic currently rendered as a SAVED grid card, in render order.
@@ -45,54 +47,92 @@ interface TopicPreferencesState {
   topicOrder: TopicCatalogId[]
   /** Per-topic preference data -- deliberately NOT required to have an
    * entry for every id in topicOrder. Every getter below falls back to
-   * emptyTopicState() for a missing entry (same fallback shape
-   * getMemberReminder already used before this reshape), so a freshly
-   * saved topic (see NotificationSettings.tsx's addTopic call) gets no
-   * entry at all until the user actually touches something about it (a
-   * reminder mode, a Live switch, ...) -- there's nothing to seed. */
+   * emptyTopicState() for a missing entry, so a freshly saved topic (see
+   * NotificationSettings.tsx's addTopic call) gets no entry at all until the
+   * user actually touches something about it (a Live switch, a reminder,
+   * ...) -- there's nothing to seed. */
   topics: Partial<Record<TopicCatalogId, TopicPreferenceState>>
 }
 
 function emptyTopicState(): TopicPreferenceState {
-  return { reminderMode: INITIAL_TOPIC_REMINDER_MODE, live: [], newVideo: [], reminderOverrides: {}, notificationType: INITIAL_TOPIC_NOTIFICATION_TYPE }
+  return { live: [], newVideo: [], reminderOverrides: {}, notificationType: INITIAL_TOPIC_NOTIFICATION_TYPE }
 }
 
 function isValidNotificationType(value: unknown): value is TopicNotificationType {
   return value === "live" || value === "newVideo" || value === "both"
 }
 
+function isReminderTimeValue(value: unknown): value is ReminderTimeValue {
+  return typeof value === "string" && (REMINDER_TIME_VALUES as readonly string[]).includes(value)
+}
+
 function initialState(): TopicPreferencesState {
   return { topicOrder: [...INITIAL_SAVED_TOPIC_IDS], topics: {} }
+}
+
+function canonicalTopicId(id: string): string {
+  return LEGACY_TOPIC_ID_ALIASES[id] ?? id
+}
+
+type StoredTopicState = Partial<Record<keyof TopicPreferenceState, unknown>>
+
+/** Normalises one stored topic entry; a legacy `reminderMode` field (the removed topic-level
+ * "forced time" mode) is simply not read -- only each creator's own explicit choice is kept. */
+function readTopicState(saved: StoredTopicState): TopicPreferenceState {
+  const reminderOverrides: Record<string, ReminderTimeValue> = {}
+  if (typeof saved.reminderOverrides === "object" && saved.reminderOverrides) {
+    for (const [creatorId, value] of Object.entries(saved.reminderOverrides)) {
+      if (isReminderTimeValue(value)) reminderOverrides[creatorId] = value
+    }
+  }
+  return {
+    live: Array.isArray(saved.live) ? saved.live : [],
+    newVideo: Array.isArray(saved.newVideo) ? saved.newVideo : [],
+    reminderOverrides,
+    notificationType: isValidNotificationType(saved.notificationType) ? saved.notificationType : INITIAL_TOPIC_NOTIFICATION_TYPE,
+  }
+}
+
+/** Combines two stored entries that migrate to the same topic id (an old and a
+ * renamed id both present): nothing either one had enabled or set is lost; where both
+ * set the same creator's reminder, the entry already under the canonical id wins. */
+function mergeTopicStates(legacy: TopicPreferenceState, canonical: TopicPreferenceState): TopicPreferenceState {
+  return {
+    live: [...new Set([...canonical.live, ...legacy.live])],
+    newVideo: [...new Set([...canonical.newVideo, ...legacy.newVideo])],
+    reminderOverrides: { ...legacy.reminderOverrides, ...canonical.reminderOverrides },
+    notificationType: canonical.notificationType,
+  }
 }
 
 function readState(): TopicPreferencesState {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return initialState()
-    const parsed = JSON.parse(raw) as Partial<TopicPreferencesState>
+    const parsed = JSON.parse(raw) as { topicOrder?: unknown; topics?: Record<string, StoredTopicState> }
     // Old (pre-dynamic-topics) localStorage was a flat Record<topicId,
     // TopicPreferenceState> with no topicOrder field at all -- this check
     // is what makes reading that shape harmlessly fall back to the default
     // below instead of being misread, no storage-key version bump needed.
     const availableTopicIds = new Set(getAvailableTopics().map((topic) => topic.id))
     const savedTopicOrder = Array.isArray(parsed.topicOrder)
-      ? parsed.topicOrder.filter((id): id is TopicCatalogId => typeof id === "string" && availableTopicIds.has(id))
+      ? parsed.topicOrder
+          .filter((id): id is string => typeof id === "string")
+          .map(canonicalTopicId)
+          .filter((id) => availableTopicIds.has(id))
       : []
     const topicOrder = [...INITIAL_SAVED_TOPIC_IDS]
     for (const id of savedTopicOrder) {
       if (!topicOrder.includes(id)) topicOrder.push(id)
     }
     const topics: TopicPreferencesState["topics"] = {}
-    for (const id of topicOrder) {
-      const saved = parsed.topics?.[id]
-      if (!saved) continue
-      topics[id] = {
-        reminderMode: saved.reminderMode ?? INITIAL_TOPIC_REMINDER_MODE,
-        live: Array.isArray(saved.live) ? saved.live : [],
-        newVideo: Array.isArray(saved.newVideo) ? saved.newVideo : [],
-        reminderOverrides: typeof saved.reminderOverrides === "object" && saved.reminderOverrides ? saved.reminderOverrides : {},
-        notificationType: isValidNotificationType(saved.notificationType) ? saved.notificationType : INITIAL_TOPIC_NOTIFICATION_TYPE,
-      }
+    for (const [storedId, saved] of Object.entries(parsed.topics ?? {})) {
+      const id = canonicalTopicId(storedId)
+      if (!topicOrder.includes(id) || !saved) continue
+      const next = readTopicState(saved)
+      const existing = topics[id]
+      // `existing` came from the other of the two ids that map to `id`; the entry stored under the canonical id wins ties.
+      topics[id] = existing ? (storedId === id ? mergeTopicStates(existing, next) : mergeTopicStates(next, existing)) : next
     }
     return { topicOrder, topics }
   } catch {
@@ -109,6 +149,16 @@ function serializeState(state: TopicPreferencesState): string {
     if (state.topics[id]) topics[id] = state.topics[id]
   }
   return JSON.stringify({ ...state, topics })
+}
+
+/** Best-effort write-through of ONE creator's reminder for ONE topic to the backend
+ * (src/notifications/live_reminder.py): a single backend item per (creator, topic),
+ * so it can never touch another topic's, another creator's, or the 全部 reminder.
+ * `value === null` (unset) deletes just that item. A failed write is swallowed -- the
+ * same posture NotificationToggle's own background syncs take. */
+function syncReminderToBackend(topicId: TopicCatalogId, creatorId: string, value: ReminderSetting): void {
+  const request = value === null ? deleteCreatorReminder(creatorId, topicId) : saveCreatorReminder(creatorId, topicId, reminderValueToSetting(value))
+  void request.catch(() => {})
 }
 
 // Module-scoped singleton (see lib/sharedState.ts), same reactivity
@@ -157,29 +207,21 @@ export function useTopicNotificationPreferences() {
     topicPreferencesStore.set({ ...current, topics })
   }, [])
 
-  const getReminderMode = useCallback((topicId: TopicCatalogId) => topicState(topicId).reminderMode, [topicState])
-
-  const setReminderMode = useCallback(
-    (topicId: TopicCatalogId, mode: TopicReminderMode) => {
-      setTopicState(topicId, { ...topicState(topicId), reminderMode: mode })
-    },
-    [topicState, setTopicState],
-  )
-
-  const isMemberChoiceMode = useCallback((topicId: TopicCatalogId) => topicState(topicId).reminderMode === MEMBER_CHOICE_MODE, [topicState])
-
   const isLiveEnabled = useCallback((topicId: TopicCatalogId, creatorId: string) => topicState(topicId).live.includes(creatorId), [topicState])
 
+  /** Turning Live OFF for a creator + topic also unsets (deletes) that ONE
+   * creator + topic reminder, locally and on the backend -- with no Live
+   * notification left to remind about, it's orphaned state. Nothing else is
+   * touched: not the creator's 全部 reminder, not other topics, not other
+   * creators. */
   const setLiveEnabled = useCallback(
     (topicId: TopicCatalogId, creatorId: string, enabled: boolean) => {
       const topic = topicState(topicId)
       const live = enabled ? [...topic.live, creatorId] : topic.live.filter((id) => id !== creatorId)
-      // Dropping Live also drops this creator's own stored reminder choice
-      // — with no Live notification left to remind about, it's orphaned
-      // state, not a preference worth keeping around for if Live gets
-      // re-enabled later.
-      const reminderOverrides = enabled ? topic.reminderOverrides : Object.fromEntries(Object.entries(topic.reminderOverrides).filter(([id]) => id !== creatorId))
+      const hadReminder = creatorId in topic.reminderOverrides
+      const reminderOverrides = enabled || !hadReminder ? topic.reminderOverrides : Object.fromEntries(Object.entries(topic.reminderOverrides).filter(([id]) => id !== creatorId))
       setTopicState(topicId, { ...topic, live, reminderOverrides })
+      if (!enabled && hadReminder) syncReminderToBackend(topicId, creatorId, null)
     },
     [topicState, setTopicState],
   )
@@ -195,32 +237,36 @@ export function useTopicNotificationPreferences() {
     [topicState, setTopicState],
   )
 
-  /** A member's OWN reminder choice, regardless of whether it's currently
-   * in effect (see getEffectiveReminder below for that) -- falls back to
-   * INITIAL_MEMBER_REMINDER only for display until they've ever touched
-   * their own control; never written to storage just by reading it. */
-  const getMemberReminder = useCallback((topicId: TopicCatalogId, creatorId: string): ReminderTimeValue => topicState(topicId).reminderOverrides[creatorId] ?? INITIAL_MEMBER_REMINDER, [topicState])
+  /** This creator's own reminder for this topic -- `null` (unset, no reminder)
+   * until they've chosen one. Never defaulted to any value, and reading it never
+   * writes anything. For the "all" topic this is the creator-level 全部 reminder. */
+  const getMemberReminder = useCallback(
+    (topicId: TopicCatalogId, creatorId: string): ReminderSetting => topicState(topicId).reminderOverrides[creatorId] ?? null,
+    [topicState],
+  )
 
+  /** Sets (or, with `null`, unsets) one creator's reminder for one topic -- only that one
+   * (creator, topic) entry changes, here and on the backend. Setting the 全部 reminder
+   * never edits or erases the same creator's topic reminders: they stay stored and are
+   * merely shadowed (see isReminderShadowedByAll) until 全部 is unset. */
   const setMemberReminder = useCallback(
-    (topicId: TopicCatalogId, creatorId: string, value: ReminderTimeValue) => {
+    (topicId: TopicCatalogId, creatorId: string, value: ReminderSetting) => {
       const topic = topicState(topicId)
-      setTopicState(topicId, { ...topic, reminderOverrides: { ...topic.reminderOverrides, [creatorId]: value } })
+      const reminderOverrides = { ...topic.reminderOverrides }
+      if (value === null) delete reminderOverrides[creatorId]
+      else reminderOverrides[creatorId] = value
+      setTopicState(topicId, { ...topic, reminderOverrides })
+      syncReminderToBackend(topicId, creatorId, value)
     },
     [topicState, setTopicState],
   )
 
-  /** The reminder a member ACTUALLY gets notified at: the topic's own
-   * forced time whenever its mode isn't "member_choice" (full stop,
-   * regardless of that member's own stored choice), otherwise that
-   * member's own reminder. Confirmed with the user: this is a MODE SWITCH,
-   * not an inheritance fallback -- a concrete topic mode overrides every
-   * member's own setting rather than merely being their fallback. */
-  const getEffectiveReminder = useCallback(
-    (topicId: TopicCatalogId, creatorId: string): ReminderTimeValue => {
-      const mode = topicState(topicId).reminderMode
-      return mode === MEMBER_CHOICE_MODE ? getMemberReminder(topicId, creatorId) : mode
-    },
-    [topicState, getMemberReminder],
+  /** Whether this creator + topic reminder is currently shadowed (not in effect) because the
+   * same creator has a 全部 reminder set -- the backend's precedence is 全部 over creator + topic.
+   * Only a display fact: the topic reminder itself stays stored untouched. */
+  const isReminderShadowedByAll = useCallback(
+    (topicId: TopicCatalogId, creatorId: string): boolean => topicId !== ALL_TOPICS_ID && getMemberReminder(ALL_TOPICS_ID, creatorId) !== null,
+    [getMemberReminder],
   )
 
   /** Whether the topic's own notificationType currently permits each
@@ -265,29 +311,28 @@ export function useTopicNotificationPreferences() {
     [topicState, setTopicState],
   )
 
-  /** How many creators currently have their OWN explicit reminder override
-   * set for this topic (setLiveEnabled already clears a creator's override
-   * the moment Live is turned off for them, so every remaining key here
-   * belongs to a still-Live-enabled creator) -- drives the Notification
-   * Settings detail panel's per-creator override summary. Read-only: it
-   * derives from reminderOverrides, never a separate stored value. Reports
-   * 0 while the topic's own notificationType excludes Live entirely (a
-   * "新片"-only topic sends no live reminder at all) -- the stored
-   * overrides themselves are left untouched so they're restored if Live is
-   * re-enabled later. */
+  /** How many creators currently have their OWN reminder set for this topic
+   * (setLiveEnabled already clears a creator's reminder the moment Live is
+   * turned off for them, so every remaining key here belongs to a still-Live-
+   * enabled creator) -- drives the Notification Settings detail panel's
+   * per-creator reminder summary. Read-only: it derives from reminderOverrides,
+   * never a separate stored value. Reports 0 while the topic's own
+   * notificationType excludes Live entirely (a "新片"-only topic sends no live
+   * reminder at all) -- the stored reminders themselves are left untouched so
+   * they're restored if Live is re-enabled later. */
   const getOverrideCount = useCallback(
     (topicId: TopicCatalogId) => (isLiveChannelAllowed(topicId) ? Object.keys(topicState(topicId).reminderOverrides).length : 0),
     [topicState, isLiveChannelAllowed],
   )
 
-  /** Restores a topic's own reminder mode and notification type to their
-   * starting values -- deliberately leaves Live/New Video membership and
-   * every member's own reminder override untouched, since those represent
-   * who's enabled, not this topic's own defaults, and clearing them from a
-   * generic "reset" action would be a surprising, hard-to-undo data loss. */
+  /** Restores a topic's own notification type to its starting value --
+   * deliberately leaves Live/New Video membership and every member's own
+   * reminder untouched, since those represent who's enabled and what they
+   * chose, and clearing them from a generic "reset" action would be a
+   * surprising, hard-to-undo data loss. */
   const resetTopicDefaults = useCallback(
     (topicId: TopicCatalogId) => {
-      setTopicState(topicId, { ...topicState(topicId), reminderMode: INITIAL_TOPIC_REMINDER_MODE, notificationType: INITIAL_TOPIC_NOTIFICATION_TYPE })
+      setTopicState(topicId, { ...topicState(topicId), notificationType: INITIAL_TOPIC_NOTIFICATION_TYPE })
     },
     [topicState, setTopicState],
   )
@@ -296,16 +341,13 @@ export function useTopicNotificationPreferences() {
     savedTopicIds: state.topicOrder,
     addTopic,
     discardUnsavedTopic,
-    getReminderMode,
-    setReminderMode,
-    isMemberChoiceMode,
     isLiveEnabled,
     setLiveEnabled,
     isNewVideoEnabled,
     setNewVideoEnabled,
     getMemberReminder,
     setMemberReminder,
-    getEffectiveReminder,
+    isReminderShadowedByAll,
     getEnabledCreatorIds,
     getNotificationType,
     setNotificationType,
