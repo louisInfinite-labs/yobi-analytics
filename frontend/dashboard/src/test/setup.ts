@@ -3,6 +3,7 @@ import { afterEach } from "vitest"
 import "@testing-library/jest-dom/vitest"
 import { resetLiveDockExpandedForTests } from "../features/live-status/hooks/useLiveDockExpanded"
 import { resetHomeSelectedVideoForTests } from "../features/home-room/hooks/useHomeSelectedVideo"
+import { resetStreamNotificationOverrideCacheForTests } from "../features/live-schedule/hooks/streamNotificationOverrideCache"
 import { resetAllSharedStateForTests } from "../shared/state/sharedState"
 import { resetLiveStreamsPollingForTests } from "../shared/api/liveStreamsPollState"
 import { resetAboutContentFetchForTests } from "../pages/about/aboutContentFetchState"
@@ -34,6 +35,10 @@ afterEach(() => {
   // createSharedState-backed value (already covered by
   // resetAllSharedStateForTests above).
   resetLiveStreamsPollingForTests()
+  // useStreamNotificationOverride's cache is backend-fetched, deliberately
+  // not localStorage-backed (the backend is the real source of truth) --
+  // same non-persisted module-level singleton reasoning as the two above.
+  resetStreamNotificationOverrideCacheForTests()
   // aboutContentStore's fetch-once flag is the same kind of non-persisted
   // module-level singleton as the ones above, separate from its own
   // createSharedState-backed value (already covered by

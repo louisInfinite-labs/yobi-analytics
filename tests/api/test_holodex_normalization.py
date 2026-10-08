@@ -109,6 +109,18 @@ def test_malformed_timestamp_degrades_to_none_without_discarding_the_item():
     assert stream.scheduled_start is None
 
 
+@pytest.mark.parametrize("bad_timestamp", [12345, 1.5, True, ["2026-01-01T00:00:00Z"], {"at": "2026-01-01T00:00:00Z"}, "", "   "])
+def test_non_string_or_blank_timestamp_degrades_to_none_so_consumers_only_ever_see_an_aware_string_or_none(bad_timestamp):
+    """The reminder dispatcher parses scheduledStart with datetime.fromisoformat
+    and relies on this: a timestamp is either an offset-aware ISO string or
+    None, never a number/list/other type that would raise TypeError there."""
+    stream = normalize_holodex_stream(_raw_item(start_scheduled=bad_timestamp, start_actual=bad_timestamp))
+
+    assert stream is not None
+    assert stream.scheduled_start is None
+    assert stream.actual_start is None
+
+
 def test_unknown_status_is_skipped_not_guessed_into_live_or_upcoming():
     for status in ("new", "past", "missing", "some-future-holodex-status"):
         assert normalize_holodex_stream(_raw_item(status=status)) is None

@@ -16,6 +16,8 @@ export interface LiveStreamDto {
   scheduledStart: string | null
   actualStart: string | null
   thumbnailUrl: string
+  /** The stream's canonical backend topic id (same machine id GET /topics uses), or null when none matched. */
+  topic?: string | null
 }
 
 interface LiveStreamsResponse {

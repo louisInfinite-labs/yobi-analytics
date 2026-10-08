@@ -109,10 +109,19 @@ resource "aws_scheduler_schedule" "discovery_only" {
 # YobiTrendingCache's real production writer, and analytics/trending_
 # precompute.py (the code they targeted) was deleted in the same pass.
 
+# Single-stream/creator live-reminder spec section 8/10 (prepared, NOT applied):
+# the product's own reminder options include "1min"/"10min" -- the previous
+# rate(15 minutes) could only ever honour those roughly (up to ~14 minutes
+# late). Lowered to rate(1 minute) so notification_dispatcher.py's own
+# _REMINDER_WINDOW (now 1 minute, kept equal to this rate -- see that
+# module's docstring) can actually catch a reminder at its configured
+# offset instead of merely eventually. Cost/frequency tradeoff, deliberately
+# not evaluated further here (out of this change's scope): this is a 15x
+# increase in invocations/Holodex /users/live calls per day.
 resource "aws_scheduler_schedule" "notification_dispatch" {
   name                         = "yobi-analytics-notification-dispatch"
   group_name                   = "default"
-  schedule_expression          = "rate(15 minutes)"
+  schedule_expression          = "rate(1 minute)"
   schedule_expression_timezone = "UTC"
 
   flexible_time_window {

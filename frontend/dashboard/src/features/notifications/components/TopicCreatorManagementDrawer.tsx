@@ -3,6 +3,7 @@ import { Button, ConfigProvider, Drawer, Dropdown, Input, Switch } from "antd"
 import { ChevronDown, Search } from "lucide-react"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
+import { useReminderTopicSupport } from "../hooks/useReminderTopicSupport"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
 import { isFavoriteCreatorId } from "../../favorites/utils/creatorFavoriteBridge"
 import {
@@ -142,17 +143,34 @@ function ColumnHeader({ locale, notificationType }: { locale: Locale; notificati
   )
 }
 
+/** The dropdown key of the "no reminder" option (a real reminder value never equals it). */
+const UNSET_REMINDER_KEY = "__unset__"
+
 /** Live's own reminder-time cell -- only shown once Live is enabled for
  * this creator+topic (New Video has no reminder-time concept at all -- see
- * notificationTopics.ts). Always a concrete, editable value: a member's own
- * reminder is stored independently of the topic's own mode (confirmed with
- * the user), so this control stays interactive even while the topic mode
- * is currently forcing everyone to a different, shared time -- a small
- * hint below it says so, so the value on screen never gets mistaken for
- * what this member is actually being notified at right now (see
- * getEffectiveReminder for the resolution itself). */
-function ReminderCell({ topicId, creator, locale }: { topicId: TopicCatalogId; creator: NotificationCreator; locale: Locale }) {
-  const { isLiveEnabled, isMemberChoiceMode, getMemberReminder, setMemberReminder } = useTopicNotificationPreferences()
+ * notificationTopics.ts). The value is this creator's own reminder for this
+ * topic, or "no reminder" (unset -- never silently defaulted to a time).
+ *
+ * Two states stop it being a plain editable control:
+ * - `reminderSupported` is false: the backend has no canonical topic for this
+ *   category, so it cannot have its own reminder; the control is disabled and
+ *   the drawer says the topic follows the 全部 setting.
+ * - the creator's 全部 reminder is set (and this isn't the 全部 topic): the
+ *   backend applies 全部 over this topic's reminder, so a small hint says this
+ *   value is not in effect -- it stays stored and takes effect again if 全部 is
+ *   unset. */
+function ReminderCell({
+  topicId,
+  creator,
+  locale,
+  reminderSupported,
+}: {
+  topicId: TopicCatalogId
+  creator: NotificationCreator
+  locale: Locale
+  reminderSupported: boolean
+}) {
+  const { isLiveEnabled, getMemberReminder, setMemberReminder, isReminderShadowedByAll } = useTopicNotificationPreferences()
 
   if (!isLiveEnabled(topicId, creator.creatorId)) {
     return (
@@ -162,18 +180,24 @@ function ReminderCell({ topicId, creator, locale }: { topicId: TopicCatalogId; c
     )
   }
 
-  const options = REMINDER_TIME_VALUES.map((value) => ({ value, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) }))
-  const inEffect = isMemberChoiceMode(topicId)
+  const unsetLabel = t(locale, "notificationSettings.reminder.unset")
+  const options = [
+    { value: UNSET_REMINDER_KEY, label: unsetLabel },
+    ...REMINDER_TIME_VALUES.map((value) => ({ value: value as string, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) })),
+  ]
   const memberReminder = getMemberReminder(topicId, creator.creatorId)
-  const memberReminderLabel = options.find((option) => option.value === memberReminder)?.label ?? ""
+  const selectedKey = memberReminder ?? UNSET_REMINDER_KEY
+  const memberReminderLabel = options.find((option) => option.value === selectedKey)?.label ?? unsetLabel
+  const shadowed = reminderSupported && isReminderShadowedByAll(topicId, creator.creatorId)
 
   return (
     <span className="topic-creator-drawer__reminder-cell-content">
       <Dropdown
+        disabled={!reminderSupported}
         menu={{
           items: options.map((option) => ({ key: option.value, label: option.label })),
-          selectedKeys: [memberReminder],
-          onClick: ({ key }) => setMemberReminder(topicId, creator.creatorId, key as ReminderTimeValue),
+          selectedKeys: [selectedKey],
+          onClick: ({ key }) => setMemberReminder(topicId, creator.creatorId, key === UNSET_REMINDER_KEY ? null : (key as ReminderTimeValue)),
         }}
         trigger={["click"]}
       >
@@ -182,6 +206,7 @@ function ReminderCell({ topicId, creator, locale }: { topicId: TopicCatalogId; c
           color="default"
           size="small"
           className="topic-creator-drawer__reminder-trigger"
+          disabled={!reminderSupported}
           icon={<ChevronDown size={14} aria-hidden="true" />}
           iconPlacement="end"
           aria-label={t(locale, "notificationSettings.reminderSelectAriaLabel", { name: creator.displayName })}
@@ -189,12 +214,22 @@ function ReminderCell({ topicId, creator, locale }: { topicId: TopicCatalogId; c
           {memberReminderLabel}
         </Button>
       </Dropdown>
-      {!inEffect && <span className="topic-creator-drawer__reminder-not-in-effect">{t(locale, "notificationSettings.reminderNotInEffectHint")}</span>}
+      {shadowed && <span className="topic-creator-drawer__reminder-not-in-effect">{t(locale, "notificationSettings.reminderNotInEffectHint")}</span>}
     </span>
   )
 }
 
-function CreatorRow({ topicId, creator, notificationType }: { topicId: TopicCatalogId; creator: NotificationCreator; notificationType: TopicNotificationType }) {
+function CreatorRow({
+  topicId,
+  creator,
+  notificationType,
+  reminderSupported,
+}: {
+  topicId: TopicCatalogId
+  creator: NotificationCreator
+  notificationType: TopicNotificationType
+  reminderSupported: boolean
+}) {
   const [locale] = useLocale()
   const { isLiveEnabled, setLiveEnabled, isNewVideoEnabled, setNewVideoEnabled } = useTopicNotificationPreferences()
   const { showLive, showNewVideo, showReminder } = drawerColumnFlags(notificationType)
@@ -227,7 +262,7 @@ function CreatorRow({ topicId, creator, notificationType }: { topicId: TopicCata
       )}
       {showReminder && (
         <span className="topic-creator-drawer__reminder-cell">
-          <ReminderCell topicId={topicId} creator={creator} locale={locale} />
+          <ReminderCell topicId={topicId} creator={creator} locale={locale} reminderSupported={reminderSupported} />
         </span>
       )}
     </div>
@@ -250,6 +285,7 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
   const [locale] = useLocale()
   const { favorites } = useFavoriteCreators()
   const { getNotificationType } = useTopicNotificationPreferences()
+  const { isReminderTopicSupported, isSupportKnown } = useReminderTopicSupport()
   const [searchQuery, setSearchQuery] = useState("")
 
   const handleClose = () => {
@@ -280,6 +316,7 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
   // Falls back to "both" only for the brief render where topicId is null
   // (drawer closing) -- content below is gated on {topicId && ...} anyway.
   const notificationType = topicId ? getNotificationType(topicId) : "both"
+  const reminderSupported = topicId ? isReminderTopicSupported(topicId) : true
   const notificationTypeLabelKey =
     notificationType === "live"
       ? "notificationSettings.liveColumnHeader"
@@ -332,6 +369,11 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
             <p className="topic-creator-drawer__notification-type-context">
               {t(locale, "notificationSettings.managementDrawerNotificationType", { type: t(locale, notificationTypeLabelKey) })}
             </p>
+            {isSupportKnown && !reminderSupported && drawerColumnFlags(notificationType).showReminder && (
+              <p className="topic-creator-drawer__notification-type-context" role="note">
+                {t(locale, "notificationSettings.reminderUnsupportedTopic")}
+              </p>
+            )}
             <Input
               className="topic-creator-drawer__search"
               prefix={<Search size={14} aria-hidden="true" />}
@@ -349,7 +391,7 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
                 <ColumnHeader locale={locale} notificationType={notificationType} />
                 <div className="topic-creator-drawer__list">
                   {filteredFavorites.map((creator) => (
-                    <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} notificationType={notificationType} />
+                    <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} notificationType={notificationType} reminderSupported={reminderSupported} />
                   ))}
                 </div>
               </section>
@@ -368,7 +410,7 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
                         <ColumnHeader locale={locale} notificationType={notificationType} />
                         <div className="topic-creator-drawer__list">
                           {subgroup.creators.map((creator) => (
-                            <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} notificationType={notificationType} />
+                            <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} notificationType={notificationType} reminderSupported={reminderSupported} />
                           ))}
                         </div>
                       </div>
