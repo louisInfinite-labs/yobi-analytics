@@ -77,12 +77,15 @@ export type TranslationKey =
   | "mainNavbar.home"
   | "mainNavbar.settings"
   | "mainNavbar.schedule"
+  | "mainNavbar.about"
   | "settingsSecondaryNavbar.title"
   | "settingsSecondaryNavbar.navAriaLabel"
   | "settingsSecondaryNavbar.myOshiSettings"
   | "settingsSecondaryNavbar.oshiSettings"
   | "settingsSecondaryNavbar.notificationSettings"
   | "settingsSecondaryNavbar.displaySettings"
+  | "aboutSecondaryNavbar.title"
+  | "aboutSecondaryNavbar.navAriaLabel"
   | "myOshiSettings.selectAria"
   | "myOshiSettings.pageTitle"
   | "myOshiSettings.pageDescription"
@@ -265,12 +268,15 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.home": "首頁",
     "mainNavbar.settings": "設定",
     "mainNavbar.schedule": "時間表",
+    "mainNavbar.about": "關於",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
     "settingsSecondaryNavbar.myOshiSettings": "我推設定",
     "settingsSecondaryNavbar.oshiSettings": "收藏名單",
     "settingsSecondaryNavbar.notificationSettings": "推送通知(直播 / 新片)",
     "settingsSecondaryNavbar.displaySettings": "顯示設定",
+    "aboutSecondaryNavbar.title": "關於",
+    "aboutSecondaryNavbar.navAriaLabel": "關於導覽",
     "oshiSettings.searchPlaceholder": "搜尋成員",
     "oshiSettings.noResults": "找不到符合的成員",
     "oshiSettings.addFavoriteAria": "將 {{name}} 加入我推",
@@ -452,11 +458,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.home": "Home",
     "mainNavbar.settings": "Settings",
     "mainNavbar.schedule": "Schedule",
+    "mainNavbar.about": "About",
     "settingsSecondaryNavbar.title": "Settings",
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
     "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
     "settingsSecondaryNavbar.oshiSettings": "Favorites List",
     "settingsSecondaryNavbar.notificationSettings": "Live/Video Notifications",
+    "aboutSecondaryNavbar.title": "About",
+    "aboutSecondaryNavbar.navAriaLabel": "About navigation",
     "settingsSecondaryNavbar.displaySettings": "Display",
     "oshiSettings.searchPlaceholder": "Search creators",
     "oshiSettings.noResults": "No creators found",
@@ -639,10 +648,13 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.home": "ホーム",
     "mainNavbar.settings": "設定",
     "mainNavbar.schedule": "スケジュール",
+    "mainNavbar.about": "概要",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
     "settingsSecondaryNavbar.myOshiSettings": "推し設定",
     "settingsSecondaryNavbar.oshiSettings": "お気に入りリスト",
+    "aboutSecondaryNavbar.title": "概要",
+    "aboutSecondaryNavbar.navAriaLabel": "概要ナビゲーション",
     "settingsSecondaryNavbar.notificationSettings": "通知設定(配信 / 新着動画)",
     "settingsSecondaryNavbar.displaySettings": "表示設定",
     "oshiSettings.searchPlaceholder": "メンバーを検索",

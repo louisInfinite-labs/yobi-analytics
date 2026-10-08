@@ -5,6 +5,7 @@ import { resetLiveDockExpandedForTests } from "../features/live-status/hooks/use
 import { resetHomeSelectedVideoForTests } from "../features/home-room/hooks/useHomeSelectedVideo"
 import { resetAllSharedStateForTests } from "../shared/state/sharedState"
 import { resetLiveStreamsPollingForTests } from "../shared/api/liveStreamsPollState"
+import { resetAboutContentFetchForTests } from "../pages/about/aboutContentFetchState"
 
 // @testing-library/react's own auto-cleanup only self-registers when
 // `afterEach` is a global (vitest's `test.globals: true`); this project
@@ -33,6 +34,11 @@ afterEach(() => {
   // createSharedState-backed value (already covered by
   // resetAllSharedStateForTests above).
   resetLiveStreamsPollingForTests()
+  // aboutContentStore's fetch-once flag is the same kind of non-persisted
+  // module-level singleton as the ones above, separate from its own
+  // createSharedState-backed value (already covered by
+  // resetAllSharedStateForTests above).
+  resetAboutContentFetchForTests()
 })
 
 // jsdom has no matchMedia implementation; components that read

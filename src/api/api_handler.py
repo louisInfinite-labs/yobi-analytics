@@ -51,6 +51,7 @@ import hmac
 import json
 from typing import Any, Callable
 
+from api import about_content_api
 from api import client_credential_api
 from stores import client_credential_store
 from ops import config
@@ -136,6 +137,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return _json_response(404, {"error": str(exc), "code": "HISTORICAL_DATA_UNAVAILABLE"})
     except read_api.RankingNotReadyError as exc:
         return _json_response(503, {"error": str(exc), "code": "RANKING_NOT_READY"})
+    except about_content_api.AboutContentUnavailableError as exc:
+        return _json_response(503, {"error": str(exc), "code": "ABOUT_CONTENT_UNAVAILABLE"})
     except (HolodexAPIError, HolodexNormalizationError, MissingHolodexApiKeyError) as exc:
         # Holodex is a supplementary, best-effort external dependency with
         # no uptime guarantee (Roadmap 3.9/9) -- a request failure, an
@@ -171,6 +174,10 @@ def _handle_get_chart_catalog(event: dict[str, Any]) -> dict[str, Any]:
 
 def _handle_get_topics(event: dict[str, Any]) -> dict[str, Any]:
     return dashboard_catalog_api.get_topics(_merged_params(event))
+
+
+def _handle_get_about_content(event: dict[str, Any]) -> dict[str, Any]:
+    return about_content_api.get_about_content(_merged_params(event))
 
 
 def _handle_get_subscriber_leaderboard(event: dict[str, Any]) -> dict[str, Any]:
@@ -363,6 +370,7 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /videos/{videoId}/growth": _handle_get_video_growth,
     "GET /dashboard/chart-catalog": _handle_get_chart_catalog,
     "GET /topics": _handle_get_topics,
+    "GET /about-content": _handle_get_about_content,
     "GET /subscribers/leaderboard": _handle_get_subscriber_leaderboard,
     "GET /creators/{creatorId}/videos/ranking": _handle_get_video_ranking,
     "GET /creators/{creatorId}/videos/recent": _handle_get_recent_creator_videos,

@@ -1,3 +1,4 @@
+import { AboutPage } from "../pages/about/AboutPage"
 import { AdminPanel } from "../pages/admin/AdminPanel"
 import { DashboardPage } from "../pages/dashboard/DashboardPage"
 import { HomePage } from "../pages/home/HomePage"
@@ -43,6 +44,8 @@ function App() {
             <SettingsPage />
           ) : page === "schedule" ? (
             <LiveSchedulePage />
+          ) : page === "about" ? (
+            <AboutPage />
           ) : (
             <DashboardPage />
           )}
