@@ -143,15 +143,16 @@ def parse_notification_preference(raw: Any) -> NotificationPreference:
 def is_creator_enabled(preference: NotificationPreference, creator_id: str) -> bool:
     """Whether notifications for creator_id are currently enabled for this client.
 
-    A per-creator override always wins over the global `enabled` flag —
-    Roadmap 4.6's own example ("clientId A turns藍沢エマ notification OFF"
-    while presumably staying enabled overall) only makes sense if the
-    override is authoritative, not merely an additional filter on top of
-    a disabled global switch.
+    The global `enabled` flag is the master switch: when it is False nothing is
+    sent, and no per-creator override can turn a creator back on -- otherwise a
+    client showing "notifications OFF" would still receive some creators'
+    notifications. While the master switch is ON, a per-creator override can
+    only refine the default: False disables that one creator (Roadmap 4.6's
+    "turn藍沢エマ OFF" example), True is the same as having no override.
     """
-    if creator_id in preference.creator_overrides:
-        return preference.creator_overrides[creator_id]
-    return preference.enabled
+    if not preference.enabled:
+        return False
+    return preference.creator_overrides.get(creator_id, True)
 
 
 def is_temporarily_muted(preference: NotificationPreference, *, now: datetime) -> bool:
@@ -179,9 +180,10 @@ def is_within_quiet_hours(preference: NotificationPreference, *, now: datetime) 
 def should_notify_now(preference: NotificationPreference, creator_id: str, *, now: datetime) -> bool:
     """Whether a notification for creator_id should fire for this client right now.
 
-    Combines Roadmap 4.6's three suppression rules — creator-level
-    enable/override, an active temporaryMute, and quietHours — any one of
-    which blocks delivery regardless of the others being satisfied.
+    Combines Roadmap 4.6's three suppression rules — the global enabled flag
+    plus creator-level override (see is_creator_enabled), an active
+    temporaryMute, and quietHours — any one of which blocks delivery
+    regardless of the others being satisfied.
     """
     if not is_creator_enabled(preference, creator_id):
         return False

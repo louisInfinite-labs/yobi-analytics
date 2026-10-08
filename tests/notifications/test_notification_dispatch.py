@@ -137,10 +137,28 @@ def test_is_creator_enabled_falls_back_to_the_global_flag_when_no_override_exist
     assert is_creator_enabled(pref_off, "aizawa_ema") is False
 
 
-def test_is_creator_enabled_lets_a_per_creator_override_win_over_the_global_flag():
+def test_is_creator_enabled_lets_a_per_creator_override_disable_one_creator_while_global_is_on():
     pref = parse_notification_preference(_raw_preference(enabled=True, creatorOverride={"aizawa_ema": False}))
     assert is_creator_enabled(pref, "aizawa_ema") is False
     assert is_creator_enabled(pref, "shirakami_fubuki") is True  # no override for this creator
+
+
+@pytest.mark.parametrize(
+    ("global_enabled", "override", "expected"),
+    [
+        (True, None, True),
+        (True, True, True),
+        (True, False, False),
+        (False, None, False),
+        (False, True, False),  # a creator override can never re-enable a client whose global switch is OFF
+        (False, False, False),
+    ],
+)
+def test_is_creator_enabled_global_flag_is_the_master_switch(global_enabled, override, expected):
+    overrides = {} if override is None else {"aizawa_ema": override}
+    pref = parse_notification_preference(_raw_preference(enabled=global_enabled, creatorOverride=overrides))
+
+    assert is_creator_enabled(pref, "aizawa_ema") is expected
 
 
 # --- is_temporarily_muted ---------------------------------------------------
@@ -201,6 +219,29 @@ def test_should_notify_now_is_true_when_nothing_suppresses_it():
 def test_should_notify_now_is_false_when_the_creator_is_overridden_off():
     pref = parse_notification_preference(_raw_preference(notificationTimeZone="UTC", creatorOverride={"aizawa_ema": False}))
     assert should_notify_now(pref, "aizawa_ema", now=datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)) is False
+
+
+def test_should_notify_now_is_false_when_global_is_off_even_if_the_creator_override_is_on():
+    pref = parse_notification_preference(_raw_preference(enabled=False, creatorOverride={"aizawa_ema": True}))
+    assert should_notify_now(pref, "aizawa_ema", now=datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)) is False
+
+
+def test_should_notify_now_is_true_when_global_and_creator_are_both_on():
+    pref = parse_notification_preference(_raw_preference(enabled=True, creatorOverride={"aizawa_ema": True}))
+    assert should_notify_now(pref, "aizawa_ema", now=datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)) is True
+
+
+def test_mute_and_quiet_hours_still_block_when_global_and_creator_are_both_on():
+    now = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)  # 21:00 JST
+    muted = parse_notification_preference(
+        _raw_preference(enabled=True, creatorOverride={"aizawa_ema": True}, temporaryMute="2026-09-03T13:00:00+00:00")
+    )
+    quiet = parse_notification_preference(
+        _raw_preference(enabled=True, creatorOverride={"aizawa_ema": True}, quietHours=["20:00", "22:00"])
+    )
+
+    assert should_notify_now(muted, "aizawa_ema", now=now) is False
+    assert should_notify_now(quiet, "aizawa_ema", now=now) is False
 
 
 def test_should_notify_now_is_false_while_temporarily_muted():
