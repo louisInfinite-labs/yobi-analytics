@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button, ConfigProvider, Segmented, Select } from "antd"
 import { Users } from "lucide-react"
 // Topic-card-only pass (confirmed with the user): the left topic-list's own
@@ -11,7 +11,7 @@ import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
 import { getAllNotificationCreators, type NotificationCreator } from "../model/notificationCreatorGrouping"
 import { getAvailableTopics, getSelectableTopics, type TopicCatalogId } from "../model/notificationTopicCatalog"
-import { MEMBER_CHOICE_MODE, REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, type TopicNotificationType, type TopicReminderMode } from "../model/notificationTopics"
+import type { TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { TopicCreatorManagementDrawer } from "./TopicCreatorManagementDrawer"
 
@@ -24,73 +24,9 @@ const MAX_AVATAR_PREVIEW = 8
 
 type SortMode = "saved" | "alphabetical"
 
-/** Every reminder-mode option the Live reminder time control can show --
- * shared between the normal detail view and the draft's own preview.
- * "各成員為準" listed last, per the user's own confirmed ordering. */
-function reminderModeOptions(locale: Locale) {
-  return [
-    ...REMINDER_TIME_VALUES.map((value) => ({ value, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) })),
-    { value: MEMBER_CHOICE_MODE, label: t(locale, "notificationSettings.topicReminderMode.memberChoice") },
-  ]
-}
-
-/** Fixed width for the topic-card reminder-time slot (TopicListItem) --
- * confirmed with the user: a longer/shorter reminder label (開播時 vs 10
- * 分鐘前 vs the newVideo-only empty case) must never shift the member-count/
- * override badges after it, so the slot itself needs a width that's
- * constant regardless of which of the 6 possible labels is showing. Each
- * value below is the browser-measured widest of those 6 labels in that
- * locale (English runs far longer than zh-TW/ja -- "10 minutes before" is
- * roughly double "各成員為準"), plus a few px of breathing room; a single
- * shared constant would either look oddly padded in CJK or clip in
- * English, so this is intentionally per-locale rather than one number. */
-const REMINDER_TIME_SLOT_WIDTH: Record<Locale, number> = {
-  "zh-TW": 88,
-  en: 148,
-  ja: 124,
-}
-
 function topicLabelFor(locale: Locale, topicId: TopicCatalogId): string {
   const topicDef = getAvailableTopics().find((entry) => entry.id === topicId)
   return topicDef ? t(locale, topicDef.labelKey) : ""
-}
-
-/** The Live reminder time section -- a real, interactive Segmented wired
- * straight to useTopicNotificationPreferences for whatever `topicId` it's
- * given (works safely against a not-yet-saved draft topicId too, same as
- * before this redesign: every getter/setter already reads/writes lazily).
- *
- * A newVideo-only topic never sends a live/stream-start notification, so
- * this control has nothing to configure then -- but it stays visible and
- * disabled rather than disappearing (confirmed with the user, correcting
- * the earlier version of this correction that hid the section entirely):
- * the stored reminder value is untouched by disabling, so it's exactly
- * where the user left it if the topic's type is switched back to Live. */
-function ReminderTimeSection({ topicId, topicLabel, disabled }: { topicId: TopicCatalogId; topicLabel: string; disabled: boolean }) {
-  const [locale] = useLocale()
-  const { getReminderMode, setReminderMode } = useTopicNotificationPreferences()
-  const options = reminderModeOptions(locale)
-  const reminderMode = getReminderMode(topicId)
-
-  return (
-    <section
-      className={`notification-detail-section notification-reminder-section${disabled ? " notification-reminder-section--disabled" : ""}`}
-    >
-      <h3 className="notification-detail-section__title">{t(locale, "notificationSettings.defaultReminderLabel")}</h3>
-      <p className="notification-detail-section__description">
-        {t(locale, disabled ? "notificationSettings.reminderSectionHelpDisabledNewVideo" : "notificationSettings.reminderSectionHelp")}
-      </p>
-      <Segmented
-        name={`notification-reminder-${topicId}`}
-        className="notification-reminder-options shared-filter-segmented"
-        value={reminderMode}
-        options={options}
-        disabled={disabled}
-        onChange={(value) => setReminderMode(topicId, value as TopicReminderMode)}
-        aria-label={`${t(locale, "notificationSettings.defaultReminderLabel")} ${topicLabel}`}
-      />
-    </section>
-  )
 }
 
 /** One combined "which kinds of notification this topic sends" control
@@ -206,19 +142,10 @@ function TopicListItem({
   onSelect: () => void
 }) {
   const [locale] = useLocale()
-  const { getReminderMode, getEnabledCreatorIds, getOverrideCount, getNotificationType } = useTopicNotificationPreferences()
+  const { getEnabledCreatorIds, getOverrideCount } = useTopicNotificationPreferences()
   const topicLabel = topicLabelFor(locale, topicId)
-  const reminderMode = getReminderMode(topicId)
-  const reminderLabel =
-    reminderMode === MEMBER_CHOICE_MODE
-      ? t(locale, "notificationSettings.topicReminderMode.memberChoice")
-      : t(locale, REMINDER_TIME_LABEL_KEYS[reminderMode])
   const memberCount = getEnabledCreatorIds(topicId).size
   const overrideCount = getOverrideCount(topicId)
-  // A newVideo-only topic never sends a live/stream-start notification, so
-  // the reminder-time badge (section 8 of the reminder-semantics
-  // correction) has nothing to report here either.
-  const showReminderBadge = getNotificationType(topicId) !== "newVideo"
 
   return (
     <button
@@ -230,12 +157,6 @@ function TopicListItem({
       <span className="notification-topic-item__body">
         <span className="notification-topic-item__name">{topicLabel}</span>
         <span className="notification-topic-item__meta">
-          <span
-            className="notification-topic-item__time-slot"
-            style={{ "--notification-time-slot-width": `${REMINDER_TIME_SLOT_WIDTH[locale]}px` } as CSSProperties}
-          >
-            {showReminderBadge && <span className="notification-topic-item__time">{reminderLabel}</span>}
-          </span>
           <span className="notification-topic-item__meta-label notification-topic-item__members">
             <UsersThreeIcon size={14} weight="regular" aria-hidden="true" />
             {t(locale, "notificationSettings.selectedCountLabel", { count: String(memberCount) })}
@@ -267,7 +188,6 @@ interface DetailPanelProps {
  * to a different topicId. */
 function DetailPanel({ isDraft, topicId, selectableTopics, onSelectDraftTopic, onManage, onSave, onReset }: DetailPanelProps) {
   const [locale] = useLocale()
-  const { getNotificationType } = useTopicNotificationPreferences()
 
   if (topicId === null) {
     if (isDraft) {
@@ -303,14 +223,6 @@ function DetailPanel({ isDraft, topicId, selectableTopics, onSelectDraftTopic, o
         <p className="notification-detail-header__description">{t(locale, "notificationSettings.detailDescription", { topic: topicLabel })}</p>
       </div>
 
-      {/* Live-only semantics: a newVideo-only topic never sends a live/
-          stream-start notification, so this control has nothing to
-          configure -- but it stays visible and disabled (not hidden, per
-          the user's correction: hiding it made it look like the section
-          had disappeared rather than "temporarily unavailable"), and its
-          stored value is left untouched so switching back to Live/Both
-          restores exactly what was selected before. */}
-      <ReminderTimeSection topicId={topicId} topicLabel={topicLabel} disabled={getNotificationType(topicId) === "newVideo"} />
       <NotificationTypeSection topicId={topicId} topicLabel={topicLabel} />
       <MembersSection topicId={topicId} topicLabel={topicLabel} onManage={onManage} />
 

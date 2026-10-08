@@ -352,9 +352,29 @@ def test_get_live_streams_returns_a_live_stream_for_a_supported_creator(monkeypa
                 "scheduledStart": None,
                 "actualStart": "2026-09-01T10:00:00+00:00",
                 "thumbnailUrl": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                "topic": None,
             }
         ]
     }
+
+
+def test_get_live_streams_includes_the_streams_canonical_topic_or_null(monkeypatch):
+    """The same classifier the notification dispatcher uses, so the Dashboard
+    shows the topic a creator + topic reminder is actually resolved against."""
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    monkeypatch.setattr(
+        read_api,
+        "holodex_get",
+        lambda path, params=None: [
+            _holodex_item(status="live", id="sf6_v", title="SF6 ranked grind"),
+            _holodex_item(status="live", id="other_v", title="Ranked grind"),
+        ],
+    )
+
+    topics = {stream["videoId"]: stream["topic"] for stream in get_live_streams()["streams"]}
+
+    assert topics["sf6_v"] == "sf6"
+    assert topics["other_v"] is None
 
 
 def test_get_live_streams_returns_an_upcoming_stream_for_a_supported_creator(monkeypatch):

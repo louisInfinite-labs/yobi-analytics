@@ -287,54 +287,52 @@ def _handle_put_notification_preference(event: dict[str, Any]) -> dict[str, Any]
     return record
 
 
-def _handle_put_creator_live_reminder(event: dict[str, Any]) -> dict[str, Any]:
-    """Self-service: a client sets its own recurring live-reminder setting for one creator.
+def _handle_put_creator_reminder(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: a client sets one reminder -- creator-level 全部 (scope "all") or one creator + topic.
 
-    Read-modify-write against the single "creatorLiveReminders" record
-    (live_reminder.py) so this creator's entry is updated without
-    clobbering every other creator's own saved entry for this client --
-    unlike notification-preference's PUT, which is an intentional full
-    overwrite of that other, unrelated record.
+    Writes exactly ONE remote-config item (live_reminder.creator_reminder_key):
+    nothing is read, merged or rewritten, so it cannot overwrite the creator's
+    other scopes, other creators, or unrelated preferences, and two devices
+    changing different reminders never clobber each other. Setting 全部 does
+    not touch the topic items it shadows (the resolver does the shadowing).
     """
     params = _merged_params(event)
     client_id = heartbeat_api.parse_client_id(params.get("clientId"))
-    creator_id = remote_config_api.parse_config_key(params.get("creatorId"))
+    key = live_reminder.creator_reminder_key(params.get("creatorId"), params.get("scope"))
     _require_client_secret(event, client_id)
     raw_setting = _json_body(event)
-    live_reminder.parse_creator_live_reminders({creator_id: raw_setting})
-
-    existing = remote_config_store.get_remote_config(client_id, live_reminder.CREATOR_LIVE_REMINDERS_KEY)
-    current = dict(existing["value"]) if existing else {}
-    current[creator_id] = raw_setting
-    record = remote_config_api.write_remote_config(
-        {"clientId": client_id, "key": live_reminder.CREATOR_LIVE_REMINDERS_KEY, "value": current}
-    )
+    live_reminder.parse_live_reminder_setting(raw_setting)
+    record = remote_config_api.write_remote_config({"clientId": client_id, "key": key, "value": raw_setting})
     remote_config_store.put_remote_config(record)
-    return {"clientId": client_id, "key": live_reminder.CREATOR_LIVE_REMINDERS_KEY, "creatorId": creator_id, "value": raw_setting}
+    return {"clientId": client_id, "key": key, "value": raw_setting}
+
+
+def _handle_delete_creator_reminder(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: unset one reminder (creator-level 全部 or one creator + topic) by deleting only its own item."""
+    params = _merged_params(event)
+    client_id = heartbeat_api.parse_client_id(params.get("clientId"))
+    key = live_reminder.creator_reminder_key(params.get("creatorId"), params.get("scope"))
+    _require_client_secret(event, client_id)
+    remote_config_store.delete_remote_config(client_id, key)
+    return {"clientId": client_id, "key": key, "deleted": True}
 
 
 def _handle_put_stream_notification_override(event: dict[str, Any]) -> dict[str, Any]:
-    """Self-service: a client sets its own single-stream notification override.
+    """Self-service: a client sets its own override for one exact stream (from Schedule/Timeline).
 
-    Same read-modify-write reasoning as _handle_put_creator_live_reminder --
-    one videoId's entry is updated without clobbering another stream's saved
-    override for this client.
+    One remote-config item per stream (live_reminder.stream_override_key), written
+    on its own: it never reads or changes the creator 全部 / topic reminders it
+    outranks, nor any other stream's override.
     """
     params = _merged_params(event)
     client_id = heartbeat_api.parse_client_id(params.get("clientId"))
-    video_id = remote_config_api.parse_config_key(params.get("videoId"))
+    key = live_reminder.stream_override_key(params.get("videoId"))
     _require_client_secret(event, client_id)
     raw_override = _json_body(event)
-    live_reminder.parse_stream_notification_overrides({video_id: raw_override})
-
-    existing = remote_config_store.get_remote_config(client_id, live_reminder.STREAM_NOTIFICATION_OVERRIDES_KEY)
-    current = dict(existing["value"]) if existing else {}
-    current[video_id] = raw_override
-    record = remote_config_api.write_remote_config(
-        {"clientId": client_id, "key": live_reminder.STREAM_NOTIFICATION_OVERRIDES_KEY, "value": current}
-    )
+    live_reminder.parse_stream_override(raw_override)
+    record = remote_config_api.write_remote_config({"clientId": client_id, "key": key, "value": raw_override})
     remote_config_store.put_remote_config(record)
-    return {"clientId": client_id, "key": live_reminder.STREAM_NOTIFICATION_OVERRIDES_KEY, "videoId": video_id, "value": raw_override}
+    return {"clientId": client_id, "key": key, "value": raw_override}
 
 
 def _handle_post_client_credential(event: dict[str, Any]) -> dict[str, Any]:
@@ -429,7 +427,8 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "PUT /clients/{clientId}/push-subscription": _handle_put_push_subscription,
     "DELETE /clients/{clientId}/push-subscription": _handle_delete_push_subscription,
     "PUT /clients/{clientId}/notification-preference": _handle_put_notification_preference,
-    "PUT /clients/{clientId}/creator-live-reminder/{creatorId}": _handle_put_creator_live_reminder,
+    "PUT /clients/{clientId}/creator-reminder/{creatorId}/{scope}": _handle_put_creator_reminder,
+    "DELETE /clients/{clientId}/creator-reminder/{creatorId}/{scope}": _handle_delete_creator_reminder,
     "PUT /clients/{clientId}/stream-notification-override/{videoId}": _handle_put_stream_notification_override,
     "GET /admin/heartbeat-stats": _handle_get_admin_heartbeat_stats,
 }

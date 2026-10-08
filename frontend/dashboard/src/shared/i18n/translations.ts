@@ -118,6 +118,8 @@ export type TranslationKey =
   | "notificationSettings.reminderSelectAriaLabel"
   | "notificationSettings.topicReminderMode.memberChoice"
   | "notificationSettings.reminderNotInEffectHint"
+  | "notificationSettings.reminder.unset"
+  | "notificationSettings.reminderUnsupportedTopic"
   | "notificationSettings.notifiedMembersLabel"
   | "notificationSettings.selectedCountLabel"
   | "notificationSettings.namePreviewSeparator"
@@ -195,6 +197,7 @@ export type TranslationKey =
   | "liveSchedule.streamReminderExplanationLine2"
   | "liveSchedule.saveReminderButton"
   | "liveSchedule.saveReminderFailed"
+  | "liveSchedule.streamReminderUnsetHint"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -303,7 +306,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminderColumnHeader": "提醒時間",
     "notificationSettings.reminderSelectAriaLabel": "{{name}} 的提醒時間",
     "notificationSettings.topicReminderMode.memberChoice": "各成員為準",
-    "notificationSettings.reminderNotInEffectHint": "未生效（套用主題時間）",
+    "notificationSettings.reminderNotInEffectHint": "未生效（已被「全部」設定覆蓋）",
+    "notificationSettings.reminder.unset": "不提醒",
+    "notificationSettings.reminderUnsupportedTopic": "此主題暫未支援獨立通知，會跟「全部」設定",
     "notificationSettings.notifiedMembersLabel": "通知成員",
     "notificationSettings.selectedCountLabel": "已選 {{count}} 人",
     "notificationSettings.namePreviewSeparator": "、",
@@ -387,6 +392,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.streamReminderExplanationLine2": "儲存後，這場直播會使用此處的通知設定，取代該創作者原本的直播通知設定。",
     "liveSchedule.saveReminderButton": "儲存",
     "liveSchedule.saveReminderFailed": "無法儲存提醒設定,請稍後再試。",
+    "liveSchedule.streamReminderUnsetHint": "這場直播目前沒有提醒。選擇時間後按儲存，即可只為這一場設定。",
   },
   en: {
     "common.cancel": "Cancel",
@@ -494,7 +500,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminderColumnHeader": "Reminder time",
     "notificationSettings.reminderSelectAriaLabel": "{{name}}'s reminder time",
     "notificationSettings.topicReminderMode.memberChoice": "Member's choice",
-    "notificationSettings.reminderNotInEffectHint": "Not in effect (using topic time)",
+    "notificationSettings.reminderNotInEffectHint": "Not in effect (overridden by the \"All\" setting)",
+    "notificationSettings.reminder.unset": "No reminder",
+    "notificationSettings.reminderUnsupportedTopic": "This topic doesn't support its own notification yet; it follows the \"All\" setting.",
     "notificationSettings.notifiedMembersLabel": "Notified members",
     "notificationSettings.selectedCountLabel": "{{count}} selected",
     "notificationSettings.namePreviewSeparator": ", ",
@@ -578,6 +586,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.streamReminderExplanationLine2": "Once saved, this livestream will use the notification setting here, replacing the creator's usual live notification setting for this stream only.",
     "liveSchedule.saveReminderButton": "Save",
     "liveSchedule.saveReminderFailed": "Couldn't save this reminder. Please try again.",
+    "liveSchedule.streamReminderUnsetHint": "This livestream has no reminder right now. Pick a time and save to set one for this stream only.",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -685,7 +694,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminderColumnHeader": "リマインド時間",
     "notificationSettings.reminderSelectAriaLabel": "{{name}} のリマインド時間",
     "notificationSettings.topicReminderMode.memberChoice": "各メンバーの設定",
-    "notificationSettings.reminderNotInEffectHint": "現在は無効（トピックの時間を使用中）",
+    "notificationSettings.reminderNotInEffectHint": "現在は無効（「全部」の設定が優先）",
+    "notificationSettings.reminder.unset": "通知なし",
+    "notificationSettings.reminderUnsupportedTopic": "このトピックは個別の通知に未対応です。「全部」の設定に従います",
     "notificationSettings.notifiedMembersLabel": "通知メンバー",
     "notificationSettings.selectedCountLabel": "{{count}} 人選択中",
     "notificationSettings.namePreviewSeparator": "、",
@@ -769,6 +780,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.streamReminderExplanationLine2": "保存すると、この配信はここでの通知設定が優先され、クリエイター本来の配信通知設定の代わりに使用されます。",
     "liveSchedule.saveReminderButton": "保存",
     "liveSchedule.saveReminderFailed": "リマインダーを保存できませんでした。もう一度お試しください。",
+    "liveSchedule.streamReminderUnsetHint": "この配信には現在リマインダーがありません。時間を選んで保存すると、この配信だけに設定できます。",
   },
 }
 

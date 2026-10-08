@@ -105,6 +105,27 @@ def list_remote_config(client_id: str) -> list[dict[str, Any]]:
     return [_item_to_record(item) for item in items]
 
 
+def list_remote_config_by_prefix(client_id: str, key_prefix: str) -> list[dict[str, Any]]:
+    """Return every stored record for one clientId whose key starts with key_prefix.
+
+    A Query on the table's (clientId, configKey) primary key with
+    `begins_with` on the sort key -- cost scales with the matching records
+    only, never the client's other keys or other clients.
+    """
+    table = _resource().Table(REMOTE_CONFIG_TABLE)
+    condition = Key("clientId").eq(client_id) & Key("configKey").begins_with(key_prefix)
+    items: list[dict] = []
+    try:
+        response = table.query(KeyConditionExpression=condition)
+        items.extend(response.get("Items", []))
+        while "LastEvaluatedKey" in response:
+            response = table.query(KeyConditionExpression=condition, ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+    except ClientError as exc:
+        raise RemoteConfigStoreError(f"Failed to query {REMOTE_CONFIG_TABLE}: {exc}") from exc
+    return [_item_to_record(item) for item in items]
+
+
 def delete_remote_config(client_id: str, key: str) -> None:
     """Remove one stored (clientId, key) record, if it exists.
 

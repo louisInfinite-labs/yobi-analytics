@@ -1,30 +1,24 @@
 import type { TranslationKey } from "../../../shared/i18n/translations"
 
-/** Reminder-mode machinery only -- topic IDENTITY (which topics exist, and
- * their labels) now lives in lib/notificationTopicCatalog.ts instead: this
- * used to also hold a closed NotificationTopicId enum/NOTIFICATION_TOPICS
- * array, but topics are now a dynamic, user-added list (confirmed with the
- * user), so nothing here can assume a fixed topic set any more. Everything
- * below is genuinely topic-agnostic and unaffected by that change.
+/** Reminder-time values a creator can be notified at -- confirmed directly
+ * with the user: 開播時/1 分鐘前/10 分鐘前/30 分鐘前/1 小時前.
  *
- * Reminder-time values a creator can be notified at -- confirmed directly
- * with the user: 開播時/1 分鐘前/10 分鐘前/30 分鐘前/1 小時前 (the Notification
- * Settings master-detail redesign added "1 分鐘前" to this feature's
- * original 4-value set).
+ * Semantics (confirmed with the user): "at_start" means notify when the
+ * stream starts; every other value means an ADDITIONAL pre-live reminder at
+ * that offset, on top of the start notification -- e.g. "10min" is "notify 10
+ * minutes before, and again at start". A reminder that is not set at all
+ * ("unset", represented as `null` -- see ReminderSetting) means NO reminder:
+ * it is a different state from "at_start" and is never defaulted to any value.
  *
- * Semantics (confirmed with the user): the stream-start notification is a
- * guaranteed baseline, not one of six mutually-exclusive delivery times.
- * "at_start" means no extra reminder beyond that baseline; every other
- * value means an ADDITIONAL pre-live reminder at that offset, on top of
- * the still-guaranteed stream-start notification -- e.g. "10min" is
- * "notify 10 minutes before, and again at start", not "notify only 10
- * minutes before". This was already the intended meaning of "at_start" as
- * the initial/no-op value; only the Settings page's own helper text under
- * ReminderTimeSection needed correcting to state it, since nothing in
- * this codebase actually computes/sends notification delivery events for
- * this to have silently diverged from -- reminderMode only ever drives
- * what this Settings page itself displays. */
+ * Which setting actually applies to a stream is decided by the backend, in
+ * this precedence (highest first): Mute / Quiet Hours > a reminder set for
+ * that one stream from Schedule > the creator's 全部 reminder > the creator +
+ * the stream's topic reminder > unset. Setting 全部 never erases a topic
+ * reminder -- it only shadows it until 全部 is unset again. */
 export type ReminderTimeValue = "at_start" | "1min" | "10min" | "30min" | "1hour"
+
+/** A reminder choice, where `null` is "unset" (no reminder). */
+export type ReminderSetting = ReminderTimeValue | null
 
 export const REMINDER_TIME_VALUES: readonly ReminderTimeValue[] = ["at_start", "1min", "10min", "30min", "1hour"]
 
@@ -35,38 +29,6 @@ export const REMINDER_TIME_LABEL_KEYS: Record<ReminderTimeValue, TranslationKey>
   "30min": "notificationSettings.reminder.30min",
   "1hour": "notificationSettings.reminder.1hour",
 }
-
-/** Sentinel topic-level mode -- confirmed with the user, this REPLACES the
- * original written spec's "default + optional per-creator override, member
- * override always wins" inheritance model with a MODE SWITCH instead:
- * - Topic's own reminder mode is a concrete ReminderTimeValue: that time is
- *   forced onto every Live-enabled member of the topic, full stop --
- *   overriding whatever that member's own reminder is individually set to.
- * - Topic's own reminder mode is "member_choice": each member's own
- *   individually-set reminder (see useTopicNotificationPreferences'
- *   getMemberReminder) is what actually applies.
- * A member's own individual setting is NEVER cleared by the topic being in
- * a concrete-time mode -- it just sits dormant (not currently in effect)
- * until the topic switches back to "member_choice". This sentinel is
- * deliberately NOT a selectable value in a member's OWN reminder control
- * (REMINDER_TIME_VALUES above) -- "member_choice" only exists as a
- * topic-level mode, a member can't set their own reminder to "go by each
- * member's own setting". */
-export const MEMBER_CHOICE_MODE = "member_choice"
-export type TopicReminderMode = typeof MEMBER_CHOICE_MODE | ReminderTimeValue
-
-/** Every topic's own starting reminder mode, before any user change -- "10
- * 分鐘前", this spec's own worked example value for VALORANT (section 3),
- * applied uniformly to every topic since no other topic has its own
- * example to draw a different starting value from. */
-export const INITIAL_TOPIC_REMINDER_MODE: TopicReminderMode = "10min"
-
-/** A member's own reminder, before they've ever touched their own control
- * (useTopicNotificationPreferences' getMemberReminder falls back to this
- * when nothing is stored yet) -- same "10 分鐘前" starting value as
- * INITIAL_TOPIC_REMINDER_MODE above, for consistency, since no other value
- * was specified for this case. */
-export const INITIAL_MEMBER_REMINDER: ReminderTimeValue = "10min"
 
 /** A topic-level preference for which kind(s) of notification it sends --
  * "both" is the starting value for every topic (matches this feature's own

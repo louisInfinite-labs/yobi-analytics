@@ -9,6 +9,7 @@ from stores.remote_config_store import (
     get_remote_config,
     list_by_key,
     list_remote_config,
+    list_remote_config_by_prefix,
     put_remote_config,
 )
 
@@ -172,3 +173,23 @@ def test_put_raises_remote_config_store_error_when_table_is_missing(aws_credenti
     with mock_aws():
         with pytest.raises(RemoteConfigStoreError):
             put_remote_config({"clientId": "c1", "key": "enabled", "value": True, "updatedAt": "2026-09-03T00:00:00+00:00"})
+
+
+def _record(client_id, key, value, updated_at="2026-09-03T00:00:00+00:00"):
+    return {"clientId": client_id, "key": key, "value": value, "updatedAt": updated_at}
+
+
+def test_list_by_prefix_returns_only_that_clients_matching_keys(remote_config_table):
+    put_remote_config(_record("c1", "creatorReminder#ema#all", {"advanceReminder": "30min"}))
+    put_remote_config(_record("c1", "creatorReminder#ema#sf6", {"advanceReminder": "10min"}))
+    put_remote_config(_record("c1", "streamOverride#v1", {"advanceReminder": "1hour"}))
+    put_remote_config(_record("c1", "notificationPreference", {"enabled": True}))
+    put_remote_config(_record("c2", "creatorReminder#ema#all", {"advanceReminder": "1min"}))
+
+    records = list_remote_config_by_prefix("c1", "creatorReminder#")
+
+    assert sorted(r["key"] for r in records) == ["creatorReminder#ema#all", "creatorReminder#ema#sf6"]
+
+
+def test_list_by_prefix_returns_empty_list_when_nothing_matches(remote_config_table):
+    assert list_remote_config_by_prefix("c1", "creatorReminder#") == []
