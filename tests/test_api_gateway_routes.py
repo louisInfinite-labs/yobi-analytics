@@ -39,6 +39,10 @@ def test_topics_route_is_wired():
     assert "GET /topics" in _terraform_routes()
 
 
+def test_about_content_route_is_wired():
+    assert "GET /about-content" in _terraform_routes()
+
+
 # --- R7/R9 retired routes: kept at the gateway, answered with 410 by the Lambda -------------------------
 
 

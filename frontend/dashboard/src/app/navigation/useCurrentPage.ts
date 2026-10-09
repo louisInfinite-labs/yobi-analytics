@@ -1,12 +1,13 @@
 import { useCallback, useSyncExternalStore } from "react"
 
-export type Page = "home" | "dashboard" | "settings" | "schedule"
+export type Page = "home" | "dashboard" | "settings" | "schedule" | "about"
 
 const PAGE_PATHS: Record<Page, string> = {
   home: "/",
   dashboard: "/dashboard",
   settings: "/setting",
   schedule: "/schedule",
+  about: "/about",
 }
 
 function readPage(): Page {
@@ -17,6 +18,8 @@ function readPage(): Page {
       return "settings"
     case "/schedule":
       return "schedule"
+    case "/about":
+      return "about"
     default:
       return "home"
   }

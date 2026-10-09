@@ -1,0 +1,83 @@
+/* ============ About / Information pages ============
+   Shell, secondary nav, and page header all come from settings.css's
+   .settings-page / .settings-page__content / .settings-secondary-navbar*
+   (reused directly, not duplicated -- see AboutPage.tsx/
+   AboutSecondaryNavbar.tsx). The only genuinely new rules below are the
+   long-form article typography (h1-h3/p/ul/ol/a) that settings.css has no
+   equivalent for, since every existing Settings page is form rows, not
+   paragraphs -- this is the fixed CSS the safe Markdown renderer
+   (markdown.tsx) maps standard elements onto; it carries no backend-chosen
+   style tokens of its own. Colors/spacing here are the same values
+   settings.css already uses for this exact dark content area (#f3eff5
+   heading / #aaa3b2 body, --space-* tokens), not new ones. */
+
+.about-content {
+  max-width: 720px;
+}
+
+.about-content h1 {
+  margin: 0 0 var(--space-3);
+  color: #f3eff5;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.about-content h2 {
+  margin: var(--space-6) 0 var(--space-3);
+  color: #f3eff5;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.about-content h2:first-of-type {
+  margin-top: 0;
+}
+
+.about-content h3 {
+  margin: var(--space-5) 0 var(--space-2);
+  color: #f3eff5;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.about-content p {
+  margin: 0 0 var(--space-3);
+  color: #aaa3b2;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.about-content ul,
+.about-content ol {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+}
+
+.about-content li {
+  margin-bottom: var(--space-2);
+  color: #aaa3b2;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.about-content strong {
+  color: #f3eff5;
+  font-weight: 700;
+}
+
+.about-content a {
+  color: var(--theme-primary);
+}
+
+.about-content a:hover {
+  opacity: 0.85;
+}
+
+.about-content__divider {
+  margin: var(--space-5) 0;
+  border: none;
+  border-top: 1px solid rgba(243, 239, 245, 0.12);
+}

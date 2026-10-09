@@ -1,4 +1,4 @@
-import { CalendarClock, Gauge, Home, Settings } from "lucide-react"
+import { CalendarClock, Gauge, Home, Info, Settings } from "lucide-react"
 import type { ComponentType } from "react"
 import brandIcon from "../../assets/brand-icon.png"
 import type { Page } from "./useCurrentPage"
@@ -11,6 +11,7 @@ const NAV_ITEMS: { page: Page; labelKey: TranslationKey; Icon: ComponentType<{ s
   { page: "schedule", labelKey: "mainNavbar.schedule", Icon: CalendarClock },
   { page: "dashboard", labelKey: "mainNavbar.dashboard", Icon: Gauge },
   { page: "settings", labelKey: "mainNavbar.settings", Icon: Settings },
+  { page: "about", labelKey: "mainNavbar.about", Icon: Info },
 ]
 
 /** App-wide fixed nav (Mantine's "Main Navbar" naming -- see

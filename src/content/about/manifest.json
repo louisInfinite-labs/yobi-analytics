@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "contentVersion": "2026.10.2",
+  "locales": {
+    "zh-TW": {
+      "pages": [
+        {
+          "id": "about",
+          "title": "關於 OshiYobi",
+          "file": "zh-TW/about.md"
+        },
+        {
+          "id": "dataSources",
+          "title": "資料來源",
+          "file": "zh-TW/data-sources.md"
+        },
+        {
+          "id": "privacy",
+          "title": "隱私權",
+          "file": "zh-TW/privacy.md"
+        },
+        {
+          "id": "terms",
+          "title": "使用條款",
+          "file": "zh-TW/terms.md"
+        },
+        {
+          "id": "acknowledgements",
+          "title": "致謝",
+          "file": "zh-TW/acknowledgements.md"
+        }
+      ]
+    },
+    "en": {
+      "pages": [
+        {
+          "id": "about",
+          "title": "About OshiYobi",
+          "file": "en/about.md"
+        },
+        {
+          "id": "dataSources",
+          "title": "Data Sources",
+          "file": "en/data-sources.md"
+        },
+        {
+          "id": "privacy",
+          "title": "Privacy",
+          "file": "en/privacy.md"
+        },
+        {
+          "id": "terms",
+          "title": "Terms of Use",
+          "file": "en/terms.md"
+        },
+        {
+          "id": "acknowledgements",
+          "title": "Acknowledgements",
+          "file": "en/acknowledgements.md"
+        }
+      ]
+    },
+    "ja": {
+      "pages": [
+        {
+          "id": "about",
+          "title": "OshiYobi について",
+          "file": "ja/about.md"
+        },
+        {
+          "id": "dataSources",
+          "title": "データソース",
+          "file": "ja/data-sources.md"
+        },
+        {
+          "id": "privacy",
+          "title": "プライバシー",
+          "file": "ja/privacy.md"
+        },
+        {
+          "id": "terms",
+          "title": "利用規約",
+          "file": "ja/terms.md"
+        },
+        {
+          "id": "acknowledgements",
+          "title": "謝辞",
+          "file": "ja/acknowledgements.md"
+        }
+      ]
+    }
+  }
+}

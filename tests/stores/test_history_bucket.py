@@ -137,14 +137,18 @@ def test_write_side_from_environment_still_has_no_default(monkeypatch, store_cla
 
 
 def test_write_side_modules_never_import_the_fallback():
-    """Only the two read-side stores may import the resolver: writers/backfills must keep requiring an explicit bucket."""
+    """Only the read-side stores may import the resolver: writers/backfills must keep requiring an explicit bucket."""
     importers = sorted(
         path.relative_to(SRC).as_posix()
         for path in SRC.rglob("*.py")
         if "history_bucket import" in path.read_text(encoding="utf-8") and path.name != "history_bucket.py"
     )
 
-    assert importers == ["stores/subscriber_ranking_store.py", "stores/video_ranking_store.py"]
+    assert importers == [
+        "stores/about_content_store.py",
+        "stores/subscriber_ranking_store.py",
+        "stores/video_ranking_store.py",
+    ]
 
 
 def test_the_fallback_literal_has_exactly_one_home_in_src():

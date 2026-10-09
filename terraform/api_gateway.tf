@@ -33,6 +33,7 @@ locals {
     "POST /clients/{clientId}/credential",
     "POST /heartbeat",
     "GET /topics",
+    "GET /about-content",
     "GET /subscribers/leaderboard",
     "GET /creators/{creatorId}/videos/ranking",
     "GET /creators/{creatorId}/videos/recent",

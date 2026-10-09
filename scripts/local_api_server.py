@@ -10,10 +10,13 @@ every other route answers 404.
 routes used by the V1 production-smoke API-contract spec
 (`e2e/smoke/api-contract.spec.ts`, via its own `playwright.smoke.config.ts`):
 `GET /live-streams`, `GET /recent-streams`, `GET /topics`,
-`GET /videos/{videoId}/growth` -- each independently confirmed to only ever
-touch the local JSON storage backend or (for the two Holodex-sourced routes)
-to fail closed with a clean 503 `HOLODEX_UNAVAILABLE` when no Holodex key is
-configured, rather than making a real outbound call.
+`GET /videos/{videoId}/growth`, `GET /about-content` -- each independently
+confirmed to only ever touch the local JSON storage backend, read a
+module-level static constant (no I/O at all), fail closed with a clean 503
+`HOLODEX_UNAVAILABLE` when no Holodex key is configured rather than making
+a real outbound call (the two Holodex-sourced routes), or (GET
+/about-content) read from the committed local content directory instead of
+real S3 -- see the YOBI_ABOUT_CONTENT_DIR note in `main()` below.
 
 AWS Secrets Manager guarantee for the two Holodex-sourced routes:
 `get_holodex_api_key()` (`src/ops/config.py`, production code, left entirely
@@ -74,11 +77,15 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # See the module docstring for why this list stops here (S3-backed routes
 # are deliberately excluded -- they default to the real production bucket).
+# GET /about-content IS S3-backed in production, but main() below always
+# points it at the local content directory instead (YOBI_ABOUT_CONTENT_DIR),
+# so serving it here never risks a real S3 call.
 SMOKE_SAFE_ROUTE_KEYS = frozenset({
     "GET /live-streams",
     "GET /recent-streams",
     "GET /topics",
     "GET /videos/{videoId}/growth",
+    "GET /about-content",
 })
 
 
@@ -163,6 +170,13 @@ def main() -> None:
     # that structurally true regardless of what's ambient in the calling
     # shell. See this module's own docstring for the full reasoning.
     os.environ.pop("HOLODEX_SECRET_NAME", None)
+    # about_content_api.get_about_content() is S3-backed in production
+    # (yobi-analytics-history bucket, "about/" prefix). Pointing it at the
+    # committed local copy instead -- unconditionally, not just under
+    # --enable-smoke-routes -- means this script can never make a real S3
+    # call for this route even if the allowlist above were ever widened by
+    # mistake. Same defensive posture as the HOLODEX_SECRET_NAME pop above.
+    os.environ["YOBI_ABOUT_CONTENT_DIR"] = str(ROOT / "src" / "content" / "about")
     sys.path.insert(0, str(ROOT / "src"))
 
     from api import api_handler
