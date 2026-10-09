@@ -86,14 +86,16 @@ def get_about_content(_query: dict[str, Any] | None = None) -> dict[str, Any]:
                 markdown = store.read_page_markdown(page["file"])
                 pages.append({"id": page["id"], "title": page["title"], "markdown": markdown})
             locales[locale] = {"pages": pages}
-        return {
+        payload = {
             "schemaVersion": manifest["schemaVersion"],
             "contentVersion": manifest["contentVersion"],
             "locales": locales,
         }
+        validate_about_content(payload)
+        return payload
     except AboutContentStoreError as exc:
         raise AboutContentUnavailableError("About content is temporarily unavailable") from exc
-    except (KeyError, TypeError) as exc:
+    except (KeyError, TypeError, AttributeError, AboutContentValidationError) as exc:
         raise AboutContentUnavailableError("About content is malformed") from exc
 
 
@@ -116,7 +118,7 @@ def validate_about_content(payload: Any) -> None:
     a new locale is an ordinary content change, not a schema change."""
     if not isinstance(payload, dict):
         raise AboutContentValidationError("payload must be an object")
-    if not isinstance(payload.get("schemaVersion"), int) or payload["schemaVersion"] < 1:
+    if type(payload.get("schemaVersion")) is not int or payload["schemaVersion"] < 1:  # exact int: bool is not a version
         raise AboutContentValidationError("schemaVersion must be a positive integer")
     if not isinstance(payload.get("contentVersion"), str) or not payload["contentVersion"]:
         raise AboutContentValidationError("contentVersion must be a non-empty string")

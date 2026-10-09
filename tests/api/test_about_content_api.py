@@ -87,6 +87,20 @@ class TestS3BackedRead:
             with pytest.raises(AboutContentUnavailableError):
                 get_about_content()
 
+    def test_a_structurally_malformed_stored_payload_raises_unavailable_not_a_200(self, aws_credentials, monkeypatch):
+        """A page whose stored Markdown is empty (or any other envelope defect)
+        must follow the route's 503 contract instead of being served."""
+        monkeypatch.setenv("YOBI_HISTORY_BUCKET", BUCKET)
+        monkeypatch.delenv("YOBI_ABOUT_CONTENT_DIR", raising=False)
+        with mock_aws():
+            client = boto3.client("s3", region_name=REGION)
+            client.create_bucket(Bucket=BUCKET, CreateBucketConfiguration={"LocationConstraint": REGION})
+            manifest = _manifest({"en": [{"id": "about", "title": "About", "file": "en/about.md"}]})
+            client.put_object(Bucket=BUCKET, Key=S3AboutContentStore.MANIFEST_KEY, Body=json.dumps(manifest).encode("utf-8"))
+            client.put_object(Bucket=BUCKET, Key="about/en/about.md", Body=b"")
+            with pytest.raises(AboutContentUnavailableError):
+                get_about_content()
+
     def test_missing_page_file_raises_unavailable(self, aws_credentials, monkeypatch):
         monkeypatch.setenv("YOBI_HISTORY_BUCKET", BUCKET)
         monkeypatch.delenv("YOBI_ABOUT_CONTENT_DIR", raising=False)
@@ -174,6 +188,7 @@ class TestValidateAboutContent:
             lambda p: p.pop("schemaVersion"),
             lambda p: p.__setitem__("schemaVersion", "1"),
             lambda p: p.__setitem__("schemaVersion", 0),
+            lambda p: p.__setitem__("schemaVersion", True),
             lambda p: p.__setitem__("contentVersion", ""),
             lambda p: p.pop("contentVersion"),
             lambda p: p.__setitem__("locales", {}),

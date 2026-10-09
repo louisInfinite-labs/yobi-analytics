@@ -28,6 +28,11 @@ describe("validateAboutContent", () => {
     expect(validateAboutContent(minimalPayload({ schemaVersion: undefined }))).toBeNull()
   })
 
+  it("rejects any schemaVersion other than the one version this build can render", () => {
+    expect(validateAboutContent(minimalPayload({ schemaVersion: 2 }))).toBeNull()
+    expect(validateAboutContent(minimalPayload({ schemaVersion: 0 }))).toBeNull()
+  })
+
   it("rejects an empty contentVersion", () => {
     expect(validateAboutContent(minimalPayload({ contentVersion: "" }))).toBeNull()
   })

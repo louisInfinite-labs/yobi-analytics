@@ -31,6 +31,11 @@ function sanitizePage(raw: unknown): AboutPage | null {
   return { id: raw.id, title: raw.title, markdown: raw.markdown }
 }
 
+/** The only /about-content envelope version this build knows how to render.
+ * A response claiming any other version is treated as a failed fetch so it
+ * can never enter the last-known-good cache. */
+const SUPPORTED_SCHEMA_VERSION = 1
+
 /** Defensive runtime validation of a live network response. A malformed
  * individual page is dropped rather than rejecting the whole payload;
  * `null` is returned only when the payload is fundamentally unusable --
@@ -39,7 +44,7 @@ function sanitizePage(raw: unknown): AboutPage | null {
  * cached content, see aboutContentStore.ts). */
 export function validateAboutContent(raw: unknown): AboutContent | null {
   if (!isRecord(raw)) return null
-  if (typeof raw.schemaVersion !== "number" || raw.schemaVersion < 1) return null
+  if (raw.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return null
   if (typeof raw.contentVersion !== "string" || !raw.contentVersion) return null
   if (!isRecord(raw.locales)) return null
 

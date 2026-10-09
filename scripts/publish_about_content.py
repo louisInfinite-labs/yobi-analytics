@@ -42,7 +42,7 @@ CONTENT_DIR = ROOT / "src" / "content" / "about"
 sys.path.insert(0, str(ROOT / "src"))
 
 from api.about_content_api import AboutContentValidationError, validate_about_content  # noqa: E402
-from stores.about_content_store import LocalAboutContentStore, S3AboutContentStore  # noqa: E402
+from stores.about_content_store import AboutContentStoreError, LocalAboutContentStore, S3AboutContentStore  # noqa: E402
 from stores.history_bucket import resolve_history_bucket  # noqa: E402
 
 # This script's own guardrail, deliberately stricter than
@@ -73,21 +73,46 @@ def _read_local_manifest(content_dir: Path) -> dict[str, Any]:
     return LocalAboutContentStore(content_dir).read_manifest()
 
 
+def _safe_page_path(content_dir: Path, locale: str, relative_file: Any) -> Path:
+    """The on-disk path of a manifest-declared page, or AboutPublishError.
+
+    A declared file must be a regular `.md` file that resolves to somewhere
+    beneath its own locale directory -- so a manifest entry such as
+    `../.env` or an absolute path can never be read or uploaded to S3.
+    """
+    if not isinstance(relative_file, str) or not relative_file:
+        raise AboutPublishError(f"manifest page 'file' must be a non-empty string (locale={locale}), got {relative_file!r}")
+    locale_dir = (content_dir / locale).resolve()
+    resolved = (content_dir / relative_file).resolve()
+    if not resolved.is_relative_to(locale_dir):
+        raise AboutPublishError(f"manifest page file escapes its locale directory: {relative_file!r} (locale={locale})")
+    if resolved.suffix != ".md":
+        raise AboutPublishError(f"manifest page file must be a .md file: {relative_file!r} (locale={locale})")
+    if not resolved.is_file():
+        raise AboutPublishError(f"expected markdown file is missing: {relative_file} (locale={locale})")
+    return resolved
+
+
 def _validate_local_content(content_dir: Path) -> None:
     """Assembles the local manifest + markdown into the same shape
     get_about_content() would return, and runs it through
     validate_about_content() -- catches a broken local edit before it's
     ever uploaded."""
     store = LocalAboutContentStore(content_dir)
-    manifest = store.read_manifest()
-    locales = {}
-    for locale, locale_value in manifest["locales"].items():
-        pages = []
-        for page in locale_value["pages"]:
-            markdown = store.read_page_markdown(page["file"])
-            pages.append({"id": page["id"], "title": page["title"], "markdown": markdown})
-        locales[locale] = {"pages": pages}
-    payload = {"schemaVersion": manifest["schemaVersion"], "contentVersion": manifest["contentVersion"], "locales": locales}
+    try:
+        manifest = store.read_manifest()
+        locales = {}
+        for locale, locale_value in manifest["locales"].items():
+            pages = []
+            for page in locale_value["pages"]:
+                path = _safe_page_path(content_dir, locale, page["file"])
+                pages.append({"id": page["id"], "title": page["title"], "markdown": path.read_text(encoding="utf-8")})
+            locales[locale] = {"pages": pages}
+        payload = {"schemaVersion": manifest["schemaVersion"], "contentVersion": manifest["contentVersion"], "locales": locales}
+    except AboutPublishError:
+        raise
+    except (AboutContentStoreError, KeyError, TypeError, AttributeError, OSError, UnicodeDecodeError) as exc:
+        raise AboutPublishError(f"local content could not be read: {exc!r}") from exc
     try:
         validate_about_content(payload)
     except AboutContentValidationError as exc:
@@ -113,8 +138,7 @@ def _expected_markdown_files(manifest: dict[str, Any], content_dir: Path) -> lis
             raise AboutPublishError(f"locale {locale!r} must declare exactly {REQUIRED_PAGE_COUNT} pages, got {len(pages)}")
         for page in pages:
             relative_file = page["file"]
-            if not (content_dir / relative_file).exists():
-                raise AboutPublishError(f"expected markdown file is missing: {relative_file} (locale={locale}, page={page['id']})")
+            _safe_page_path(content_dir, locale, relative_file)
             expected.append((locale, page["id"], relative_file))
 
     if len(expected) != len(REQUIRED_LOCALES) * REQUIRED_PAGE_COUNT:
@@ -145,7 +169,7 @@ def publish(client: Any, bucket: str, *, content_dir: Path = CONTENT_DIR, dry_ru
 
     uploaded: list[str] = []
     for locale, page_id, relative_file in expected:
-        path = content_dir / relative_file
+        path = _safe_page_path(content_dir, locale, relative_file)
         if not dry_run:
             try:
                 client.put_object(
@@ -164,12 +188,18 @@ def publish(client: Any, bucket: str, *, content_dir: Path = CONTENT_DIR, dry_ru
 
     manifest_path = content_dir / "manifest.json"
     if not dry_run:
-        client.put_object(
-            Bucket=bucket,
-            Key=S3AboutContentStore.MANIFEST_KEY,
-            Body=manifest_path.read_bytes(),
-            ContentType=_content_type(manifest_path),
-        )
+        try:
+            client.put_object(
+                Bucket=bucket,
+                Key=S3AboutContentStore.MANIFEST_KEY,
+                Body=manifest_path.read_bytes(),
+                ContentType=_content_type(manifest_path),
+            )
+        except Exception as exc:  # noqa: BLE001 - re-raised as AboutPublishError below
+            raise AboutPublishError(
+                f"manifest.json upload failed after all {len(expected)} markdown file(s) succeeded -- "
+                f"the previous manifest is still live; rerun the publish: {exc}"
+            ) from exc
 
     return {"markdownFiles": uploaded, "manifestUploaded": not dry_run, "contentVersion": manifest["contentVersion"]}
 

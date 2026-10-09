@@ -112,11 +112,43 @@ def test_manifest_upload_failure_is_also_reported_as_a_publish_error(tmp_path):
     content_dir = _make_content_dir(tmp_path)
     client = FakeS3Client(fail_at_call_index=15)  # the 16th call -- manifest.json itself
 
-    with pytest.raises(Exception):  # noqa: B017 - the raw boto-style error, not wrapped (manifest step has nothing left to protect)
+    with pytest.raises(publish_about_content.AboutPublishError, match="manifest.json upload failed"):
         publish_about_content.publish(client, BUCKET, content_dir=content_dir, dry_run=False)
 
     md_keys = [c["Key"] for c in client.calls if c["Key"].endswith(".md")]
     assert len(md_keys) == 15  # all markdown already succeeded before the manifest call failed
+
+
+def _set_first_page_file(content_dir: Path, file_value: Any) -> None:
+    manifest_path = content_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["locales"]["en"]["pages"][0]["file"] = file_value
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+@pytest.mark.parametrize("bad_file", ["../zh-TW/about.md", "../../outside.md", "en/../../outside.md", "en/about.txt", "", 5, None])
+def test_a_manifest_page_path_that_escapes_its_locale_or_is_not_markdown_is_rejected_before_any_upload(tmp_path, bad_file):
+    content_dir = _make_content_dir(tmp_path)
+    (tmp_path / "outside.md").write_text("secret\n", encoding="utf-8")
+    (content_dir / "en" / "about.txt").write_text("not markdown\n", encoding="utf-8")
+    _set_first_page_file(content_dir, bad_file)
+    client = FakeS3Client()
+
+    with pytest.raises(publish_about_content.AboutPublishError):
+        publish_about_content.publish(client, BUCKET, content_dir=content_dir, dry_run=False)
+
+    assert client.calls == []
+
+
+def test_an_unreadable_declared_markdown_file_is_a_publish_error_not_a_crash(tmp_path):
+    content_dir = _make_content_dir(tmp_path)
+    (content_dir / "en" / "privacy.md").write_bytes(b"\xff\xfe not utf-8 \x80")
+    client = FakeS3Client()
+
+    with pytest.raises(publish_about_content.AboutPublishError):
+        publish_about_content.publish(client, BUCKET, content_dir=content_dir, dry_run=False)
+
+    assert client.calls == []
 
 
 def test_expected_markdown_files_rejects_a_missing_locale(tmp_path):
