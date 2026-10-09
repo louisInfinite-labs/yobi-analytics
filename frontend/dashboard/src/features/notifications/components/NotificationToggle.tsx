@@ -14,6 +14,11 @@ type Status = "checking" | "unsupported" | "subscribed" | "unsubscribed"
 // future work — this toggle only ever sets the on/off half of a preference.
 const DEFAULT_DELIVERY_WINDOWS = ["08:00", "18:00"]
 
+/** "failed": a backend write was rejected and the toggle kept (or restored) its previous state.
+ * "uncertain": an enable attempt failed AND the cleanup that undoes any half-committed backend
+ * write also failed, so the server may still have notifications enabled. */
+type SyncError = "failed" | "uncertain"
+
 /** Persist this browser's own push subscription under its own clientId
  * (Roadmap 4.6, self-service). `clientSecret` (PR #18 CodeRabbit
  * hardening, from clientCredential.ts) proves this call actually owns
@@ -60,7 +65,7 @@ function syncNotificationEnabledToBackend(clientId: string, clientSecret: string
  */
 export function NotificationToggle() {
   const [status, setStatus] = useState<Status>("checking")
-  const [syncError, setSyncError] = useState(false)
+  const [syncError, setSyncError] = useState<SyncError | null>(null)
   // Guards against a double-click (or a slow tap registering twice)
   // starting a second overlapping handleClick before the first one's
   // browser-permission-prompt/backend-sync round trip settles — without
@@ -90,40 +95,38 @@ export function NotificationToggle() {
   const handleClick = async () => {
     if (isSyncing) return
     setIsSyncing(true)
-    setSyncError(false)
+    setSyncError(null)
     try {
       const clientId = getOrCreateClientId()
 
       if (status === "subscribed") {
-        // Unsubscribe locally first (the user explicitly asked to turn
-        // off), then try to tell the backend. If that sync fails, the
-        // visible status still reflects the browser's real (now
-        // unsubscribed) state rather than claiming "on" — the
-        // alternative, leaving status "subscribed" on a sync failure, is
-        // what let the dispatcher retain an enabled preference the UI had
-        // already claimed was off.
+        // Backend first. The preference write (`enabled: false`) is what
+        // actually stops notification_dispatcher.py, so it must succeed
+        // before anything local changes: if it fails, the browser
+        // subscription and the "on" status stay exactly as they were and
+        // the error is shown -- the UI never claims "off" while the backend
+        // still has notifications on. A null secret (registration failed —
+        // network, or storage) is still passed through: the call 403s and
+        // lands in this same catch, rather than needing a separate branch.
+        let clientSecret: string | null
+        try {
+          clientSecret = await getOrCreateClientSecret(clientId)
+          await syncNotificationEnabledToBackend(clientId, clientSecret, false)
+        } catch {
+          setSyncError("failed")
+          return
+        }
         await unsubscribeFromPush()
         setStatus("unsubscribed")
         try {
-          // A null secret (registration failed — network, or storage) is
-          // still passed through: the sync calls below will 403 and land
-          // in this same catch, rather than needing a separate branch.
-          //
-          // The subscription DELETE and preference PUT below are two
-          // separate backend writes, not one atomic transaction — if one
-          // succeeds and the other fails, the stored pair is briefly
-          // inconsistent. This is safe rather than merely tidy:
-          // notification_dispatcher.py only ever delivers to a client
-          // that has *both* a stored subscription *and* a stored
-          // preference (it skips one with no subscription record, and
-          // only iterates clients that have a preference record at all)
-          // — so a partial write here can leave stale data, but can never
-          // cause the dispatcher to send this client an unwanted push.
-          const clientSecret = await getOrCreateClientSecret(clientId)
+          // Only cleanup remains. The preference is already disabled, and
+          // notification_dispatcher.py only delivers to a client that has
+          // both an enabled preference and a stored subscription -- so a
+          // failure here leaves a stale subscription record that can never
+          // cause an unwanted push; it is still reported so the user knows.
           await syncSubscriptionToBackend(clientId, clientSecret, null)
-          await syncNotificationEnabledToBackend(clientId, clientSecret, false)
         } catch {
-          setSyncError(true)
+          setSyncError("failed")
         }
         return
       }
@@ -152,17 +155,30 @@ export function NotificationToggle() {
         // own promise rejected (e.g. its response was lost after the
         // server already processed it) — the AND-gate safety note above
         // only holds if a partial failure doesn't quietly leave *both*
-        // pieces present. Best-effort clean up any such orphaned state
-        // with the same secret, rather than leaving a possibly-enabled
-        // preference/subscription pair stored indefinitely; a failure
-        // here changes nothing further, since the UI already reflects
-        // "off" and the user can retry.
+        // pieces present. So clean up any such orphaned state with the same
+        // secret -- each call on its own, so one failing never stops the
+        // other. The dispatcher only delivers to a client that has BOTH an
+        // enabled preference and a stored subscription, so the server can
+        // only still push if BOTH cleanups failed; only then say so
+        // ("uncertain") instead of swallowing it. The UI correctly shows
+        // "off" for this browser either way.
         await unsubscribeFromPush()
         setStatus("unsubscribed")
-        setSyncError(true)
+        setSyncError("failed")
         if (clientSecret) {
-          await syncSubscriptionToBackend(clientId, clientSecret, null).catch(() => {})
-          await syncNotificationEnabledToBackend(clientId, clientSecret, false).catch(() => {})
+          let preferenceCleaned = true
+          let subscriptionCleaned = true
+          try {
+            await syncNotificationEnabledToBackend(clientId, clientSecret, false)
+          } catch {
+            preferenceCleaned = false
+          }
+          try {
+            await syncSubscriptionToBackend(clientId, clientSecret, null)
+          } catch {
+            subscriptionCleaned = false
+          }
+          if (!preferenceCleaned && !subscriptionCleaned) setSyncError("uncertain")
         }
       }
     } finally {
@@ -182,7 +198,9 @@ export function NotificationToggle() {
       </Button>
       {syncError && (
         <span role="alert" className="notification-toggle__error">
-          Couldn't sync with the server — try again.
+          {syncError === "uncertain"
+            ? "Couldn't sync with the server — notifications may still be on there. Try again."
+            : "Couldn't sync with the server — try again."}
         </span>
       )}
     </span>

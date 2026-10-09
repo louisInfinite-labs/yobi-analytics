@@ -19,7 +19,10 @@ own precise hold-and-refire scheduling machinery instead. Each run:
    eligible delivery window (notification_dispatch.next_delivery_window_utc)
    hasn't arrived yet, or if notification_dispatch.should_notify_now says
    this client is currently suppressed (disabled/overridden creator,
-   temporary mute, quiet hours). Otherwise atomically claims the pair via
+   temporary mute, quiet hours). The one exception to "without marking
+   anything": an event that comes due while the client's global
+   notifications switch is OFF is recorded as suppressed, so turning the
+   switch back ON never replays it. Otherwise atomically claims the pair via
    notification_delivery_log_store.mark_delivered's conditional write
    *before* sending — closing the race where two overlapping runs could
    both see "not yet delivered" and both push — then sends via
@@ -149,8 +152,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             continue
 
         subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
-        if subscription_record is None:
+        if subscription_record is None and preference.enabled:
             continue
+        # A client whose global switch is OFF has normally no push subscription any more
+        # (the dashboard toggle deletes it while turning notifications OFF). Such a client
+        # still goes through _deliver_if_due below so events that come due while it is OFF
+        # are recorded as suppressed -- otherwise turning notifications back ON (which
+        # subscribes again) would replay them from the lookback window.
+        subscription = subscription_record["value"] if subscription_record is not None else None
 
         for candidate in candidate_events:
             checked += 1
@@ -158,13 +167,16 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 candidate,
                 client_id=client_id,
                 preference=preference,
-                subscription=subscription_record["value"],
+                subscription=subscription,
                 creators_by_id=creators_by_id,
                 now=now,
                 vapid_private_key=vapid_private_key,
                 vapid_claims=vapid_claims,
             ):
                 delivered += 1
+
+        if subscription is None:
+            continue  # global OFF and nothing subscribed: there is no reminder to evaluate or send
 
         for video_id, resolved_reminder in _resolve_reminders_for_client(client_id, stream_schedule).items():
             checked += 1
@@ -173,7 +185,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 resolved_reminder,
                 client_id=client_id,
                 preference=preference,
-                subscription=subscription_record["value"],
+                subscription=subscription,
                 creators_by_id=creators_by_id,
                 now=now,
                 vapid_private_key=vapid_private_key,
@@ -287,7 +299,14 @@ def _deliver_if_due(
     vapid_private_key: str,
     vapid_claims: dict[str, str],
 ) -> bool:
-    """Send one candidate event to one client if it's due, and record it. Returns whether it was sent."""
+    """Send one candidate event to one client if it's due, and record it. Returns whether it was sent.
+
+    The global `enabled` switch is a master OFF: an event that comes due while it
+    is OFF is recorded as suppressed (mark_suppressed) and skipped for good, so
+    turning notifications back ON later never replays it from the lookback
+    window. An event whose delivery window has not arrived yet is left alone, so
+    it is still sent normally if the switch is back ON by then.
+    """
     video_id = candidate["videoId"]
     if notification_delivery_log_store.already_delivered(client_id, video_id):
         return False
@@ -295,6 +314,9 @@ def _deliver_if_due(
     discovered_at = datetime.fromisoformat(candidate["discoveredAt"])
     eligible_at = notification_dispatch.next_delivery_window_utc(preference, after=discovered_at)
     if now < eligible_at:
+        return False
+    if not preference.enabled:
+        notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
         return False
     if not notification_dispatch.should_notify_now(preference, candidate["creatorId"], now=now):
         return False
@@ -345,7 +367,9 @@ def _deliver_reminders_if_due(
     due for one client. Both are evaluated independently: a single stream can
     legitimately send both in the same run. Returns whether anything was sent.
 
-    Suppression: a disabled creator blocks both; a temporary mute or quiet
+    Suppression: the global notifications switch being OFF or a disabled
+    creator blocks both (a creator override can never re-enable a client whose
+    global switch is OFF); a temporary mute or quiet
     hours block a reminder if they apply EITHER at the moment that reminder
     was meant to fire OR right now -- the reminder is skipped, never delayed
     and never replayed (a late "10 minutes before" is wrong), and nothing is

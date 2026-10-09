@@ -10,6 +10,7 @@ from stores.notification_delivery_log_store import (
     already_delivered,
     confirm_delivered,
     mark_delivered,
+    mark_suppressed,
     release_claim,
 )
 
@@ -152,3 +153,31 @@ def test_confirm_delivered_raises_store_error_when_table_is_missing(aws_credenti
     with mock_aws():
         with pytest.raises(NotificationDeliveryLogStoreError):
             confirm_delivered("c1", "v1", NOW.isoformat())
+
+
+def test_a_suppressed_notification_is_reported_as_already_handled_forever(delivery_log_table):
+    assert mark_suppressed("c1", "v1", NOW.isoformat()) is True
+
+    assert already_delivered("c1", "v1", now=NOW) is True
+    assert already_delivered("c1", "v1", now=NOW + timedelta(days=30)) is True
+
+
+def test_a_suppressed_notification_can_never_be_claimed_for_delivery_afterwards(delivery_log_table):
+    mark_suppressed("c1", "v1", NOW.isoformat())
+
+    assert mark_delivered("c1", "v1", NOW.isoformat(), now=NOW + timedelta(days=1)) is False
+
+
+def test_mark_suppressed_never_overwrites_an_existing_record(delivery_log_table):
+    mark_delivered("c1", "v1", NOW.isoformat(), now=NOW)
+    confirm_delivered("c1", "v1", NOW.isoformat())
+
+    assert mark_suppressed("c1", "v1", NOW.isoformat()) is False
+    assert mark_suppressed("c1", "v2", NOW.isoformat()) is True
+    assert mark_suppressed("c1", "v2", NOW.isoformat()) is False
+
+
+def test_mark_suppressed_raises_store_error_when_table_is_missing(aws_credentials):
+    with mock_aws():
+        with pytest.raises(NotificationDeliveryLogStoreError):
+            mark_suppressed("c1", "v1", NOW.isoformat())

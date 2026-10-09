@@ -1158,3 +1158,240 @@ def _frozen_datetime(fixed_now: datetime) -> type[datetime]:
             return fixed_now.astimezone(tz) if tz else fixed_now
 
     return _Frozen
+
+
+# --- Global notifications switch is the master OFF ---------------------------
+#
+# Global OFF beats every creator override, mute / quiet hours still suppress,
+# and a notification that came due while the switch was OFF is never replayed
+# once it is turned back ON. A reminder that is still in the future when the
+# switch is restored keeps working normally.
+
+
+def _fake_delivery_log(monkeypatch) -> dict:
+    """Stateful in-memory stand-in for notification_delivery_log_store: {(client, video): status}."""
+    rows: dict = {}
+
+    def mark_suppressed(client_id, video_id, at):
+        if (client_id, video_id) in rows:
+            return False
+        rows[(client_id, video_id)] = "suppressed"
+        return True
+
+    def mark_delivered(client_id, video_id, at):
+        if (client_id, video_id) in rows:
+            return False
+        rows[(client_id, video_id)] = "claimed"
+        return True
+
+    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: (client_id, video_id) in rows)
+    monkeypatch.setattr(notification_delivery_log_store, "mark_suppressed", mark_suppressed)
+    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", mark_delivered)
+    monkeypatch.setattr(
+        notification_delivery_log_store, "confirm_delivered", lambda client_id, video_id, at: rows.__setitem__((client_id, video_id), "delivered")
+    )
+    return rows
+
+
+def _run_new_video_pass(monkeypatch, *, now, preference, event=None, with_subscription=True) -> list:
+    """One dispatcher pass at `now` over one stored new-video event; returns the push payloads sent."""
+    event = event or _event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")
+    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
+    monkeypatch.setattr(
+        notification_events_store, "list_events_for_date", lambda event_date: [event] if event_date == event["eventDate"] else []
+    )
+    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": preference}])
+    monkeypatch.setattr(
+        remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()} if with_subscription else None
+    )
+    sent: list = []
+    monkeypatch.setattr(
+        push_sender,
+        "send_push_notification",
+        lambda *a, **kw: (sent.append(kw["data"]), PushResult(sent=True, subscription_expired=False))[1],
+    )
+    lambda_handler({}, None)
+    return sent
+
+
+_DAY1_EVENING = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)  # 18:05 JST: the event's next window (09-03 08:00 JST) has passed
+_DAY2_EVENING = datetime(2026, 9, 4, 9, 5, tzinfo=timezone.utc)  # a day later; the event is still inside the 3-day lookback
+
+
+@pytest.mark.parametrize(
+    ("global_enabled", "override", "expect_sent"),
+    [
+        (True, None, True),
+        (True, True, True),
+        (True, False, False),
+        (False, None, False),
+        (False, True, False),
+        (False, False, False),
+    ],
+)
+def test_a_new_video_notification_follows_the_global_master_switch_and_creator_override(
+    monkeypatch, global_enabled, override, expect_sent
+):
+    _fake_delivery_log(monkeypatch)
+    overrides = {} if override is None else {"aizawa_ema": override}
+    preference = _preference_value(enabled=global_enabled, creatorOverride=overrides)
+
+    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference)
+
+    assert (sent == [{"videoId": "v1"}]) is expect_sent
+
+
+def test_a_new_video_that_came_due_while_global_was_off_is_not_replayed_when_global_is_turned_back_on(monkeypatch):
+    rows = _fake_delivery_log(monkeypatch)
+
+    off_sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(enabled=False))
+    assert off_sent == []
+    assert rows == {("c1", "v1"): "suppressed"}
+
+    on_sent = _run_new_video_pass(monkeypatch, now=_DAY2_EVENING, preference=_preference_value(enabled=True))
+    assert on_sent == []
+
+
+def test_a_new_video_due_while_global_is_off_is_suppressed_even_when_the_client_has_no_push_subscription(monkeypatch):
+    """The dashboard toggle deletes the push subscription while turning notifications OFF, so
+    OFF -> unsubscribed -> ON must not replay what came due in between."""
+    rows = _fake_delivery_log(monkeypatch)
+
+    off_sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(enabled=False), with_subscription=False)
+    assert off_sent == []
+    assert rows == {("c1", "v1"): "suppressed"}
+
+    on_sent = _run_new_video_pass(monkeypatch, now=_DAY2_EVENING, preference=_preference_value(enabled=True), with_subscription=True)
+    assert on_sent == []
+
+
+def test_a_client_that_is_on_but_has_no_push_subscription_is_still_skipped_without_recording_anything(monkeypatch):
+    rows = _fake_delivery_log(monkeypatch)
+
+    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(enabled=True), with_subscription=False)
+
+    assert sent == []
+    assert rows == {}
+
+
+def test_a_new_video_whose_window_has_not_arrived_is_still_sent_if_global_is_back_on_by_then(monkeypatch):
+    """Global OFF while the event is still waiting for its delivery window is not a miss:
+    nothing is recorded, so turning the switch back ON before the window still delivers it."""
+    rows = _fake_delivery_log(monkeypatch)
+    event = _event_item(eventDate="2026-09-03", discoveredAt="2026-09-03T18:00:05+09:00")  # next window: 09-04 08:00 JST
+
+    still_waiting = _run_new_video_pass(
+        monkeypatch, now=datetime(2026, 9, 3, 11, 0, tzinfo=timezone.utc), preference=_preference_value(enabled=False), event=event
+    )
+    assert still_waiting == []
+    assert rows == {}
+
+    at_window = _run_new_video_pass(
+        monkeypatch, now=datetime(2026, 9, 3, 23, 5, tzinfo=timezone.utc), preference=_preference_value(enabled=True), event=event
+    )
+    assert at_window == [{"videoId": "v1"}]
+
+
+@pytest.mark.parametrize(
+    "suppression",
+    [
+        {"temporaryMute": "2026-09-03T10:00:00+00:00"},  # muted until 19:00 JST
+        {"quietHours": ["18:00", "19:00"]},
+    ],
+)
+def test_mute_and_quiet_hours_still_block_a_new_video_when_global_and_creator_are_on(monkeypatch, suppression):
+    _fake_delivery_log(monkeypatch)
+    preference = _preference_value(enabled=True, creatorOverride={"aizawa_ema": True}, **suppression)
+
+    assert _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference) == []
+
+
+def test_global_off_beats_a_creator_override_on_and_every_reminder_setting(monkeypatch):
+    preference = _preference_value(enabled=False, creatorOverride={"aizawa_ema": True})
+    overrides = {"sf6_stream": _override_value(advanceReminder="30min")}
+
+    sent = _run_reminder_scenario(
+        monkeypatch, now=_at(30), streams=_ALL_STREAMS, preference=preference, overrides=overrides, **_ALL_THREE
+    )
+    sent += _run_reminder_scenario(
+        monkeypatch, now=_at(0), streams=_ALL_STREAMS, preference=preference, overrides=overrides, **_ALL_THREE
+    )
+
+    assert sent == []
+
+
+def test_global_on_with_a_creator_override_off_sends_no_reminder_for_that_creator(monkeypatch):
+    preference = _preference_value(enabled=True, creatorOverride={"aizawa_ema": False})
+
+    assert _run_reminder_scenario(monkeypatch, now=_at(30), streams=_ALL_STREAMS, preference=preference, **_ALL_THREE) == []
+
+
+def test_global_on_with_a_creator_override_on_continues_to_normal_reminder_resolution(monkeypatch):
+    preference = _preference_value(enabled=True, creatorOverride={"aizawa_ema": True})
+    overrides = {"sf6_stream": _override_value(advanceReminder="30min")}
+
+    sent = _run_reminder_scenario(
+        monkeypatch, now=_at(30), streams=[_sf6_stream()], preference=preference, overrides=overrides, **_ALL_THREE
+    )
+
+    assert _advance_videos(sent) == {"sf6_stream"}
+
+
+def test_per_stream_override_still_beats_creator_all_when_global_and_creator_are_on(monkeypatch):
+    preference = _preference_value(enabled=True, creatorOverride={"aizawa_ema": True})
+    overrides = {"sf6_stream": _override_value(advanceReminder="30min", notifyAtStart=False)}
+    creator_all = {"creator_reminders": {"aizawa_ema": _creator_reminder_value(advanceReminder="10min", notifyAtStart=False)}}
+
+    at_override_time = _run_reminder_scenario(
+        monkeypatch, now=_at(30), streams=_ALL_STREAMS, preference=preference, overrides=overrides, **creator_all
+    )
+    at_creator_all_time = _run_reminder_scenario(
+        monkeypatch, now=_at(10), streams=_ALL_STREAMS, preference=preference, overrides=overrides, **creator_all
+    )
+
+    assert _advance_videos(at_override_time) == {"sf6_stream"}
+    assert _advance_videos(at_creator_all_time) == {"singing_stream", "other_stream"}  # sf6_stream keeps its own 30min
+
+
+def test_a_reminder_that_expired_while_global_was_off_is_not_sent_when_global_is_turned_back_on(monkeypatch):
+    reminder = {"creator_reminders": {"aizawa_ema": _creator_reminder_value(advanceReminder="30min", notifyAtStart=False)}}
+    fire_at = _at(30)
+
+    while_off = _run_reminder_scenario(
+        monkeypatch, now=fire_at, streams=[_sf6_stream()], preference=_preference_value(enabled=False), **reminder
+    )
+    after_on = _run_reminder_scenario(
+        monkeypatch,
+        now=fire_at + timedelta(minutes=5),
+        streams=[_sf6_stream()],
+        preference=_preference_value(enabled=True),
+        **reminder,
+    )
+
+    assert while_off == []
+    assert after_on == []
+
+
+def test_a_reminder_still_in_the_future_when_global_is_turned_back_on_fires_at_its_own_time(monkeypatch):
+    reminder = {"creator_reminders": {"aizawa_ema": _creator_reminder_value(advanceReminder="30min", notifyAtStart=False)}}
+    fire_at = _at(30)
+
+    while_off = _run_reminder_scenario(
+        monkeypatch, now=fire_at - timedelta(minutes=20), streams=[_sf6_stream()], preference=_preference_value(enabled=False), **reminder
+    )
+    at_fire_time = _run_reminder_scenario(
+        monkeypatch, now=fire_at, streams=[_sf6_stream()], preference=_preference_value(enabled=True), **reminder
+    )
+
+    assert while_off == []
+    assert _advance_videos(at_fire_time) == {"sf6_stream"}
+
+
+def test_mute_and_quiet_hours_still_block_a_reminder_when_global_and_creator_are_on(monkeypatch):
+    creator_all = {"creator_reminders": {"aizawa_ema": _creator_reminder_value(advanceReminder="30min", notifyAtStart=False)}}
+    base = {"enabled": True, "creatorOverride": {"aizawa_ema": True}}
+    muted = _preference_value(**base, temporaryMute=(_at(30) + timedelta(hours=1)).isoformat())
+    quiet = _preference_value(**base, quietHours=["10:00", "11:00"])  # _at(30) is 10:16 JST
+
+    for preference in (muted, quiet):
+        assert _run_reminder_scenario(monkeypatch, now=_at(30), streams=[_sf6_stream()], preference=preference, **creator_all) == []
