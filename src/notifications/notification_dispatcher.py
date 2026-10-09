@@ -152,8 +152,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             continue
 
         subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
-        if subscription_record is None:
+        if subscription_record is None and preference.enabled:
             continue
+        # A client whose global switch is OFF has normally no push subscription any more
+        # (the dashboard toggle deletes it while turning notifications OFF). Such a client
+        # still goes through _deliver_if_due below so events that come due while it is OFF
+        # are recorded as suppressed -- otherwise turning notifications back ON (which
+        # subscribes again) would replay them from the lookback window.
+        subscription = subscription_record["value"] if subscription_record is not None else None
 
         for candidate in candidate_events:
             checked += 1
@@ -161,13 +167,16 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 candidate,
                 client_id=client_id,
                 preference=preference,
-                subscription=subscription_record["value"],
+                subscription=subscription,
                 creators_by_id=creators_by_id,
                 now=now,
                 vapid_private_key=vapid_private_key,
                 vapid_claims=vapid_claims,
             ):
                 delivered += 1
+
+        if subscription is None:
+            continue  # global OFF and nothing subscribed: there is no reminder to evaluate or send
 
         for video_id, resolved_reminder in _resolve_reminders_for_client(client_id, stream_schedule).items():
             checked += 1
@@ -176,7 +185,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 resolved_reminder,
                 client_id=client_id,
                 preference=preference,
-                subscription=subscription_record["value"],
+                subscription=subscription,
                 creators_by_id=creators_by_id,
                 now=now,
                 vapid_private_key=vapid_private_key,

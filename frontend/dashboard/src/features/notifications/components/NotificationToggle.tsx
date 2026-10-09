@@ -156,20 +156,29 @@ export function NotificationToggle() {
         // server already processed it) — the AND-gate safety note above
         // only holds if a partial failure doesn't quietly leave *both*
         // pieces present. So clean up any such orphaned state with the same
-        // secret -- preference first, since that is what the dispatcher
-        // gates on. If the cleanup itself fails the server may still have
-        // notifications enabled, so say so ("uncertain") instead of
-        // swallowing it; the UI correctly shows "off" for this browser.
+        // secret -- each call on its own, so one failing never stops the
+        // other. The dispatcher only delivers to a client that has BOTH an
+        // enabled preference and a stored subscription, so the server can
+        // only still push if BOTH cleanups failed; only then say so
+        // ("uncertain") instead of swallowing it. The UI correctly shows
+        // "off" for this browser either way.
         await unsubscribeFromPush()
         setStatus("unsubscribed")
         setSyncError("failed")
         if (clientSecret) {
+          let preferenceCleaned = true
+          let subscriptionCleaned = true
           try {
             await syncNotificationEnabledToBackend(clientId, clientSecret, false)
+          } catch {
+            preferenceCleaned = false
+          }
+          try {
             await syncSubscriptionToBackend(clientId, clientSecret, null)
           } catch {
-            setSyncError("uncertain")
+            subscriptionCleaned = false
           }
+          if (!preferenceCleaned && !subscriptionCleaned) setSyncError("uncertain")
         }
       }
     } finally {

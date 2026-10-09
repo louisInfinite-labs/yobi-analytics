@@ -400,7 +400,28 @@ describe("NotificationToggle", () => {
       expect(pushNotifications.unsubscribeFromPush).toHaveBeenCalled()
     })
 
-    it("says notifications may still be on when the cleanup after a failed enable also fails", async () => {
+    it("says notifications may still be on when both cleanup calls after a failed enable fail", async () => {
+      const user = userEvent.setup()
+      vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
+      vi.mocked(pushNotifications.subscribeToPush).mockResolvedValue({ endpoint: "https://fcm.example.com/x", keys: { p256dh: "p", auth: "a" } })
+      vi.mocked(pushNotifications.unsubscribeFromPush).mockResolvedValue(true)
+      vi.mocked(apiClient.apiRequest).mockImplementation(async (path: unknown, options?: unknown) => {
+        const p = String(path)
+        const method = (options as { method?: string } | undefined)?.method
+        if (p.endsWith("/credential")) return { clientId: "c1", clientSecret: "secret" }
+        if (p.endsWith("/notification-preference")) throw new Error("network error")
+        if (p.endsWith("/push-subscription") && method === "DELETE") throw new Error("network error")
+        return undefined
+      })
+
+      render(<NotificationToggle />)
+      await user.click(await screen.findByRole("button", { name: /enable notifications/i }))
+
+      await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/may still be on/i))
+      expect(screen.getByRole("button", { name: /enable notifications/i })).toHaveAttribute("aria-pressed", "false")
+    })
+
+    it("still deletes the subscription, and does not claim notifications may be on, when only the preference cleanup fails", async () => {
       const user = userEvent.setup()
       vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
       vi.mocked(pushNotifications.subscribeToPush).mockResolvedValue({ endpoint: "https://fcm.example.com/x", keys: { p256dh: "p", auth: "a" } })
@@ -415,8 +436,12 @@ describe("NotificationToggle", () => {
       render(<NotificationToggle />)
       await user.click(await screen.findByRole("button", { name: /enable notifications/i }))
 
-      await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/may still be on/i))
-      expect(screen.getByRole("button", { name: /enable notifications/i })).toHaveAttribute("aria-pressed", "false")
+      await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument())
+      expect(screen.getByRole("alert")).not.toHaveTextContent(/may still be on/i)
+      const deleted = vi
+        .mocked(apiClient.apiRequest)
+        .mock.calls.some(([path, options]) => String(path).endsWith("/push-subscription") && (options as { method?: string } | undefined)?.method === "DELETE")
+      expect(deleted).toBe(true)
     })
 
     it("writes the master switch as enabled: true in the full default preference payload", async () => {

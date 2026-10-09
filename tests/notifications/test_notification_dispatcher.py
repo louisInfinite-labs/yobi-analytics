@@ -1193,7 +1193,7 @@ def _fake_delivery_log(monkeypatch) -> dict:
     return rows
 
 
-def _run_new_video_pass(monkeypatch, *, now, preference, event=None) -> list:
+def _run_new_video_pass(monkeypatch, *, now, preference, event=None, with_subscription=True) -> list:
     """One dispatcher pass at `now` over one stored new-video event; returns the push payloads sent."""
     event = event or _event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
@@ -1201,7 +1201,9 @@ def _run_new_video_pass(monkeypatch, *, now, preference, event=None) -> list:
         notification_events_store, "list_events_for_date", lambda event_date: [event] if event_date == event["eventDate"] else []
     )
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": preference}])
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
+    monkeypatch.setattr(
+        remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()} if with_subscription else None
+    )
     sent: list = []
     monkeypatch.setattr(
         push_sender,
@@ -1248,6 +1250,28 @@ def test_a_new_video_that_came_due_while_global_was_off_is_not_replayed_when_glo
 
     on_sent = _run_new_video_pass(monkeypatch, now=_DAY2_EVENING, preference=_preference_value(enabled=True))
     assert on_sent == []
+
+
+def test_a_new_video_due_while_global_is_off_is_suppressed_even_when_the_client_has_no_push_subscription(monkeypatch):
+    """The dashboard toggle deletes the push subscription while turning notifications OFF, so
+    OFF -> unsubscribed -> ON must not replay what came due in between."""
+    rows = _fake_delivery_log(monkeypatch)
+
+    off_sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(enabled=False), with_subscription=False)
+    assert off_sent == []
+    assert rows == {("c1", "v1"): "suppressed"}
+
+    on_sent = _run_new_video_pass(monkeypatch, now=_DAY2_EVENING, preference=_preference_value(enabled=True), with_subscription=True)
+    assert on_sent == []
+
+
+def test_a_client_that_is_on_but_has_no_push_subscription_is_still_skipped_without_recording_anything(monkeypatch):
+    rows = _fake_delivery_log(monkeypatch)
+
+    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(enabled=True), with_subscription=False)
+
+    assert sent == []
+    assert rows == {}
 
 
 def test_a_new_video_whose_window_has_not_arrived_is_still_sent_if_global_is_back_on_by_then(monkeypatch):
