@@ -268,11 +268,14 @@ const NEW_VIDEO_SYNC_KEY = "newVideoSwitches"
 /** Pushes the new effective new-video creators to the backend -- but only when this browser has notifications
  * enabled (a push subscription exists). Otherwise there is no backend preference to update, and the enable flow
  * (NotificationToggle) sends the current switches along with the master switch. Rejects when the backend does. */
-async function syncNewVideoSwitchesToBackend(next: TopicPreferencesState): Promise<void> {
+async function syncNewVideoSwitchesToBackend(next: TopicPreferencesState, options: { rejectWhenStatusUnreadable?: boolean } = {}): Promise<void> {
   let status: Awaited<ReturnType<typeof getPushSubscriptionStatus>>
   try {
     status = await getPushSubscriptionStatus()
-  } catch {
+  } catch (error) {
+    // An unreadable status normally means "nothing to sync". The one-time clean-up must NOT treat it as done, or the retired creators'
+    // backend switches would never be cleared: it rejects so the pending flag survives for the next start.
+    if (options.rejectWhenStatusUnreadable) throw error
     return
   }
   if (status !== "subscribed") return
@@ -290,7 +293,7 @@ export function resyncAfterRetiredMigration(): Promise<boolean> {
     async () => {
       const current = topicPreferencesStore.get()
       if (!current.pendingResync) return
-      await syncNewVideoSwitchesToBackend(current)
+      await syncNewVideoSwitchesToBackend(current, { rejectWhenStatusUnreadable: true })
       const { pendingResync: _done, ...rest } = current
       topicPreferencesStore.set(rest)
     },

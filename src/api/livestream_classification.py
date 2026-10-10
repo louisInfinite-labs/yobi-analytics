@@ -54,6 +54,9 @@ def classify_unclassified_upcoming(video_ids: list[str], *, now: float | None = 
     if not video_ids:
         return {}
     moment = time.monotonic() if now is None else now
+    # Drop every expired entry first (also for ids that never come back), so the per-container cache cannot grow without bound.
+    for expired in [video_id for video_id, (expires_at, _) in _cache.items() if expires_at <= moment]:
+        del _cache[expired]
     answers: dict[str, Classification] = {}
     to_ask: list[str] = []
     for video_id in dict.fromkeys(video_ids):

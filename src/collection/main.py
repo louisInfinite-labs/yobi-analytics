@@ -527,11 +527,14 @@ def _discover_creator(
 
     # Shorts are decided from the channel's own Shorts shelf, never from duration or a title hashtag. Only looked up when
     # something new was discovered; a lookup failure propagates so this creator's new videos are simply discovered on
-    # the next run instead of being filed as ordinary uploads for good.
+    # the next run instead of being filed as ordinary uploads for good. The WHOLE shelf is read, not stopped at the first
+    # known video: the shelf's order need not match the uploads playlist, so a known Short listed above a new one must not
+    # hide it (a Short missed here would be filed as an ordinary upload for good). It runs only for a creator with new
+    # videos, so the extra pages are a few quota units on the occasional run.
     short_ids: set[str] = set()
     shorts_playlist_id = get_shorts_playlist_id(creator.youtube_channel_id) if discovered else None
     if shorts_playlist_id:
-        short_ids = discover_short_video_ids(youtube, shorts_playlist_id, known_ids or None)
+        short_ids = discover_short_video_ids(youtube, shorts_playlist_id)
 
     videos = [
         Video(

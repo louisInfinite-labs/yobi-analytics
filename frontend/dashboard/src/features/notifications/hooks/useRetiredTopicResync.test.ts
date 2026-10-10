@@ -106,6 +106,23 @@ describe("re-sending the preference after a retired card was migrated away", () 
     expect([...getEffectiveNewVideoCreatorIds()]).toEqual(["kaga_sumire"])
   })
 
+  it("when the push status cannot even be read, nothing was cleaned, so it stays pending for the next start (silently)", async () => {
+    vi.mocked(pushNotifications.getPushSubscriptionStatus).mockRejectedValue(new Error("service worker unavailable"))
+    seed(STALE)
+    const { result } = renderHook(() => useNotificationSaveFailed())
+
+    expect(await resyncAfterRetiredMigration()).toBe(false)
+
+    expect(save).not.toHaveBeenCalled()
+    expect(result.current).toBe(false)
+
+    vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("subscribed")
+    resetAllSharedStateForTests() // next app start: the stored copy still has the retired card, so it is detected again
+    expect(await resyncAfterRetiredMigration()).toBe(true)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(stored().pendingResync).toBeUndefined()
+  })
+
   it("a failed re-send keeps it pending for the next start and stays silent (no Settings error banner)", async () => {
     seed(STALE)
     save.mockRejectedValueOnce(new Error("HTTP 500"))
