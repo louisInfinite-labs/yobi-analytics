@@ -518,12 +518,12 @@ def test_shorts_are_decided_by_shelf_membership_not_by_a_shorts_hashtag_in_the_t
     assert {video.video_id: video.content_type for video in videos} == {"tagged-but-not-short": None, "untagged-short": "short"}
 
 
-def test_the_shorts_lookup_uses_the_channels_shorts_playlist_and_stops_at_known_videos(monkeypatch):
+def test_the_shorts_lookup_uses_the_channels_shorts_playlist_and_reads_the_whole_shelf_even_for_incremental_discovery(monkeypatch):
     calls = _wire_shorts_discovery(monkeypatch, new_items=[{"videoId": "n1", "title": "t", "publishedAt": "2026-08-21T00:00:00Z"}])
 
     _discover(known_ids={"old1"}, channel_id="UCabc123")
 
-    assert calls == [("UUSHabc123", {"old1"})]
+    assert calls == [("UUSHabc123", None)]
 
 
 def test_initial_discovery_pages_the_whole_shorts_shelf(monkeypatch):
@@ -551,6 +551,91 @@ def test_a_failed_shorts_lookup_fails_this_creators_discovery_instead_of_filing_
 
     with pytest.raises(YouTubeAPIError):
         _discover()
+
+
+# --- B18 post-merge review: the Shorts-shelf scan never decides which videos are discovered --------------------
+
+
+class _FakePlaylists:
+    """A fake YouTube client serving paginated playlistItems for the uploads playlist and the Shorts shelf (newest first)."""
+
+    def __init__(self, playlists, page_size=2):
+        self.playlists = playlists
+        self.page_size = page_size
+        self.reads = []
+
+    def playlistItems(self):  # noqa: N802 - mirrors the googleapiclient resource name
+        return self
+
+    def list(self, part, playlistId, maxResults, pageToken=None):  # noqa: N803
+        start = int(pageToken or 0)
+        ids = self.playlists[playlistId]
+        self.reads.append((playlistId, start))
+        chunk = ids[start : start + self.page_size]
+        response = {
+            "items": [{"snippet": {"resourceId": {"videoId": vid}, "title": f"title {vid}", "publishedAt": "2026-09-01T00:00:00Z"}} for vid in chunk]
+        }
+        if start + self.page_size < len(ids):
+            response["nextPageToken"] = str(start + self.page_size)
+        return type("Req", (), {"execute": staticmethod(lambda: response)})()
+
+
+def _discover_against(monkeypatch, uploads, shelf, known):
+    """The REAL _discover_creator and discovery code (only the uploads-playlist-id lookup is stubbed) against fake playlists."""
+    from tracking import video_discovery
+
+    monkeypatch.setattr(main_module, "get_uploads_playlist_id", lambda youtube, channel_id: "UUabc123")
+    monkeypatch.setattr(main_module, "discover_short_video_ids", video_discovery.discover_short_video_ids)  # the file-wide autouse stub is empty
+    youtube = _FakePlaylists({"UUabc123": uploads, "UUSHabc123": shelf})
+    _, videos = main_module._discover_creator(youtube, _creator(youtube_channel_id="UCabc123"), set(known), discovered_at="2026-09-01T00:00:00+09:00")
+    return {video.video_id: video.content_type for video in videos}, youtube
+
+
+def test_a_short_between_two_normal_videos_never_ends_uploads_discovery(monkeypatch):
+    """normal / Short / normal, then a livestream and the first known upload: every new video is discovered, only the Short is a Short."""
+    found, _ = _discover_against(
+        monkeypatch,
+        uploads=["normal-1", "short-1", "normal-2", "stream-1", "known-up", "older"],
+        shelf=["short-1", "known-short"],
+        known={"known-up", "known-short", "older"},
+    )
+
+    assert found == {"normal-1": None, "short-1": "short", "normal-2": None, "stream-1": None}
+
+
+def test_mixed_pages_of_uploads_shorts_and_streams_are_all_discovered_and_classified(monkeypatch):
+    found, youtube = _discover_against(
+        monkeypatch,
+        uploads=["u1", "s1", "live1", "u2", "s2", "live2", "s3", "known-up"],
+        shelf=["s1", "s2", "s3", "known-short"],
+        known={"known-up", "known-short"},
+    )
+
+    assert found == {"u1": None, "s1": "short", "live1": None, "u2": None, "s2": "short", "live2": None, "s3": "short"}
+    assert [r for r in youtube.reads if r[0] == "UUabc123"][-1] == ("UUabc123", 6)  # the uploads scan reached the page holding the known upload
+
+
+def test_a_known_short_listed_above_a_new_short_does_not_hide_the_new_short(monkeypatch):
+    """The shelf can order a KNOWN Short above a newly discovered one (its order need not match the uploads playlist): the new Short is still a Short."""
+    found, _ = _discover_against(
+        monkeypatch,
+        uploads=["new-short", "new-normal", "known-up", "older"],
+        shelf=["known-short", "new-short"],
+        known={"known-up", "known-short", "older"},
+    )
+
+    assert found == {"new-short": "short", "new-normal": None}
+
+
+def test_a_new_short_on_a_later_shelf_page_behind_a_known_short_is_still_found(monkeypatch):
+    found, _ = _discover_against(
+        monkeypatch,
+        uploads=["n1", "n2", "known-up"],
+        shelf=["known-a", "known-b", "n2"],
+        known={"known-up", "known-a", "known-b"},
+    )
+
+    assert found == {"n1": None, "n2": "short"}
 
 
 # --- first ingestion of a creator: back catalog is seeded, not notified ------

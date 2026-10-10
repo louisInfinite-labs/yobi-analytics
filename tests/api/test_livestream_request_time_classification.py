@@ -137,6 +137,28 @@ def test_the_failure_marker_expires_so_the_lookup_is_retried_later(monkeypatch):
     assert len(calls) == 2
 
 
+def test_expired_entries_are_dropped_on_the_next_lookup_even_for_ids_that_never_come_back(monkeypatch):
+    """The cache is pruned at every lookup, not only when the same id is asked about again."""
+    monkeypatch.setattr(lc, "_fetch_classifications", lambda ids: {i: ("upload", None) for i in ids})
+    lc.classify_unclassified_upcoming(["gone-1", "gone-2"], now=0.0)
+    assert set(lc._cache) == {"gone-1", "gone-2"}
+
+    lc.classify_unclassified_upcoming(["fresh"], now=lc._ANSWER_TTL_SECONDS + 1)
+
+    assert set(lc._cache) == {"fresh"}
+
+
+def test_unexpired_entries_survive_the_prune_and_still_answer_without_asking_again(monkeypatch):
+    calls = []
+    monkeypatch.setattr(lc, "_fetch_classifications", lambda ids: calls.append(list(ids)) or {i: ("upload", None) for i in ids})
+    lc.classify_unclassified_upcoming(["a"], now=0.0)
+
+    answers = lc.classify_unclassified_upcoming(["a", "b"], now=10.0)
+
+    assert answers == {"a": ("upload", None), "b": ("upload", None)}
+    assert calls == [["a"], ["b"]]
+
+
 def test_the_real_fetch_hands_the_data_api_items_to_the_collectors_own_classifier(monkeypatch):
     """No second heuristic: the answer is exactly collection.youtube_client._parse_video_item's, on a real response shape."""
     from collection import youtube_client
