@@ -31,7 +31,14 @@ API_LAST_APPLIED_ENVIRONMENT = {
 # ... and exactly ONE variable was added on purpose (V1, Item 3): the LOCATOR of the existing YouTube key, so GET /live-streams can classify a
 # still-unclassified upcoming Premiere. The value is a secret NAME, never the key; the same name the collector already uses.
 YOUTUBE_KEY_LOCATOR = {"YOUTUBE_API_KEY_SECRET_NAME": '"yobi-analytics/youtube-api-key"'}
-API_ENVIRONMENT = {**API_LAST_APPLIED_ENVIRONMENT, **YOUTUBE_KEY_LOCATOR}
+# SSM migration, stage 1: next to every old *_SECRET_NAME locator sits the *_SSM_PARAMETER locator of the same secret (a parameter NAME, never a value).
+# The code reads SSM first and uses the old secret only while the parameter is missing / not yet readable (ops/config.py).
+SSM_LOCATORS = {
+    "YOBI_ADMIN_API_KEY_SSM_PARAMETER": "local.ssm_parameter_names.admin_api_key",
+    "HOLODEX_SSM_PARAMETER": "local.ssm_parameter_names.holodex_api_key",
+    "YOUTUBE_API_KEY_SSM_PARAMETER": "local.ssm_parameter_names.youtube_api_key",
+}
+API_ENVIRONMENT = {**API_LAST_APPLIED_ENVIRONMENT, **YOUTUBE_KEY_LOCATOR, **SSM_LOCATORS}
 # The dispatcher builds the reminder schedule through read_api.get_live_streams(), so it needs the same locators/switch as the API Lambda.
 DISPATCHER_ENVIRONMENT = {
     "VAPID_CLAIMS_SUB": "var.vapid_claims_sub",
@@ -39,6 +46,9 @@ DISPATCHER_ENVIRONMENT = {
     "YOBI_STORAGE_BACKEND": '"dynamodb"',
     "HOLODEX_SECRET_NAME": '"yobi-analytics/holodex-api-key"',
     "YOUTUBE_API_KEY_SECRET_NAME": '"yobi-analytics/youtube-api-key"',
+    "VAPID_PRIVATE_KEY_SSM_PARAMETER": "local.ssm_parameter_names.vapid_private_key",
+    "HOLODEX_SSM_PARAMETER": "local.ssm_parameter_names.holodex_api_key",
+    "YOUTUBE_API_KEY_SSM_PARAMETER": "local.ssm_parameter_names.youtube_api_key",
 }
 # A variable holding the key VALUE itself (as opposed to a *_SECRET_NAME / *_SSM_PARAMETER locator) must never appear in any Lambda environment.
 PLAINTEXT_SECRET_VARIABLES = {"YOUTUBE_API_KEY", "HOLODEX_API_KEY", "YOBI_ADMIN_API_KEY", "VAPID_PRIVATE_KEY"}
@@ -69,14 +79,14 @@ def test_api_lambda_does_not_set_the_history_bucket_env_var():
     assert "YOBI_HISTORY_BUCKET" not in _environment_variables(block)
 
 
-def test_api_lambda_environment_is_the_last_applied_one_plus_only_the_youtube_key_locator():
-    """Same names and literal values as the applied config, with exactly one intentional addition: no unrelated drift."""
+def test_api_lambda_environment_is_the_last_applied_one_plus_only_the_youtube_key_and_ssm_locators():
+    """Same names and literal values as the applied config, plus only the intentional locator additions: no unrelated drift."""
     block = _resource_block(LAMBDA_TF, 'resource "aws_lambda_function" "api"')
     environment = _environment_variables(block)
 
     assert environment == API_ENVIRONMENT
     assert {name: environment[name] for name in API_LAST_APPLIED_ENVIRONMENT} == API_LAST_APPLIED_ENVIRONMENT
-    assert set(environment) - set(API_LAST_APPLIED_ENVIRONMENT) == set(YOUTUBE_KEY_LOCATOR)
+    assert set(environment) - set(API_LAST_APPLIED_ENVIRONMENT) == set(YOUTUBE_KEY_LOCATOR) | set(SSM_LOCATORS)
 
 
 def test_dispatcher_lambda_environment_is_exactly_the_expected_one():
@@ -122,3 +132,19 @@ def test_writer_lambdas_still_get_the_history_bucket_from_the_single_bucket_reso
     for name in WRITER_LAMBDAS:
         block = _resource_block(LAMBDA_TF, f'resource "aws_lambda_function" "{name}"')
         assert _environment_variables(block).get("YOBI_HISTORY_BUCKET") == "aws_s3_bucket.history.id", name
+
+
+def test_every_ssm_locator_points_at_a_parameter_name_and_sits_next_to_its_old_secret_locator():
+    """Stage 1 keeps both locators per consumer; the SSM one is a locals reference to a /yobi-analytics/... NAME, never a value."""
+    names = dict(re.findall(r'^\s*(\w+_api_key|vapid_private_key)\s*=\s*"(/yobi-analytics/[a-z0-9-]+)"', LAMBDA_TF, re.MULTILINE))
+    assert set(names) == {"youtube_api_key", "admin_api_key", "vapid_private_key", "holodex_api_key"}
+    pairs = {
+        "collector": ("YOUTUBE_API_KEY_SECRET_NAME", "YOUTUBE_API_KEY_SSM_PARAMETER"),
+        "history_worker": ("YOUTUBE_API_KEY_SECRET_NAME", "YOUTUBE_API_KEY_SSM_PARAMETER"),
+        "api": ("HOLODEX_SECRET_NAME", "HOLODEX_SSM_PARAMETER"),
+        "notification_dispatcher": ("VAPID_PRIVATE_KEY_SECRET_NAME", "VAPID_PRIVATE_KEY_SSM_PARAMETER"),
+    }
+    for resource, (old, new) in pairs.items():
+        environment = _environment_variables(_resource_block(LAMBDA_TF, f'resource "aws_lambda_function" "{resource}"'))
+        assert old in environment and new in environment, resource
+        assert environment[new].startswith("local.ssm_parameter_names."), resource
