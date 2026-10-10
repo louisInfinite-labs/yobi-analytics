@@ -8,6 +8,8 @@ import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
 import { getOrCreateClientId } from "../../../shared/api/clientId"
 import { getPushSubscriptionStatus, subscribeToPush, unsubscribeFromPush } from "../push/pushNotifications"
 import { VAPID_PUBLIC_KEY } from "../push/vapidPublicKey"
+import { useLocale } from "../../../shared/i18n/hooks/useLocale"
+import { t } from "../../../shared/i18n/translations"
 
 type Status = "checking" | "unsupported" | "subscribed" | "unsubscribed"
 
@@ -54,6 +56,7 @@ function syncNotificationEnabledToBackend(clientId: string, clientSecret: string
  * Roadmap 4.6 scheduled dispatcher has something to actually deliver to.
  */
 export function NotificationToggle() {
+  const [locale] = useLocale()
   const [status, setStatus] = useState<Status>("checking")
   const [syncError, setSyncError] = useState<SyncError | null>(null)
   // Guards against a double-click (or a slow tap registering twice)
@@ -77,7 +80,7 @@ export function NotificationToggle() {
   if (status === "unsupported") {
     return (
       <span className="notification-toggle__unsupported" title="This browser doesn't support push notifications">
-        Notifications unavailable
+        {t(locale, "notificationToggle.unavailable")}
       </span>
     )
   }
@@ -195,7 +198,7 @@ export function NotificationToggle() {
         aria-pressed={status === "subscribed"}
         icon={status === "subscribed" ? <Bell size={14} aria-hidden="true" /> : <BellOff size={14} aria-hidden="true" />}
       >
-        {status === "subscribed" ? "Notifications on" : "Enable notifications"}
+        {status === "subscribed" ? t(locale, "notificationToggle.on") : t(locale, "notificationToggle.enable")}
       </Button>
       {syncError && (
         <span role="alert" className="notification-toggle__error">

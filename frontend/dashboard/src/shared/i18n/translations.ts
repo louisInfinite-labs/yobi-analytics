@@ -182,6 +182,9 @@ export type TranslationKey =
   | "displaySettings.upcomingLabel"
   | "displaySettings.upcomingHelp"
   | "displaySettings.upcomingCountdownOption"
+  | "notificationToggle.enable"
+  | "notificationToggle.on"
+  | "notificationToggle.unavailable"
   | "liveSchedule.pageTitle"
   | "liveSchedule.pageSubtitle"
   | "liveSchedule.timeColumnHeader"
@@ -387,7 +390,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.timeFormat12h": "12 小時制（AM/PM）",
     "displaySettings.upcomingLabel": "即將到來的直播",
     "displaySettings.upcomingHelp": "設定即將到來的直播時間的顯示格式。",
-    "displaySettings.upcomingCountdownOption": "Countdown",
+    "displaySettings.upcomingCountdownOption": "倒數計時",
+    "notificationToggle.enable": "開啟通知",
+    "notificationToggle.on": "通知已開啟",
+    "notificationToggle.unavailable": "無法使用通知",
     "liveSchedule.pageTitle": "直播時間表",
     "liveSchedule.pageSubtitle": "你所選創作者的即將到來與直播中節目。",
     "liveSchedule.timeColumnHeader": "時間",
@@ -593,6 +599,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.upcomingLabel": "Upcoming streams",
     "displaySettings.upcomingHelp": "Choose how upcoming stream times are shown.",
     "displaySettings.upcomingCountdownOption": "Countdown",
+    "notificationToggle.enable": "Enable notifications",
+    "notificationToggle.on": "Notifications on",
+    "notificationToggle.unavailable": "Notifications unavailable",
     "liveSchedule.pageTitle": "Live Schedule",
     "liveSchedule.pageSubtitle": "Upcoming and live streams across your selected creators.",
     "liveSchedule.timeColumnHeader": "Time",
@@ -798,6 +807,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.upcomingLabel": "今後の配信",
     "displaySettings.upcomingHelp": "今後の配信時間の表示形式を設定します。",
     "displaySettings.upcomingCountdownOption": "カウントダウン",
+    "notificationToggle.enable": "通知をオンにする",
+    "notificationToggle.on": "通知オン",
+    "notificationToggle.unavailable": "通知は利用できません",
     "liveSchedule.pageTitle": "配信スケジュール",
     "liveSchedule.pageSubtitle": "選択したクリエイターの今後の配信と配信中の番組。",
     "liveSchedule.timeColumnHeader": "時間",

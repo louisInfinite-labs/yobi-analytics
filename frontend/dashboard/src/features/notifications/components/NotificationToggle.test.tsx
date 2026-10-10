@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { NotificationToggle } from "./NotificationToggle"
 import * as apiClient from "../../../shared/api/apiClient"
 import * as pushNotifications from "../push/pushNotifications"
+import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 
 vi.mock("../push/pushNotifications", () => ({
   getPushSubscriptionStatus: vi.fn(),
@@ -26,6 +27,38 @@ describe("NotificationToggle", () => {
 
     expect(await screen.findByText("Notifications unavailable")).toBeInTheDocument()
     expect(screen.queryByRole("button")).not.toBeInTheDocument()
+  })
+
+  describe("labels follow the app locale", () => {
+    afterEach(() => {
+      window.localStorage.removeItem("yobi.locale")
+      resetAllSharedStateForTests()
+    })
+
+    it.each([
+      ["zh-TW", "unsubscribed", "開啟通知", "false"],
+      ["zh-TW", "subscribed", "通知已開啟", "true"],
+      ["ja", "unsubscribed", "通知をオンにする", "false"],
+      ["ja", "subscribed", "通知オン", "true"],
+    ] as const)("%s / %s shows the translated button label and keeps aria-pressed", async (locale, status, label, pressed) => {
+      window.localStorage.setItem("yobi.locale", locale)
+      resetAllSharedStateForTests()
+      vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue(status)
+
+      render(<NotificationToggle />)
+
+      expect(await screen.findByRole("button", { name: label })).toHaveAttribute("aria-pressed", pressed)
+    })
+
+    it("shows the translated unavailable message when push is unsupported", async () => {
+      window.localStorage.setItem("yobi.locale", "zh-TW")
+      resetAllSharedStateForTests()
+      vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsupported")
+
+      render(<NotificationToggle />)
+
+      expect(await screen.findByText("無法使用通知")).toBeInTheDocument()
+    })
   })
 
   it("shows the 'enable' state when no subscription exists yet", async () => {
