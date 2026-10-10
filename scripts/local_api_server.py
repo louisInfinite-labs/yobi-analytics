@@ -18,15 +18,15 @@ a real outbound call (the two Holodex-sourced routes), or (GET
 /about-content) read from the committed local content directory instead of
 real S3 -- see the YOBI_ABOUT_CONTENT_DIR note in `main()` below.
 
-AWS Secrets Manager guarantee for the two Holodex-sourced routes:
+AWS SSM Parameter Store guarantee for the two Holodex-sourced routes:
 `get_holodex_api_key()` (`src/ops/config.py`, production code, left entirely
-unmodified) checks `HOLODEX_SECRET_NAME` first and calls Secrets Manager (a
+unmodified) checks `HOLODEX_SSM_PARAMETER` first and calls SSM Parameter Store (a
 real AWS call) if it's set -- that env var is a deployed-Lambda convention,
 not a local-dev one (`.env`/`HOLODEX_API_KEY` is), so it would be unusual for
 it to be ambient here, but "unusual" isn't a guarantee. `main()` below
-unconditionally pops `HOLODEX_SECRET_NAME` from this process's own
+unconditionally pops `HOLODEX_SSM_PARAMETER` from this process's own
 environment before importing `api_handler`, regardless of what the calling
-shell had set -- so this script can never trigger that Secrets Manager call,
+shell had set -- so this script can never trigger that SSM call,
 full stop, without touching Holodex's own key-resolution code at all. A
 locally-configured plaintext `HOLODEX_API_KEY` (the intended local-dev path)
 is unaffected and still makes a real (third-party, non-AWS) Holodex call if
@@ -164,18 +164,18 @@ def main() -> None:
 
     os.environ.pop("YOBI_STORAGE_BACKEND", None)  # always the local backend
     # get_holodex_api_key() (src/ops/config.py) checks this first and, if
-    # set, calls Secrets Manager -- a real AWS call. It's a deployed-Lambda
+    # set, calls SSM Parameter Store -- a real AWS call. It's a deployed-Lambda
     # convention this script's own process should never inherit, but
     # clearing it here (rather than just documenting the assumption) makes
     # that structurally true regardless of what's ambient in the calling
     # shell. See this module's own docstring for the full reasoning.
-    os.environ.pop("HOLODEX_SECRET_NAME", None)
+    os.environ.pop("HOLODEX_SSM_PARAMETER", None)
     # about_content_api.get_about_content() is S3-backed in production
     # (yobi-analytics-history bucket, "about/" prefix). Pointing it at the
     # committed local copy instead -- unconditionally, not just under
     # --enable-smoke-routes -- means this script can never make a real S3
     # call for this route even if the allowlist above were ever widened by
-    # mistake. Same defensive posture as the HOLODEX_SECRET_NAME pop above.
+    # mistake. Same defensive posture as the HOLODEX_SSM_PARAMETER pop above.
     os.environ["YOBI_ABOUT_CONTENT_DIR"] = str(ROOT / "src" / "content" / "about")
     sys.path.insert(0, str(ROOT / "src"))
 

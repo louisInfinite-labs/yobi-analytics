@@ -5,15 +5,10 @@ locals {
   lambda_placeholder_zip = "${path.module}/placeholder.zip"
 }
 
-# Runtime secrets live in SSM Parameter Store (SecureString, Standard tier) -- the old Secrets Manager secrets cost $0.40/month each plus API
-# calls. Lambda environments carry only the parameter NAMES below (locators), never a value; the values were created out-of-band (a script that
-# copies them in memory from Secrets Manager, never printing them) and are never in Terraform variables or state.
-#
-# TRANSITION STAGE 1: every function keeps its old *_SECRET_NAME locator next to the new *_SSM_PARAMETER one. ops/config.py reads SSM first and
-# uses the old secret only when the parameter does not exist yet or this role cannot read it yet (it logs `secret source: ... source=ssm|
-# secretsmanager`). The role itself (yobi-analytics-lambda-role) is managed by hand in the IAM console, never by Terraform; the statement it needs
-# is terraform/manual-iam/policy-lambda-ssm-parameter-read.json. STAGE 2 (separate change, after every consumer logs source=ssm) drops the
-# *_SECRET_NAME lines, the fallback code and the secretsmanager:GetSecretValue permissions.
+# Runtime secrets live in SSM Parameter Store (SecureString, Standard tier). Lambda environments carry only the parameter NAMES below (locators),
+# never a value; the values were created out-of-band (a script that copied them in memory from the retired Secrets Manager secrets, never printing
+# them) and are never in Terraform variables or state. The role itself (yobi-analytics-lambda-role) is managed by hand in the IAM console, never
+# by Terraform; the statement it needs is terraform/manual-iam/policy-lambda-ssm-parameter-read.json.
 locals {
   ssm_parameter_names = {
     youtube_api_key   = "/yobi-analytics/youtube-api-key"
@@ -34,7 +29,6 @@ resource "aws_lambda_function" "collector" {
 
   environment {
     variables = {
-      YOUTUBE_API_KEY_SECRET_NAME   = "yobi-analytics/youtube-api-key"
       YOUTUBE_API_KEY_SSM_PARAMETER = local.ssm_parameter_names.youtube_api_key
       YOBI_DATA_DIR                 = "/tmp"
       YOBI_HISTORY_BUCKET           = aws_s3_bucket.history.id
@@ -58,7 +52,6 @@ resource "aws_lambda_function" "history_worker" {
 
   environment {
     variables = {
-      YOUTUBE_API_KEY_SECRET_NAME   = "yobi-analytics/youtube-api-key"
       YOUTUBE_API_KEY_SSM_PARAMETER = local.ssm_parameter_names.youtube_api_key
       YOBI_HISTORY_BUCKET           = aws_s3_bucket.history.id
     }
@@ -109,20 +102,17 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      YOBI_ADMIN_API_KEY_SECRET_NAME   = "yobi-analytics/admin-api-key"
       YOBI_ADMIN_API_KEY_SSM_PARAMETER = local.ssm_parameter_names.admin_api_key
       YOBI_STORAGE_BACKEND             = "dynamodb"
       # No history-bucket variable here on purpose: the read paths (video-ranking, subscriber-ranking,
       # Oshi Status) resolve the fixed bucket through stores.history_bucket, where the env var is only
       # an optional override. Keeping it out of this block means deploying the API needs no change to
       # this Lambda's live environment.
-      HOLODEX_SECRET_NAME   = "yobi-analytics/holodex-api-key"
       HOLODEX_SSM_PARAMETER = local.ssm_parameter_names.holodex_api_key
       # The LOCATOR of the existing YouTube key (never the key): GET /live-streams classifies a still-unclassified UPCOMING stream with the
       # collector's own classifier (Holodex lists a YouTube Premiere like a stream), read at runtime through ops.config.get_api_key() from the
-      # same secret the collector uses. The role needs secretsmanager:GetSecretValue on that one secret
-      # (terraform/manual-iam/policy-lambda-youtube-key-read.json). Without it the lookup fails open and is logged.
-      YOUTUBE_API_KEY_SECRET_NAME   = "yobi-analytics/youtube-api-key"
+      # same parameter the collector uses. The role needs ssm:GetParameter on it (terraform/manual-iam/policy-lambda-ssm-parameter-read.json).
+      # Without it the lookup fails open and is logged.
       YOUTUBE_API_KEY_SSM_PARAMETER = local.ssm_parameter_names.youtube_api_key
     }
   }
@@ -153,15 +143,12 @@ resource "aws_lambda_function" "notification_dispatcher" {
   environment {
     variables = {
       VAPID_CLAIMS_SUB                = var.vapid_claims_sub
-      VAPID_PRIVATE_KEY_SECRET_NAME   = "yobi-analytics/vapid-private-key"
       VAPID_PRIVATE_KEY_SSM_PARAMETER = local.ssm_parameter_names.vapid_private_key
       # Every dispatcher run builds the reminder schedule through read_api.get_live_streams(): that needs the Holodex key locator, the
       # DynamoDB storage backend (Video Master classification join) and the YouTube key locator (unclassified upcoming streams), the same
       # three locators/switch the API Lambda uses. Locators only -- no key value is ever in the environment.
       YOBI_STORAGE_BACKEND          = "dynamodb"
-      HOLODEX_SECRET_NAME           = "yobi-analytics/holodex-api-key"
       HOLODEX_SSM_PARAMETER         = local.ssm_parameter_names.holodex_api_key
-      YOUTUBE_API_KEY_SECRET_NAME   = "yobi-analytics/youtube-api-key"
       YOUTUBE_API_KEY_SSM_PARAMETER = local.ssm_parameter_names.youtube_api_key
     }
   }
