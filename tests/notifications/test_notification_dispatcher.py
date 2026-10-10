@@ -1395,3 +1395,71 @@ def test_mute_and_quiet_hours_still_block_a_reminder_when_global_and_creator_are
 
     for preference in (muted, quiet):
         assert _run_reminder_scenario(monkeypatch, now=_at(30), streams=[_sf6_stream()], preference=preference, **creator_all) == []
+
+
+# --- One bulk delivery-log read per client (not one read per client x event) ------------------------------------------------
+
+
+def _three_pending_events(event_date: str):
+    if event_date != "2026-09-02":
+        return []
+    return [_event_item(eventDate="2026-09-02", videoId=f"v{i}", discoveredAt="2026-09-02T18:00:00+09:00") for i in range(3)]
+
+
+def _setup_bulk_lookup_run(monkeypatch, *, client_ids):
+    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
+    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
+    monkeypatch.setattr(notification_events_store, "list_events_for_date", _three_pending_events)
+    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": c, "value": _preference_value()} for c in client_ids])
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
+    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
+    monkeypatch.setattr(notification_delivery_log_store, "confirm_delivered", lambda client_id, video_id, delivered_at: None)
+    monkeypatch.setattr(push_sender, "send_push_notification", lambda *a, **kw: PushResult(sent=True, subscription_expired=False))
+
+    def _no_per_event_read(client_id, video_id):
+        raise AssertionError("the dispatcher must not read the delivery log once per (client, event) any more")
+
+    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", _no_per_event_read)
+
+
+def test_the_delivery_log_is_read_once_per_client_for_the_whole_candidate_window(monkeypatch):
+    calls = []
+
+    def _bulk(client_id, video_ids, *, now=None):
+        calls.append((client_id, sorted(video_ids)))
+        return set()
+
+    _setup_bulk_lookup_run(monkeypatch, client_ids=["c1", "c2", "c3", "c4"])
+    monkeypatch.setattr(notification_delivery_log_store, "delivered_video_ids", _bulk)
+
+    response = lambda_handler({}, None)
+
+    assert response == {"statusCode": 200, "checked": 12, "delivered": 12}
+    assert calls == [(client_id, ["v0", "v1", "v2"]) for client_id in ["c1", "c2", "c3", "c4"]]  # 4 reads, not 4 x 3
+
+
+def test_events_the_bulk_read_reports_as_handled_are_skipped_without_a_push(monkeypatch):
+    sent = []
+    _setup_bulk_lookup_run(monkeypatch, client_ids=["c1"])
+    monkeypatch.setattr(notification_delivery_log_store, "delivered_video_ids", lambda client_id, video_ids, *, now=None: {"v0", "v2"})
+    monkeypatch.setattr(
+        push_sender, "send_push_notification", lambda *a, **kw: sent.append(kw["data"]["videoId"]) or PushResult(sent=True, subscription_expired=False)
+    )
+
+    response = lambda_handler({}, None)
+
+    assert sent == ["v1"]
+    assert response == {"statusCode": 200, "checked": 3, "delivered": 1}
+
+
+def test_a_client_without_a_subscription_never_triggers_a_delivery_log_read(monkeypatch):
+    """A client that is enabled but has no push subscription is skipped before its events are looked at -- and so before any read."""
+    _setup_bulk_lookup_run(monkeypatch, client_ids=["c1"])
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
+
+    def _boom(*a, **kw):
+        raise AssertionError("no delivery-log read is needed for a client that cannot receive anything")
+
+    monkeypatch.setattr(notification_delivery_log_store, "delivered_video_ids", _boom)
+
+    assert lambda_handler({}, None) == {"statusCode": 200, "checked": 0, "delivered": 0}
