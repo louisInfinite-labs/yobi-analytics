@@ -255,3 +255,27 @@ def test_with_no_deployed_locator_the_local_plaintext_variables_still_work(monke
     assert get_holodex_api_key() == "local-holodex"
     assert get_admin_api_key() == "local-admin"
     assert get_vapid_credentials()[0] == "local-pem"
+
+
+@pytest.mark.parametrize("key", ["youtube", "holodex"])
+def test_a_fallback_value_is_not_cached_so_a_warm_container_moves_to_ssm_once_it_is_available(monkeypatch, capsys, key):
+    """The cached getters must not remember the transition fallback: the next call asks SSM again and, once the parameter is readable, serves
+    it (and logs source=ssm) instead of keeping the old Secrets Manager value for the life of the container."""
+    description, getter, *_ = _use(monkeypatch, key)
+    unavailable = FakeClients(ssm_error=client_error("AccessDeniedException"))
+    monkeypatch.setattr(config.boto3, "client", unavailable)
+    assert getter() == OLD_VALUE
+    assert getter() == OLD_VALUE
+    assert unavailable.secretsmanager_calls == 2  # not cached: each call went back through SSM and the fallback
+
+    monkeypatch.setattr(config.boto3, "client", FakeClients(ssm_value=VALUE))
+    assert getter() == VALUE
+    assert f"secret source: {description} source=ssm" in capsys.readouterr().out
+
+    monkeypatch.setattr(config.boto3, "client", FakeClients(ssm_error=client_error("ThrottlingException")))
+    assert getter() == VALUE  # now it IS cached: SSM is not asked again
+
+
+@pytest.mark.parametrize("key", ["youtube", "holodex"])
+def test_the_cache_clear_hook_still_exists_for_the_cached_getters(key):
+    assert callable(SECRETS[key][1].cache_clear)

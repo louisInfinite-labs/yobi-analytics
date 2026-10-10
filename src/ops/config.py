@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import functools
 import os
+import threading
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -30,6 +31,30 @@ load_dotenv()
 _SSM_FALLBACK_ERROR_CODES = frozenset({"ParameterNotFound", "AccessDeniedException"})
 
 _logged_sources: set[tuple[str, str, str]] = set()
+
+_load_state = threading.local()
+
+
+def _memoize_unless_fallback(function):
+    """functools.cache for a no-argument secret getter, except that a value served by the TRANSITION FALLBACK (the old Secrets Manager secret
+    used because the SSM parameter was missing / unreadable) is never remembered: the next call asks SSM again, so a warm container moves to the
+    new parameter as soon as it becomes available instead of keeping the old value for the life of the process. Successes from SSM (or from
+    the local plaintext variables) are cached exactly as before; a raised exception is never cached. Exposes cache_clear() like functools.cache.
+    """
+    cache: dict[str, str] = {}
+
+    @functools.wraps(function)
+    def wrapper() -> str:
+        if "value" in cache:
+            return cache["value"]
+        _load_state.used_fallback = False
+        value = function()
+        if not _load_state.used_fallback:
+            cache["value"] = value
+        return value
+
+    wrapper.cache_clear = cache.clear  # type: ignore[attr-defined]
+    return wrapper
 
 
 def _log_source(description: str, source: str, reason: str = "") -> None:
@@ -106,6 +131,8 @@ def _load_deployed_secret(*, ssm_env: str, secret_env: str, error_class: type[Ex
     if secret_name:
         value = _get_secrets_manager_secret(secret_name, error_class=error_class, description=description)
         _log_source(description, "secretsmanager", fallback_reason)
+        if fallback_reason:
+            _load_state.used_fallback = True
         return value
     return None
 
@@ -126,13 +153,14 @@ class MissingHolodexApiKeyError(RuntimeError):
     """Raised when HOLODEX_API_KEY is not set, or the Secrets Manager alternative can't be read."""
 
 
-@functools.cache
+@_memoize_unless_fallback
 def get_api_key() -> str:
     """Return the YouTube Data API key: SSM Parameter Store first (YOUTUBE_API_KEY_SSM_PARAMETER), the old Secrets Manager secret
     (YOUTUBE_API_KEY_SECRET_NAME) as the transition fallback, then the plaintext YOUTUBE_API_KEY (local .env) -- see the module docstring.
 
-    @functools.cache keeps repeat calls within a warm Lambda container (and the two call sites in main.py) from each paying for a separate
-    SSM request. It only memoizes a successful return, never a raised exception, so a transient failure is not cached as permanent. Every
+    The memoization keeps repeat calls within a warm Lambda container (and the two call sites in main.py) from each paying for a separate SSM
+    request. It remembers only a successful return that did not come from the transition fallback, never a raised exception, so neither a
+    transient failure nor a fallback value is cached as permanent. Every
     failure mode raises MissingAPIKeyError, which is what main.py's call sites already catch.
     """
     key = _load_deployed_secret(
@@ -206,14 +234,14 @@ def get_admin_api_key() -> str:
     return api_key
 
 
-@functools.cache
+@_memoize_unless_fallback
 def get_holodex_api_key() -> str:
     """Return the Holodex API key: SSM (HOLODEX_SSM_PARAMETER), then the old Secrets Manager secret (HOLODEX_SECRET_NAME) as the
     transition fallback, then the plaintext HOLODEX_API_KEY (local .env).
 
     The locator is named HOLODEX_SECRET_NAME / HOLODEX_SSM_PARAMETER rather than HOLODEX_API_KEY_* to avoid any resemblance to the frontend's
-    old VITE_HOLODEX_API_KEY, which this key replaces. @functools.cache is safe for the same reason as get_api_key(): the key is only used
-    to call Holodex outbound, never compared against caller input, and a raised exception is never cached.
+    old VITE_HOLODEX_API_KEY, which this key replaces. The memoization (same rules as get_api_key()) is safe because the key is only used
+    to call Holodex outbound, never compared against caller input.
     """
     key = _load_deployed_secret(
         ssm_env="HOLODEX_SSM_PARAMETER",
