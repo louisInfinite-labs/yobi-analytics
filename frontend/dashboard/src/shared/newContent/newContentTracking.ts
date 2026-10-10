@@ -1,8 +1,10 @@
 import { useCallback, useMemo } from "react"
 import { createSharedState, useSharedState } from "../state/sharedState"
 
-/** NEW tags for content (videos and livestream archives), shared by every list that shows them -- Home's Video
- * List and the Oshi Status recent activity read the SAME state here, so opening an item in one clears it in both.
+/** NEW tags for content (videos and livestream archives). The NEW badge is displayed ONLY in the Oshi Status recent
+ * activity; Home's Video List shows no badge but shares the same seen state: opening an eligible archive or upload in
+ * either list calls markContentSeen (live/upcoming clicks do not), and a confirmed PLAYING of a live stream suppresses
+ * its later archive's NEW.
  *
  * Semantics (browser/device-local; there is no login or sync):
  * - Tracking starts on the first ever use on this browser. The baseline is 00:00 LOCAL time of that first-use
