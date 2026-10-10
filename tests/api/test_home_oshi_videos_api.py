@@ -460,7 +460,7 @@ def test_a_creator_with_no_stored_result_is_not_ready(monkeypatch):
     "query",
     [
         {"topic": "fortnite"},
-        {"contentType": "short"},
+        {"contentType": "reel"},  # ("short" is a valid content type since B18)
         {"sort": "random"},
         {"sort": 5},
         {"liveStatus": "ended"},
@@ -474,7 +474,7 @@ def test_invalid_values_are_client_errors_on_the_recent_endpoint(monkeypatch, qu
         _recent(**query)
 
 
-@pytest.mark.parametrize("query", [{"topic": "fortnite"}, {"contentType": "short"}, {"metric": "90d"}, {"liveStatus": "ended"}])
+@pytest.mark.parametrize("query", [{"topic": "fortnite"}, {"contentType": "reel"}, {"metric": "90d"}, {"liveStatus": "ended"}])
 def test_invalid_values_are_client_errors_on_the_ranking_endpoint(monkeypatch, query):
     _wire(monkeypatch, {"emma": [_row("a", "sf6")]})
 

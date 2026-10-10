@@ -78,7 +78,7 @@ describe("subscribeToPush", () => {
   it("subscribes and returns the subscription JSON when none exists yet", async () => {
     const subscribeMock = vi.fn().mockResolvedValue(fakeSubscription())
     const pushManager = { getSubscription: vi.fn().mockResolvedValue(null), subscribe: subscribeMock }
-    const register = vi.fn().mockResolvedValue({ pushManager })
+    const register = vi.fn().mockResolvedValue({ pushManager, active: { state: "activated" } })
     Object.defineProperty(navigator, "serviceWorker", { value: { register }, configurable: true })
     vi.stubGlobal("PushManager", class {})
     vi.stubGlobal("Notification", { requestPermission: vi.fn().mockResolvedValue("granted") })
@@ -94,7 +94,7 @@ describe("subscribeToPush", () => {
   it("reuses an already-existing subscription instead of subscribing again", async () => {
     const subscribeMock = vi.fn()
     const pushManager = { getSubscription: vi.fn().mockResolvedValue(fakeSubscription()), subscribe: subscribeMock }
-    const register = vi.fn().mockResolvedValue({ pushManager })
+    const register = vi.fn().mockResolvedValue({ pushManager, active: { state: "activated" } })
     Object.defineProperty(navigator, "serviceWorker", { value: { register }, configurable: true })
     vi.stubGlobal("PushManager", class {})
     vi.stubGlobal("Notification", { requestPermission: vi.fn().mockResolvedValue("granted") })

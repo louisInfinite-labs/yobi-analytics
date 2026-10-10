@@ -2,8 +2,8 @@ import { useEffect, useState } from "react"
 import { Button, Drawer, Segmented } from "antd"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t } from "../../../shared/i18n/translations"
-import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, type ReminderSetting, type ReminderTimeValue } from "../../notifications/model/notificationTopics"
-import { useStreamNotificationOverride } from "../hooks/useStreamNotificationOverride"
+import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES } from "../../notifications/model/notificationTopics"
+import { STREAM_REMINDER_OFF, useStreamNotificationOverride, type StreamReminderChoice } from "../hooks/useStreamNotificationOverride"
 import type { ScheduledStream } from "../model/scheduledStream"
 
 interface StreamNotificationPanelProps {
@@ -30,8 +30,8 @@ const NO_SELECTION = "__none__"
  * the creator's 全部 and topic reminders for this stream only and never changes them. */
 export function StreamNotificationPanel({ stream, onClose }: StreamNotificationPanelProps) {
   const [locale] = useLocale()
-  const { getEffectiveReminderValue, saveOverride } = useStreamNotificationOverride()
-  const [draft, setDraft] = useState<ReminderSetting>(null)
+  const { getEffectiveReminderValue, getOverride, saveOverride, removeOverride } = useStreamNotificationOverride()
+  const [draft, setDraft] = useState<StreamReminderChoice | null>(null)
   // Tracks whether the user has changed the control since this stream was
   // opened -- the underlying effective value can itself change shortly
   // after mount (the backend-backed cache below finishes its initial
@@ -53,7 +53,11 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
 
   if (!stream) return null
 
-  const options = REMINDER_TIME_VALUES.map((value) => ({ value, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) }))
+  const options = [
+    ...REMINDER_TIME_VALUES.map((value) => ({ value: value as StreamReminderChoice, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) })),
+    { value: STREAM_REMINDER_OFF as StreamReminderChoice, label: t(locale, "liveSchedule.streamReminderOff") },
+  ]
+  const hasOwnOverride = getOverride(stream.videoId) !== null
 
   async function handleSave() {
     if (!stream || draft === null) return
@@ -71,6 +75,20 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
     }
   }
 
+  async function handleRemove() {
+    if (!stream) return
+    setSaving(true)
+    setSaveFailed(false)
+    try {
+      await removeOverride(stream)
+      onClose()
+    } catch {
+      setSaveFailed(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Drawer open onClose={onClose} title={t(locale, "liveSchedule.setReminderButton")} size={420} className="stream-reminder-drawer">
       <section className="stream-reminder-section">
@@ -82,7 +100,7 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
           options={options}
           onChange={(value) => {
             setDirty(true)
-            setDraft(value as ReminderTimeValue)
+            setDraft(value as StreamReminderChoice)
           }}
           aria-label={t(locale, "liveSchedule.setReminderButton")}
         />
@@ -94,6 +112,11 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
         </p>
       ) : null}
       <div className="stream-reminder-actions">
+        {hasOwnOverride ? (
+          <Button onClick={handleRemove} disabled={saving}>
+            {t(locale, "liveSchedule.removeStreamReminderButton")}
+          </Button>
+        ) : null}
         <Button type="primary" onClick={handleSave} disabled={saving || draft === null} loading={saving}>
           {t(locale, "liveSchedule.saveReminderButton")}
         </Button>

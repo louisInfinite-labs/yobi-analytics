@@ -126,6 +126,11 @@ resource "aws_lambda_function" "api" {
       # an optional override. Keeping it out of this block means deploying the API needs no change to
       # this Lambda's live environment.
       HOLODEX_SECRET_NAME = "yobi-analytics/holodex-api-key"
+      # The LOCATOR of the existing YouTube key (never the key): GET /live-streams classifies a still-unclassified UPCOMING stream with the
+      # collector's own classifier (Holodex lists a YouTube Premiere like a stream), read at runtime through ops.config.get_api_key() from the
+      # same secret the collector uses. The role needs secretsmanager:GetSecretValue on that one secret
+      # (terraform/manual-iam/policy-lambda-youtube-key-read.json). Without it the lookup fails open and is logged.
+      YOUTUBE_API_KEY_SECRET_NAME = "yobi-analytics/youtube-api-key"
     }
   }
 
@@ -157,6 +162,12 @@ resource "aws_lambda_function" "notification_dispatcher" {
       VAPID_CLAIMS_SUB              = var.vapid_claims_sub
       VAPID_PRIVATE_KEY_SECRET_NAME = "yobi-analytics/vapid-private-key"
       # VAPID_PRIVATE_KEY_SSM_PARAMETER = local.ssm_parameter_prepared_not_applied.vapid_private_key
+      # Every dispatcher run builds the reminder schedule through read_api.get_live_streams(): that needs the Holodex key locator, the
+      # DynamoDB storage backend (Video Master classification join) and the YouTube key locator (unclassified upcoming streams), the same
+      # three locators/switch the API Lambda uses. Locators only -- no key value is ever in the environment.
+      YOBI_STORAGE_BACKEND        = "dynamodb"
+      HOLODEX_SECRET_NAME         = "yobi-analytics/holodex-api-key"
+      YOUTUBE_API_KEY_SECRET_NAME = "yobi-analytics/youtube-api-key"
     }
   }
 

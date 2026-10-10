@@ -1,4 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { getCreatorById } from "../../entities/creator/data/creatorRegistry"
+import { mockCreators } from "../../entities/creator/data/mockCreators"
+import { useFavoriteCreators } from "../../features/favorites/hooks/useFavoriteCreators"
+import { buildCreatorFilterOptions } from "../../features/live-schedule/model/scheduleCreatorFilter"
 import { ScheduleGrid } from "../../features/live-schedule/components/ScheduleGrid"
 import { ScheduleToolbar } from "../../features/live-schedule/components/ScheduleToolbar"
 import { StreamDetailModal } from "../../features/live-schedule/components/StreamDetailModal"
@@ -16,7 +20,18 @@ import "./styles/schedule.css"
  * than building its own sidebar/full-viewport shell. */
 export function LiveSchedulePage() {
   const [locale] = useLocale()
-  const { weekStart, days, now } = useWeeklySchedule()
+  const [selectedCreators, setSelectedCreators] = useState<string[]>([])
+  const selectedSet = useMemo(() => new Set(selectedCreators), [selectedCreators])
+  const { weekStart, days, now, allStreams } = useWeeklySchedule(selectedSet)
+  const { favorites } = useFavoriteCreators()
+  const creatorOptions = useMemo(
+    () =>
+      buildCreatorFilterOptions(allStreams, selectedSet, favorites, (channelId) => {
+        const mock = mockCreators.find((creator) => creator.channelId === channelId)
+        return mock?.channelName ?? getCreatorById(channelId.replace(/^ch_/, ""))?.displayName ?? channelId
+      }),
+    [allStreams, selectedSet, favorites],
+  )
   const [selectedStream, setSelectedStream] = useState<ScheduledStream | null>(null)
   const [reminderStream, setReminderStream] = useState<ScheduledStream | null>(null)
   const [embed, setEmbed] = useState<{ videoId: string; title: string } | null>(null)
@@ -39,7 +54,13 @@ export function LiveSchedulePage() {
           <div className="schedule-subtitle">{t(locale, "liveSchedule.pageSubtitle")}</div>
         </div>
 
-        <ScheduleToolbar locale={locale} weekStart={weekStart} />
+        <ScheduleToolbar
+          locale={locale}
+          weekStart={weekStart}
+          creatorOptions={creatorOptions}
+          selectedCreators={selectedCreators}
+          onSelectedCreatorsChange={setSelectedCreators}
+        />
       </header>
 
       <ScheduleGrid locale={locale} days={days} now={now} selectedStreamId={selectedStream?.id ?? null} onSelectStream={setSelectedStream} />

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react"
 import { X } from "lucide-react"
+import { useWatchedDuringLive } from "../hooks/useWatchedDuringLive"
 
 interface VideoPlayerModalProps {
   videoId: string
@@ -8,6 +9,10 @@ interface VideoPlayerModalProps {
   /** "player-only" renders just the 16:9 player (no close button, no visible
    * title, no card padding); backdrop click and Escape still close it. */
   variant?: "standard" | "player-only"
+  /** Whether this videoId is a livestream that is live right now. Passing a boolean (even false) makes the embed
+   * report playback through the YouTube IFrame API so a confirmed PLAYING while live is recorded as "watched during
+   * live" (see useWatchedDuringLive); leaving it undefined keeps the plain embed with no tracking at all. */
+  isLive?: boolean
 }
 
 /** Centered, medium-sized YouTube player over a dimmed backdrop. Closes on
@@ -17,12 +22,14 @@ interface VideoPlayerModalProps {
  * whatever opened it on close, so keyboard users never land on background
  * controls while the modal is open. In the "player-only" variant there is no
  * close button, so the panel itself is the first focus stop. */
-export function VideoPlayerModal({ videoId, title, onClose, variant = "standard" }: VideoPlayerModalProps) {
+export function VideoPlayerModal({ videoId, title, onClose, variant = "standard", isLive }: VideoPlayerModalProps) {
   const playerOnly = variant === "player-only"
   const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const openerRef = useRef<Element | null>(document.activeElement)
+  useWatchedDuringLive(iframeRef, videoId, isLive)
+  const embedParams = isLive === undefined ? "autoplay=1" : `autoplay=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`
 
   useEffect(() => {
     const firstStop = () => (playerOnly ? panelRef.current : closeButtonRef.current)
@@ -93,7 +100,7 @@ export function VideoPlayerModal({ videoId, title, onClose, variant = "standard"
         <div className="video-player-modal__frame">
           <iframe
             ref={iframeRef}
-            src={`https://www.youtube.com/embed/${videoId}?autoplay=1`}
+            src={`https://www.youtube.com/embed/${videoId}?${embedParams}`}
             title={title}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen

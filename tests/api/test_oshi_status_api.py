@@ -200,6 +200,24 @@ def test_a_newer_livestream_archive_never_becomes_the_latest_video(monkeypatch):
     assert [item["videoId"] for item in result["recent"]] == ["stream", "up"]
 
 
+def test_a_newer_short_is_neither_the_latest_video_nor_a_recent_item_nor_counted_as_an_upload(monkeypatch):
+    """B18: a Short (contentType="short") is not a normal uploaded video -- Shorts are a future feature."""
+    _wire_rows(
+        monkeypatch,
+        [
+            _row("up", published=_iso(timedelta(days=-2))),
+            _row("short", content_type="short", published=_iso(timedelta(hours=-3))),
+            _row("stream", content_type="live", live_status="completed", published=_iso(timedelta(days=-1))),
+        ],
+    )
+
+    result = _call()
+
+    assert result["latestVideo"]["videoId"] == "up"
+    assert [item["videoId"] for item in result["recent"]] == ["stream", "up"]
+    assert result["thisWeek"]["newUploads"] == 1  # only "up"
+
+
 def test_no_classified_upload_gives_an_explicit_null_latest_video_and_empty_recent(monkeypatch):
     _wire_rows(monkeypatch, [_row("u", content_type=None), _row("s", content_type="live", live_status="upcoming")])
 

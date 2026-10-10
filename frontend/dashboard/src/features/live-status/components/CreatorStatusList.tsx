@@ -1,7 +1,7 @@
 import { Avatar } from "antd"
 import { Heart } from "lucide-react"
 import { Fragment, useState, type CSSProperties } from "react"
-import { isMyOshiEligible, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
+import { toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 import { useDefaultOshiCreator } from "../../oshi/hooks/useDefaultOshiCreator"
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
@@ -127,10 +127,6 @@ function CreatorRow({
   const legacyId = toLegacyRosterId(creator)
   const swipe = useSwipeToFavorite(isFavorite, () => onToggleFavorite(legacyId))
   const topic = status.kind === "offline" ? null : status.title
-  // Group/staff/official channels get the same row (avatar, name, status, topic, favorite
-  // swipe) but are not people, so they can never become Current Oshi: their name area is a
-  // plain element rather than the Oshi-switch button.
-  const canBeOshi = isMyOshiEligible(creator)
   const creatorContent = (
     <>
       <CreatorAvatar creator={creator} isFavorite={isFavorite} />
@@ -161,24 +157,18 @@ function CreatorRow({
         style={{ transform: `translateX(${swipe.translateX}px)` }}
         {...swipe.rowHandlers}
       >
-        {canBeOshi ? (
-          <button
-            type="button"
-            className="live-status-member__creator-button"
-            style={creatorNameAccentStyle(creator)}
-            onClick={swipe.guardClick(() => onCreatorButtonClick(creator))}
-            aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.displayName })}
-          >
-            {creatorContent}
-          </button>
-        ) : (
-          <div
-            className="live-status-member__creator-button live-status-member__creator-button--static"
-            style={creatorNameAccentStyle(creator)}
-          >
-            {creatorContent}
-          </div>
-        )}
+        {/* Every displayed channel -- individual, official, group, staff -- keeps this click. Whether a
+            channel can be saved as an Oshi in My Oshi Settings (isMyOshiEligible) is a separate rule and
+            must never decide whether its Live Status row responds. */}
+        <button
+          type="button"
+          className="live-status-member__creator-button"
+          style={creatorNameAccentStyle(creator)}
+          onClick={swipe.guardClick(() => onCreatorButtonClick(creator))}
+          aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.displayName })}
+        >
+          {creatorContent}
+        </button>
         <button
           type="button"
           className="live-status-member__status"
@@ -291,12 +281,6 @@ export function CreatorStatusList({
    * theme. */
   function handleVideoSelect(creator: CanonicalCreator, video: { videoId: string; title: string }) {
     const legacyId = toLegacyRosterId(creator)
-    // A group/staff/official channel's stream plays on its own: it can never become
-    // Current Oshi, so there is no creator switch (and no confirm dialog) to run first.
-    if (!isMyOshiEligible(creator)) {
-      onSelectVideo(video, legacyId)
-      return
-    }
     if (legacyId === currentOshiId) {
       onSelectVideo(video, legacyId)
       return

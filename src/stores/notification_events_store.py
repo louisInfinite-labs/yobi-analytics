@@ -26,7 +26,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import BotoCoreError, ClientError
 
-from tracking.video_master import Video
+from tracking.video_master import CONTENT_TYPE_SHORT, Video
 
 NOTIFICATION_EVENTS_TABLE = os.environ.get("YOBI_NOTIFICATION_EVENTS_TABLE") or "YobiNotificationEvents"
 
@@ -102,10 +102,16 @@ def _video_to_event_item(video: Video) -> dict[str, Any]:
         raise NotificationEventsStoreError(
             f"Video {video.video_id!r} has no discovered_at; cannot record a notification event without one"
         )
-    return {
+    item: dict[str, Any] = {
         "eventDate": datetime.fromisoformat(video.discovered_at).date().isoformat(),
         "videoId": video.video_id,
         "creatorId": video.creator_id,
         "title": video.title,
         "discoveredAt": video.discovered_at,
     }
+    # A Short is told apart from an ordinary video so the dispatcher can deliver it only to clients that enabled this creator's
+    # Shorts (notification_dispatch.is_new_video_wanted). Omitted otherwise -- an event written before this field existed is
+    # then treated as an ordinary video.
+    if video.content_type == CONTENT_TYPE_SHORT:
+        item["contentType"] = CONTENT_TYPE_SHORT
+    return item

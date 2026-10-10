@@ -1,0 +1,13 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadTheExistingYouTubeApiKeyOnly",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "arn:aws:secretsmanager:ap-northeast-1:189461315571:secret:yobi-analytics/youtube-api-key-*"
+    }
+  ]
+}

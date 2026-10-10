@@ -1,3 +1,35 @@
+# Per-client secret hashes (src/stores/client_credential_store.py): one item per
+# clientId -- {clientId, secretHash, createdAt} -- written by a conditional
+# PutItem and read by GetItem only. The store's default table name
+# ("YobiClientCredentials") is what the API Lambda uses (no
+# YOBI_CLIENT_CREDENTIALS_TABLE override is set), so no Lambda environment
+# change is needed. Without this table POST /clients/{id}/credential and every
+# client-scoped route (push-subscription, notification-preference, reminders)
+# fail with ResourceNotFoundException -> 500.
+# secretHash/createdAt are ordinary schemaless attributes, deliberately not
+# declared (no index references them). No TTL: the store never writes one.
+resource "aws_dynamodb_table" "client_credentials" {
+  name         = "YobiClientCredentials"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "clientId"
+
+  attribute {
+    name = "clientId"
+    type = "S"
+  }
+
+  on_demand_throughput {
+    max_read_request_units  = 200
+    max_write_request_units = 100
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  deletion_protection_enabled = true
+}
+
 resource "aws_dynamodb_table" "heartbeat" {
   name         = "YobiHeartbeat"
   billing_mode = "PAY_PER_REQUEST"

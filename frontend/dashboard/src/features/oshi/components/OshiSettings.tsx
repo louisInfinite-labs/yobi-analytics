@@ -225,7 +225,9 @@ export function OshiSettings() {
         {agencyGroups.map((agency) => (
           <section key={agency.agencyLabel} className="favorites-roster__agency">
             {agency.regions.map((region) => {
-              const regionCreators = region.subgroups.flatMap((subgroup) => subgroup.creators)
+              // A creator can sit in two subgroups of one region (e.g. a Hololive generation AND Gamers): count each creator once, so
+              // the region's "N SELECTED" always equals the number of distinct favorites there (and never exceeds the header total).
+              const regionCreators = [...new Map(region.subgroups.flatMap((subgroup) => subgroup.creators).map((creator) => [creator.creatorId, creator])).values()]
               const regionSelectedCount = regionCreators.filter((creator) => favorites.has(toLegacyRosterId(creator))).length
               return (
                 <div key={region.branch} className="favorites-roster__region">

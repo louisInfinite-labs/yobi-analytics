@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import time
+from datetime import datetime
 from typing import Callable, TypeVar
 
 import httplib2
@@ -21,6 +22,26 @@ SKIP_REASON_API_ERROR_PREFIX = "YouTube API error: "
 MAX_RETRIES = IMMEDIATE_MAX_ATTEMPTS
 RETRY_BACKOFF_BASE_SECONDS = 1.0
 RETRY_BACKOFF_CAP_SECONDS = 8.0
+
+# A completed YouTube Premiere is an ordinary uploaded video, not a livestream, but YouTube gives it a
+# liveStreamingDetails object (scheduled/actual start and end) exactly like a livestream archive. The Data API has no
+# Premiere flag; what separates them in the fields already on the videos.list response is when the video was
+# published relative to when it started: a Premiere is published at its start (publishedAt == actualStartTime, or a
+# little before it for older Premieres), a livestream archive only after the stream (hours later; the closest real
+# stream audited was 150 s). Window validated against the public watch page on 10,002 completed videos across 7
+# VSPO/Hololive creators (305 Premieres, 23 boundary streams): publishedAt - actualStartTime of -126..+3 s for every
+# Premiere, never inside -300..+60 s for a stream.
+PREMIERE_MAX_PUBLISHED_AFTER_START_SECONDS = 60.0
+PREMIERE_MAX_PUBLISHED_BEFORE_START_SECONDS = 300.0
+
+# An UPCOMING Premiere (not started, so the publish-window rule above cannot apply yet) is told apart by `contentDetails.duration`.
+# Real Data API responses for 8 videos (2026-10-10, one videos.list call; the public watch page's isLiveContent confirmed each type):
+#   3 upcoming Premieres (a cover, an official MV, a video announcement) -> liveBroadcastContent "upcoming", scheduledStartTime present,
+#     contentDetails has NO `duration`;
+#   3 upcoming real streams -> the same, with duration "P0D";  1 live stream -> "P0D";  1 ENDED real stream -> a real length ("PT4H17M29S").
+# The ended stream proves a positive duration says nothing about a Premiere, so the rule is ONLY for the upcoming state: it is never applied
+# to a running, ended or archived broadcast. Anything that does not fit (no contentDetails at all, no liveBroadcastContent, a started
+# broadcast) keeps the existing behaviour -- a livestream -- so a missing field can never hide a real stream.
 
 T = TypeVar("T")
 
@@ -219,7 +240,7 @@ def get_video_statistics(youtube: Resource, video_ids: list[str]) -> tuple[list[
 def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[str, str]]:
     """Fetch and parse one videos.list batch, skipping missing/malformed items with a reason."""
     response = call_youtube_api(
-        lambda: youtube.videos().list(part="snippet,statistics,liveStreamingDetails", id=",".join(batch)).execute()
+        lambda: youtube.videos().list(part="snippet,statistics,liveStreamingDetails,contentDetails", id=",".join(batch)).execute()
     )
 
     items = response.get("items")
@@ -519,6 +540,48 @@ def _fetch_channel_avatar_batch(youtube: Resource, batch: list[str]) -> tuple[di
     return avatars, skip_reasons
 
 
+def _parse_timestamp(value: object) -> datetime | None:
+    """Parse a YouTube RFC 3339 timestamp, or None when it is absent or malformed."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def is_completed_premiere(published_at: object, live_details: dict) -> bool:
+    """Whether a liveStreamingDetails object belongs to a COMPLETED Premiere (an ordinary video), not a stream archive.
+
+    True only when the broadcast has both started and ended and `publishedAt` sits inside the audited Premiere window
+    around `actualStartTime` (PREMIERE_MAX_PUBLISHED_*). Anything missing or malformed is False, so an unrecognised
+    shape keeps the existing behaviour (a livestream) rather than guessing a video.
+    """
+    published = _parse_timestamp(published_at)
+    started = _parse_timestamp(live_details.get("actualStartTime"))
+    if published is None or started is None or _parse_timestamp(live_details.get("actualEndTime")) is None:
+        return False
+    published_after_start = (published - started).total_seconds()
+    return -PREMIERE_MAX_PUBLISHED_BEFORE_START_SECONDS <= published_after_start <= PREMIERE_MAX_PUBLISHED_AFTER_START_SECONDS
+
+
+def is_upcoming_premiere(snippet: dict, live_details: dict, content_details: object) -> bool:
+    """Whether a broadcast that has not started is an upcoming Premiere (an uploaded video scheduled to premiere), not a livestream.
+
+    True only for the shape observed on real upcoming Premieres: `snippet.liveBroadcastContent == "upcoming"`, a `scheduledStartTime`, no
+    actual start/end yet, and a `contentDetails` object that carries no `duration`. A real upcoming stream reports "P0D" there, so it
+    never matches. A started or ended broadcast is never decided here (is_completed_premiere owns the ended case), and a missing
+    liveBroadcastContent / contentDetails is "unknown", not a Premiere: the stream is kept.
+    """
+    if snippet.get("liveBroadcastContent") != "upcoming":
+        return False
+    if "scheduledStartTime" not in live_details or "actualStartTime" in live_details or "actualEndTime" in live_details:
+        return False
+    if not isinstance(content_details, dict) or not content_details:
+        return False
+    return not content_details.get("duration")
+
+
 def _parse_video_item(item: dict) -> dict:
     """Extract videoId/title/publishedAt/viewCount/contentType/liveStatus from one videos.list response item.
 
@@ -527,7 +590,12 @@ def _parse_video_item(item: dict) -> dict:
     liveStreamingDetails" -- no separate request): YouTube includes this
     object for any video that is or was associated with a broadcast,
     including a completed/archived livestream, and omits it entirely for a
-    plain upload. Deliberately not `snippet.liveBroadcastContent` -- that
+    plain upload. A completed Premiere ALSO carries it but is an ordinary
+    video, so it is told apart by is_completed_premiere (publishedAt vs
+    actualStartTime), and an UPCOMING one by is_upcoming_premiere (no
+    contentDetails.duration, upcoming only); both are classified "upload" with no
+    liveStatus. A Premiere that is already running is not covered and
+    stays "live" until it ends. Deliberately not `snippet.liveBroadcastContent` -- that
     field reports only the CURRENT live/upcoming/none state and reverts to
     "none" once a stream ends, so it cannot distinguish a completed
     livestream archive from a plain upload the way liveStreamingDetails'
@@ -551,7 +619,11 @@ def _parse_video_item(item: dict) -> dict:
         snippet = item["snippet"]
         statistics = item["statistics"]
         live_details = item.get("liveStreamingDetails")
-        is_live = isinstance(live_details, dict)
+        is_live = (
+            isinstance(live_details, dict)
+            and not is_completed_premiere(snippet["publishedAt"], live_details)
+            and not is_upcoming_premiere(snippet, live_details, item.get("contentDetails"))
+        )
         if is_live:
             if "actualEndTime" in live_details:
                 live_status = "completed"

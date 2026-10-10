@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import {
+  deleteStreamNotificationOverride,
   fetchReminderSettings,
   reminderValueToSetting,
   saveStreamNotificationOverride,
@@ -11,6 +12,13 @@ import { ALL_TOPICS_ID } from "../../notifications/model/notificationTopicCatalo
 import type { ReminderSetting, ReminderTimeValue } from "../../notifications/model/notificationTopics"
 import type { ScheduledStream } from "../model/scheduledStream"
 import { getCache, getGeneration, isFetchStarted, markFetchStarted, resetFetchStarted, setCache, subscribe } from "./streamNotificationOverrideCache"
+
+/** The panel's extra choice besides the five reminder times: an explicit per-stream OFF -- this stream never notifies, even when the
+ * creator's 全部 / topic reminder would. Stored as an override with no start and no advance reminder. */
+export const STREAM_REMINDER_OFF = "off"
+export type StreamReminderChoice = ReminderTimeValue | typeof STREAM_REMINDER_OFF
+
+const OFF_SETTING = { notifyAtStart: false, advanceReminder: null } as const
 
 function ensureLoaded(): void {
   if (isFetchStarted()) return
@@ -55,9 +63,9 @@ export function useStreamNotificationOverride() {
    * actually applies to this stream per the precedence above -- or `null` when none is set
    * (no reminder; never defaulted to a time). */
   const getEffectiveReminderValue = useCallback(
-    (stream: ScheduledStream): ReminderSetting => {
+    (stream: ScheduledStream): ReminderSetting | typeof STREAM_REMINDER_OFF => {
       const override = getOverride(stream.videoId)
-      if (override) return settingToReminderValue(override)
+      if (override) return !override.notifyAtStart && override.advanceReminder === null ? STREAM_REMINDER_OFF : settingToReminderValue(override)
       const creator = resolveCreatorKey(stream.channelId)
       if (!creator) return null
       const all = state.creatorAll[creator.creatorId]
@@ -76,15 +84,24 @@ export function useStreamNotificationOverride() {
    * snapshot at dispatch time, so a later Holodex reschedule is picked up automatically
    * rather than this override freezing the stream's timing as of when it was saved. */
   const saveOverride = useCallback(
-    async (stream: ScheduledStream, value: ReminderTimeValue): Promise<void> => {
+    async (stream: ScheduledStream, value: StreamReminderChoice): Promise<void> => {
       const creator = resolveCreatorKey(stream.channelId)
       if (!creator) throw new Error(`Cannot save a reminder for a stream with no resolvable creator (channelId ${stream.channelId})`)
-      const override: StreamNotificationOverride = { ...reminderValueToSetting(value), creatorId: creator.creatorId }
+      const setting = value === STREAM_REMINDER_OFF ? OFF_SETTING : reminderValueToSetting(value)
+      const override: StreamNotificationOverride = { ...setting, creatorId: creator.creatorId }
       await saveStreamNotificationOverride(stream.videoId, override)
       setCache({ ...getCache(), streamOverrides: { ...getCache().streamOverrides, [stream.videoId]: override } })
     },
     [],
   )
 
-  return { getOverride, getEffectiveReminderValue, saveOverride }
+  /** Removes this stream's own override (a real backend DELETE first; the cache only changes once it succeeded), so the stream
+   * follows the creator 全部 / topic reminders again. */
+  const removeOverride = useCallback(async (stream: ScheduledStream): Promise<void> => {
+    await deleteStreamNotificationOverride(stream.videoId)
+    const { [stream.videoId]: _removed, ...rest } = getCache().streamOverrides
+    setCache({ ...getCache(), streamOverrides: rest })
+  }, [])
+
+  return { getOverride, getEffectiveReminderValue, saveOverride, removeOverride }
 }

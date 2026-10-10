@@ -1,5 +1,5 @@
 import type { VideoSortOption } from "../utils/recentVideosSelection"
-import { isSpecialVideoFilter, type SpecialVideoFilter, type VideoSectionSelection } from "./specialVideoFilters"
+import { SHORT_VIDEO_FILTER, isSpecialVideoFilter, type SpecialVideoFilter, type VideoSectionSelection } from "./specialVideoFilters"
 
 /** Home's Oshi Videos shelf query. It is ALWAYS one creator's own content:
  * `creatorId` is the current Home Oshi's canonical creatorId, and the backend
@@ -8,6 +8,8 @@ import { isSpecialVideoFilter, type SpecialVideoFilter, type VideoSectionSelecti
  * aggregates across creators. */
 /** The backend's canonical content types: the UI shows "upload" as 影片 / Videos (label only). */
 export type VideoContentType = "all" | "live" | "upload"
+/** What a shelf query can ask the backend for: the dropdown's types plus "short" (the Short filter's backend classification). */
+export type ShelfContentType = VideoContentType | "short"
 /** "total" = lifetime views; 1d/7d/30d = absolute view growth over that window.
  * Only meaningful when the sort is "mostViews". */
 export type VideoViewWindow = "total" | "1d" | "7d" | "30d"
@@ -20,9 +22,13 @@ export interface OshiVideosQuery {
   /** A backend topic id as GET /topics returned it, or "all" -- never a
    * closed frontend union (see model/videoTopicCatalog.ts). */
   topic: string
-  contentType: VideoContentType
+  contentType: ShelfContentType
   sort: VideoSortOption
   viewWindow: VideoViewWindow
+  /** A topic tag lists that topic's NON-Short content: Short is its own Video List category, so a Short is reached
+   * through that filter and never duplicated into a topic. Sent as the backend's `excludeShorts=true` for ALL and every
+   * topic tag; absent for 最新影片 / 最新直播 / Short, which are fixed content types. */
+  excludeShorts?: boolean
 }
 
 /** The user-adjustable shelf controls (the topic tags' content type / sort / view window). */
@@ -56,12 +62,17 @@ export function buildShelfQuery(
   controls: OshiVideosControls,
 ): OshiVideosQuery | null {
   if (!creatorId) return null
+  // Short = the backend's own contentType=short, topic-independent; the user's sort / period still apply.
+  if (selection === SHORT_VIDEO_FILTER) return { creatorId, topic: "all", ...controls, contentType: "short" }
+  // ALL = the union of 最新直播 and 最新影片 content (every topic, the content-type dropdown still narrows it). Short is its own
+  // category, so ALL never lists Shorts either.
+  if (selection === "all") return { creatorId, topic: "all", ...controls, excludeShorts: true }
   if (isSpecialVideoFilter(selection)) {
     const quick = QUICK_FILTER_CONTROLS[selection]
     return { creatorId, topic: "all", ...(quick ?? controls) }
   }
-  // Any other string is a backend topic id (GET /topics), sent through unchanged.
-  return { creatorId, topic: selection, ...controls }
+  // Any other string is a backend topic id (GET /topics), sent through unchanged -- minus that topic's Shorts.
+  return { creatorId, topic: selection, ...controls, excludeShorts: true }
 }
 
 /** The window that actually applies: only a "mostViews" sort uses one, so
@@ -74,7 +85,7 @@ export function effectiveViewWindow(sort: VideoSortOption, viewWindow: VideoView
  * key request the same data, and any difference (a different creator
  * included) is a different shelf. */
 export function oshiVideosQueryKey(query: OshiVideosQuery): string {
-  return JSON.stringify([query.creatorId, query.topic, query.contentType, query.sort, effectiveViewWindow(query.sort, query.viewWindow)])
+  return JSON.stringify([query.creatorId, query.topic, query.contentType, query.sort, effectiveViewWindow(query.sort, query.viewWindow), query.excludeShorts === true])
 }
 
 /** newest/oldest page through GET .../videos/recent; views ranks through
@@ -105,6 +116,7 @@ export function buildOshiVideosRequest(query: OshiVideosQuery, offset = 0): Oshi
       liveStatus: "archived",
       limit: String(OSHI_VIDEOS_RANKING_LIMIT),
     })
+    if (query.excludeShorts) params.set("excludeShorts", "true")
     return { path: `${creatorPath}/ranking?${params}`, paged: false }
   }
 
@@ -116,5 +128,6 @@ export function buildOshiVideosRequest(query: OshiVideosQuery, offset = 0): Oshi
     limit: String(OSHI_VIDEOS_RECENT_PAGE_SIZE),
     offset: String(offset),
   })
+  if (query.excludeShorts) params.set("excludeShorts", "true")
   return { path: `${creatorPath}/recent?${params}`, paged: true }
 }

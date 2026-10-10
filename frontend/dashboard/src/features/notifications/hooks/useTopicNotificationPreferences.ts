@@ -1,7 +1,19 @@
 import { useCallback } from "react"
 import { createSharedState, useSharedState } from "../../../shared/state/sharedState"
 import { deleteCreatorReminder, reminderValueToSetting, saveCreatorReminder } from "../api/liveReminderApi"
-import { ALL_TOPICS_ID, getAvailableTopics, LEGACY_TOPIC_ID_ALIASES, type TopicCatalogId } from "../model/notificationTopicCatalog"
+import { saveNotificationPreference } from "../api/notificationPreferenceApi"
+import { getPushSubscriptionStatus } from "../push/pushNotifications"
+import { clearNotificationSaveFailed, reportNotificationSaveFailed } from "./notificationSaveStatus"
+import {
+  ALL_TOPICS_ID,
+  isPermanentTopic,
+  isShortCard,
+  LEGACY_TOPIC_ID_ALIASES,
+  PERMANENT_TOPIC_IDS,
+  RETIRED_TOPIC_IDS,
+  SHORT_TOPIC_ID,
+  type TopicCatalogId,
+} from "../model/notificationTopicCatalog"
 import {
   INITIAL_TOPIC_NOTIFICATION_TYPE,
   REMINDER_TIME_VALUES,
@@ -37,7 +49,7 @@ interface TopicPreferenceState {
  * (confirmed with the user: 全部/SF6/VALO/APEX/Minecraft, never reordered or
  * removed) -- everything else is added by the user via "+", appended after
  * these. */
-const INITIAL_SAVED_TOPIC_IDS: readonly TopicCatalogId[] = [ALL_TOPICS_ID, "sf6", "valorant", "apex", "minecraft"]
+const INITIAL_SAVED_TOPIC_IDS: readonly TopicCatalogId[] = PERMANENT_TOPIC_IDS
 
 interface TopicPreferencesState {
   /** Every topic currently rendered as a SAVED grid card, in render order.
@@ -52,6 +64,10 @@ interface TopicPreferencesState {
    * user actually touches something about it (a Live switch, a reminder,
    * ...) -- there's nothing to seed. */
   topics: Partial<Record<TopicCatalogId, TopicPreferenceState>>
+  /** Set by the load-time migration when a retired card (see migrateStoredTopicOrder) had members that enabled new videos: the backend
+   * still holds those creators' per-creator switches, so the preference must be re-sent once (resyncAfterRetiredMigration) even if the
+   * user never opens Settings. Cleared by that re-send; absent otherwise. */
+  pendingResync?: boolean
 }
 
 function emptyTopicState(): TopicPreferenceState {
@@ -72,6 +88,14 @@ function initialState(): TopicPreferencesState {
 
 function canonicalTopicId(id: string): string {
   return LEGACY_TOPIC_ID_ALIASES[id] ?? id
+}
+
+/** The one place a stored card list is migrated: ids are mapped to their canonical form (valo -> valorant), and a card for a
+ * RETIRED notification-only category (GTA, 7 Days to Die, Mahjong Soul, Endfield -- see RETIRED_TOPIC_IDS) is intentionally dropped.
+ * A dropped card takes only its OWN state with it (its members, reminders and type, because the state of an id that is not in the
+ * list is not read); every other card, and every Short member, is untouched. Order of the survivors is preserved. */
+export function migrateStoredTopicOrder(storedIds: readonly string[]): string[] {
+  return storedIds.map(canonicalTopicId).filter((id) => !RETIRED_TOPIC_IDS.has(id))
 }
 
 type StoredTopicState = Partial<Record<keyof TopicPreferenceState, unknown>>
@@ -114,12 +138,10 @@ function readState(): TopicPreferencesState {
     // TopicPreferenceState> with no topicOrder field at all -- this check
     // is what makes reading that shape harmlessly fall back to the default
     // below instead of being misread, no storage-key version bump needed.
-    const availableTopicIds = new Set(getAvailableTopics().map((topic) => topic.id))
+    // The selectable categories are Home's backend-driven list (loaded at runtime), so a stored id is only dropped when it is
+    // one of the retired notification-only categories (see migrateStoredTopicOrder).
     const savedTopicOrder = Array.isArray(parsed.topicOrder)
-      ? parsed.topicOrder
-          .filter((id): id is string => typeof id === "string")
-          .map(canonicalTopicId)
-          .filter((id) => availableTopicIds.has(id))
+      ? migrateStoredTopicOrder(parsed.topicOrder.filter((id): id is string => typeof id === "string"))
       : []
     const topicOrder = [...INITIAL_SAVED_TOPIC_IDS]
     for (const id of savedTopicOrder) {
@@ -134,7 +156,16 @@ function readState(): TopicPreferencesState {
       // `existing` came from the other of the two ids that map to `id`; the entry stored under the canonical id wins ties.
       topics[id] = existing ? (storedId === id ? mergeTopicStates(existing, next) : mergeTopicStates(next, existing)) : next
     }
-    return { topicOrder, topics }
+    // The backend keeps only per-creator switches (no topic ids), so what a retired card contributed is only cleaned there by a re-send.
+    const storedOrder = Array.isArray(parsed.topicOrder) ? parsed.topicOrder.filter((id): id is string => typeof id === "string").map(canonicalTopicId) : []
+    const retiredContributedNewVideos = Object.entries(parsed.topics ?? {}).some(([storedId, saved]) => {
+      const id = canonicalTopicId(storedId)
+      if (!RETIRED_TOPIC_IDS.has(id) || !storedOrder.includes(id) || !saved) return false
+      const card = readTopicState(saved)
+      return card.notificationType !== "live" && card.newVideo.length > 0
+    })
+    const pendingResync = retiredContributedNewVideos || (parsed as { pendingResync?: unknown }).pendingResync === true
+    return pendingResync ? { topicOrder, topics, pendingResync: true } : { topicOrder, topics }
   } catch {
     return initialState()
   }
@@ -151,33 +182,147 @@ function serializeState(state: TopicPreferencesState): string {
   return JSON.stringify({ ...state, topics })
 }
 
-/** Best-effort write-through of ONE creator's reminder for ONE topic to the backend
- * (src/notifications/live_reminder.py): a single backend item per (creator, topic),
- * so it can never touch another topic's, another creator's, or the 全部 reminder.
- * `value === null` (unset) deletes just that item. A failed write is swallowed -- the
- * same posture NotificationToggle's own background syncs take. */
-function syncReminderToBackend(topicId: TopicCatalogId, creatorId: string, value: ReminderSetting): void {
-  const request = value === null ? deleteCreatorReminder(creatorId, topicId) : saveCreatorReminder(creatorId, topicId, reminderValueToSetting(value))
-  void request.catch(() => {})
+/** Writes ONE creator's reminder for ONE topic to the backend (src/notifications/live_reminder.py): a single
+ * backend item per (creator, topic), so it can never touch another topic's, another creator's, or the 全部
+ * reminder. `value === null` (unset) deletes just that item. Rejects when the backend rejects. */
+function writeReminderToBackend(topicId: TopicCatalogId, creatorId: string, value: ReminderSetting): Promise<void> {
+  return value === null ? deleteCreatorReminder(creatorId, topicId) : saveCreatorReminder(creatorId, topicId, reminderValueToSetting(value))
 }
 
 // Module-scoped singleton (see lib/sharedState.ts), same reactivity
-// reasoning as useFavoriteCreators/useCreatorNotificationPreferences --
-// local-only persistence (this feature's own explicit decision: no backend
-// contract exists for topic-level defaults or per-creator overrides, and
-// introducing one is out of this task's scope).
+// reasoning as useFavoriteCreators/useCreatorNotificationPreferences.
+// localStorage holds the LAST CONFIRMED state: reminders and the per-creator
+// 新片 switches reach it only after the backend accepted the change (see
+// runSerialized below), so a reload never resurrects a write that failed.
 const topicPreferencesStore = createSharedState(STORAGE_KEY, readState, serializeState)
+
+/** Creators whose new-video notifications are ON: enabled for new video in at least one SAVED topic whose
+ * notification type allows new videos (the same rule getEnabledCreatorIds applies to its new-video half).
+ * The backend only knows "this creator, yes/no" -- it has no topics for new-video events -- so this union is
+ * what gets sent as `newVideoCreatorOverride`. */
+export function effectiveNewVideoCreatorIds(state: TopicPreferencesState): Set<string> {
+  const ids = new Set<string>()
+  for (const topicId of state.topicOrder) {
+    if (isShortCard(topicId)) continue // Short is a format, not a topic: its members never enable ordinary new videos
+    const topic = state.topics[topicId] ?? emptyTopicState()
+    if (topic.notificationType === "live") continue
+    for (const creatorId of topic.newVideo) ids.add(creatorId)
+  }
+  return ids
+}
+
+/** The current effective new-video creators (see effectiveNewVideoCreatorIds), for writers outside this hook. */
+export function getEffectiveNewVideoCreatorIds(): Set<string> {
+  return effectiveNewVideoCreatorIds(topicPreferencesStore.get())
+}
+
+/** Creators whose SHORTS notify: the members enabled in the saved Short card. No Short card, or a card with no members, is the empty
+ * set -- Short OFF, the default. Sent as the backend's separate `newVideoShortCreatorOverride` field, never as a topic. */
+export function effectiveShortCreatorIds(state: TopicPreferencesState): Set<string> {
+  if (!state.topicOrder.includes(SHORT_TOPIC_ID)) return new Set()
+  return new Set(state.topics[SHORT_TOPIC_ID]?.newVideo ?? [])
+}
+
+/** The current effective Short creators (see effectiveShortCreatorIds), for writers outside this hook. */
+export function getEffectiveShortCreatorIds(): Set<string> {
+  return effectiveShortCreatorIds(topicPreferencesStore.get())
+}
+
+function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  return a.size === b.size && [...a].every((id) => b.has(id))
+}
+
+/** Applies `change` to one topic's state against the LATEST store value (an earlier await may have let another
+ * change land, so a stale closure copy must never be written back). */
+function commitTopic(topicId: TopicCatalogId, change: (topic: TopicPreferenceState) => TopicPreferenceState): void {
+  const current = topicPreferencesStore.get()
+  const topic = current.topics[topicId] ?? emptyTopicState()
+  topicPreferencesStore.set({ ...current, topics: { ...current.topics, [topicId]: change(topic) } })
+}
+
+const saveQueues = new Map<string, Promise<boolean>>()
+
+/** Runs `task` -- the backend write followed by the local commit -- after any earlier task with the same key has
+ * settled, so two quick changes to the same setting reach the backend (and the local store) in click order.
+ * Resolves true when the task committed. If it rejects nothing was committed: the failure is reported (the
+ * drawer shows an inline alert) and the local state stays at the last confirmed value. */
+function runSerialized(key: string, task: () => Promise<void>, options: { silent?: boolean } = {}): Promise<boolean> {
+  const previous = saveQueues.get(key) ?? Promise.resolve(true)
+  const result = previous.then(task).then(
+    () => {
+      if (!options.silent) clearNotificationSaveFailed()
+      return true
+    },
+    () => {
+      // A silent (background) task never raises the Settings "couldn't save" banner for a change the user did not make.
+      if (!options.silent) reportNotificationSaveFailed()
+      return false
+    },
+  )
+  saveQueues.set(key, result)
+  return result
+}
+
+const NEW_VIDEO_SYNC_KEY = "newVideoSwitches"
+
+/** Pushes the new effective new-video creators to the backend -- but only when this browser has notifications
+ * enabled (a push subscription exists). Otherwise there is no backend preference to update, and the enable flow
+ * (NotificationToggle) sends the current switches along with the master switch. Rejects when the backend does. */
+async function syncNewVideoSwitchesToBackend(next: TopicPreferencesState): Promise<void> {
+  let status: Awaited<ReturnType<typeof getPushSubscriptionStatus>>
+  try {
+    status = await getPushSubscriptionStatus()
+  } catch {
+    return
+  }
+  if (status !== "subscribed") return
+  await saveNotificationPreference(true, effectiveNewVideoCreatorIds(next), effectiveShortCreatorIds(next))
+}
+
+/** One-time clean-up after the load-time migration dropped a retired card whose members had enabled new videos: re-sends the current
+ * preference so the backend stops holding those creators' per-creator switches, with NO Settings visit needed. Only when this browser
+ * has notifications enabled (otherwise the backend preference is OFF and the enable flow sends the migrated state). Silent: a failure
+ * keeps the pending flag so the next app start retries, and never shows the Settings error banner. Resolves true when nothing is pending. */
+export function resyncAfterRetiredMigration(): Promise<boolean> {
+  if (!topicPreferencesStore.get().pendingResync) return Promise.resolve(true)
+  return runSerialized(
+    NEW_VIDEO_SYNC_KEY,
+    async () => {
+      const current = topicPreferencesStore.get()
+      if (!current.pendingResync) return
+      await syncNewVideoSwitchesToBackend(current)
+      const { pendingResync: _done, ...rest } = current
+      topicPreferencesStore.set(rest)
+    },
+    { silent: true },
+  )
+}
+
+/** Changes one topic's state; if that changes which creators are effectively ON for new video, the backend
+ * preference is written FIRST and the local state only follows once it succeeded. */
+function changeTopicWithNewVideoSync(topicId: TopicCatalogId, change: (topic: TopicPreferenceState) => TopicPreferenceState): Promise<boolean> {
+  return runSerialized(NEW_VIDEO_SYNC_KEY, async () => {
+    const current = topicPreferencesStore.get()
+    const topic = current.topics[topicId] ?? emptyTopicState()
+    const proposed = { ...current, topics: { ...current.topics, [topicId]: change(topic) } }
+    const changed =
+      !sameIds(effectiveNewVideoCreatorIds(current), effectiveNewVideoCreatorIds(proposed)) ||
+      !sameIds(effectiveShortCreatorIds(current), effectiveShortCreatorIds(proposed))
+    if (changed) await syncNewVideoSwitchesToBackend(proposed)
+    commitTopic(topicId, change)
+  })
+}
 
 export function useTopicNotificationPreferences() {
   const [state, setState] = useSharedState(topicPreferencesStore)
 
-  const topicState = useCallback((topicId: TopicCatalogId) => state.topics[topicId] ?? emptyTopicState(), [state])
-
-  const setTopicState = useCallback(
-    (topicId: TopicCatalogId, next: TopicPreferenceState) => {
-      setState({ ...state, topics: { ...state.topics, [topicId]: next } })
+  const topicState = useCallback(
+    (topicId: TopicCatalogId): TopicPreferenceState => {
+      const topic = state.topics[topicId] ?? emptyTopicState()
+      // A Shorts card has no live channel (a Short is a video), so it is always "new video" only.
+      return isShortCard(topicId) ? { ...topic, notificationType: "newVideo" } : topic
     },
-    [state, setState],
+    [state],
   )
 
   /** Appends a newly-saved topic to the grid -- confirmed with the user:
@@ -196,6 +341,29 @@ export function useTopicNotificationPreferences() {
     [state, setState],
   )
 
+  /** Removes a card the user added (never one of the permanent defaults). Everything the card owned goes with it, backend FIRST:
+   * its per-creator reminders are deleted from the backend, and when its members were what enabled new videos (or, for the
+   * Short card, Shorts) the preference is rewritten without them, so "no Short card" really means Short OFF. A rejected write
+   * leaves the card in place and is reported; re-adding the card later starts empty. */
+  const removeTopic = useCallback((topicId: TopicCatalogId): Promise<boolean> => {
+    if (isPermanentTopic(topicId)) return Promise.resolve(false)
+    return runSerialized(NEW_VIDEO_SYNC_KEY, async () => {
+      const current = topicPreferencesStore.get()
+      if (!current.topicOrder.includes(topicId)) return
+      for (const creatorId of Object.keys(current.topics[topicId]?.reminderOverrides ?? {})) {
+        await writeReminderToBackend(topicId, creatorId, null)
+      }
+      const topics = { ...current.topics }
+      delete topics[topicId]
+      const proposed: TopicPreferencesState = { topicOrder: current.topicOrder.filter((id) => id !== topicId), topics }
+      const changed =
+        !sameIds(effectiveNewVideoCreatorIds(current), effectiveNewVideoCreatorIds(proposed)) ||
+        !sameIds(effectiveShortCreatorIds(current), effectiveShortCreatorIds(proposed))
+      if (changed) await syncNewVideoSwitchesToBackend(proposed)
+      topicPreferencesStore.set(proposed)
+    })
+  }, [])
+
   /** Drops transient configuration when a draft changes or is abandoned.
    * Saved topic preferences are protected even if this is called during
    * the same render in which Save commits the draft. */
@@ -213,28 +381,36 @@ export function useTopicNotificationPreferences() {
    * creator + topic reminder, locally and on the backend -- with no Live
    * notification left to remind about, it's orphaned state. Nothing else is
    * touched: not the creator's 全部 reminder, not other topics, not other
-   * creators. */
-  const setLiveEnabled = useCallback(
-    (topicId: TopicCatalogId, creatorId: string, enabled: boolean) => {
-      const topic = topicState(topicId)
-      const live = enabled ? [...topic.live, creatorId] : topic.live.filter((id) => id !== creatorId)
-      const hadReminder = creatorId in topic.reminderOverrides
-      const reminderOverrides = enabled || !hadReminder ? topic.reminderOverrides : Object.fromEntries(Object.entries(topic.reminderOverrides).filter(([id]) => id !== creatorId))
-      setTopicState(topicId, { ...topic, live, reminderOverrides })
-      if (!enabled && hadReminder) syncReminderToBackend(topicId, creatorId, null)
-    },
-    [topicState, setTopicState],
-  )
+   * creators. When a reminder has to be deleted that happens on the backend
+   * FIRST: if it fails, Live stays ON and the failure is reported. */
+  const setLiveEnabled = useCallback((topicId: TopicCatalogId, creatorId: string, enabled: boolean): Promise<boolean> => {
+    const change = (topic: TopicPreferenceState): TopicPreferenceState => ({
+      ...topic,
+      live: enabled ? [...new Set([...topic.live, creatorId])] : topic.live.filter((id) => id !== creatorId),
+      reminderOverrides: enabled ? topic.reminderOverrides : Object.fromEntries(Object.entries(topic.reminderOverrides).filter(([id]) => id !== creatorId)),
+    })
+    const hadReminder = creatorId in (topicPreferencesStore.get().topics[topicId]?.reminderOverrides ?? {})
+    if (enabled || !hadReminder) {
+      commitTopic(topicId, change)
+      return Promise.resolve(true)
+    }
+    return runSerialized(`reminder:${topicId}:${creatorId}`, async () => {
+      await writeReminderToBackend(topicId, creatorId, null)
+      commitTopic(topicId, change)
+    })
+  }, [])
 
   const isNewVideoEnabled = useCallback((topicId: TopicCatalogId, creatorId: string) => topicState(topicId).newVideo.includes(creatorId), [topicState])
 
+  /** Turns this creator's new-video notification ON/OFF for this topic. The backend preference is written first
+   * (when notifications are enabled on this browser); a rejected write leaves the switch where it was. */
   const setNewVideoEnabled = useCallback(
-    (topicId: TopicCatalogId, creatorId: string, enabled: boolean) => {
-      const topic = topicState(topicId)
-      const newVideo = enabled ? [...topic.newVideo, creatorId] : topic.newVideo.filter((id) => id !== creatorId)
-      setTopicState(topicId, { ...topic, newVideo })
-    },
-    [topicState, setTopicState],
+    (topicId: TopicCatalogId, creatorId: string, enabled: boolean): Promise<boolean> =>
+      changeTopicWithNewVideoSync(topicId, (topic) => ({
+        ...topic,
+        newVideo: enabled ? [...new Set([...topic.newVideo, creatorId])] : topic.newVideo.filter((id) => id !== creatorId),
+      })),
+    [],
   )
 
   /** This creator's own reminder for this topic -- `null` (unset, no reminder)
@@ -248,17 +424,20 @@ export function useTopicNotificationPreferences() {
   /** Sets (or, with `null`, unsets) one creator's reminder for one topic -- only that one
    * (creator, topic) entry changes, here and on the backend. Setting the 全部 reminder
    * never edits or erases the same creator's topic reminders: they stay stored and are
-   * merely shadowed (see isReminderShadowedByAll) until 全部 is unset. */
+   * merely shadowed (see isReminderShadowedByAll) until 全部 is unset. The backend write
+   * comes first; a rejected write leaves the previous (last confirmed) reminder in place. */
   const setMemberReminder = useCallback(
-    (topicId: TopicCatalogId, creatorId: string, value: ReminderSetting) => {
-      const topic = topicState(topicId)
-      const reminderOverrides = { ...topic.reminderOverrides }
-      if (value === null) delete reminderOverrides[creatorId]
-      else reminderOverrides[creatorId] = value
-      setTopicState(topicId, { ...topic, reminderOverrides })
-      syncReminderToBackend(topicId, creatorId, value)
-    },
-    [topicState, setTopicState],
+    (topicId: TopicCatalogId, creatorId: string, value: ReminderSetting): Promise<boolean> =>
+      runSerialized(`reminder:${topicId}:${creatorId}`, async () => {
+        await writeReminderToBackend(topicId, creatorId, value)
+        commitTopic(topicId, (topic) => {
+          const reminderOverrides = { ...topic.reminderOverrides }
+          if (value === null) delete reminderOverrides[creatorId]
+          else reminderOverrides[creatorId] = value
+          return { ...topic, reminderOverrides }
+        })
+      }),
+    [],
   )
 
   /** Whether this creator + topic reminder is currently shadowed (not in effect) because the
@@ -304,11 +483,12 @@ export function useTopicNotificationPreferences() {
 
   const getNotificationType = useCallback((topicId: TopicCatalogId) => topicState(topicId).notificationType, [topicState])
 
+  /** Changing a topic's notification type can switch its new-video half on/off, so it goes through the same
+   * backend-first path as the per-creator 新片 switches. */
   const setNotificationType = useCallback(
-    (topicId: TopicCatalogId, type: TopicNotificationType) => {
-      setTopicState(topicId, { ...topicState(topicId), notificationType: type })
-    },
-    [topicState, setTopicState],
+    (topicId: TopicCatalogId, type: TopicNotificationType): Promise<boolean> =>
+      changeTopicWithNewVideoSync(topicId, (topic) => ({ ...topic, notificationType: type })),
+    [],
   )
 
   /** How many creators currently have their OWN reminder set for this topic
@@ -331,15 +511,15 @@ export function useTopicNotificationPreferences() {
    * chose, and clearing them from a generic "reset" action would be a
    * surprising, hard-to-undo data loss. */
   const resetTopicDefaults = useCallback(
-    (topicId: TopicCatalogId) => {
-      setTopicState(topicId, { ...topicState(topicId), notificationType: INITIAL_TOPIC_NOTIFICATION_TYPE })
-    },
-    [topicState, setTopicState],
+    (topicId: TopicCatalogId): Promise<boolean> =>
+      changeTopicWithNewVideoSync(topicId, (topic) => ({ ...topic, notificationType: INITIAL_TOPIC_NOTIFICATION_TYPE })),
+    [],
   )
 
   return {
     savedTopicIds: state.topicOrder,
     addTopic,
+    removeTopic,
     discardUnsavedTopic,
     isLiveEnabled,
     setLiveEnabled,

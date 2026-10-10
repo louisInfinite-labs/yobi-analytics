@@ -105,6 +105,12 @@ _PUSH_SUBSCRIPTION_KEY = "pushSubscription"
 # "1min"/"10min" at their configured offset rather than merely eventually.
 _REMINDER_WINDOW = timedelta(minutes=1)
 
+# The notification body of each reminder. push_sender.build_payload REQUIRES a non-empty body, so a reminder pushed with
+# body="" was rejected before it ever reached the push service ("body is required"): the claim was released and retried
+# every minute until the fire window closed, i.e. no start/advance reminder was ever delivered.
+_START_REMINDER_BODY = "The stream has started"
+_ADVANCE_REMINDER_BODY_LABELS = {"1min": "1 minute", "10min": "10 minutes", "30min": "30 minutes", "1hour": "1 hour"}
+
 # How stale the persisted "streamSchedule" snapshot may get before this run
 # actually queries Holodex again -- reused, not invented: this Lambda's own
 # EventBridge schedule (terraform/eventbridge.tf's notification_dispatch)
@@ -304,7 +310,8 @@ def _deliver_if_due(
     The global `enabled` switch is a master OFF: an event that comes due while it
     is OFF is recorded as suppressed (mark_suppressed) and skipped for good, so
     turning notifications back ON later never replays it from the lookback
-    window. An event whose delivery window has not arrived yet is left alone, so
+    window. A creator whose per-creator new-video switch is OFF is treated the
+    same way (suppressed, never replayed), while live reminders are untouched. An event whose delivery window has not arrived yet is left alone, so
     it is still sent normally if the switch is back ON by then.
     """
     video_id = candidate["videoId"]
@@ -316,6 +323,12 @@ def _deliver_if_due(
     if now < eligible_at:
         return False
     if not preference.enabled:
+        notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
+        return False
+    if not notification_dispatch.is_new_video_wanted(preference, candidate["creatorId"], content_type=candidate.get("contentType")):
+        # The client turned this creator's 新片 switch OFF -- or, for a Short, did not enable this creator in the Short card
+        # (the default): like the master switch, an event that comes due while it is OFF is skipped for good, so turning it
+        # back ON never replays it from the lookback window.
         notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
         return False
     if not notification_dispatch.should_notify_now(preference, candidate["creatorId"], now=now):
@@ -391,6 +404,7 @@ def _deliver_reminders_if_due(
         if _send_reminder(
             video_id,
             "advance",
+            body=f"Starts in {_ADVANCE_REMINDER_BODY_LABELS[setting.advance_reminder]}",
             client_id=client_id,
             creator_id=override.creator_id,
             creators_by_id=creators_by_id,
@@ -406,6 +420,7 @@ def _deliver_reminders_if_due(
         if _send_reminder(
             video_id,
             "start",
+            body=_START_REMINDER_BODY,
             client_id=client_id,
             creator_id=override.creator_id,
             creators_by_id=creators_by_id,
@@ -430,6 +445,7 @@ def _send_reminder(
     video_id: str,
     kind: str,
     *,
+    body: str,
     client_id: str,
     creator_id: str,
     creators_by_id: dict[str, Any],
@@ -458,7 +474,7 @@ def _send_reminder(
     result = push_sender.send_push_notification(
         subscription,
         title=title,
-        body="",
+        body=body,
         data={"videoId": video_id, "reminderKind": kind},
         vapid_private_key=vapid_private_key,
         vapid_claims=vapid_claims,

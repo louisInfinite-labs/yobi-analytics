@@ -28,7 +28,14 @@ VALID_ACTIVITY_STATES = {"Unknown", "Hot", "Warm", "Cold"}
 # signal, never inferred from title/topic/duration). "upload" = a plain
 # video. Orthogonal to `topic` (game/genre) -- a video can be
 # content_type="live", topic="chatting" at the same time.
-VALID_CONTENT_TYPES = {"live", "upload"}
+# "short" = a YouTube Short: a video that sits on the channel's own Shorts shelf (the Shorts playlist), decided by
+# that membership at discovery time, never by duration or a "#shorts" title. YouTube's Data API has no Shorts flag
+# and `liveStreamingDetails` is absent for a Short exactly as for any upload, so a statistics observation can only
+# ever report "upload" for one -- which is why "short" is sticky (see collection.history_worker: an "upload"
+# observation never downgrades a "short"). Home's 最新影片 asks for contentType=upload, so Shorts fall out of it by
+# the same strict contentType equality that already separates uploads from livestreams; Shorts are a future shelf.
+CONTENT_TYPE_SHORT = "short"
+VALID_CONTENT_TYPES = {"live", "upload", CONTENT_TYPE_SHORT}
 
 # Lifecycle stage for a content_type="live" video, from the SAME
 # liveStreamingDetails object content_type itself was derived from --
@@ -100,8 +107,8 @@ class Video:
     # One primary topic id (video_topics.TOPICS). None for a record written
     # before this field existed; only discovery and the topic backfill set it.
     topic: str | None = None
-    # "live" (archived livestream) or "upload" (plain video), from YouTube
-    # liveStreamingDetails presence on the collection-time videos.list
+    # "live" (archived livestream), "upload" (plain video) or "short" (a YouTube Short, see VALID_CONTENT_TYPES), from
+    # YouTube liveStreamingDetails presence on the collection-time videos.list
     # observation (see collection.youtube_client.get_video_statistics). None
     # for a record whose most recent observation predates this field, or
     # that has never been observed via the statistics collection path yet
@@ -164,6 +171,26 @@ def load_video_ids_for_creator(
     if videos is None:
         videos = load_videos(path)
     return {video.video_id for video in videos if video.creator_id == creator_id}
+
+
+def is_known_non_livestream(content_type: str | None) -> bool:
+    """Whether a stored contentType says the video is NOT a livestream: an ordinary upload (which includes a Premiere that is
+    fundamentally an uploaded video, see collection.youtube_client.is_completed_premiere) or a Short.
+
+    THE single decision every livestream surface shares (GET /live-streams, GET /recent-streams, hence the dispatcher's stream
+    schedule and Home's 最新直播): only a POSITIVE "upload"/"short" classification excludes a stream. An unclassified video
+    (None) or a "live" one is kept, so a missing classification can never hide a real livestream.
+    """
+    return content_type in ("upload", CONTENT_TYPE_SHORT)
+
+
+def get_videos(video_ids: list[str], path: Path = DEFAULT_VIDEO_MASTER_PATH) -> dict[str, Video]:
+    """Return the Video Master records for exactly these ids (only the ones that exist), keyed by video_id.
+
+    The local-JSON counterpart to stores.dynamodb_store.get_videos' BatchGetItem: the file is read once for the whole batch.
+    """
+    wanted = set(video_ids)
+    return {video.video_id: video for video in load_videos(path) if video.video_id in wanted}
 
 
 def get_video(video_id: str, path: Path = DEFAULT_VIDEO_MASTER_PATH, *, videos: list[Video] | None = None) -> Video | None:

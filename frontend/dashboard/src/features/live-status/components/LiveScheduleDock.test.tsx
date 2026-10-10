@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { LiveScheduleDock } from "./LiveScheduleDock"
@@ -6,6 +6,7 @@ import * as useCurrentPageModule from "../../../app/navigation/useCurrentPage"
 import * as useCreatorStatusesModule from "../hooks/useCreatorStatuses"
 import * as useHomeSelectedVideoModule from "../../home-room/hooks/useHomeSelectedVideo"
 import type { Page } from "../../../app/navigation/useCurrentPage"
+import { getCreatorById, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 
 vi.mock("../../../app/navigation/useCurrentPage")
 vi.mock("../hooks/useCreatorStatuses", async () => {
@@ -63,8 +64,24 @@ describe("LiveScheduleDock video selection", () => {
     render(<LiveScheduleDock />)
     await openAndSelectVideo()
 
-    expect(useHomeSelectedVideoModule.selectHomeVideo).toHaveBeenCalledWith({ videoId: "v1", title: "t1" }, "ch_aizawa_ema")
+    // A live/upcoming pick never counts as opened: only a confirmed player PLAYING marks it watched.
+    expect(useHomeSelectedVideoModule.selectHomeVideo).toHaveBeenCalledWith(
+      { videoId: "v1", title: "t1" },
+      "ch_aizawa_ema",
+      { countsAsOpened: false },
+    )
     expect(document.querySelector(".video-player-modal__backdrop")).toBeNull()
+  })
+
+  it("off Home, picking a live stream writes no seen state either (only PLAYING counts)", async () => {
+    window.localStorage.removeItem("yobi.newContent.seenVideoIds")
+    mockPage("dashboard")
+    render(<LiveScheduleDock />)
+    await openAndSelectVideo()
+
+    expect(document.querySelector(".video-player-modal__backdrop")).not.toBeNull()
+    expect(JSON.parse(window.localStorage.getItem("yobi.newContent.seenVideoIds") ?? "[]")).toEqual([])
+    expect(window.localStorage.getItem("yobi.newContent.watchedDuringLive")).toBeNull()
   })
 
   it("closes the drawer after selecting a video on Home", async () => {
@@ -82,5 +99,26 @@ describe("LiveScheduleDock video selection", () => {
 
     expect(useHomeSelectedVideoModule.selectHomeVideo).not.toHaveBeenCalled()
     expect(document.querySelector(".video-player-modal__backdrop")).not.toBeNull()
+  })
+
+  it("on Home, a live official/group channel is selected into the same canonical Home player after the normal switch, never the legacy modal, and picking it is not watching it", async () => {
+    const officialId = toLegacyRosterId(getCreatorById("hololive_official")!)
+    vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({
+      statuses: { [officialId]: { kind: "live", videoId: "vo", title: "official live" } },
+      now,
+    })
+    mockPage("home")
+    render(<LiveScheduleDock />)
+    const user = userEvent.setup()
+    await user.click(document.querySelector(".live-status-trigger") as HTMLElement)
+    await user.click(document.querySelector('.live-status-member__status[data-status="live"]') as HTMLElement)
+    // The same confirm-before-switch flow an individual creator gets; confirm it.
+    await user.click(screen.getByRole("button", { name: /^Switch$/ }))
+
+    // Selecting is not watching: the call carries countsAsOpened:false exactly like an individual creator's.
+    expect(useHomeSelectedVideoModule.selectHomeVideo).toHaveBeenCalledWith({ videoId: "vo", title: "official live" }, officialId, {
+      countsAsOpened: false,
+    })
+    expect(document.querySelector(".video-player-modal__backdrop")).toBeNull()
   })
 })

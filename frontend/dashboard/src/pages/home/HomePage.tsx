@@ -1,3 +1,4 @@
+import { useRef } from "react"
 import { resolveCreatorKey } from "../../entities/creator/data/creatorRegistry"
 import { creatorThemeStyle } from "../../shared/theme/creatorThemeStyle"
 import { useBreakpoint } from "../../shared/hooks/useBreakpoint"
@@ -6,6 +7,7 @@ import { useLiveDockExpanded } from "../../features/live-status/hooks/useLiveDoc
 import { selectHomeVideo, useHomeSelectedVideo } from "../../features/home-room/hooks/useHomeSelectedVideo"
 import { useLiveStreamVideoPool } from "../../features/home-room/hooks/useRecentVideos"
 import { useSelectedCreator } from "../../features/oshi/hooks/useSelectedCreator"
+import { useWatchedDuringLive } from "../../features/media-player/hooks/useWatchedDuringLive"
 import { selectLiveEmbedVideo } from "../../features/media-player/utils/liveEmbed"
 import { OshiStatusPanel } from "../../features/oshi-status/components/OshiStatusPanel"
 import { RecentVideosSection } from "../../features/home-room/components/RecentVideosSection"
@@ -20,10 +22,17 @@ import { RecentVideosSection } from "../../features/home-room/components/RecentV
  * than silently fail. Mobile never requests autoplay -- YouTube's own
  * embed already shows a thumbnail + play button when it isn't autoplaying,
  * so no separate placeholder UI is needed here. */
-function LiveEmbedPlayer({ videoId, title, autoplay }: { videoId: string; title: string; autoplay: boolean }) {
-  const params = autoplay ? "autoplay=1&mute=1" : "autoplay=0"
+function LiveEmbedPlayer({ videoId, title, autoplay, isLive }: { videoId: string; title: string; autoplay: boolean; isLive: boolean }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  // The embed reports its playback state through the YouTube IFrame API (enablejsapi); a confirmed PLAYING while this
+  // very videoId is live is what records "watched during live" -- the iframe merely existing or autoplay being
+  // attempted records nothing (see useWatchedDuringLive).
+  useWatchedDuringLive(iframeRef, videoId, isLive)
+  const params = `${autoplay ? "autoplay=1&mute=1" : "autoplay=0"}&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`
   return (
     <iframe
+      key={videoId}
+      ref={iframeRef}
       src={`https://www.youtube.com/embed/${videoId}?${params}`}
       title={title}
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -61,6 +70,14 @@ export function HomePage() {
   // currentOshi has changed -- see useHomeSelectedVideo's own comment.
   const selectedVideo = useHomeSelectedVideo(creatorId)
   const embed = selectedVideo ?? selectLiveEmbedVideo(status, streamVideos.videos, now)
+  // A live/upcoming stream is picked without counting as "opened": only a confirmed PLAYING while it is live may
+  // suppress its later archive's NEW (see useWatchedDuringLive); a plain click must not.
+  const openVideo = (video: { videoId: string; title: string }) => {
+    const isCurrentStream =
+      (status.kind !== "offline" && status.videoId === video.videoId) ||
+      streamVideos.videos.some((entry) => entry.videoId === video.videoId && (entry.contentFormat === "live_now" || entry.contentFormat === "live_upcoming"))
+    selectHomeVideo(video, creatorId, { countsAsOpened: !isCurrentStream })
+  }
 
   return (
     <div className="oshi-home" data-live-status-open={liveStatusOpen}>
@@ -74,6 +91,7 @@ export function HomePage() {
                     videoId={embed.videoId}
                     title={embed.title}
                     autoplay={breakpoint !== "mobile"}
+                    isLive={status.kind === "live" && status.videoId === embed.videoId}
                   />
                 )}
               </div>
@@ -81,16 +99,13 @@ export function HomePage() {
           </div>
         </section>
 
-        <RecentVideosSection
-          creatorId={creatorId}
-          onSelectVideo={(video) => selectHomeVideo(video, creatorId)}
-        />
+        <RecentVideosSection creatorId={creatorId} onSelectVideo={openVideo} />
 
         <OshiStatusPanel
           creatorId={creatorId}
           status={status}
           now={now}
-          onSelectVideo={(video) => selectHomeVideo(video, creatorId)}
+          onSelectVideo={openVideo}
           nowPlayingTitle={embed?.title ?? null}
         />
       </main>
