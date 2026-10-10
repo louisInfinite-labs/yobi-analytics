@@ -167,10 +167,16 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # subscribes again) would replay them from the lookback window.
         subscription = subscription_record["value"] if subscription_record is not None else None
 
+        # One bulk read of this client's delivery-log rows for the whole candidate window, instead of one GetItem per
+        # (client, event): that per-event read made a run's duration and DynamoDB reads grow with clients x events.
+        already_handled = notification_delivery_log_store.delivered_video_ids(
+            client_id, [candidate["videoId"] for candidate in candidate_events], now=now
+        )
         for candidate in candidate_events:
             checked += 1
             if _deliver_if_due(
                 candidate,
+                already_handled=already_handled,
                 client_id=client_id,
                 preference=preference,
                 subscription=subscription,
@@ -297,6 +303,7 @@ def _resolve_reminders_for_client(
 def _deliver_if_due(
     candidate: dict[str, Any],
     *,
+    already_handled: set[str],
     client_id: str,
     preference: notification_dispatch.NotificationPreference,
     subscription: Any,
@@ -315,7 +322,7 @@ def _deliver_if_due(
     it is still sent normally if the switch is back ON by then.
     """
     video_id = candidate["videoId"]
-    if notification_delivery_log_store.already_delivered(client_id, video_id):
+    if video_id in already_handled:
         return False
 
     discovered_at = datetime.fromisoformat(candidate["discoveredAt"])

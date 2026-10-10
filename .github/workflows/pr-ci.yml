@@ -106,6 +106,8 @@ jobs:
           tests/notifications/test_notification_dispatcher.py
           tests/notifications/test_push_sender.py
           tests/notifications/test_vapid_key_handling.py
+          tests/stores/test_delivery_log_bulk_lookup.py
+          tests/stores/test_notification_delivery_log_store.py
           tests/api/test_api_handler.py
 
   frontend-focused-tests:
