@@ -28,6 +28,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
+from py_vapid import Vapid, VapidException
 from pywebpush import WebPushException, webpush
 
 # The only Web Push services a real browser subscription can ever point to
@@ -113,6 +114,19 @@ def build_payload(*, title: str, body: str, data: dict[str, Any] | None = None) 
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _load_vapid_signer(vapid_private_key: str) -> Vapid | str:
+    """The key in the form `webpush()` accepts: a parsed `Vapid` for PEM text, else the string unchanged.
+
+    `get_vapid_credentials` returns the key as PEM TEXT (that is what the secret holds). `webpush(vapid_private_key=<str>)` only takes a
+    file path or a raw/DER base64 string -- given PEM text it fails with "Could not deserialize key data" -- so PEM is parsed here, in
+    memory, into the `Vapid` object `webpush()` also accepts. The key is never written to disk, logged or put in an error message.
+    """
+    key = vapid_private_key.strip()
+    if "-----BEGIN" in key:
+        return Vapid.from_pem(key.encode("utf-8"))
+    return vapid_private_key
+
+
 def send_push_notification(
     subscription: dict[str, Any],
     *,
@@ -138,10 +152,16 @@ def send_push_notification(
         return PushResult(sent=False, subscription_expired=False, error=str(exc))
 
     try:
+        vapid_signer = _load_vapid_signer(vapid_private_key)
+    except (ValueError, VapidException) as exc:
+        # Only the exception TYPE is reported: its text could echo key material.
+        return PushResult(sent=False, subscription_expired=False, error=f"VAPID private key could not be loaded ({type(exc).__name__})")
+
+    try:
         webpush(
             subscription_info=parsed,
             data=payload,
-            vapid_private_key=vapid_private_key,
+            vapid_private_key=vapid_signer,
             vapid_claims=dict(vapid_claims),
             timeout=_PUSH_REQUEST_TIMEOUT_SECONDS,
             requests_session=_PUSH_SESSION,
@@ -149,6 +169,10 @@ def send_push_notification(
     except WebPushException as exc:
         status_code = exc.response.status_code if exc.response is not None else None
         return PushResult(sent=False, subscription_expired=status_code in (404, 410), error=str(exc))
+    except (ValueError, VapidException) as exc:
+        # Signing the VAPID claims or encrypting for a malformed stored subscription key failed before anything was sent: a failed send
+        # for THIS subscription, never an exception that ends the caller's whole run.
+        return PushResult(sent=False, subscription_expired=False, error=f"push could not be prepared ({type(exc).__name__})")
     except requests.RequestException as exc:
         # A transport-level failure (timeout, connection error, or a
         # rejected redirect from _PUSH_SESSION's max_redirects=0) never
