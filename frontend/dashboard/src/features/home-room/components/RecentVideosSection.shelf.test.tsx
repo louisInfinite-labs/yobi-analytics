@@ -313,12 +313,12 @@ describe("Home Oshi Videos: creator switching and request races", () => {
     await pickContentType(user, "live")
     await pickSort(user, "mostViews")
     await pickWindow(user, "7d")
-    expect(lastQuery()).toEqual({ creatorId: CREATOR_A.creatorId, topic: "sf6", contentType: "live", sort: "mostViews", viewWindow: "7d" })
+    expect(lastQuery()).toEqual({ creatorId: CREATOR_A.creatorId, topic: "sf6", contentType: "live", sort: "mostViews", viewWindow: "7d", excludeShorts: true })
 
     switchCreator(LEGACY_B)
 
     await waitFor(() => expect(lastQuery().creatorId).toBe(CREATOR_B.creatorId))
-    expect(lastQuery()).toEqual({ creatorId: CREATOR_B.creatorId, topic: "sf6", contentType: "live", sort: "mostViews", viewWindow: "7d" })
+    expect(lastQuery()).toEqual({ creatorId: CREATOR_B.creatorId, topic: "sf6", contentType: "live", sort: "mostViews", viewWindow: "7d", excludeShorts: true })
   })
 
   it("the previous creator's videos disappear immediately, and its late response can never replace the new creator's shelf", async () => {

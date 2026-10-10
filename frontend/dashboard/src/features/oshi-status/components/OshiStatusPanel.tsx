@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { Avatar } from "antd"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { OshiErrorState } from "../../home-room/components/OshiErrorState"
@@ -6,12 +7,14 @@ import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import type { TimeFormat } from "../../../shared/i18n/model/timeFormat"
-import { formatAbsoluteTime, formatCountdown } from "../../live-status/model/creatorStatusFormat"
+import { formatUpcomingStart } from "../../live-status/model/creatorStatusFormat"
+import { useUpcomingDisplayMode } from "../../live-status/hooks/useUpcomingDisplayMode"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { resetPreviousVisit, usePreviousVisit } from "../hooks/useLastVisit"
 import { useOshiStatus } from "../hooks/useOshiStatus"
 import type { OshiStatusRecentItem } from "../data/oshiStatus"
-import { formatActivityTime, formatCompactCount, isUnseenActivity } from "../utils/oshiActivity"
+import { formatActivityTime, formatCompactCount } from "../utils/oshiActivity"
+import { markContentSeen, migrateWatchedLiveToSeen, resetNewContentTracking, useNewContent } from "../../../shared/newContent/newContentTracking"
 import type { CreatorStatus } from "../../live-status/model/creatorStatus"
 
 /** Shown for any number the backend has not provided (still loading, the request failed, or no
@@ -40,19 +43,19 @@ interface OshiStatusPanelProps {
 function RecentActivityRow({
   entry,
   now,
-  previousVisit,
   locale,
   timeFormat,
   onOpen,
 }: {
   entry: OshiStatusRecentItem
   now: Date
-  previousVisit: Date | null
   locale: Locale
   timeFormat: TimeFormat
   onOpen: (video: { videoId: string; title: string }) => void
 }) {
-  const isNew = isUnseenActivity(entry.publishedAt, previousVisit, now)
+  // NEW is shared with Home's Video List (same seen state, keyed by videoId) and only an explicit open clears it.
+  const { isNew: isNewContent } = useNewContent()
+  const isNew = isNewContent({ videoId: entry.videoId, publishedAt: entry.publishedAt }, now)
 
   return (
     <div className="oshi-status__recent-row">
@@ -64,7 +67,10 @@ function RecentActivityRow({
         <button
           type="button"
           className="oshi-status__recent-video-link"
-          onClick={() => onOpen({ videoId: entry.videoId, title: entry.title })}
+          onClick={() => {
+            markContentSeen(entry.videoId)
+            onOpen({ videoId: entry.videoId, title: entry.title })
+          }}
         >
           {entry.title}
         </button>
@@ -91,12 +97,13 @@ function Metric({ value, label }: { value: string; label: string }) {
   )
 }
 
-/** LIVE now, else the nearest upcoming stream, else nothing scheduled.
- * Shows the scheduled clock time and the countdown side by side rather than
- * picking one — both slots exist, and neither is derived data. */
-function LiveOrNext({ status, now }: { status: CreatorStatus; now: Date }) {
+/** LIVE now, else the nearest upcoming stream, else nothing scheduled. The upcoming start is shown the way the user's one global
+ * "upcoming time display" setting says (clock time in the 12h/24h format, or the countdown) -- the same formatter the Live Status dock and
+ * the Schedule page use, so one stream reads the same everywhere. */
+function LiveOrNext({ status, now, onOpen }: { status: CreatorStatus; now: Date; onOpen: (video: { videoId: string; title: string }) => void }) {
   const [locale] = useLocale()
   const [timeFormat] = useTimeFormat()
+  const [displayMode] = useUpcomingDisplayMode()
 
   if (status.kind === "offline") {
     return <div className="oshi-empty-state">{t(locale, "oshiStatus.noScheduledStream")}</div>
@@ -105,13 +112,23 @@ function LiveOrNext({ status, now }: { status: CreatorStatus; now: Date }) {
     <div className="oshi-status__next">
       <div className="oshi-status__next-main">
         <div className="oshi-status__next-time">
-          {status.kind === "live" ? t(locale, "oshiStatus.liveNow") : formatAbsoluteTime(status.scheduledStart, timeFormat)}
+          {status.kind === "live" ? t(locale, "oshiStatus.liveNow") : formatUpcomingStart(status.scheduledStart, displayMode, now, locale, timeFormat)}
         </div>
-        <div className="oshi-status__next-title">{status.title}</div>
+        {/* The CURRENT LIVE title and the nearest UPCOMING title both open that exact stream, with the status's own videoId and
+          * the same onOpen handler the recent rows use -- no title search, no navigation to the recent list. A status
+          * without a usable videoId stays plain text. */}
+        {status.videoId ? (
+          <button
+            type="button"
+            className="oshi-status__next-title oshi-status__next-title--link"
+            onClick={() => onOpen({ videoId: status.videoId, title: status.title })}
+          >
+            {status.title}
+          </button>
+        ) : (
+          <div className="oshi-status__next-title">{status.title}</div>
+        )}
       </div>
-      {status.kind === "upcoming" && (
-        <div className="oshi-status__next-countdown">{formatCountdown(status.scheduledStart, now, locale)}</div>
-      )}
     </div>
   )
 }
@@ -129,6 +146,11 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
   const [timeFormat] = useTimeFormat()
   const { data, loading, error } = useOshiStatus(resolveCreatorKey(creatorId)?.creatorId, previousVisit)
   const recent = data?.recent ?? []
+  // The backend's recent rows are uploads and COMPLETED livestreams only: a stream watched while live that shows up
+  // here as a "livestream" row is now an archive, so its marker becomes a permanent seen entry.
+  useEffect(() => {
+    migrateWatchedLiveToSeen((data?.recent ?? []).filter((item) => item.kind === "livestream").map((item) => item.videoId))
+  }, [data])
   const number = (value: number | undefined) => (value === undefined ? VALUE_UNAVAILABLE : String(value))
 
   return (
@@ -156,7 +178,14 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
             </div>
           </div>
           {import.meta.env.DEV && (
-            <button type="button" className="oshi-status__dev-reset" onClick={resetPreviousVisit}>
+            <button
+              type="button"
+              className="oshi-status__dev-reset"
+              onClick={() => {
+                resetNewContentTracking()
+                resetPreviousVisit()
+              }}
+            >
               {t(locale, "oshiStatus.devResetVisit")}
             </button>
           )}
@@ -172,7 +201,7 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
       <div className="oshi-status__body">
         <section className="oshi-status__section">
           <div className="oshi-status__section-title">{t(locale, "oshiStatus.liveNext")}</div>
-          <LiveOrNext status={status} now={now} />
+          <LiveOrNext status={status} now={now} onOpen={onSelectVideo} />
         </section>
 
         <section className="oshi-status__section">
@@ -181,9 +210,6 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
             <div className="oshi-status__metrics">
               <Metric value={number(data?.sinceLastVisit?.newUploads)} label={t(locale, "oshiStatus.uploads")} />
               <Metric value={number(data?.sinceLastVisit?.newStreams)} label={t(locale, "oshiStatus.streams")} />
-              {/* The backend has no growth for an arbitrary since-window (only 1d/7d/30d channel totals),
-               * and no raw history is exposed to derive one, so this slot stays a placeholder. */}
-              <Metric value={VALUE_UNAVAILABLE} label={t(locale, "oshiStatus.viewGrowth")} />
             </div>
           ) : (
             <div className="oshi-empty-state">{t(locale, "oshiStatus.firstVisit")}</div>
@@ -193,10 +219,6 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
         <section className="oshi-status__section">
           <div className="oshi-status__section-title">{t(locale, "oshiStatus.thisWeek")}</div>
           <div className="oshi-status__metrics">
-            <Metric
-              value={data ? formatCompactCount(data.growth["7d"].absoluteGrowth) : VALUE_UNAVAILABLE}
-              label={t(locale, "oshiStatus.viewGrowth")}
-            />
             <Metric value={number(data?.thisWeek.newStreams)} label={t(locale, "oshiStatus.streams")} />
             <Metric value={number(data?.thisWeek.newUploads)} label={t(locale, "oshiStatus.uploads")} />
           </div>
@@ -225,7 +247,6 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
                   key={entry.videoId}
                   entry={entry}
                   now={now}
-                  previousVisit={previousVisit}
                   locale={locale}
                   timeFormat={timeFormat}
                   onOpen={onSelectVideo}

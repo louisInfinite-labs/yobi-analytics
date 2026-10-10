@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
+import { useMinuteClock } from "../../../shared/time/minuteClock"
 import { getCreatorById, getCreators, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 import { useLiveStreams } from "../../../shared/api/hooks/useLiveStreams"
 import type { LiveStreamDto } from "../../../shared/api/liveStreams"
@@ -6,7 +7,6 @@ import { reclassifyIfPastSchedule } from "../model/creatorStatusFormat"
 import { pickStatus } from "../model/creatorStatusSelection"
 import type { CreatorStatus } from "../model/creatorStatus"
 
-const TICK_MS = 30_000 // spec: countdown "updates at least once per minute" — twice that margin
 
 /** Every canonical creator gets an entry (offline by default) so consumers
  * that iterate the whole roster (CreatorStatusList) always find a status --
@@ -38,13 +38,9 @@ export function statusesFromStreams(streams: LiveStreamDto[], now: Date): Record
  * shared useLiveStreams poll -- never holodex.net directly, never a Holodex
  * API key in the browser. */
 export function useCreatorStatuses(): { statuses: Record<string, CreatorStatus>; now: Date } {
-  const [now, setNow] = useState(() => new Date())
+  // The one shared minute clock (also used by the Schedule page): every countdown changes at the same wall-clock instant.
+  const now = useMinuteClock()
   const { streams } = useLiveStreams()
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), TICK_MS)
-    return () => clearInterval(interval)
-  }, [])
 
   const statuses = useMemo(() => {
     // One `now` for the whole selection: the 24h Live Status window (see

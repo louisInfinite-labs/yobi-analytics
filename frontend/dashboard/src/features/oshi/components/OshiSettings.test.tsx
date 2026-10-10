@@ -175,4 +175,21 @@ describe("OshiSettings (My Favorites roster)", () => {
       ["ch_aizawa_ema", "ch_hololive_staff", "ch_usada_pekora"].sort(),
     )
   })
+
+  it("a creator listed in two subgroups of one region (Fubuki: 1期生 and Gamers) counts ONCE in the region and the total, and both tiles follow one state", async () => {
+    const user = userEvent.setup()
+    const { container } = renderOshiSettings()
+    const regionCount = (title: string) =>
+      Array.from(container.querySelectorAll(".favorites-roster__region")).find((region) => region.querySelector(".favorites-roster__region-title")?.textContent === title)!
+        .querySelector(".favorites-roster__region-count")!.textContent
+
+    const fubukiTiles = screen.getAllByRole("checkbox", { name: "Add 白上フブキ to favorites" })
+    expect(fubukiTiles.length).toBeGreaterThan(1) // the same creator really has two tiles
+    await user.click(fubukiTiles[0])
+    await user.click(screen.getByRole("checkbox", { name: "Add 兎田ぺこら to favorites" }))
+
+    expect(regionCount("Hololive // JP")).toBe("2 selected") // not 3: Fubuki is one creator even though she has two tiles
+    expect(document.body.textContent).toMatch(/2 selected/)
+    for (const tile of screen.getAllByRole("checkbox", { name: "Remove 白上フブキ from favorites" })) expect(tile).toBeChecked()
+  })
 })

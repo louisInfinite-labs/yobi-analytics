@@ -23,6 +23,18 @@ export function formatCountdown(iso: string, now: Date = new Date(), locale: Loc
   return `${hours}時間${minutes}分後`
 }
 
+/** The ONE formatter for an upcoming stream's start, shared by Home (Live Status dock, Oshi Status) and the Schedule page: the user's
+ * "upcoming time display" setting picks between the clock time (12h/24h per the global time format) and the countdown. */
+export function formatUpcomingStart(
+  iso: string,
+  mode: UpcomingDisplayMode,
+  now: Date = new Date(),
+  locale: Locale = "ja",
+  timeFormat: TimeFormat = "24h",
+): string {
+  return mode === "absolute" ? formatAbsoluteTime(iso, timeFormat) : formatCountdown(iso, now, locale)
+}
+
 export function isScheduledTimeReached(iso: string, now: Date = new Date()): boolean {
   return new Date(iso).getTime() <= now.getTime()
 }
@@ -45,7 +57,7 @@ export function formatCreatorStatus(
     return { label: "LIVE", dotColor: "red", clickable: true }
   }
   if (status.kind === "upcoming") {
-    const label = mode === "absolute" ? formatAbsoluteTime(status.scheduledStart, timeFormat) : formatCountdown(status.scheduledStart, now, locale)
+    const label = formatUpcomingStart(status.scheduledStart, mode, now, locale, timeFormat)
     return { label, dotColor: "red", clickable: true }
   }
   return { label: "OFFLINE", dotColor: "grey", clickable: false }

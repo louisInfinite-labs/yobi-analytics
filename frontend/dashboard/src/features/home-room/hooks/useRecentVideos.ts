@@ -25,11 +25,12 @@ export interface VideoPage {
  * ever looks for "live_now"/"live_archive") needs no changes at all -- an
  * "upcoming" entry is simply not selected by it, exactly as before this
  * migration (a real Holodex "upcoming" item was never surfaced there either). */
-function toRecentVideo(dto: LiveStreamDto): RecentVideo {
+export function toRecentVideo(dto: LiveStreamDto): RecentVideo {
   return {
     videoId: dto.videoId,
     title: dto.title,
     publishedAt: dto.actualStart ?? dto.scheduledStart ?? new Date(0).toISOString(),
+    ...((dto.actualStart ?? dto.scheduledStart) ? { eventAt: (dto.actualStart ?? dto.scheduledStart) as string } : {}),
     contentFormat: dto.status === "live" ? "live_now" : "live_upcoming",
   }
 }

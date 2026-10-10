@@ -18,6 +18,37 @@ export function isPushSupported(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window
 }
 
+/** Resolve once this registration has an ACTIVATED service worker; reject if its worker is discarded.
+ *
+ * `register()` resolves as soon as the registration exists, while the worker is still "installing" on
+ * a pristine profile -- and `pushManager.subscribe()` on a registration with no active worker throws
+ * "AbortError: no active Service Worker". This waits on the worker's own state instead of a timer.
+ * A worker that goes "redundant" (install failure, or it was replaced before activating) rejects, so a
+ * broken service worker surfaces as an error instead of hanging the caller forever (unlike
+ * `navigator.serviceWorker.ready`, which never rejects). With no worker to watch at all, falls back to
+ * the platform's own `navigator.serviceWorker.ready`. */
+async function waitForActiveWorker(registration: ServiceWorkerRegistration): Promise<void> {
+  const worker = registration.active ?? registration.waiting ?? registration.installing
+  if (!worker) {
+    await navigator.serviceWorker.ready
+    return
+  }
+  if (worker.state === "activated") return
+  await new Promise<void>((resolve, reject) => {
+    const check = () => {
+      if (worker.state === "activated") {
+        worker.removeEventListener("statechange", check)
+        resolve()
+      } else if (worker.state === "redundant") {
+        worker.removeEventListener("statechange", check)
+        reject(new Error("Service worker became redundant before it activated"))
+      }
+    }
+    worker.addEventListener("statechange", check)
+    check()
+  })
+}
+
 /** Register the notification service worker, request permission, and subscribe to Web Push.
  *
  * Returns the subscription (to send to the backend — Roadmap 4.5's opaque
@@ -27,6 +58,10 @@ export function isPushSupported(): boolean {
  * permission prompt. Never throws for either case — both are expected
  * outcomes, not errors; a caller should treat `null` as "notifications
  * unavailable this session", not a failure to report.
+ *
+ * Waits for the service worker to be ACTIVE before subscribing (a first-ever visit registers it
+ * while it is still installing), and throws if it never activates -- callers must treat a throw as
+ * "could not enable", unlike the permission outcomes above which stay non-throwing.
  *
  * Reuses an already-existing subscription rather than creating a second
  * one, since re-subscribing with the same `applicationServerKey` from the
@@ -40,6 +75,7 @@ export async function subscribeToPush(vapidPublicKey: string): Promise<PushSubsc
   if (permission !== "granted") return null
 
   const registration = await navigator.serviceWorker.register("/sw.js")
+  await waitForActiveWorker(registration)
   const existing = await registration.pushManager.getSubscription()
   const subscription =
     existing ??

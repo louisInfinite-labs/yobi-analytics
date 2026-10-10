@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 import { resetLiveDockExpandedForTests } from "../features/live-status/hooks/useLiveDockExpanded"
 import { resetHomeSelectedVideoForTests } from "../features/home-room/hooks/useHomeSelectedVideo"
 import { resetStreamNotificationOverrideCacheForTests } from "../features/live-schedule/hooks/streamNotificationOverrideCache"
+import { resetNotificationSaveStatusForTests } from "../features/notifications/hooks/notificationSaveStatus"
 import { resetAllSharedStateForTests } from "../shared/state/sharedState"
 import { resetLiveStreamsPollingForTests } from "../shared/api/liveStreamsPollState"
 import { resetAboutContentFetchForTests } from "../pages/about/aboutContentFetchState"
@@ -44,6 +45,11 @@ afterEach(() => {
   // createSharedState-backed value (already covered by
   // resetAllSharedStateForTests above).
   resetAboutContentFetchForTests()
+  // The Settings "couldn't save" flag is the same kind of non-persisted module-level singleton.
+  resetNotificationSaveStatusForTests()
+  // Re-initialising the shared stores above writes first-use defaults back (the NEW-content tracking baseline);
+  // leave storage empty for the next test, whose own stores read their in-memory defaults.
+  window.localStorage.clear()
 })
 
 // jsdom has no matchMedia implementation; components that read

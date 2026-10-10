@@ -5,6 +5,8 @@ import { SLOT_COUNT, initialScrollSlotIndex, slotLabel } from "../model/schedule
 import type { ScheduleDay } from "../hooks/useWeeklySchedule"
 import type { ScheduledStream } from "../model/scheduledStream"
 import { t, type Locale } from "../../../shared/i18n/translations"
+import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
+import { formatClockTime } from "../../../shared/i18n/model/timeFormat"
 
 const creatorsById = new Map(mockCreators.map((creator) => [creator.channelId, creator]))
 
@@ -63,6 +65,7 @@ function StreamAvatarGroup({ streams, locale, onSelectStream }: { streams: Sched
 export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStream }: ScheduleGridProps) {
   const gridRef = useRef<HTMLDivElement>(null)
   const hasScrolledRef = useRef(false)
+  const [timeFormat] = useTimeFormat()
 
   // Once on mount only -- later `days`/`now` refreshes must never move a
   // viewport the user may already be scrolling by hand. Scrolls the
@@ -92,7 +95,7 @@ export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStre
               const { hour, minute } = slotLabel(slotIndex)
               return (
                 <div key={slotIndex} className="time-label" data-minute={minute}>
-                  {minute === "00" ? `${hour}:00` : ""}
+                  {minute === "00" ? formatClockTime(new Date(2000, 0, 1, Number(hour), 0), timeFormat) : ""}
                 </div>
               )
             })}

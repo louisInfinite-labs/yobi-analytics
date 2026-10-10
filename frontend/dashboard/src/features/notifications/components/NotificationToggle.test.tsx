@@ -144,7 +144,7 @@ describe("NotificationToggle", () => {
 
     const preferenceCall = vi.mocked(apiClient.apiRequest).mock.calls.find(([path]) => String(path).endsWith("/notification-preference"))
     const body = ((preferenceCall?.[1] as { body?: Record<string, unknown> } | undefined)?.body ?? {}) as Record<string, unknown>
-    expect(Object.keys(body).sort()).toEqual(["deliveryWindows", "enabled", "notificationLevel", "notificationTimeZone"])
+    expect(Object.keys(body).sort()).toEqual(["deliveryWindows", "enabled", "newVideoCreatorOverride", "newVideoShortCreatorOverride", "notificationLevel", "notificationTimeZone"])
     expect(body.enabled).toBe(false)
   })
 
@@ -455,7 +455,7 @@ describe("NotificationToggle", () => {
 
       const preferenceCall = vi.mocked(apiClient.apiRequest).mock.calls.find(([path]) => String(path).endsWith("/notification-preference"))
       const body = ((preferenceCall?.[1] as { body?: Record<string, unknown> } | undefined)?.body ?? {}) as Record<string, unknown>
-      expect(Object.keys(body).sort()).toEqual(["deliveryWindows", "enabled", "notificationLevel", "notificationTimeZone"])
+      expect(Object.keys(body).sort()).toEqual(["deliveryWindows", "enabled", "newVideoCreatorOverride", "newVideoShortCreatorOverride", "notificationLevel", "notificationTimeZone"])
       expect(body.enabled).toBe(true)
     })
   })

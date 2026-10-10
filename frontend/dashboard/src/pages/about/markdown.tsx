@@ -33,7 +33,10 @@ function parseBlock(chunk: string): ParsedBlock {
 }
 
 function parseBlocks(markdown: string): ParsedBlock[] {
+  // CRLF / bare CR -> LF first: the block split below only recognises "\n\n", so a publisher that
+  // uploaded CRLF Markdown once rendered every page as one run-on paragraph with literal "##".
   return markdown
+    .replace(/\r\n?/g, "\n")
     .split(/\n{2,}/)
     .map((chunk) => chunk.trim())
     .filter(Boolean)

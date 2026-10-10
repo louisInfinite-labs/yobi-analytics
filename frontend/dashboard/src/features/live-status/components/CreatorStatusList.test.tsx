@@ -519,9 +519,9 @@ describe("CreatorStatusList canonical registry migration (C8C)", () => {
     expect(resolveCreatorKey("ch_hololive_staff")).toBeUndefined()
   })
 
-  it("hololive_asobimawaritai: the group channel is shown but is not an Oshi-switch button, and its 4 members render under their own subgroup, none falling into Other", () => {
+  it("hololive_asobimawaritai: the group channel is shown as a normal clickable row, and its 4 members render under their own subgroup, none falling into Other", () => {
     renderList()
-    expect(screen.queryByRole("button", { name: "Switch Oshi to アソビ★まわり隊！" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Switch Oshi to アソビ★まわり隊！" })).toBeEnabled()
     expect(screen.getAllByText("アソビ★まわり隊！", { selector: ".live-status-member__name" })).toHaveLength(1)
     expect(screen.getByText("アソビ★まわり隊！", { selector: ".live-status-group__subheading" })).toBeInTheDocument()
     for (const name of ["百灯キョーコ", "熱千めら", "鈴鳴つづり", "宙科そぴあ"]) {
@@ -542,10 +542,9 @@ describe("CreatorStatusList canonical registry migration (C8C)", () => {
 
   it("search operates on the canonical roster and finds a group channel by its own displayName", () => {
     renderList({ query: "アソビ" })
-    // The group channel is a normal Live Status row now, so search reaches it -- as a
-    // plain row, never an Oshi-switch button.
+    // The group channel is a normal Live Status row, so search reaches it and it stays clickable.
     expect(screen.getByText("アソビ★まわり隊！", { selector: ".live-status-member__name" })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /アソビ/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Switch Oshi to アソビ★まわり隊！" })).toBeEnabled()
   })
 
   it("search finds an eligible creator by canonical displayName", () => {

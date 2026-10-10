@@ -1,8 +1,10 @@
 import { useMemo, useState, type CSSProperties } from "react"
 import { Button, ConfigProvider, Drawer, Dropdown, Input, Switch } from "antd"
 import { ChevronDown, Search } from "lucide-react"
+import { CreatorAvatarImage } from "../../../entities/creator/components/CreatorAvatarImage"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
+import { clearNotificationSaveFailed, useNotificationSaveFailed } from "../hooks/notificationSaveStatus"
 import { useReminderTopicSupport } from "../hooks/useReminderTopicSupport"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
 import { isFavoriteCreatorId } from "../../favorites/utils/creatorFavoriteBridge"
@@ -15,7 +17,7 @@ import {
   type NotificationCreator,
 } from "../model/notificationCreatorGrouping"
 import { sortFlatNotificationCreatorsLikeLiveStatus } from "../model/notificationCreatorOrder"
-import { getAvailableTopics, type TopicCatalogId } from "../model/notificationTopicCatalog"
+import type { TopicCatalogId } from "../model/notificationTopicCatalog"
 import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, type ReminderTimeValue, type TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
@@ -38,6 +40,8 @@ function creatorAccentStyle(creator: NotificationCreator): CreatorAccentStyle {
 interface TopicCreatorManagementDrawerProps {
   /** null closes the drawer -- also doubles as "which topic is open". */
   topicId: TopicCatalogId | null
+  /** The open card's label, from the shared category list (Home's) -- resolved by the page. */
+  topicLabel: string
   onClose: () => void
 }
 
@@ -238,9 +242,7 @@ function CreatorRow({
 
   return (
     <div className={className} style={creatorAccentStyle(creator)}>
-      <span className="topic-creator-drawer__avatar" aria-hidden="true">
-        {creator.displayName.trim().charAt(0)}
-      </span>
+      <CreatorAvatarImage avatarUrl={creator.avatarUrl} displayName={creator.displayName} className="topic-creator-drawer__avatar" />
       <span className="topic-creator-drawer__creator-name">{creator.displayName}</span>
       {showLive && (
         <span className="topic-creator-drawer__switch-cell">
@@ -281,15 +283,17 @@ function CreatorRow({
  * switches and optional reminder override (sections 8/9), independent of
  * every other topic and of the app's existing global per-creator
  * Live/New Video switches (useCreatorNotificationPreferences, untouched). */
-export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorManagementDrawerProps) {
+export function TopicCreatorManagementDrawer({ topicId, topicLabel, onClose }: TopicCreatorManagementDrawerProps) {
   const [locale] = useLocale()
   const { favorites } = useFavoriteCreators()
   const { getNotificationType } = useTopicNotificationPreferences()
   const { isReminderTopicSupported, isSupportKnown } = useReminderTopicSupport()
   const [searchQuery, setSearchQuery] = useState("")
+  const saveFailed = useNotificationSaveFailed()
 
   const handleClose = () => {
     setSearchQuery("")
+    clearNotificationSaveFailed()
     onClose()
   }
 
@@ -310,8 +314,7 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
   const filteredAgencyGroups = filterAgencyGroups(nonFavoriteAgencyGroups, searchQuery)
   const hasResults = filteredFavorites.length > 0 || filteredAgencyGroups.length > 0
 
-  const topicDef = getAvailableTopics().find((entry) => entry.id === topicId)
-  const drawerTitle = topicDef ? t(locale, "notificationSettings.managementDrawerTitle", { topic: t(locale, topicDef.labelKey) }) : ""
+  const drawerTitle = topicId ? t(locale, "notificationSettings.managementDrawerTitle", { topic: topicLabel }) : ""
 
   // Falls back to "both" only for the brief render where topicId is null
   // (drawer closing) -- content below is gated on {topicId && ...} anyway.
@@ -369,6 +372,11 @@ export function TopicCreatorManagementDrawer({ topicId, onClose }: TopicCreatorM
             <p className="topic-creator-drawer__notification-type-context">
               {t(locale, "notificationSettings.managementDrawerNotificationType", { type: t(locale, notificationTypeLabelKey) })}
             </p>
+            {saveFailed && (
+              <p className="topic-creator-drawer__save-error" role="alert">
+                {t(locale, "notificationSettings.saveFailed")}
+              </p>
+            )}
             {isSupportKnown && !reminderSupported && drawerColumnFlags(notificationType).showReminder && (
               <p className="topic-creator-drawer__notification-type-context" role="note">
                 {t(locale, "notificationSettings.reminderUnsupportedTopic")}

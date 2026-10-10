@@ -17,7 +17,17 @@ vi.mock("../api/liveReminderApi", async (importOriginal) => ({
 const STORAGE_KEY = "yobi.topicNotificationPreferences.v2"
 
 /** What GET /topics returns: the backend's canonical topics (including its "other" fallback). */
-const BACKEND_TOPICS = ["valorant", "sf6", "apex", "minecraft", "singing", "mv", "chatting", "other"].map((id) => ({ id, labels: { en: id } }))
+const TOPIC_LABELS: Record<string, string> = {
+  valorant: "VALO",
+  sf6: "SF6",
+  apex: "Apex",
+  minecraft: "Minecraft",
+  singing: "Singing",
+  mv: "MV",
+  chatting: "Chatting",
+  other: "Other",
+}
+const BACKEND_TOPICS = Object.entries(TOPIC_LABELS).map(([id, label]) => ({ id, labels: { en: label, "zh-TW": label, ja: label } }))
 
 const UNSUPPORTED_TOPIC_MESSAGE = "This topic doesn't support its own notification yet; it follows the \"All\" setting."
 
@@ -54,9 +64,9 @@ function getDetailPanel(): HTMLElement {
   return document.querySelector(".notification-detail-panel")!
 }
 
-async function pickGta(user: ReturnType<typeof userEvent.setup>) {
+async function pickSinging(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("combobox", { name: "Select notification topic" }))
-  await user.click(await screen.findByTitle("GTA"))
+  await user.click(await screen.findByTitle("Singing"))
 }
 
 describe("NotificationSettings master-detail layout", () => {
@@ -123,7 +133,7 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickGta(user)
+    await pickSinging(user)
 
     const detail = within(getDetailPanel())
     expect(detail.getByRole("button", { name: "Save" })).toBeEnabled()
@@ -136,7 +146,7 @@ describe("NotificationSettings master-detail layout", () => {
     // No topic-level "forced time" control exists any more: reminders are set per creator.
     expect(detail.queryByRole("radiogroup", { name: /Live reminder time/ })).not.toBeInTheDocument()
     // The topic still isn't a saved card -- picking it must not persist it.
-    expect(screen.queryByRole("button", { name: /^GTA/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^Singing/ })).not.toBeInTheDocument()
   })
 
   it("does not show the removed per-member-overrides section, only the single Manage Members entry point under Notified members", async () => {
@@ -161,17 +171,17 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickGta(user)
+    await pickSinging(user)
 
     const detail = within(getDetailPanel())
     expect(detail.getByRole("radio", { name: "Live + New Video" })).toBeChecked()
 
     await user.click(detail.getByRole("radio", { name: "Live" }))
 
-    expect(storedState().topics?.gta).toBeUndefined()
+    expect(storedState().topics?.singing).toBeUndefined()
 
     await user.click(detail.getByRole("button", { name: "Save" }))
-    expect(storedState().topics.gta.notificationType).toBe("live")
+    expect(storedState().topics.singing.notificationType).toBe("live")
   })
 
   it("has no topic-level reminder time control: each creator's reminder is set in Manage Members", async () => {
@@ -187,13 +197,13 @@ describe("NotificationSettings master-detail layout", () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     const first = renderNotificationSettings()
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickGta(user)
+    await pickSinging(user)
     await user.click(within(getDetailPanel()).getByRole("radio", { name: "Live" }))
     first.unmount()
 
     renderNotificationSettings()
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickGta(user)
+    await pickSinging(user)
     expect(within(getDetailPanel()).getByRole("radio", { name: "Live + New Video" })).toBeChecked()
   })
 
@@ -202,7 +212,7 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickGta(user)
+    await pickSinging(user)
     await user.click(within(getDetailPanel()).getByRole("radio", { name: "Live" }))
 
     await user.click(screen.getByRole("button", { name: /^VALO/ }))
@@ -210,7 +220,7 @@ describe("NotificationSettings master-detail layout", () => {
     expect(within(getDetailPanel()).getByRole("heading", { level: 2, name: "VALO" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add topic" })).toBeInTheDocument()
 
-    expect(storedState().topics?.gta).toBeUndefined()
+    expect(storedState().topics?.singing).toBeUndefined()
   })
 
   it("opens the member-management drawer for the still-unsaved draft topic when Manage Members is clicked", async () => {
@@ -218,10 +228,10 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickGta(user)
+    await pickSinging(user)
     await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
 
-    expect(await screen.findByText("GTA — Notified Members")).toBeInTheDocument()
+    expect(await screen.findByText("Singing — Notified Members")).toBeInTheDocument()
   })
 
   it("saving a picked topic turns the draft into a normal list item, selects it, and re-enables Add topic", async () => {
@@ -229,14 +239,14 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickGta(user)
+    await pickSinging(user)
     await user.click(within(getDetailPanel()).getByRole("button", { name: "Save" }))
 
-    expect(screen.getByRole("button", { name: /^GTA/ })).toHaveAttribute("aria-current", "true")
+    expect(screen.getByRole("button", { name: /^Singing/ })).toHaveAttribute("aria-current", "true")
     expect(screen.getByRole("button", { name: "Add topic" })).toBeInTheDocument()
-    // The saved GTA topic is a normal topic now -- Reset instead of Save.
+    // The saved Singing topic is a normal topic now -- Reset instead of Save.
     const detail = within(getDetailPanel())
-    expect(detail.getByRole("heading", { level: 2, name: "GTA" })).toBeInTheDocument()
+    expect(detail.getByRole("heading", { level: 2, name: "Singing" })).toBeInTheDocument()
     expect(detail.getByRole("button", { name: /^Reset/ })).toBeInTheDocument()
     expect(detail.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
   })
@@ -251,15 +261,17 @@ describe("NotificationSettings master-detail layout", () => {
     for (const alreadySaved of ["SF6", "VALO", "APEX", "Minecraft"]) {
       expect(screen.queryByTitle(alreadySaved)).not.toBeInTheDocument()
     }
-    expect(await screen.findByTitle("GTA")).toBeInTheDocument()
-    expect(screen.getByTitle("7 DAYS TO DIE")).toBeInTheDocument()
-    expect(screen.getByTitle("雀魂")).toBeInTheDocument()
-    expect(screen.getByTitle("Endfield")).toBeInTheDocument()
+    // Home's list in Home's order: Singing, MV, Chatting, Short (immediately before Other), Other.
+    await screen.findByTitle("Singing")
+    const options = [...document.querySelectorAll(".ant-select-item-option")]
+    expect(options.map((option) => option.getAttribute("title"))).toEqual(["Singing", "MV", "Chatting", "Short", "Other"])
+    // The old notification-only hard-coded categories are gone.
+    for (const retired of ["GTA", "7 DAYS TO DIE", "雀魂", "Endfield"]) expect(screen.queryByTitle(retired)).not.toBeInTheDocument()
   })
 
   it("hides the Add topic tile when every catalog topic is already saved", () => {
     seedState({
-      topicOrder: [...DEFAULT_ORDER, "gta", "seven_days_to_die", "mahjong_soul", "endfield"],
+      topicOrder: [...DEFAULT_ORDER, "singing", "mv", "chatting", "short", "other"],
       topics: {},
     })
     renderNotificationSettings()
@@ -429,7 +441,7 @@ describe("member drawer reminders", () => {
   }
 
   async function openDrawerFor(user: ReturnType<typeof userEvent.setup>, topicButton: RegExp) {
-    await user.click(screen.getByRole("button", { name: topicButton }))
+    await user.click(await screen.findByRole("button", { name: topicButton }))
     await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
     return screen.findAllByRole("button", { name: /'s reminder time/ })
   }
@@ -538,32 +550,32 @@ describe("member drawer reminders", () => {
   })
 
   describe("a category the backend doesn't classify (display-only)", () => {
-    const WITH_GTA = [...DEFAULT_ORDER, "gta"]
+    const WITH_OTHER = [...DEFAULT_ORDER, "other"]
 
-    it("stays visible in the topic list", () => {
-      seedReminders({ gta: {} }, WITH_GTA)
+    it("stays visible in the topic list", async () => {
+      seedReminders({ other: {} }, WITH_OTHER)
       renderNotificationSettings()
 
-      expect(screen.getByRole("button", { name: /^GTA/ })).toBeInTheDocument()
+      expect(await screen.findByRole("button", { name: /^Other/ })).toBeInTheDocument()
     })
 
     it("disables the reminder control and says it follows 全部", async () => {
-      seedReminders({ gta: {} }, WITH_GTA)
+      seedReminders({ other: {} }, WITH_OTHER)
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderNotificationSettings()
 
-      const [trigger] = await openDrawerFor(user, /^GTA/)
+      const [trigger] = await openDrawerFor(user, /^Other/)
 
       expect(trigger).toBeDisabled()
       expect(await screen.findByText(UNSUPPORTED_TOPIC_MESSAGE)).toBeInTheDocument()
     })
 
     it("never writes an independent backend reminder for it", async () => {
-      seedReminders({ gta: {} }, WITH_GTA)
+      seedReminders({ other: {} }, WITH_OTHER)
       const user = userEvent.setup({ pointerEventsCheck: 0 })
       renderNotificationSettings()
 
-      const [trigger] = await openDrawerFor(user, /^GTA/)
+      const [trigger] = await openDrawerFor(user, /^Other/)
       await user.click(trigger)
 
       expect(screen.queryByRole("menuitem")).not.toBeInTheDocument()
@@ -608,7 +620,7 @@ describe("NotificationSettings localization", () => {
     const { unmount } = renderNotificationSettings()
     await user.click(screen.getByRole("button", { name: "トピックを追加" }))
     await user.click(screen.getByRole("combobox", { name: "通知トピックを選択" }))
-    await user.click(await screen.findByTitle("GTA"))
+    await user.click(await screen.findByTitle("Singing"))
     expect(screen.getByRole("button", { name: /^保\s?存$/ })).toBeInTheDocument()
     expect(screen.queryByText("セーフ")).not.toBeInTheDocument()
     unmount()
@@ -618,7 +630,7 @@ describe("NotificationSettings localization", () => {
     renderNotificationSettings()
     await user.click(screen.getByRole("button", { name: "新增主題" }))
     await user.click(screen.getByRole("combobox", { name: "選擇通知主題" }))
-    await user.click(await screen.findByTitle("GTA"))
+    await user.click(await screen.findByTitle("Singing"))
     expect(screen.getByRole("button", { name: /^儲\s?存$/ })).toBeInTheDocument()
   })
 })

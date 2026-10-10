@@ -543,6 +543,37 @@
   line-height: 15px;
 }
 
+/* The live stream's title as a button (only while LIVE): same look as the plain title, plus the pointer, hover and
+ * focus treatment the recent-video links already use. */
+.oshi-status__next-title--link {
+  appearance: none;
+
+  display: block;
+  max-width: 100%;
+
+  padding: 0;
+
+  border: 0;
+  background: transparent;
+
+  font-family: inherit;
+  text-align: left;
+
+  cursor: pointer;
+}
+
+.oshi-status__next-title--link:hover {
+  color: var(--creator-main);
+
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.oshi-status__next-title--link:focus-visible {
+  outline: 1px solid var(--creator-main);
+  outline-offset: 2px;
+}
+
 .oshi-status__next-title {
   margin-top: 2px;
 
@@ -571,7 +602,8 @@
 .oshi-status__metrics {
   display: grid;
 
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Two metrics per section (uploads, streams) -- no empty third column. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 
   gap: 6px;
 }
@@ -1757,17 +1789,6 @@
 .live-status-member__creator-button:hover .live-status-member__name,
 .live-status-member__creator-button:focus-visible .live-status-member__name {
   color: var(--member-theme-color);
-}
-
-/* A group/staff/official channel row: same layout as a creator row, but it is not a
-   person who can become Current Oshi, so it is a plain element -- no pointer, no hover
-   recolor, and (see CreatorStatusList.tsx) no Oshi-switch flow. */
-.live-status-member__creator-button--static {
-  cursor: default;
-}
-
-.live-status-member__creator-button--static:hover .live-status-member__name {
-  color: var(--oshi-text-1);
 }
 
 .live-status-member__main-badge {

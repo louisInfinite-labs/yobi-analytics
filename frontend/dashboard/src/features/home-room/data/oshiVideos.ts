@@ -32,7 +32,8 @@ export interface OshiVideosPage {
   hasMore: boolean
 }
 
-/** "live" (an archived livestream) -> live_archive; everything else a plain video.
+/** "live" (an archived livestream) -> live_archive; "short" (the backend's own persisted classification) -> shorts;
+ * everything else a plain video.
  * A video whose publishedAt is unknown gets the epoch: it still renders (with
  * no date) rather than being dropped. */
 function toRecentVideo(dto: ShelfVideoDto): RecentVideo {
@@ -40,7 +41,7 @@ function toRecentVideo(dto: ShelfVideoDto): RecentVideo {
     videoId: dto.videoId,
     title: dto.title ?? "",
     publishedAt: dto.publishedAt ?? new Date(0).toISOString(),
-    contentFormat: dto.contentType === "live" ? "live_archive" : "normal_video",
+    contentFormat: dto.contentType === "live" ? "live_archive" : dto.contentType === "short" ? "shorts" : "normal_video",
     viewCount: dto.currentViewCount,
   }
 }

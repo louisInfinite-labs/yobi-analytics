@@ -7,10 +7,13 @@ import { Users } from "lucide-react"
 // out of this pass's scope) stays on lucide-react's Users, hence both
 // libraries' icon imports coexisting in this file for now.
 import { PlusIcon, SlidersHorizontalIcon, UsersThreeIcon } from "@phosphor-icons/react"
+import { CreatorAvatarImage } from "../../../entities/creator/components/CreatorAvatarImage"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
 import { getAllNotificationCreators, type NotificationCreator } from "../model/notificationCreatorGrouping"
-import { getAvailableTopics, getSelectableTopics, type TopicCatalogId } from "../model/notificationTopicCatalog"
+import { useNotificationTopicCatalog } from "../hooks/useNotificationTopicCatalog"
+import type { VideoFilterEntry } from "../../home-room/model/videoFilterCatalog"
+import { ALL_TOPICS_ID, getSelectableTopics, isPermanentTopic, isShortCard, type TopicCatalogId } from "../model/notificationTopicCatalog"
 import type { TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { TopicCreatorManagementDrawer } from "./TopicCreatorManagementDrawer"
@@ -24,9 +27,22 @@ const MAX_AVATAR_PREVIEW = 8
 
 type SortMode = "saved" | "alphabetical"
 
-function topicLabelFor(locale: Locale, topicId: TopicCatalogId): string {
-  const topicDef = getAvailableTopics().find((entry) => entry.id === topicId)
-  return topicDef ? t(locale, topicDef.labelKey) : ""
+/** Only until GET /topics answers: the 4 permanent default cards show their usual name instead of flashing a raw id. Once the list has
+ * loaded every label comes from it (Home's list), whatever it says. */
+const DEFAULT_CARD_LOADING_LABEL_KEYS: Readonly<Record<string, "recentVideos.tag.sf6" | "recentVideos.tag.valo" | "recentVideos.tag.apex" | "recentVideos.tag.minecraft">> = {
+  sf6: "recentVideos.tag.sf6",
+  valorant: "recentVideos.tag.valo",
+  apex: "recentVideos.tag.apex",
+  minecraft: "recentVideos.tag.minecraft",
+}
+
+/** The card's label: 全部 for the creator-level scope, otherwise the shared Home list's label (the raw id until GET /topics has loaded). */
+function topicLabelFor(entries: readonly VideoFilterEntry[], locale: Locale, topicId: TopicCatalogId): string {
+  if (topicId === ALL_TOPICS_ID) return t(locale, "notificationSettings.topic.all")
+  const fromList = entries.find((entry) => entry.id === topicId)?.label
+  if (fromList) return fromList
+  const loadingKey = DEFAULT_CARD_LOADING_LABEL_KEYS[topicId]
+  return loadingKey ? t(locale, loadingKey) : topicId
 }
 
 /** One combined "which kinds of notification this topic sends" control
@@ -62,11 +78,8 @@ function NotificationTypeSection({ topicId, topicLabel }: { topicId: TopicCatalo
   )
 }
 
-/** One member's avatar preview tile -- no image asset: this roster
- * (notificationCreatorGrouping's 112-creator Creator Master data) carries
- * no thumbnail field to draw from, so the same initial-letter treatment
- * TopicCreatorManagementDrawer's own creator rows already use is reused
- * here rather than fabricating a remote image URL. */
+/** One member's avatar preview tile -- the same canonical channel icon (and initial fallback)
+ * TopicCreatorManagementDrawer's creator rows use, through the one shared CreatorAvatarImage. */
 function MemberAvatarPreview({ creators, locale }: { creators: NotificationCreator[]; locale: Locale }) {
   if (creators.length === 0) {
     return <p className="notification-detail-section__description">{t(locale, "notificationSettings.noSelectedMembers")}</p>
@@ -79,9 +92,7 @@ function MemberAvatarPreview({ creators, locale }: { creators: NotificationCreat
     <div className="notification-member-preview">
       {shown.map((creator) => (
         <div key={creator.creatorId} className="notification-member-preview__item">
-          <div className="notification-member-preview__avatar" aria-hidden="true">
-            {creator.displayName.trim().charAt(0)}
-          </div>
+          <CreatorAvatarImage avatarUrl={creator.avatarUrl} displayName={creator.displayName} className="notification-member-preview__avatar" />
           <div className="notification-member-preview__name">{creator.displayName}</div>
         </div>
       ))}
@@ -133,17 +144,19 @@ function MembersSection({ topicId, topicLabel, onManage }: { topicId: TopicCatal
  * count, and whether any per-member override is currently set, so this
  * information is visible without opening the topic at all. */
 function TopicListItem({
+  entries,
   topicId,
   isSelected,
   onSelect,
 }: {
+  entries: readonly VideoFilterEntry[]
   topicId: TopicCatalogId
   isSelected: boolean
   onSelect: () => void
 }) {
   const [locale] = useLocale()
   const { getEnabledCreatorIds, getOverrideCount } = useTopicNotificationPreferences()
-  const topicLabel = topicLabelFor(locale, topicId)
+  const topicLabel = topicLabelFor(entries, locale, topicId)
   const memberCount = getEnabledCreatorIds(topicId).size
   const overrideCount = getOverrideCount(topicId)
 
@@ -172,6 +185,7 @@ function TopicListItem({
 }
 
 interface DetailPanelProps {
+  entries: readonly VideoFilterEntry[]
   isDraft: boolean
   topicId: TopicCatalogId | null
   selectableTopics: ReturnType<typeof getSelectableTopics>
@@ -179,6 +193,7 @@ interface DetailPanelProps {
   onManage: () => void
   onSave: () => void
   onReset: () => void
+  onRemove: () => void
 }
 
 /** The right-hand editor -- one continuous surface for whichever topic is
@@ -186,12 +201,12 @@ interface DetailPanelProps {
  * active. Selecting a topic never navigates away or opens a second panel
  * (section 19): everything here is the SAME component tree, just re-keyed
  * to a different topicId. */
-function DetailPanel({ isDraft, topicId, selectableTopics, onSelectDraftTopic, onManage, onSave, onReset }: DetailPanelProps) {
+function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraftTopic, onManage, onSave, onReset, onRemove }: DetailPanelProps) {
   const [locale] = useLocale()
 
   if (topicId === null) {
     if (isDraft) {
-      const selectOptions = selectableTopics.map((topic) => ({ value: topic.id, label: t(locale, topic.labelKey) }))
+      const selectOptions = selectableTopics.map((topic) => ({ value: topic.id, label: topic.label }))
       return (
         <div className="notification-detail-panel">
           <div className="notification-detail-header notification-detail-header--draft">
@@ -214,7 +229,9 @@ function DetailPanel({ isDraft, topicId, selectableTopics, onSelectDraftTopic, o
     )
   }
 
-  const topicLabel = topicLabelFor(locale, topicId)
+  const topicLabel = topicLabelFor(entries, locale, topicId)
+  // Short is a video format with no live channel, so it has no notification type to pick and nothing for Reset to restore.
+  const isShort = isShortCard(topicId)
 
   return (
     <div className="notification-detail-panel">
@@ -223,7 +240,7 @@ function DetailPanel({ isDraft, topicId, selectableTopics, onSelectDraftTopic, o
         <p className="notification-detail-header__description">{t(locale, "notificationSettings.detailDescription", { topic: topicLabel })}</p>
       </div>
 
-      <NotificationTypeSection topicId={topicId} topicLabel={topicLabel} />
+      {!isShort && <NotificationTypeSection topicId={topicId} topicLabel={topicLabel} />}
       <MembersSection topicId={topicId} topicLabel={topicLabel} onManage={onManage} />
 
       <div className="notification-detail-actions">
@@ -232,13 +249,26 @@ function DetailPanel({ isDraft, topicId, selectableTopics, onSelectDraftTopic, o
             {t(locale, "notificationSettings.saveTopicButton")}
           </Button>
         ) : (
-          <Button
-            className="notification-reset-button"
-            onClick={onReset}
-            aria-label={t(locale, "notificationSettings.resetButtonAriaLabel", { topic: topicLabel })}
-          >
-            {t(locale, "notificationSettings.resetButton")}
-          </Button>
+          <>
+            {!isPermanentTopic(topicId) && (
+              <Button
+                className="notification-reset-button notification-remove-button"
+                onClick={onRemove}
+                aria-label={t(locale, "notificationSettings.removeTopicButtonAriaLabel", { topic: topicLabel })}
+              >
+                {t(locale, "notificationSettings.removeTopicButton")}
+              </Button>
+            )}
+            {!isShort && (
+              <Button
+                className="notification-reset-button"
+                onClick={onReset}
+                aria-label={t(locale, "notificationSettings.resetButtonAriaLabel", { topic: topicLabel })}
+              >
+                {t(locale, "notificationSettings.resetButton")}
+              </Button>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -256,7 +286,7 @@ export function NotificationSettings() {
   const [locale] = useLocale()
   const [managingTopicId, setManagingTopicId] = useState<TopicCatalogId | null>(null)
   const [sortMode, setSortMode] = useState<SortMode>("saved")
-  const { savedTopicIds, addTopic, discardUnsavedTopic, resetTopicDefaults } = useTopicNotificationPreferences()
+  const { savedTopicIds, addTopic, removeTopic, discardUnsavedTopic, resetTopicDefaults } = useTopicNotificationPreferences()
 
   const [selectedTopicId, setSelectedTopicId] = useState<TopicCatalogId | null>(savedTopicIds[0] ?? null)
 
@@ -264,7 +294,8 @@ export function NotificationSettings() {
   // plain component state, not shared/persisted.
   const [draft, setDraft] = useState<{ active: boolean; topicId: TopicCatalogId | null }>({ active: false, topicId: null })
   const draftTopicIdRef = useRef<TopicCatalogId | null>(null)
-  const selectableTopics = getSelectableTopics(savedTopicIds)
+  const { entries } = useNotificationTopicCatalog()
+  const selectableTopics = getSelectableTopics(entries, savedTopicIds)
 
   useEffect(
     () => () => {
@@ -275,8 +306,8 @@ export function NotificationSettings() {
 
   const orderedTopicIds = useMemo(() => {
     if (sortMode === "saved") return savedTopicIds
-    return [...savedTopicIds].sort((a, b) => topicLabelFor(locale, a).localeCompare(topicLabelFor(locale, b), locale))
-  }, [savedTopicIds, sortMode, locale])
+    return [...savedTopicIds].sort((a, b) => topicLabelFor(entries, locale, a).localeCompare(topicLabelFor(entries, locale, b), locale))
+  }, [savedTopicIds, sortMode, locale, entries])
 
   const startDraft = () => {
     draftTopicIdRef.current = null
@@ -380,6 +411,7 @@ export function NotificationSettings() {
                     {orderedTopicIds.map((topicId) => (
                       <TopicListItem
                         key={topicId}
+                        entries={entries}
                         topicId={topicId}
                         isSelected={!draft.active && selectedTopicId === topicId}
                         onSelect={() => selectTopic(topicId)}
@@ -399,6 +431,7 @@ export function NotificationSettings() {
             </div>
 
             <DetailPanel
+              entries={entries}
               isDraft={draft.active}
               topicId={draft.active ? draft.topicId : selectedTopicId}
               selectableTopics={selectableTopics}
@@ -406,12 +439,24 @@ export function NotificationSettings() {
               onManage={() => setManagingTopicId(draft.active ? draft.topicId : selectedTopicId)}
               onSave={saveDraft}
               onReset={() => selectedTopicId !== null && resetTopicDefaults(selectedTopicId)}
+              onRemove={() => {
+                if (selectedTopicId === null) return
+                const removed = selectedTopicId
+                void removeTopic(removed).then((done) => {
+                  // The removed card can no longer be the selected one: fall back to the first card (全部).
+                  if (done) setSelectedTopicId((current) => (current === removed ? (savedTopicIds[0] ?? null) : current))
+                })
+              }}
             />
           </div>
         </div>
       </section>
 
-      <TopicCreatorManagementDrawer topicId={managingTopicId} onClose={() => setManagingTopicId(null)} />
+      <TopicCreatorManagementDrawer
+        topicId={managingTopicId}
+        topicLabel={managingTopicId === null ? "" : topicLabelFor(entries, locale, managingTopicId)}
+        onClose={() => setManagingTopicId(null)}
+      />
     </ConfigProvider>
   )
 }

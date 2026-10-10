@@ -20,6 +20,8 @@ export type TranslationKey =
   | "creatorStatusList.mainBadge"
   | "recentVideos.tag.latestVideos"
   | "recentVideos.tag.latestLive"
+  | "recentVideos.tag.short"
+  | "recentVideos.liveBadge"
   | "recentVideos.tag.all"
   | "recentVideos.tag.sf6"
   | "recentVideos.tag.valo"
@@ -55,7 +57,6 @@ export type TranslationKey =
   | "oshiStatus.sinceLastVisit"
   | "oshiStatus.uploads"
   | "oshiStatus.streams"
-  | "oshiStatus.viewGrowth"
   | "oshiStatus.firstVisit"
   | "oshiStatus.thisWeek"
   | "oshiStatus.recent"
@@ -121,6 +122,7 @@ export type TranslationKey =
   | "notificationSettings.reminderSelectAriaLabel"
   | "notificationSettings.topicReminderMode.memberChoice"
   | "notificationSettings.reminderNotInEffectHint"
+  | "notificationSettings.saveFailed"
   | "notificationSettings.reminder.unset"
   | "notificationSettings.reminderUnsupportedTopic"
   | "notificationSettings.notifiedMembersLabel"
@@ -132,10 +134,6 @@ export type TranslationKey =
   | "notificationSettings.managementDrawerNotificationType"
   | "notificationSettings.favoritesGroupLabel"
   | "notificationSettings.topic.all"
-  | "notificationSettings.topicCatalog.gta"
-  | "notificationSettings.topicCatalog.sevenDaysToDie"
-  | "notificationSettings.topicCatalog.mahjongSoul"
-  | "notificationSettings.topicCatalog.endfield"
   | "notificationSettings.saveTopicButton"
   | "notificationSettings.topicSelectPlaceholder"
   | "notificationSettings.topicSelectAriaLabel"
@@ -155,6 +153,8 @@ export type TranslationKey =
   | "notificationSettings.overrideSectionTitle"
   | "notificationSettings.overrideBadgeCount"
   | "notificationSettings.resetButton"
+  | "notificationSettings.removeTopicButton"
+  | "notificationSettings.removeTopicButtonAriaLabel"
   | "notificationSettings.resetButtonAriaLabel"
   | "notificationSettings.memberPreviewMoreLabel"
   | "notificationSettings.emptySelection"
@@ -188,6 +188,14 @@ export type TranslationKey =
   | "liveSchedule.prevWeekAria"
   | "liveSchedule.nextWeekAria"
   | "liveSchedule.filterLabel"
+  | "liveSchedule.streamReminderOff"
+  | "liveSchedule.removeStreamReminderButton"
+  | "liveSchedule.filterAriaLabel"
+  | "liveSchedule.filterFavoritesGroup"
+  | "liveSchedule.filterAllGroup"
+  | "liveSchedule.filterAddFavorites"
+  | "liveSchedule.filterClear"
+  | "liveSchedule.filterNoMatch"
   | "liveSchedule.liveBadge"
   | "liveSchedule.noThumbnail"
   | "liveSchedule.moreStreamsAria"
@@ -218,6 +226,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.mainBadge": "MAIN",
     "recentVideos.tag.latestVideos": "最新影片",
     "recentVideos.tag.latestLive": "最新直播",
+    "recentVideos.tag.short": "Short",
+    "recentVideos.liveBadge": "直播中",
     "recentVideos.tag.all": "ALL",
     "recentVideos.tag.sf6": "SF6",
     "recentVideos.tag.valo": "VALO",
@@ -253,7 +263,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.sinceLastVisit": "自上次造訪後",
     "oshiStatus.uploads": "上傳影片",
     "oshiStatus.streams": "直播場次",
-    "oshiStatus.viewGrowth": "觀看成長",
     "oshiStatus.firstVisit": "首次造訪 — 尚無可回顧的內容",
     "oshiStatus.thisWeek": "本週",
     "oshiStatus.recent": "最近動態",
@@ -313,6 +322,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminderSelectAriaLabel": "{{name}} 的提醒時間",
     "notificationSettings.topicReminderMode.memberChoice": "各成員為準",
     "notificationSettings.reminderNotInEffectHint": "未生效（已被「全部」設定覆蓋）",
+    "notificationSettings.saveFailed": "無法儲存到伺服器，這次變更未套用。請稍後再試。",
     "notificationSettings.reminder.unset": "不提醒",
     "notificationSettings.reminderUnsupportedTopic": "此主題暫未支援獨立通知，會跟「全部」設定",
     "notificationSettings.notifiedMembersLabel": "通知成員",
@@ -324,10 +334,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.managementDrawerNotificationType": "通知類型：{{type}}",
     "notificationSettings.favoritesGroupLabel": "收藏",
     "notificationSettings.topic.all": "全部",
-    "notificationSettings.topicCatalog.gta": "GTA",
-    "notificationSettings.topicCatalog.sevenDaysToDie": "7 DAYS TO DIE",
-    "notificationSettings.topicCatalog.mahjongSoul": "雀魂",
-    "notificationSettings.topicCatalog.endfield": "終末地",
     "notificationSettings.saveTopicButton": "儲存",
     "notificationSettings.topicSelectPlaceholder": "選擇主題",
     "notificationSettings.topicSelectAriaLabel": "選擇通知主題",
@@ -347,6 +353,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.overrideSectionTitle": "個別成員設定（選用）",
     "notificationSettings.overrideBadgeCount": "{{count}} 個別設定",
     "notificationSettings.resetButton": "重設",
+    "notificationSettings.removeTopicButton": "移除",
+    "notificationSettings.removeTopicButtonAriaLabel": "移除「{{topic}}」",
     "notificationSettings.resetButtonAriaLabel": "重設「{{topic}}」的預設設定",
     "notificationSettings.memberPreviewMoreLabel": "+{{count}}",
     "notificationSettings.emptySelection": "請從左側選擇一個主題",
@@ -386,6 +394,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.prevWeekAria": "上一週",
     "liveSchedule.nextWeekAria": "下一週",
     "liveSchedule.filterLabel": "篩選",
+    "liveSchedule.streamReminderOff": "這場不提醒",
+    "liveSchedule.removeStreamReminderButton": "移除單場設定（改用創作者設定）",
+    "liveSchedule.filterAriaLabel": "篩選創作者",
+    "liveSchedule.filterFavoritesGroup": "收藏",
+    "liveSchedule.filterAllGroup": "全部創作者",
+    "liveSchedule.filterAddFavorites": "加入全部收藏",
+    "liveSchedule.filterClear": "清除篩選",
+    "liveSchedule.filterNoMatch": "找不到創作者",
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.noThumbnail": "沒有縮圖",
     "liveSchedule.moreStreamsAria": "還有 {{count}} 個直播",
@@ -415,6 +431,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.mainBadge": "MAIN",
     "recentVideos.tag.latestVideos": "Latest Videos",
     "recentVideos.tag.latestLive": "Latest Live",
+    "recentVideos.tag.short": "Short",
+    "recentVideos.liveBadge": "LIVE",
     "recentVideos.tag.all": "ALL",
     "recentVideos.tag.sf6": "SF6",
     "recentVideos.tag.valo": "VALO",
@@ -450,7 +468,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.sinceLastVisit": "Since your last visit",
     "oshiStatus.uploads": "Uploads",
     "oshiStatus.streams": "Streams",
-    "oshiStatus.viewGrowth": "View growth",
     "oshiStatus.firstVisit": "First visit — nothing to catch up on yet",
     "oshiStatus.thisWeek": "This week",
     "oshiStatus.recent": "Recent",
@@ -510,6 +527,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminderSelectAriaLabel": "{{name}}'s reminder time",
     "notificationSettings.topicReminderMode.memberChoice": "Member's choice",
     "notificationSettings.reminderNotInEffectHint": "Not in effect (overridden by the \"All\" setting)",
+    "notificationSettings.saveFailed": "Couldn't save to the server — this change was not applied. Try again.",
     "notificationSettings.reminder.unset": "No reminder",
     "notificationSettings.reminderUnsupportedTopic": "This topic doesn't support its own notification yet; it follows the \"All\" setting.",
     "notificationSettings.notifiedMembersLabel": "Notified members",
@@ -521,10 +539,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.managementDrawerNotificationType": "Notification type: {{type}}",
     "notificationSettings.favoritesGroupLabel": "Favorites",
     "notificationSettings.topic.all": "All",
-    "notificationSettings.topicCatalog.gta": "GTA",
-    "notificationSettings.topicCatalog.sevenDaysToDie": "7 DAYS TO DIE",
-    "notificationSettings.topicCatalog.mahjongSoul": "雀魂",
-    "notificationSettings.topicCatalog.endfield": "Endfield",
     "notificationSettings.saveTopicButton": "Save",
     "notificationSettings.topicSelectPlaceholder": "Select a topic",
     "notificationSettings.topicSelectAriaLabel": "Select notification topic",
@@ -544,6 +558,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.overrideSectionTitle": "Per-member overrides (optional)",
     "notificationSettings.overrideBadgeCount": "{{count}} custom",
     "notificationSettings.resetButton": "Reset",
+    "notificationSettings.removeTopicButton": "Remove",
+    "notificationSettings.removeTopicButtonAriaLabel": "Remove \"{{topic}}\"",
     "notificationSettings.resetButtonAriaLabel": "Reset \"{{topic}}\" to its defaults",
     "notificationSettings.memberPreviewMoreLabel": "+{{count}}",
     "notificationSettings.emptySelection": "Select a topic on the left",
@@ -583,6 +599,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.prevWeekAria": "Previous week",
     "liveSchedule.nextWeekAria": "Next week",
     "liveSchedule.filterLabel": "Filter",
+    "liveSchedule.streamReminderOff": "No reminder for this stream",
+    "liveSchedule.removeStreamReminderButton": "Remove (use creator settings)",
+    "liveSchedule.filterAriaLabel": "Filter by creator",
+    "liveSchedule.filterFavoritesGroup": "Favorites",
+    "liveSchedule.filterAllGroup": "All creators",
+    "liveSchedule.filterAddFavorites": "Add all favorites",
+    "liveSchedule.filterClear": "Clear filter",
+    "liveSchedule.filterNoMatch": "No creators found",
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.noThumbnail": "No thumbnail",
     "liveSchedule.moreStreamsAria": "{{count}} more streams",
@@ -612,6 +636,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "creatorStatusList.mainBadge": "MAIN",
     "recentVideos.tag.latestVideos": "最新動画",
     "recentVideos.tag.latestLive": "最新配信",
+    "recentVideos.tag.short": "ショット",
+    "recentVideos.liveBadge": "配信中",
     "recentVideos.tag.all": "ALL",
     "recentVideos.tag.sf6": "SF6",
     "recentVideos.tag.valo": "VALO",
@@ -647,7 +673,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.sinceLastVisit": "前回の訪問から",
     "oshiStatus.uploads": "アップロード",
     "oshiStatus.streams": "配信",
-    "oshiStatus.viewGrowth": "視聴成長",
     "oshiStatus.firstVisit": "初回訪問 — まだ追いつく内容はありません",
     "oshiStatus.thisWeek": "今週",
     "oshiStatus.recent": "最近の動き",
@@ -707,6 +732,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminderSelectAriaLabel": "{{name}} のリマインド時間",
     "notificationSettings.topicReminderMode.memberChoice": "各メンバーの設定",
     "notificationSettings.reminderNotInEffectHint": "現在は無効（「全部」の設定が優先）",
+    "notificationSettings.saveFailed": "サーバーに保存できませんでした。この変更は適用されていません。もう一度お試しください。",
     "notificationSettings.reminder.unset": "通知なし",
     "notificationSettings.reminderUnsupportedTopic": "このトピックは個別の通知に未対応です。「全部」の設定に従います",
     "notificationSettings.notifiedMembersLabel": "通知メンバー",
@@ -718,10 +744,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.managementDrawerNotificationType": "通知タイプ：{{type}}",
     "notificationSettings.favoritesGroupLabel": "お気に入り",
     "notificationSettings.topic.all": "全部",
-    "notificationSettings.topicCatalog.gta": "GTA",
-    "notificationSettings.topicCatalog.sevenDaysToDie": "7 DAYS TO DIE",
-    "notificationSettings.topicCatalog.mahjongSoul": "雀魂",
-    "notificationSettings.topicCatalog.endfield": "エンドフィールド",
     "notificationSettings.saveTopicButton": "保存",
     "notificationSettings.topicSelectPlaceholder": "トピックを選択",
     "notificationSettings.topicSelectAriaLabel": "通知トピックを選択",
@@ -741,6 +763,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.overrideSectionTitle": "個別メンバー設定（任意）",
     "notificationSettings.overrideBadgeCount": "{{count}}件カスタム",
     "notificationSettings.resetButton": "リセット",
+    "notificationSettings.removeTopicButton": "削除",
+    "notificationSettings.removeTopicButtonAriaLabel": "「{{topic}}」を削除",
     "notificationSettings.resetButtonAriaLabel": "「{{topic}}」を既定値にリセット",
     "notificationSettings.memberPreviewMoreLabel": "+{{count}}",
     "notificationSettings.emptySelection": "左側からトピックを選択してください",
@@ -780,6 +804,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.prevWeekAria": "前の週",
     "liveSchedule.nextWeekAria": "次の週",
     "liveSchedule.filterLabel": "フィルター",
+    "liveSchedule.streamReminderOff": "この配信は通知しない",
+    "liveSchedule.removeStreamReminderButton": "削除（クリエイター設定を使う）",
+    "liveSchedule.filterAriaLabel": "クリエイターで絞り込み",
+    "liveSchedule.filterFavoritesGroup": "お気に入り",
+    "liveSchedule.filterAllGroup": "すべてのクリエイター",
+    "liveSchedule.filterAddFavorites": "お気に入りをすべて追加",
+    "liveSchedule.filterClear": "絞り込みをクリア",
+    "liveSchedule.filterNoMatch": "クリエイターが見つかりません",
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.noThumbnail": "サムネイルなし",
     "liveSchedule.moreStreamsAria": "他に{{count}}件の配信",
