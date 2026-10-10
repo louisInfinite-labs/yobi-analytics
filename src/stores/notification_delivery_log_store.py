@@ -29,6 +29,7 @@ never delivered, if the process that claimed it died mid-flight).
 from __future__ import annotations
 
 import os
+import random
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
@@ -56,8 +57,10 @@ _BATCH_GET_MAX_ATTEMPTS = 5
 # A delivered/suppressed row is permanent (nothing in the product ever removes or rewrites it), so once a warm Lambda container
 # has seen one it need not read it again on the next minute's run. The cache is bounded by a TTL -- so a row an operator
 # deliberately deleted to force a re-send is honoured again within a few minutes -- and pruned to the ids still being asked about.
+# Each client's entry lives for a jittered 0.5x-1.5x of the TTL so the periodic full re-read of every client does not land on the
+# same run (with hundreds of clients a simultaneous re-read would be as slow as a cold container).
 _SETTLED_CACHE_TTL_SECONDS = 15 * 60
-_settled_cache: dict[str, tuple[float, set[str]]] = {}  # clientId -> (monotonic seconds this entry started, settled videoIds)
+_settled_cache: dict[str, tuple[float, set[str]]] = {}  # clientId -> (monotonic seconds this entry expires at, settled videoIds)
 
 
 class NotificationDeliveryLogStoreError(Exception):
@@ -119,9 +122,10 @@ def delivered_video_ids(client_id: str, video_ids: Iterable[str], *, now: dateti
     if not wanted:
         _settled_cache.pop(client_id, None)
         return set()
-    started_at, settled = _settled_cache.get(client_id, (0.0, set()))
-    if time.monotonic() - started_at > _SETTLED_CACHE_TTL_SECONDS:
-        started_at, settled = time.monotonic(), set()  # expired (or first sight of this client): re-read everything
+    expires_at, settled = _settled_cache.get(client_id, (0.0, set()))
+    if time.monotonic() >= expires_at:
+        expires_at = time.monotonic() + _SETTLED_CACHE_TTL_SECONDS * (0.5 + random.random())
+        settled = set()  # expired (or first sight of this client): re-read everything
     settled = settled & wanted  # prune ids that have left the candidate window
     to_read = sorted(wanted - settled)
     handled = set(settled)
@@ -134,7 +138,7 @@ def delivered_video_ids(client_id: str, video_ids: Iterable[str], *, now: dateti
                 handled.add(item["videoId"])
             elif not _is_expired(item["claimedAt"], now=reference):
                 handled.add(item["videoId"])
-    _settled_cache[client_id] = (started_at, settled)
+    _settled_cache[client_id] = (expires_at, settled)
     return handled
 
 

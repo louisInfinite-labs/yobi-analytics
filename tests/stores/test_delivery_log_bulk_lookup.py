@@ -127,6 +127,7 @@ def test_a_missing_row_is_never_cached_as_settled(spy):
 def test_the_settled_cache_expires_so_a_deliberately_deleted_row_is_honoured_again(spy, monkeypatch):
     clock = {"now": 1000.0}
     monkeypatch.setattr(store.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(store.random, "random", lambda: 0.5)  # jitter factor exactly 1.0 x TTL
     mark_suppressed("c1", "v1", NOW.isoformat())
     delivered_video_ids("c1", ["v1"], now=NOW)
     release_claim("c1", "v1")  # an operator removing the row (release_claim is the same DeleteItem)
@@ -136,6 +137,23 @@ def test_the_settled_cache_expires_so_a_deliberately_deleted_row_is_honoured_aga
 
     clock["now"] += 2
     assert delivered_video_ids("c1", ["v1"], now=NOW) == set()  # TTL passed: re-read, the row is really gone
+
+
+def test_each_clients_cache_expires_at_a_different_time_within_half_to_one_and_a_half_ttl(spy, monkeypatch):
+    """Without jitter every client's cache would expire in the same run and that run would re-read all of them."""
+    monkeypatch.setattr(store.time, "monotonic", lambda: 1000.0)
+    draws = iter([0.0, 0.5, 0.999])
+    monkeypatch.setattr(store.random, "random", lambda: next(draws))
+    for client_id in ("c1", "c2", "c3"):
+        mark_suppressed(client_id, "v1", NOW.isoformat())
+        delivered_video_ids(client_id, ["v1"], now=NOW)
+
+    lifetimes = [store._settled_cache[c][0] - 1000.0 for c in ("c1", "c2", "c3")]
+
+    assert lifetimes[0] == pytest.approx(0.5 * store._SETTLED_CACHE_TTL_SECONDS)
+    assert lifetimes[1] == pytest.approx(1.0 * store._SETTLED_CACHE_TTL_SECONDS)
+    assert lifetimes[2] == pytest.approx(1.499 * store._SETTLED_CACHE_TTL_SECONDS)
+    assert len(set(lifetimes)) == 3
 
 
 def test_ids_that_left_the_candidate_window_are_pruned_from_the_cache(spy):
