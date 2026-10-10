@@ -35,4 +35,24 @@ describe("t", () => {
     expect(t("en", "notificationSettings.saveTopicButton")).toBe("Save")
     expect(t("ja", "notificationSettings.saveTopicButton")).toBe("保存")
   })
+
+  it("returns the localized notification toggle labels for every locale", () => {
+    expect(t("en", "notificationToggle.enable")).toBe("Enable notifications")
+    expect(t("zh-TW", "notificationToggle.enable")).toBe("開啟通知")
+    expect(t("ja", "notificationToggle.enable")).toBe("通知をオンにする")
+
+    expect(t("en", "notificationToggle.on")).toBe("Notifications on")
+    expect(t("zh-TW", "notificationToggle.on")).toBe("通知已開啟")
+    expect(t("ja", "notificationToggle.on")).toBe("通知オン")
+
+    expect(t("en", "notificationToggle.unavailable")).toBe("Notifications unavailable")
+    expect(t("zh-TW", "notificationToggle.unavailable")).toBe("無法使用通知")
+    expect(t("ja", "notificationToggle.unavailable")).toBe("通知は利用できません")
+  })
+
+  it("translates the upcoming-stream countdown option for zh-TW and ja (it was left in English for zh-TW)", () => {
+    expect(t("zh-TW", "displaySettings.upcomingCountdownOption")).toBe("倒數計時")
+    expect(t("ja", "displaySettings.upcomingCountdownOption")).toBe("カウントダウン")
+    expect(t("en", "displaySettings.upcomingCountdownOption")).toBe("Countdown")
+  })
 })

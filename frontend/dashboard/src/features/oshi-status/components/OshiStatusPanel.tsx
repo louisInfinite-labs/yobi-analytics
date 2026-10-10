@@ -53,7 +53,8 @@ function RecentActivityRow({
   timeFormat: TimeFormat
   onOpen: (video: { videoId: string; title: string }) => void
 }) {
-  // NEW is shared with Home's Video List (same seen state, keyed by videoId) and only an explicit open clears it.
+  // NEW is displayed only here. The seen state (keyed by videoId) is shared with Home's Video List, which shows no badge but
+  // clears it when an item is opened; only an explicit open clears NEW.
   const { isNew: isNewContent } = useNewContent()
   const isNew = isNewContent({ videoId: entry.videoId, publishedAt: entry.publishedAt }, now)
 
