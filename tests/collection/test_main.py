@@ -49,6 +49,8 @@ def _stub_common(monkeypatch):
     monkeypatch.setattr(main_module, "get_api_key", lambda: "fake-key")
     monkeypatch.setattr(main_module, "build_youtube_client", lambda api_key: object())
     monkeypatch.setattr(main_module, "load_videos", lambda: [])
+    # Default: the creator's Shorts shelf is empty. The B18 tests below override this per test.
+    monkeypatch.setattr(main_module, "discover_short_video_ids", lambda youtube, playlist_id, known=None: set())
 
 
 def test_run_discovery_returns_0_and_skips_api_calls_when_no_active_creators(monkeypatch):
@@ -464,6 +466,91 @@ def test_discovery_classifies_the_topic_of_each_new_video(monkeypatch):
     _, videos = main_module._discover_creator(None, creator, set(), discovered_at="2026-09-01T00:00:00+09:00")
 
     assert [(video.video_id, video.topic) for video in videos] == [("v1", "valorant"), ("v2", "other")]
+
+
+# --- B18: Shorts are decided from the channel's Shorts shelf at discovery -----
+
+
+def _wire_shorts_discovery(monkeypatch, *, new_items, short_ids=frozenset(), known_ids=frozenset(), lookup=None):
+    """_discover_creator against a fake uploads discovery and a fake Shorts-shelf lookup; returns the lookup calls."""
+    calls = []
+
+    def discover_shorts(youtube, playlist_id, known=None):
+        calls.append((playlist_id, known))
+        if lookup is not None:
+            return lookup(playlist_id, known)
+        return set(short_ids)
+
+    monkeypatch.setattr(main_module, "get_uploads_playlist_id", lambda youtube, channel_id: "UU1")
+    monkeypatch.setattr(main_module, "discover_all_videos", lambda youtube, playlist_id: list(new_items))
+    monkeypatch.setattr(main_module, "discover_new_videos", lambda youtube, playlist_id, known: list(new_items))
+    monkeypatch.setattr(main_module, "discover_short_video_ids", discover_shorts)
+    return calls
+
+
+def _discover(known_ids=frozenset(), channel_id="UCabc123"):
+    return main_module._discover_creator(
+        None, _creator(youtube_channel_id=channel_id), set(known_ids), discovered_at="2026-09-01T00:00:00+09:00"
+    )
+
+
+def test_a_new_video_on_the_shorts_shelf_is_stored_as_a_short_and_the_rest_are_left_unclassified(monkeypatch):
+    items = [
+        {"videoId": "short1", "title": "ふつうのタイトル", "publishedAt": "2026-08-21T00:00:00Z"},
+        {"videoId": "video1", "title": "【Cover】歌ってみた MV", "publishedAt": "2026-08-20T00:00:00Z"},
+    ]
+    _wire_shorts_discovery(monkeypatch, new_items=items, short_ids={"short1"})
+
+    _, videos = _discover()
+
+    assert [(video.video_id, video.content_type) for video in videos] == [("short1", "short"), ("video1", None)]
+
+
+def test_shorts_are_decided_by_shelf_membership_not_by_a_shorts_hashtag_in_the_title(monkeypatch):
+    items = [
+        {"videoId": "tagged-but-not-short", "title": "雑談 #shorts", "publishedAt": "2026-08-21T00:00:00Z"},
+        {"videoId": "untagged-short", "title": "ゎ/癒月ちょこ", "publishedAt": "2026-08-20T00:00:00Z"},
+    ]
+    _wire_shorts_discovery(monkeypatch, new_items=items, short_ids={"untagged-short"})
+
+    _, videos = _discover()
+
+    assert {video.video_id: video.content_type for video in videos} == {"tagged-but-not-short": None, "untagged-short": "short"}
+
+
+def test_the_shorts_lookup_uses_the_channels_shorts_playlist_and_stops_at_known_videos(monkeypatch):
+    calls = _wire_shorts_discovery(monkeypatch, new_items=[{"videoId": "n1", "title": "t", "publishedAt": "2026-08-21T00:00:00Z"}])
+
+    _discover(known_ids={"old1"}, channel_id="UCabc123")
+
+    assert calls == [("UUSHabc123", {"old1"})]
+
+
+def test_initial_discovery_pages_the_whole_shorts_shelf(monkeypatch):
+    calls = _wire_shorts_discovery(monkeypatch, new_items=[{"videoId": "n1", "title": "t", "publishedAt": "2026-08-21T00:00:00Z"}])
+
+    _discover(known_ids=set())
+
+    assert calls == [("UUSHabc123", None)]
+
+
+def test_nothing_new_means_no_shorts_lookup_and_no_extra_quota(monkeypatch):
+    calls = _wire_shorts_discovery(monkeypatch, new_items=[])
+
+    _, videos = _discover(known_ids={"old1"})
+
+    assert videos == []
+    assert calls == []
+
+
+def test_a_failed_shorts_lookup_fails_this_creators_discovery_instead_of_filing_a_short_as_an_upload(monkeypatch):
+    def broken(playlist_id, known):
+        raise YouTubeAPIError("YouTube API request failed (status 500): backend error")
+
+    _wire_shorts_discovery(monkeypatch, new_items=[{"videoId": "n1", "title": "t", "publishedAt": "2026-08-21T00:00:00Z"}], lookup=broken)
+
+    with pytest.raises(YouTubeAPIError):
+        _discover()
 
 
 # --- first ingestion of a creator: back catalog is seeded, not notified ------

@@ -222,7 +222,8 @@ def test_completed_livestream_is_classified_as_live_and_completed():
         "items": [
             {
                 "id": "stream1",
-                "snippet": {"title": "Archived Stream", "publishedAt": "2026-08-25T12:00:00Z"},
+                # A livestream archive is published AFTER the stream (never at its start, which is a Premiere).
+                "snippet": {"title": "Archived Stream", "publishedAt": "2026-08-25T14:13:00Z"},
                 "statistics": {"viewCount": "5000"},
                 "liveStreamingDetails": {
                     "actualStartTime": "2026-08-25T12:00:00Z",
@@ -239,7 +240,7 @@ def test_completed_livestream_is_classified_as_live_and_completed():
         {
             "videoId": "stream1",
             "title": "Archived Stream",
-            "publishedAt": "2026-08-25T12:00:00Z",
+            "publishedAt": "2026-08-25T14:13:00Z",
             "viewCount": 5000,
             "contentType": "live",
             "liveStatus": "completed",
@@ -308,6 +309,166 @@ def test_plain_upload_has_no_live_status():
     assert result["liveStatus"] is None
 
 
+def _live_item(video_id, published_at, details):
+    return {
+        "items": [
+            {
+                "id": video_id,
+                "snippet": {"title": video_id, "publishedAt": published_at},
+                "statistics": {"viewCount": "100"},
+                "liveStreamingDetails": details,
+            }
+        ]
+    }
+
+
+def _with_content_details(response, content_details):
+    response["items"][0]["contentDetails"] = content_details
+    return response
+
+
+def _classified(response):
+    [result] = get_video_statistics(_make_youtube_client(response), [response["items"][0]["id"]])[0]
+    return result["contentType"], result["liveStatus"]
+
+
+def test_completed_premiere_is_an_upload_not_a_livestream():
+    """A Premiere is published at its start (publishedAt == actualStartTime) and carries liveStreamingDetails like a
+    stream archive does; it is an ordinary video, so contentType="upload" and no liveStatus."""
+    details = {
+        "scheduledStartTime": "2024-10-27T09:00:00Z",
+        "actualStartTime": "2024-10-27T09:00:06Z",
+        "actualEndTime": "2024-10-27T09:06:02Z",
+    }
+
+    assert _classified(_live_item("premiere1", "2024-10-27T09:00:06Z", details)) == ("upload", None)
+
+
+@pytest.mark.parametrize("published_at", ["2018-12-26T09:58:13Z", "2018-12-26T10:00:19Z", "2018-12-26T10:01:19Z"])
+def test_premiere_window_covers_older_premieres_published_a_little_before_the_start_and_small_delays(published_at):
+    """Older Premieres were published 1-2 minutes BEFORE they started (-126 s audited); the audited window
+    (-300 s .. +60 s around actualStartTime) stays upload, including its upper edge."""
+    details = {"actualStartTime": "2018-12-26T10:00:19Z", "actualEndTime": "2018-12-26T10:06:06Z"}
+
+    assert _classified(_live_item("premiere2", published_at, details)) == ("upload", None)
+
+
+@pytest.mark.parametrize(
+    "published_at",
+    [
+        "2024-11-08T08:12:53Z",  # +150 s after the start: the closest real stream audited
+        "2024-11-08T12:27:19Z",  # published after the stream ended (the normal archive shape)
+        "2024-10-31T08:10:23Z",  # a stream scheduled/published a week early (-8 days): not a Premiere
+        "2024-11-08T08:05:22Z",  # just outside the -300 s lower edge
+        "2024-11-08T08:11:24Z",  # just outside the +60 s upper edge
+    ],
+)
+def test_genuine_completed_livestream_stays_live_and_completed(published_at):
+    details = {
+        "scheduledStartTime": "2024-11-08T08:00:00Z",
+        "actualStartTime": "2024-11-08T08:10:23Z",
+        "actualEndTime": "2024-11-08T12:14:00Z",
+    }
+
+    assert _classified(_live_item("stream9", published_at, details)) == ("live", "completed")
+
+
+def test_upcoming_and_in_progress_broadcasts_stay_live_even_when_published_at_the_start():
+    """Only a COMPLETED broadcast can be told to be a Premiere; an upcoming or in-progress one keeps today's behaviour."""
+    started = {"scheduledStartTime": "2026-08-25T12:00:00Z", "actualStartTime": "2026-08-25T12:00:06Z"}
+    upcoming = {"scheduledStartTime": "2026-08-26T12:00:00Z"}
+
+    assert _classified(_live_item("now1", "2026-08-25T12:00:06Z", started)) == ("live", "live")
+    assert _classified(_live_item("soon1", "2026-08-25T12:00:00Z", upcoming)) == ("live", "upcoming")
+
+
+# --- UPCOMING Premiere vs real stream: contentDetails.duration (real Data API responses, 2026-10-10) ---
+#   upcoming Premiere (cover / official MV / video announcement): liveBroadcastContent "upcoming", scheduledStartTime, NO duration
+#   upcoming real stream: "P0D";  live real stream: "P0D";  ENDED real stream: its real length ("PT4H17M29S")
+# The ended stream proves "a positive duration means Premiere" would be wrong; the rule is only for the upcoming state.
+_NO_DURATION = {"dimension": "2d", "definition": "hd"}  # the other keys are illustrative; the point is that `duration` is absent
+_UPCOMING = {"scheduledStartTime": "2026-10-10T10:00:00Z"}
+
+
+def _broadcast(response, broadcast_state, content_details):
+    """Mirror the real response shape: snippet.liveBroadcastContent and contentDetails next to liveStreamingDetails."""
+    response["items"][0]["snippet"]["liveBroadcastContent"] = broadcast_state
+    if content_details is not None:
+        response["items"][0]["contentDetails"] = content_details
+    return response
+
+
+@pytest.mark.parametrize("video_id", ["BK2mvHvdf4c", "LjuKylF4udw", "wYpu_zz1P3c"])
+def test_1_an_upcoming_premiere_has_no_duration_and_is_a_video(video_id):
+    response = _broadcast(_live_item(video_id, "2026-10-08T04:03:21Z", _UPCOMING), "upcoming", dict(_NO_DURATION))
+
+    assert _classified(response) == ("upload", None)
+
+
+@pytest.mark.parametrize("video_id", ["zpm1LqzOqgk", "anq1F3UhITM", "WXaEsVLtZAM"])
+def test_2_an_upcoming_real_stream_reports_p0d_and_stays_an_upcoming_livestream(video_id):
+    response = _broadcast(_live_item(video_id, "2026-10-02T05:49:09Z", _UPCOMING), "upcoming", {**_NO_DURATION, "duration": "P0D"})
+
+    assert _classified(response) == ("live", "upcoming")
+
+
+def test_3_a_live_real_stream_reports_p0d_and_stays_live():
+    details = {"scheduledStartTime": "2026-10-10T09:00:00Z", "actualStartTime": "2026-10-10T09:00:30Z"}
+    response = _broadcast(_live_item("G3mWNIhHaLw", "2026-10-09T09:00:00Z", details), "live", {**_NO_DURATION, "duration": "P0D"})
+
+    assert _classified(response) == ("live", "live")
+
+
+def test_4_a_completed_real_stream_with_a_positive_duration_MUST_remain_a_livestream():
+    """Guards the rule against being simplified to "positive duration => upload"."""
+    details = {"scheduledStartTime": "2026-10-10T01:00:00Z", "actualStartTime": "2026-10-10T01:05:00Z", "actualEndTime": "2026-10-10T05:22:29Z"}
+    response = _broadcast(_live_item("YxE4iLtkD0A", "2026-10-10T05:30:00Z", details), "none", {**_NO_DURATION, "duration": "PT4H17M29S"})
+
+    assert _classified(response) == ("live", "completed")
+
+
+def test_the_missing_duration_rule_is_never_applied_to_a_live_or_ended_broadcast():
+    started = {"scheduledStartTime": "2026-10-10T09:00:00Z", "actualStartTime": "2026-10-10T09:00:30Z"}
+    ended = {**started, "actualEndTime": "2026-10-10T13:00:00Z"}
+
+    assert _classified(_broadcast(_live_item("run1", "2026-10-09T09:00:00Z", started), "live", dict(_NO_DURATION))) == ("live", "live")
+    assert _classified(_broadcast(_live_item("end1", "2026-10-10T13:30:00Z", ended), "none", dict(_NO_DURATION))) == ("live", "completed")
+
+
+@pytest.mark.parametrize("broadcast_state", ["live", "none", None])
+def test_only_an_upcoming_liveBroadcastContent_can_make_a_premiere(broadcast_state):
+    response = _live_item("odd2", "2026-10-02T05:49:09Z", _UPCOMING)
+    if broadcast_state is None:
+        response["items"][0]["contentDetails"] = dict(_NO_DURATION)
+    else:
+        _broadcast(response, broadcast_state, dict(_NO_DURATION))
+
+    assert _classified(response) == ("live", "upcoming")
+
+
+def test_a_missing_or_empty_contentDetails_is_unknown_not_a_premiere_so_a_stream_is_never_hidden_by_a_missing_field():
+    assert _classified(_broadcast(_live_item("soon2", "2026-10-02T05:49:09Z", _UPCOMING), "upcoming", None)) == ("live", "upcoming")
+    assert _classified(_broadcast(_live_item("soon3", "2026-10-02T05:49:09Z", _UPCOMING), "upcoming", {})) == ("live", "upcoming")
+
+
+def test_a_Premiere_stays_a_video_when_it_later_completes():
+    upcoming = _broadcast(_live_item("p1", "2026-10-10T10:00:03Z", _UPCOMING), "upcoming", dict(_NO_DURATION))
+    done = _broadcast(
+        _live_item("p1", "2026-10-10T10:00:03Z", {**_UPCOMING, "actualStartTime": "2026-10-10T10:00:03Z", "actualEndTime": "2026-10-10T10:04:10Z"}),
+        "none",
+        {**_NO_DURATION, "duration": "PT4M7S"},
+    )
+
+    assert _classified(upcoming) == ("upload", None)
+    assert _classified(done) == ("upload", None)
+
+
+def test_a_broadcast_with_unparseable_timestamps_is_never_guessed_to_be_a_premiere():
+    details = {"actualStartTime": "not-a-time", "actualEndTime": "2026-08-25T14:00:00Z"}
+
+    assert _classified(_live_item("odd1", "2026-08-25T12:00:00Z", details)) == ("live", "completed")
+
+
 def test_videos_list_requests_live_streaming_details_part():
     """The batched videos.list call always requests liveStreamingDetails
     alongside snippet/statistics -- no separate per-video request."""
@@ -317,7 +478,7 @@ def test_videos_list_requests_live_streaming_details_part():
     get_video_statistics(youtube, ["abc123"])
 
     youtube.videos.return_value.list.assert_called_once_with(
-        part="snippet,statistics,liveStreamingDetails", id="abc123"
+        part="snippet,statistics,liveStreamingDetails,contentDetails", id="abc123"
     )
 
 

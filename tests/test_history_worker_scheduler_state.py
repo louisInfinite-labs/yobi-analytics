@@ -368,6 +368,133 @@ def test_a_known_content_type_takes_its_live_status_even_when_that_is_none(monke
     assert (updated.content_type, updated.live_status) == ("upload", None)
 
 
+def test_a_stored_completed_premiere_corrects_itself_to_an_upload_on_its_next_observation(monkeypatch):
+    """A cover MV that was stored as live/completed (a Premiere carries liveStreamingDetails, which the old
+    classification read as a livestream) is observed again after the Premiere fix: the fresh parse says upload, and
+    BOTH Video Master and the tracking manifest (the ranking pipeline's only source) take upload/None -- no
+    dedicated backfill is needed for the stored record to leave the livestream-only results."""
+    existing = Video(
+        video_id="v1", creator_id="c1", title="【Cover】Nostalgia", published_at="2020-05-01T00:00:00Z",
+        content_type="live", live_status="completed",
+    )
+    video_master = _FakeVideoMaster([existing])
+    manifest = _FakeManifest([ManifestEntry("v1", "c1", True, content_type="live", live_status="completed")])
+    monkeypatch.setattr(
+        history_worker,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [{"videoId": "v1", "title": "【Cover】Nostalgia", "publishedAt": "2020-05-01T00:00:00Z", "viewCount": 500, "contentType": "upload", "liveStatus": None}],
+            {},
+        ),
+    )
+
+    collect_history_shard(
+        shard=history_worker.shard_for_video("v1"),
+        **_kwargs(manifest=manifest, history=_FakeHistory(), video_master=video_master),
+    )
+
+    [updated] = video_master.upsert_calls[0]
+    assert (updated.content_type, updated.live_status) == ("upload", None)
+    [entry] = manifest.read_shard(history_worker.shard_for_video("v1"))
+    assert (entry.content_type, entry.live_status) == ("upload", None)
+
+
+def test_an_upload_observation_never_downgrades_a_short(monkeypatch):
+    """B18: YouTube exposes no Shorts flag on a statistics observation, so every re-observation of a Short reports
+    "upload". The "short" decided from the Shorts shelf must survive it in Video Master AND the manifest."""
+    existing = Video(video_id="v1", creator_id="c1", title="A", published_at="2020-05-01T00:00:00Z", content_type="short")
+    video_master = _FakeVideoMaster([existing])
+    manifest = _FakeManifest([ManifestEntry("v1", "c1", True, content_type="short")])
+    monkeypatch.setattr(
+        history_worker,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [{"videoId": "v1", "title": "A", "publishedAt": "2020-05-01T00:00:00Z", "viewCount": 500, "contentType": "upload", "liveStatus": None}],
+            {},
+        ),
+    )
+
+    collect_history_shard(
+        shard=history_worker.shard_for_video("v1"),
+        **_kwargs(manifest=manifest, history=_FakeHistory(), video_master=video_master),
+    )
+
+    [updated] = video_master.upsert_calls[0]
+    assert (updated.content_type, updated.live_status) == ("short", None)
+    [entry] = manifest.read_shard(history_worker.shard_for_video("v1"))
+    assert (entry.content_type, entry.live_status) == ("short", None)
+
+
+def _observe(monkeypatch, existing, parsed):
+    """One history-worker observation of video v1 that YouTube reports as `parsed` (contentType, liveStatus); returns (video_master, manifest)."""
+    video_master = _FakeVideoMaster([existing])
+    manifest = _FakeManifest([ManifestEntry("v1", "c1", True, content_type=existing.content_type, live_status=existing.live_status)])
+    monkeypatch.setattr(
+        history_worker,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [{"videoId": "v1", "title": "A", "publishedAt": "2020-05-01T00:00:00Z", "viewCount": 500, "contentType": parsed[0], "liveStatus": parsed[1]}],
+            {},
+        ),
+    )
+    collect_history_shard(
+        shard=history_worker.shard_for_video("v1"), **_kwargs(manifest=manifest, history=_FakeHistory(), video_master=video_master)
+    )
+    return video_master, manifest
+
+
+def _stored(content_type, live_status=None):
+    return Video(video_id="v1", creator_id="c1", title="A", published_at="2020-05-01T00:00:00Z", content_type=content_type, live_status=live_status)
+
+
+def test_a_premiere_classified_as_an_upload_while_upcoming_stays_an_upload_when_it_starts_running(monkeypatch):
+    """The format decided before the start is sticky: the running broadcast (observed live/live) never turns it into a livestream."""
+    video_master, manifest = _observe(monkeypatch, _stored("upload"), ("live", "live"))
+
+    [updated] = video_master.upsert_calls[0]
+    assert (updated.content_type, updated.live_status) == ("upload", None)
+    [entry] = manifest.read_shard(history_worker.shard_for_video("v1"))
+    assert (entry.content_type, entry.live_status) == ("upload", None)
+
+
+def test_a_real_stream_stays_a_livestream_through_upcoming_live_and_completed(monkeypatch):
+    for before, observed in ((("live", "upcoming"), ("live", "live")), (("live", "live"), ("live", "completed")), (("live", "upcoming"), ("live", "upcoming"))):
+        video_master, _ = _observe(monkeypatch, _stored(*before), observed)
+
+        [updated] = video_master.upsert_calls[0]
+        assert (updated.content_type, updated.live_status) == observed
+
+
+def test_only_a_running_observation_is_held_an_upcoming_or_ended_reading_still_replaces_an_upload(monkeypatch):
+    """An upload observed upcoming WITH a duration ("P0D", i.e. a real stream mistaken for a Premiere) or ended is a fresh definitive reading."""
+    for observed in (("live", "upcoming"), ("live", "completed")):
+        video_master, _ = _observe(monkeypatch, _stored("upload"), observed)
+
+        [updated] = video_master.upsert_calls[0]
+        assert (updated.content_type, updated.live_status) == observed
+
+
+def test_a_plain_upload_is_still_updated_normally_and_only_a_short_is_sticky(monkeypatch):
+    existing = Video(video_id="v1", creator_id="c1", title="A", published_at="2020-05-01T00:00:00Z", content_type="live", live_status="completed")
+    video_master = _FakeVideoMaster([existing])
+    monkeypatch.setattr(
+        history_worker,
+        "get_video_statistics",
+        lambda youtube, video_ids: (
+            [{"videoId": "v1", "title": "A", "publishedAt": "2020-05-01T00:00:00Z", "viewCount": 500, "contentType": "upload", "liveStatus": None}],
+            {},
+        ),
+    )
+
+    collect_history_shard(
+        shard=history_worker.shard_for_video("v1"),
+        **_kwargs(manifest=_FakeManifest([ManifestEntry("v1", "c1", True)]), history=_FakeHistory(), video_master=video_master),
+    )
+
+    [updated] = video_master.upsert_calls[0]
+    assert (updated.content_type, updated.live_status) == ("upload", None)
+
+
 def test_existing_content_type_and_live_status_both_survive_a_row_with_no_content_type(monkeypatch):
     """Only a row with NO content type (a shard from before the column existed) preserves the
     existing live_status -- the two fields stay coupled, never mixed from old and new."""

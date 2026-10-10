@@ -67,6 +67,11 @@ LIVE_STATUS_SCOPE_ARCHIVED = "archived"
 VALID_LIVE_STATUS_SCOPES = frozenset({LIVE_STATUS_SCOPE_ALL, LIVE_STATUS_SCOPE_ARCHIVED}) | VALID_LIVE_STATUSES
 _ACTIVE_LIVE_STATUSES = frozenset({"upcoming", "live"})
 
+# The persisted contentType of a YouTube Short (video_master.VALID_CONTENT_TYPES). `excludeShorts` is an
+# explicit, additive filter ("everything except Shorts"): it leaves contentType="all" meaning every row, for every
+# other consumer, and keeps live archives, plain uploads and not-yet-classified rows.
+CONTENT_TYPE_SHORT = "short"
+
 
 def row_matches_live_status(row: dict[str, Any], scope: str) -> bool:
     """Whether a persisted canonical row passes a liveStatus scope (see LIVE_STATUS_SCOPE_ARCHIVED)."""
@@ -249,6 +254,7 @@ def rank_video_rows(
     topic: str,
     content_type: str = CONTENT_TYPE_SCOPE_ALL,
     live_status: str = LIVE_STATUS_SCOPE_ALL,
+    exclude_shorts: bool = False,
 ) -> list[dict[str, Any]]:
     """Derive one metric/topic's ranked view from the one persisted canonical
     row set at READ time (Phase D) -- operates directly on the serialized
@@ -284,6 +290,8 @@ def rank_video_rows(
         rows = [row for row in rows if row.get("topic") == topic]
     if content_type != CONTENT_TYPE_SCOPE_ALL:
         rows = [row for row in rows if row.get("contentType") == content_type]
+    if exclude_shorts:
+        rows = [row for row in rows if row.get("contentType") != CONTENT_TYPE_SHORT]
     if live_status != LIVE_STATUS_SCOPE_ALL:
         # Independent of contentType and applied BEFORE ranking, like topic/contentType, so a
         # row dropped here never takes a rank or a slot in the caller's limit.

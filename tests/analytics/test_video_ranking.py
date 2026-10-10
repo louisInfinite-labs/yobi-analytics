@@ -141,7 +141,7 @@ def test_an_unrecognized_persisted_topic_also_falls_back_to_other():
 
 def test_module_exposes_the_expected_content_type_constants():
     assert CONTENT_TYPE_SCOPE_ALL == "all"
-    assert VALID_CONTENT_TYPE_SCOPES == frozenset({"all", "live", "upload"})
+    assert VALID_CONTENT_TYPE_SCOPES == frozenset({"all", "live", "upload", "short"})
 
 
 def test_content_type_all_includes_every_video_regardless_of_content_type():

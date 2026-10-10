@@ -17,12 +17,13 @@ itself, and doesn't know or care what key it's stored under.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from analytics.view_growth_analytics import InvalidTimeZoneError, validate_time_zone
+from tracking.video_master import CONTENT_TYPE_SHORT
 
 # Roadmap 4.6 lists "notificationLevel" as a possible setting without fixing
 # its values; "all"/"important" is the initial supported set and may grow.
@@ -50,6 +51,13 @@ class NotificationPreference:
     time_zone: str
     delivery_windows: tuple[time, ...]
     quiet_hours: tuple[time, time] | None
+    # creatorId -> False disables ONLY that creator's new-video pushes (live reminders are governed by
+    # creator_overrides / the reminder settings and are unaffected). Absent creators default to enabled.
+    new_video_creator_overrides: dict[str, bool] = field(default_factory=dict)
+    # creatorId -> True enables that creator's SHORTS (the members of the Settings "Short" card). Short is a content FORMAT,
+    # not a topic, so it has its own map and its own default: an absent creator is OFF, so a preference stored before this
+    # field existed (or one with no Short card) never receives a Short. Ordinary videos never read this map.
+    new_video_short_creator_overrides: dict[str, bool] = field(default_factory=dict)
 
 
 def _parse_hhmm(raw: Any, *, field_name: str) -> time:
@@ -60,6 +68,20 @@ def _parse_hhmm(raw: Any, *, field_name: str) -> time:
         return datetime.strptime(raw, "%H:%M").time()
     except ValueError:
         raise ClientError(f"{field_name} is not a valid 'HH:MM' time: {raw!r}") from None
+
+
+def _parse_creator_boolean_map(raw_map: Any, *, field_name: str) -> dict[str, bool]:
+    """Validate an optional {creatorId: bool} object (creatorOverride / newVideoCreatorOverride / newVideoShortCreatorOverride)."""
+    if not isinstance(raw_map, dict):
+        raise ClientError(f"{field_name} must be an object mapping creatorId to a boolean")
+    parsed: dict[str, bool] = {}
+    for key, value in raw_map.items():
+        if not isinstance(key, str) or not key:
+            raise ClientError(f"{field_name} keys must be non-empty creatorId strings, got {key!r}")
+        if not isinstance(value, bool):
+            raise ClientError(f"{field_name}[{key!r}] must be a boolean, got {value!r}")
+        parsed[key] = value
+    return parsed
 
 
 def parse_notification_preference(raw: Any) -> NotificationPreference:
@@ -93,16 +115,13 @@ def parse_notification_preference(raw: Any) -> NotificationPreference:
         if temporary_mute_until.tzinfo is None:
             raise ClientError(f"temporaryMute must include a UTC offset: {raw_mute!r}")
 
-    raw_overrides = raw.get("creatorOverride", {})
-    if not isinstance(raw_overrides, dict):
-        raise ClientError("creatorOverride must be an object mapping creatorId to a boolean")
-    creator_overrides: dict[str, bool] = {}
-    for creator_id, value in raw_overrides.items():
-        if not isinstance(creator_id, str) or not creator_id:
-            raise ClientError(f"creatorOverride keys must be non-empty creatorId strings, got {creator_id!r}")
-        if not isinstance(value, bool):
-            raise ClientError(f"creatorOverride[{creator_id!r}] must be a boolean, got {value!r}")
-        creator_overrides[creator_id] = value
+    creator_overrides = _parse_creator_boolean_map(raw.get("creatorOverride", {}), field_name="creatorOverride")
+    new_video_creator_overrides = _parse_creator_boolean_map(
+        raw.get("newVideoCreatorOverride", {}), field_name="newVideoCreatorOverride"
+    )
+    new_video_short_creator_overrides = _parse_creator_boolean_map(
+        raw.get("newVideoShortCreatorOverride", {}), field_name="newVideoShortCreatorOverride"
+    )
 
     time_zone = raw.get("notificationTimeZone")
     if not isinstance(time_zone, str) or not time_zone:
@@ -137,6 +156,8 @@ def parse_notification_preference(raw: Any) -> NotificationPreference:
         time_zone=time_zone,
         delivery_windows=delivery_windows,
         quiet_hours=quiet_hours,
+        new_video_creator_overrides=new_video_creator_overrides,
+        new_video_short_creator_overrides=new_video_short_creator_overrides,
     )
 
 
@@ -153,6 +174,29 @@ def is_creator_enabled(preference: NotificationPreference, creator_id: str) -> b
     if not preference.enabled:
         return False
     return preference.creator_overrides.get(creator_id, True)
+
+
+def is_new_video_creator_enabled(preference: NotificationPreference, creator_id: str) -> bool:
+    """Whether this client wants NEW-VIDEO pushes for creator_id (the Settings per-creator 新片 switch).
+
+    Only a creator explicitly set to False is excluded; no entry means enabled. It is checked in addition to
+    is_creator_enabled (the master switch and the general per-creator override still win) and never affects
+    live reminders.
+    """
+    return preference.new_video_creator_overrides.get(creator_id, True)
+
+
+def is_new_video_wanted(preference: NotificationPreference, creator_id: str, *, content_type: str | None) -> bool:
+    """Whether this client wants a new video of creator_id, judged by its content FORMAT.
+
+    - a Short (content_type "short") is wanted only for a creator in the Short card (new_video_short_creator_overrides,
+      default OFF); the topic and the creator's ordinary 新片 switch are irrelevant to it;
+    - every other video follows the creator's ordinary 新片 switch (is_new_video_creator_enabled), exactly as before.
+    The master switch, the general creator override, mute and quiet hours are separate gates that still apply on top.
+    """
+    if content_type == CONTENT_TYPE_SHORT:
+        return preference.new_video_short_creator_overrides.get(creator_id, False)
+    return is_new_video_creator_enabled(preference, creator_id)
 
 
 def is_temporarily_muted(preference: NotificationPreference, *, now: datetime) -> bool:

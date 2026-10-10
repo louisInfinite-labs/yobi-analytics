@@ -427,6 +427,32 @@ def set_video_classification(video_id: str, content_type: str, live_status: str 
     return True
 
 
+def set_video_short(video_id: str) -> bool:
+    """Mark an existing video as a YouTube Short (`contentType = "short"`, `liveStatus` removed); nothing else is touched.
+
+    Used only by the one-time Shorts backfill (scripts/backfill/backfill_video_shorts.py), after the video was found on
+    its channel's Shorts shelf. A targeted UpdateItem, conditional on the stored contentType being "upload" or not yet
+    set: a livestream ("live"), an already-"short" record and a missing video are never written, and a concurrent newer
+    classification is never lost. Returns False when the condition rejects the write.
+    """
+    names = {"#videoId": "videoId", "#contentType": "contentType", "#liveStatus": "liveStatus"}
+    values = {":short": "short", ":upload": "upload"}
+    table = _resource().Table(VIDEO_MASTER_TABLE)
+    try:
+        table.update_item(
+            Key={"videoId": video_id},
+            UpdateExpression="SET #contentType = :short REMOVE #liveStatus",
+            ConditionExpression="attribute_exists(#videoId) AND (attribute_not_exists(#contentType) OR #contentType = :upload)",
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise VideoMasterError(f"Failed to mark a Short in {VIDEO_MASTER_TABLE}: {exc}") from exc
+    return True
+
+
 def get_snapshot(video_id: str, snapshot_date: date) -> Snapshot | None:
     """Return one video's snapshot for a specific date, or None if no such item exists.
 
