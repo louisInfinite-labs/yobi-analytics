@@ -185,6 +185,7 @@ export type TranslationKey =
   | "notificationToggle.enable"
   | "notificationToggle.on"
   | "notificationToggle.unavailable"
+  | "notificationToggle.unsupportedTooltip"
   | "liveSchedule.pageTitle"
   | "liveSchedule.pageSubtitle"
   | "liveSchedule.timeColumnHeader"
@@ -394,6 +395,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationToggle.enable": "開啟通知",
     "notificationToggle.on": "通知已開啟",
     "notificationToggle.unavailable": "無法使用通知",
+    "notificationToggle.unsupportedTooltip": "此瀏覽器不支援推送通知",
     "liveSchedule.pageTitle": "直播時間表",
     "liveSchedule.pageSubtitle": "你所選創作者的即將到來與直播中節目。",
     "liveSchedule.timeColumnHeader": "時間",
@@ -602,6 +604,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationToggle.enable": "Enable notifications",
     "notificationToggle.on": "Notifications on",
     "notificationToggle.unavailable": "Notifications unavailable",
+    "notificationToggle.unsupportedTooltip": "This browser doesn't support push notifications",
     "liveSchedule.pageTitle": "Live Schedule",
     "liveSchedule.pageSubtitle": "Upcoming and live streams across your selected creators.",
     "liveSchedule.timeColumnHeader": "Time",
@@ -810,6 +813,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationToggle.enable": "通知をオンにする",
     "notificationToggle.on": "通知オン",
     "notificationToggle.unavailable": "通知は利用できません",
+    "notificationToggle.unsupportedTooltip": "このブラウザはプッシュ通知に対応していません",
     "liveSchedule.pageTitle": "配信スケジュール",
     "liveSchedule.pageSubtitle": "選択したクリエイターの今後の配信と配信中の番組。",
     "liveSchedule.timeColumnHeader": "時間",

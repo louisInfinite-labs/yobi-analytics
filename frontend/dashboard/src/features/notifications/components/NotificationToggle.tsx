@@ -79,7 +79,7 @@ export function NotificationToggle() {
 
   if (status === "unsupported") {
     return (
-      <span className="notification-toggle__unsupported" title="This browser doesn't support push notifications">
+      <span className="notification-toggle__unsupported" title={t(locale, "notificationToggle.unsupportedTooltip")}>
         {t(locale, "notificationToggle.unavailable")}
       </span>
     )

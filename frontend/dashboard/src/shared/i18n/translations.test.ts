@@ -48,6 +48,10 @@ describe("t", () => {
     expect(t("en", "notificationToggle.unavailable")).toBe("Notifications unavailable")
     expect(t("zh-TW", "notificationToggle.unavailable")).toBe("無法使用通知")
     expect(t("ja", "notificationToggle.unavailable")).toBe("通知は利用できません")
+
+    expect(t("en", "notificationToggle.unsupportedTooltip")).toBe("This browser doesn't support push notifications")
+    expect(t("zh-TW", "notificationToggle.unsupportedTooltip")).toBe("此瀏覽器不支援推送通知")
+    expect(t("ja", "notificationToggle.unsupportedTooltip")).toBe("このブラウザはプッシュ通知に対応していません")
   })
 
   it("translates the upcoming-stream countdown option for zh-TW and ja (it was left in English for zh-TW)", () => {

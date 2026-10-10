@@ -57,7 +57,7 @@ describe("NotificationToggle", () => {
 
       render(<NotificationToggle />)
 
-      expect(await screen.findByText("無法使用通知")).toBeInTheDocument()
+      expect(await screen.findByText("無法使用通知")).toHaveAttribute("title", "此瀏覽器不支援推送通知")
     })
   })
 
