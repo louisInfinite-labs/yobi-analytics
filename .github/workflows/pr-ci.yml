@@ -104,6 +104,8 @@ jobs:
           tests/test_terraform_client_credentials_table.py
           tests/notifications/test_reminder_timing_matrix.py
           tests/notifications/test_notification_dispatcher.py
+          tests/notifications/test_push_sender.py
+          tests/notifications/test_vapid_key_handling.py
           tests/api/test_api_handler.py
 
   frontend-focused-tests:
