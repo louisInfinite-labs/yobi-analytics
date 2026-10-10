@@ -26,32 +26,28 @@ function storedState() {
   return JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "{}")
 }
 
-// Each mutation gets its OWN act() call (never batched together) — same
-// convention as useFavoriteCreators.test.ts. The hook's setters close over
-// the render's own `state` snapshot (see useTopicNotificationPreferences.ts),
-// so batching two of them inside one act() would have the second call
-// overwrite the first's change rather than build on it; that's not how the
-// real UI ever calls them (one Switch/Select onChange per event, each its
-// own render cycle), so tests must not do it either.
+// Each mutation gets its OWN awaited act() call. The setters are async now: they write the backend first
+// and commit locally only once that succeeded, so a test must await each one before asserting.
 describe("useTopicNotificationPreferences", () => {
-  it("filters unknown and duplicate saved topic IDs while restoring required defaults", () => {
+  it("drops retired and duplicate saved topic IDs while restoring required defaults", async () => {
     seedStorage({
-      topicOrder: ["gta", "unknown-topic", "gta", "all"],
+      topicOrder: ["gta", "singing", "singing", "all"],
       topics: {
-        gta: { live: ["aizawa_ema"], newVideo: [], reminderOverrides: {} },
-        "unknown-topic": { live: [], newVideo: [], reminderOverrides: {} },
+        gta: { live: ["z"], newVideo: ["z"], reminderOverrides: {} },
+        singing: { live: ["aizawa_ema"], newVideo: [], reminderOverrides: {} },
       },
     })
 
     const { result } = renderHook(() => useTopicNotificationPreferences())
-    expect(result.current.savedTopicIds).toEqual(["all", "sf6", "valorant", "apex", "minecraft", "gta"])
-    expect(result.current.isLiveEnabled("gta", "aizawa_ema")).toBe(true)
+    expect(result.current.savedTopicIds).toEqual(["all", "sf6", "valorant", "apex", "minecraft", "singing"])
+    expect(result.current.isLiveEnabled("singing", "aizawa_ema")).toBe(true)
+    expect(result.current.isLiveEnabled("gta", "z")).toBe(false)
   })
 
   describe("valo -> valorant migration", () => {
-    it("moves a saved VALO card's settings to the canonical valorant id without dropping any of them", () => {
+    it("moves a saved VALO card's settings to the canonical valorant id without dropping any of them", async () => {
       seedStorage({
-        topicOrder: ["all", "sf6", "valo", "apex", "minecraft", "gta"],
+        topicOrder: ["all", "sf6", "valo", "apex", "minecraft", "singing"],
         topics: {
           valo: {
             reminderMode: "30min",
@@ -65,7 +61,7 @@ describe("useTopicNotificationPreferences", () => {
 
       const { result } = renderHook(() => useTopicNotificationPreferences())
 
-      expect(result.current.savedTopicIds).toEqual(["all", "sf6", "valorant", "apex", "minecraft", "gta"])
+      expect(result.current.savedTopicIds).toEqual(["all", "sf6", "valorant", "apex", "minecraft", "singing"])
       expect(result.current.isLiveEnabled("valorant", "aizawa_ema")).toBe(true)
       expect(result.current.isLiveEnabled("valorant", "kaga_sumire")).toBe(true)
       expect(result.current.isNewVideoEnabled("valorant", "kaga_sumire")).toBe(true)
@@ -75,7 +71,7 @@ describe("useTopicNotificationPreferences", () => {
       expect(result.current.isLiveEnabled("valo", "aizawa_ema")).toBe(false)
     })
 
-    it("migrates a VALO card that was added via + (not a permanent default) in the stored order too", () => {
+    it("migrates a VALO card that was added via + (not a permanent default) in the stored order too", async () => {
       seedStorage({ topicOrder: ["valo"], topics: { valo: { live: ["aizawa_ema"], newVideo: [], reminderOverrides: {}, notificationType: "both" } } })
 
       const { result } = renderHook(() => useTopicNotificationPreferences())
@@ -84,7 +80,7 @@ describe("useTopicNotificationPreferences", () => {
       expect(result.current.isLiveEnabled("valorant", "aizawa_ema")).toBe(true)
     })
 
-    it("merges both entries without losing anything when an old and a canonical entry both exist", () => {
+    it("merges both entries without losing anything when an old and a canonical entry both exist", async () => {
       seedStorage({
         topicOrder: ["all", "sf6", "valo", "valorant", "apex", "minecraft"],
         topics: {
@@ -105,11 +101,11 @@ describe("useTopicNotificationPreferences", () => {
       expect(result.current.getNotificationType("valorant")).toBe("live")
     })
 
-    it("writes the migrated state back under the canonical id the next time it is saved", () => {
+    it("writes the migrated state back under the canonical id the next time it is saved", async () => {
       seedStorage({ topicOrder: ["all", "sf6", "valo"], topics: { valo: { live: ["aizawa_ema"], newVideo: [], reminderOverrides: {} } } })
 
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      act(() => result.current.setNewVideoEnabled("valorant", "kaga_sumire", true))
+      await act(async () => { await result.current.setNewVideoEnabled("valorant", "kaga_sumire", true) })
 
       const stored = storedState()
       expect(Object.keys(stored.topics)).toContain("valorant")
@@ -118,7 +114,7 @@ describe("useTopicNotificationPreferences", () => {
       expect(stored.topicOrder).not.toContain("valo")
     })
 
-    it("ignores a removed legacy topic-level reminderMode instead of treating it as anyone's reminder", () => {
+    it("ignores a removed legacy topic-level reminderMode instead of treating it as anyone's reminder", async () => {
       seedStorage({
         topicOrder: ["all", "sf6", "valorant", "apex", "minecraft"],
         topics: { valorant: { reminderMode: "30min", live: ["aizawa_ema"], newVideo: [], reminderOverrides: {} } },
@@ -129,7 +125,7 @@ describe("useTopicNotificationPreferences", () => {
       expect(result.current.getMemberReminder("valorant", "aizawa_ema")).toBeNull()
     })
 
-    it("drops a stored reminder value that is not a real reminder option", () => {
+    it("drops a stored reminder value that is not a real reminder option", async () => {
       seedStorage({
         topicOrder: ["all", "sf6", "valorant", "apex", "minecraft"],
         topics: { valorant: { live: ["aizawa_ema"], newVideo: [], reminderOverrides: { aizawa_ema: "2hours", kaga_sumire: "30min" } } },
@@ -142,7 +138,7 @@ describe("useTopicNotificationPreferences", () => {
     })
   })
 
-  it("starts with nobody enabled and every reminder unset", () => {
+  it("starts with nobody enabled and every reminder unset", async () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
     expect(result.current.isLiveEnabled("valorant", "aizawa_ema")).toBe(false)
     expect(result.current.isNewVideoEnabled("valorant", "aizawa_ema")).toBe(false)
@@ -151,35 +147,35 @@ describe("useTopicNotificationPreferences", () => {
     expect(result.current.getMemberReminder("all", "aizawa_ema")).toBeNull()
   })
 
-  it("keeps Live and New Video enablement fully independent per creator per topic", () => {
+  it("keeps Live and New Video enablement fully independent per creator per topic", async () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
-    act(() => result.current.setLiveEnabled("valorant", "aizawa_ema", true))
+    await act(async () => { await result.current.setLiveEnabled("valorant", "aizawa_ema", true) })
     expect(result.current.isLiveEnabled("valorant", "aizawa_ema")).toBe(true)
     expect(result.current.isNewVideoEnabled("valorant", "aizawa_ema")).toBe(false)
 
-    act(() => result.current.setNewVideoEnabled("valorant", "kaga_sumire", true))
+    await act(async () => { await result.current.setNewVideoEnabled("valorant", "kaga_sumire", true) })
     expect(result.current.isNewVideoEnabled("valorant", "kaga_sumire")).toBe(true)
     expect(result.current.isLiveEnabled("valorant", "kaga_sumire")).toBe(false)
   })
 
-  it("scopes enablement to one topic only — enabling a creator for one topic doesn't enable them for another", () => {
+  it("scopes enablement to one topic only — enabling a creator for one topic doesn't enable them for another", async () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
-    act(() => result.current.setLiveEnabled("valorant", "aizawa_ema", true))
+    await act(async () => { await result.current.setLiveEnabled("valorant", "aizawa_ema", true) })
     expect(result.current.isLiveEnabled("apex", "aizawa_ema")).toBe(false)
   })
 
-  it("getEnabledCreatorIds returns the union of Live- and New-Video-enabled creators, with no duplicates", () => {
+  it("getEnabledCreatorIds returns the union of Live- and New-Video-enabled creators, with no duplicates", async () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
-    act(() => result.current.setLiveEnabled("valorant", "aizawa_ema", true))
-    act(() => result.current.setNewVideoEnabled("valorant", "aizawa_ema", true))
-    act(() => result.current.setNewVideoEnabled("valorant", "kaga_sumire", true))
+    await act(async () => { await result.current.setLiveEnabled("valorant", "aizawa_ema", true) })
+    await act(async () => { await result.current.setNewVideoEnabled("valorant", "aizawa_ema", true) })
+    await act(async () => { await result.current.setNewVideoEnabled("valorant", "kaga_sumire", true) })
     expect([...result.current.getEnabledCreatorIds("valorant")].sort()).toEqual(["aizawa_ema", "kaga_sumire"])
   })
 
   describe("reminders: unset, per-item sync, shadowing", () => {
-    it("setting a creator + topic reminder writes exactly that one (creator, topic) item to the backend", () => {
+    it("setting a creator + topic reminder writes exactly that one (creator, topic) item to the backend", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      act(() => result.current.setMemberReminder("sf6", "aizawa_ema", "10min"))
+      await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", "10min") })
 
       expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBe("10min")
       expect(liveReminderApi.saveCreatorReminder).toHaveBeenCalledTimes(1)
@@ -187,28 +183,28 @@ describe("useTopicNotificationPreferences", () => {
       expect(liveReminderApi.deleteCreatorReminder).not.toHaveBeenCalled()
     })
 
-    it("setting the 全部 reminder writes the creator-level scope `all`, not a topic", () => {
+    it("setting the 全部 reminder writes the creator-level scope `all`, not a topic", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      act(() => result.current.setMemberReminder("all", "aizawa_ema", "30min"))
+      await act(async () => { await result.current.setMemberReminder("all", "aizawa_ema", "30min") })
 
       expect(liveReminderApi.saveCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "all", { notifyAtStart: true, advanceReminder: "30min" })
     })
 
-    it("at_start is a real choice stored as such, distinct from unset", () => {
+    it("at_start is a real choice stored as such, distinct from unset", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      act(() => result.current.setMemberReminder("sf6", "aizawa_ema", "at_start"))
+      await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", "at_start") })
 
       expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBe("at_start")
       expect(liveReminderApi.saveCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "sf6", { notifyAtStart: true, advanceReminder: null })
     })
 
-    it("unsetting a reminder removes only that entry and deletes only that one backend item", () => {
+    it("unsetting a reminder removes only that entry and deletes only that one backend item", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      act(() => result.current.setMemberReminder("sf6", "aizawa_ema", "10min"))
-      act(() => result.current.setMemberReminder("sf6", "kaga_sumire", "1hour"))
-      act(() => result.current.setMemberReminder("apex", "aizawa_ema", "30min"))
+      await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", "10min") })
+      await act(async () => { await result.current.setMemberReminder("sf6", "kaga_sumire", "1hour") })
+      await act(async () => { await result.current.setMemberReminder("apex", "aizawa_ema", "30min") })
 
-      act(() => result.current.setMemberReminder("sf6", "aizawa_ema", null))
+      await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", null) })
 
       expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBeNull()
       expect(result.current.getMemberReminder("sf6", "kaga_sumire")).toBe("1hour")
@@ -217,13 +213,13 @@ describe("useTopicNotificationPreferences", () => {
       expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "sf6")
     })
 
-    it("setting 全部 never changes or erases the same creator's topic reminders -- they are only shadowed", () => {
+    it("setting 全部 never changes or erases the same creator's topic reminders -- they are only shadowed", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      act(() => result.current.setMemberReminder("sf6", "aizawa_ema", "10min"))
-      act(() => result.current.setMemberReminder("singing", "aizawa_ema", "1hour"))
+      await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", "10min") })
+      await act(async () => { await result.current.setMemberReminder("singing", "aizawa_ema", "1hour") })
       expect(result.current.isReminderShadowedByAll("sf6", "aizawa_ema")).toBe(false)
 
-      act(() => result.current.setMemberReminder("all", "aizawa_ema", "30min"))
+      await act(async () => { await result.current.setMemberReminder("all", "aizawa_ema", "30min") })
 
       // Still stored, untouched...
       expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBe("10min")
@@ -239,13 +235,13 @@ describe("useTopicNotificationPreferences", () => {
       expect(vi.mocked(liveReminderApi.saveCreatorReminder).mock.calls.map(([, scope]) => scope)).toEqual(["sf6", "singing", "all"])
     })
 
-    it("unsetting 全部 makes the topic reminders take effect again, exactly as they were", () => {
+    it("unsetting 全部 makes the topic reminders take effect again, exactly as they were", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      act(() => result.current.setMemberReminder("sf6", "aizawa_ema", "10min"))
-      act(() => result.current.setMemberReminder("singing", "aizawa_ema", "1hour"))
-      act(() => result.current.setMemberReminder("all", "aizawa_ema", "30min"))
+      await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", "10min") })
+      await act(async () => { await result.current.setMemberReminder("singing", "aizawa_ema", "1hour") })
+      await act(async () => { await result.current.setMemberReminder("all", "aizawa_ema", "30min") })
 
-      act(() => result.current.setMemberReminder("all", "aizawa_ema", null))
+      await act(async () => { await result.current.setMemberReminder("all", "aizawa_ema", null) })
 
       expect(result.current.getMemberReminder("all", "aizawa_ema")).toBeNull()
       expect(result.current.isReminderShadowedByAll("sf6", "aizawa_ema")).toBe(false)
@@ -255,31 +251,34 @@ describe("useTopicNotificationPreferences", () => {
       expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "all")
     })
 
-    it("a failed backend write is swallowed and the local choice is kept", async () => {
-      vi.mocked(liveReminderApi.saveCreatorReminder).mockRejectedValueOnce(new Error("offline"))
+    it("a failed backend write is NOT kept: the previous confirmed reminder stays and nothing is persisted", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
+      await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", "1hour") })
+      vi.mocked(liveReminderApi.saveCreatorReminder).mockRejectedValueOnce(new Error("offline"))
 
-      act(() => result.current.setMemberReminder("sf6", "aizawa_ema", "10min"))
-      await Promise.resolve()
+      let saved: boolean | undefined
+      await act(async () => { saved = await result.current.setMemberReminder("sf6", "aizawa_ema", "10min") })
 
-      expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBe("10min")
+      expect(saved).toBe(false)
+      expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBe("1hour")
+      expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "1hour" })
     })
   })
 
   describe("turning Live off", () => {
-    it("deletes only that one creator + topic reminder, locally and on the backend", () => {
+    it("deletes only that one creator + topic reminder, locally and on the backend", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      act(() => result.current.setLiveEnabled("sf6", "aizawa_ema", true))
-      act(() => result.current.setMemberReminder("sf6", "aizawa_ema", "1hour"))
-      act(() => result.current.setLiveEnabled("sf6", "kaga_sumire", true))
-      act(() => result.current.setMemberReminder("sf6", "kaga_sumire", "10min"))
-      act(() => result.current.setLiveEnabled("apex", "aizawa_ema", true))
-      act(() => result.current.setMemberReminder("apex", "aizawa_ema", "30min"))
-      act(() => result.current.setLiveEnabled("all", "aizawa_ema", true))
-      act(() => result.current.setMemberReminder("all", "aizawa_ema", "at_start"))
+      await act(async () => { await result.current.setLiveEnabled("sf6", "aizawa_ema", true) })
+      await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", "1hour") })
+      await act(async () => { await result.current.setLiveEnabled("sf6", "kaga_sumire", true) })
+      await act(async () => { await result.current.setMemberReminder("sf6", "kaga_sumire", "10min") })
+      await act(async () => { await result.current.setLiveEnabled("apex", "aizawa_ema", true) })
+      await act(async () => { await result.current.setMemberReminder("apex", "aizawa_ema", "30min") })
+      await act(async () => { await result.current.setLiveEnabled("all", "aizawa_ema", true) })
+      await act(async () => { await result.current.setMemberReminder("all", "aizawa_ema", "at_start") })
       vi.mocked(liveReminderApi.deleteCreatorReminder).mockClear()
 
-      act(() => result.current.setLiveEnabled("sf6", "aizawa_ema", false))
+      await act(async () => { await result.current.setLiveEnabled("sf6", "aizawa_ema", false) })
 
       expect(result.current.isLiveEnabled("sf6", "aizawa_ema")).toBe(false)
       expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBeNull()
@@ -291,78 +290,78 @@ describe("useTopicNotificationPreferences", () => {
       expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "sf6")
     })
 
-    it("makes no backend call when that creator + topic had no reminder", () => {
+    it("makes no backend call when that creator + topic had no reminder", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      act(() => result.current.setLiveEnabled("sf6", "aizawa_ema", true))
+      await act(async () => { await result.current.setLiveEnabled("sf6", "aizawa_ema", true) })
 
-      act(() => result.current.setLiveEnabled("sf6", "aizawa_ema", false))
+      await act(async () => { await result.current.setLiveEnabled("sf6", "aizawa_ema", false) })
 
       expect(liveReminderApi.deleteCreatorReminder).not.toHaveBeenCalled()
     })
 
-    it("turning Live back ON does not bring a dropped reminder back, and writes nothing", () => {
+    it("turning Live back ON does not bring a dropped reminder back, and writes nothing", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      act(() => result.current.setLiveEnabled("sf6", "aizawa_ema", true))
-      act(() => result.current.setMemberReminder("sf6", "aizawa_ema", "1hour"))
-      act(() => result.current.setLiveEnabled("sf6", "aizawa_ema", false))
+      await act(async () => { await result.current.setLiveEnabled("sf6", "aizawa_ema", true) })
+      await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", "1hour") })
+      await act(async () => { await result.current.setLiveEnabled("sf6", "aizawa_ema", false) })
       vi.mocked(liveReminderApi.saveCreatorReminder).mockClear()
 
-      act(() => result.current.setLiveEnabled("sf6", "aizawa_ema", true))
+      await act(async () => { await result.current.setLiveEnabled("sf6", "aizawa_ema", true) })
 
       expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBeNull()
       expect(liveReminderApi.saveCreatorReminder).not.toHaveBeenCalled()
     })
   })
 
-  it("excludes a channel the topic's own notificationType no longer allows from getEnabledCreatorIds, without deleting the stored membership", () => {
+  it("excludes a channel the topic's own notificationType no longer allows from getEnabledCreatorIds, without deleting the stored membership", async () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
-    act(() => result.current.setLiveEnabled("valorant", "aizawa_ema", true))
-    act(() => result.current.setNewVideoEnabled("valorant", "kaga_sumire", true))
+    await act(async () => { await result.current.setLiveEnabled("valorant", "aizawa_ema", true) })
+    await act(async () => { await result.current.setNewVideoEnabled("valorant", "kaga_sumire", true) })
     expect([...result.current.getEnabledCreatorIds("valorant")].sort()).toEqual(["aizawa_ema", "kaga_sumire"])
 
-    act(() => result.current.setNotificationType("valorant", "newVideo"))
+    await act(async () => { await result.current.setNotificationType("valorant", "newVideo") })
     // Her stored Live membership is still there (isLiveEnabled unchanged)...
     expect(result.current.isLiveEnabled("valorant", "aizawa_ema")).toBe(true)
     // ...but she does not count as effectively enabled while Live is excluded.
     expect([...result.current.getEnabledCreatorIds("valorant")]).toEqual(["kaga_sumire"])
 
     // Switching back to "both" restores her without ever having touched her stored value.
-    act(() => result.current.setNotificationType("valorant", "both"))
+    await act(async () => { await result.current.setNotificationType("valorant", "both") })
     expect([...result.current.getEnabledCreatorIds("valorant")].sort()).toEqual(["aizawa_ema", "kaga_sumire"])
   })
 
-  it("reports 0 reminder overrides while the topic's notificationType excludes Live, without clearing the stored override", () => {
+  it("reports 0 reminder overrides while the topic's notificationType excludes Live, without clearing the stored override", async () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
-    act(() => result.current.setLiveEnabled("valorant", "aizawa_ema", true))
-    act(() => result.current.setMemberReminder("valorant", "aizawa_ema", "1hour"))
+    await act(async () => { await result.current.setLiveEnabled("valorant", "aizawa_ema", true) })
+    await act(async () => { await result.current.setMemberReminder("valorant", "aizawa_ema", "1hour") })
     expect(result.current.getOverrideCount("valorant")).toBe(1)
 
-    act(() => result.current.setNotificationType("valorant", "newVideo"))
+    await act(async () => { await result.current.setNotificationType("valorant", "newVideo") })
     expect(result.current.getOverrideCount("valorant")).toBe(0)
     // Still stored underneath -- not destructively cleared.
     expect(result.current.getMemberReminder("valorant", "aizawa_ema")).toBe("1hour")
 
-    act(() => result.current.setNotificationType("valorant", "live"))
+    await act(async () => { await result.current.setNotificationType("valorant", "live") })
     expect(result.current.getOverrideCount("valorant")).toBe(1)
   })
 
-  it("Reset restores only the notification type -- members and their reminders stay", () => {
+  it("Reset restores only the notification type -- members and their reminders stay", async () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
-    act(() => result.current.setLiveEnabled("sf6", "aizawa_ema", true))
-    act(() => result.current.setMemberReminder("sf6", "aizawa_ema", "1hour"))
-    act(() => result.current.setNotificationType("sf6", "live"))
+    await act(async () => { await result.current.setLiveEnabled("sf6", "aizawa_ema", true) })
+    await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", "1hour") })
+    await act(async () => { await result.current.setNotificationType("sf6", "live") })
 
-    act(() => result.current.resetTopicDefaults("sf6"))
+    await act(async () => { await result.current.resetTopicDefaults("sf6") })
 
     expect(result.current.getNotificationType("sf6")).toBe("both")
     expect(result.current.isLiveEnabled("sf6", "aizawa_ema")).toBe(true)
     expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBe("1hour")
   })
 
-  it("persists across hook instances (localStorage-backed shared state)", () => {
+  it("persists across hook instances (localStorage-backed shared state)", async () => {
     const first = renderHook(() => useTopicNotificationPreferences())
-    act(() => first.result.current.setLiveEnabled("sf6", "aizawa_ema", true))
-    act(() => first.result.current.setMemberReminder("sf6", "aizawa_ema", "1hour"))
+    await act(async () => { await first.result.current.setLiveEnabled("sf6", "aizawa_ema", true) })
+    await act(async () => { await first.result.current.setMemberReminder("sf6", "aizawa_ema", "1hour") })
 
     const second = renderHook(() => useTopicNotificationPreferences())
     expect(second.result.current.isLiveEnabled("sf6", "aizawa_ema")).toBe(true)

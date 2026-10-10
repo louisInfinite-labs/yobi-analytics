@@ -85,6 +85,26 @@ jobs:
           tests/api/test_read_api.py
           tests/api/test_historical_data_unavailable.py
           tests/scripts/backfill/test_backfill_graduated_history.py
+          tests/api/test_shorts_shelf_filtering.py
+          tests/api/test_shorts_exclusive_topic_filters.py
+          tests/api/test_cover_mv_premiere_filtering.py
+          tests/api/test_livestream_surfaces_classification.py
+          tests/api/test_livestream_request_time_classification.py
+          tests/tracking/test_video_discovery_shorts.py
+          tests/tracking/test_video_master.py
+          tests/stores/test_dynamodb_video_short.py
+          tests/scripts/backfill/test_backfill_video_shorts.py
+          tests/collection/test_youtube_client.py
+          tests/collection/test_main.py
+          tests/notifications/test_new_video_creator_override.py
+          tests/notifications/test_new_video_short_filter.py
+          tests/notifications/test_retired_topic_scopes.py
+          tests/stores/test_notification_events_store.py
+          tests/scripts/test_publish_about_content_line_endings.py
+          tests/test_terraform_client_credentials_table.py
+          tests/notifications/test_reminder_timing_matrix.py
+          tests/notifications/test_notification_dispatcher.py
+          tests/api/test_api_handler.py
 
   frontend-focused-tests:
     needs: detect-scope
@@ -124,7 +144,6 @@ jobs:
           src/features/oshi-status/data/oshiStatus.test.ts
           src/features/oshi-status/hooks/useOshiStatus.test.tsx
           src/features/oshi-status/hooks/useLastVisit.test.ts
-          src/features/oshi-status/utils/oshiActivity.test.ts
           src/features/oshi-status/components/OshiStatusPanel.test.tsx
           src/pages/home/HomePage.apiCutover.test.tsx
           src/features/live-status/model/creatorStatusSelection.test.ts
@@ -138,6 +157,43 @@ jobs:
           src/entities/creator/data/creatorRegistry.test.ts
           src/features/live-status/components/CreatorStatusList.completeRoster.test.tsx
           src/features/oshi/utils/myOshiCanonicalRoster.test.ts
+          src/features/home-room/components/RecentVideosSection.shortFilter.test.tsx
+          src/features/home-room/components/NewTagSharedState.test.tsx
+          src/features/home-room/utils/latestLiveShelf.test.ts
+          src/features/media-player/hooks/useWatchedDuringLive.test.tsx
+          src/features/media-player/utils/youtubeIframeApi.test.ts
+          src/shared/newContent/newContentTracking.test.ts
+          src/shared/newContent/newContentWatchedLive.test.ts
+          src/pages/home/HomePage.liveWatch.test.tsx
+          src/features/live-status/components/LiveScheduleDock.test.tsx
+          src/features/notifications/api/notificationPreferenceApi.test.ts
+          src/features/notifications/components/NotificationSettings.shortCard.test.tsx
+          src/features/notifications/model/notificationTopicCatalog.test.ts
+          src/features/notifications/hooks/useTopicNotificationPreferences.retiredAndRemove.test.ts
+          src/features/notifications/hooks/useRetiredTopicResync.test.ts
+          src/features/live-status/components/CreatorStatusList.nonIndividualChannels.test.tsx
+          src/features/home-room/model/videoFilterCatalog.test.ts
+          src/features/notifications/components/NotificationSettings.saveFailure.test.tsx
+          src/features/notifications/components/NotificationToggle.serviceWorker.test.tsx
+          src/features/notifications/hooks/useTopicNotificationPreferences.backendFirst.test.ts
+          src/features/notifications/push/pushNotifications.serviceWorkerReady.test.ts
+          src/pages/about/markdown.lineEndings.test.tsx
+          src/pages/schedule/LiveSchedulePage.creatorFilter.test.tsx
+          src/pages/schedule/LiveSchedulePage.test.tsx
+          src/shared/time/minuteClock.test.tsx
+          src/features/live-schedule/components/ScheduleGrid.test.tsx
+          src/features/live-schedule/components/StreamNotificationPanel.test.tsx
+          src/features/live-schedule/components/StreamDetailModal.test.tsx
+          src/features/notifications/api/liveReminderApi.test.ts
+          src/features/oshi/components/OshiSettings.test.tsx
+          src/features/notifications/components/NotificationMemberAvatars.test.tsx
+          src/entities/creator/components/CreatorAvatarImage.test.tsx
+          src/pages/about/markdown.articles.test.tsx
+          src/features/live-status/components/CreatorStatusList.test.tsx
+          src/features/notifications/components/NotificationSettings.test.tsx
+          src/features/notifications/components/NotificationToggle.test.tsx
+          src/features/notifications/hooks/useTopicNotificationPreferences.test.ts
+          src/features/notifications/push/pushNotifications.test.ts
           src/features/oshi/hooks/useDefaultOshiCreator.test.ts
           src/features/home-room/data/recentArchivedLivestreams.test.ts
           src/shared/api/apiClient.test.ts

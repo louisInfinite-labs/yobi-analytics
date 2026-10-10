@@ -2,17 +2,14 @@ import { useEffect, useState } from "react"
 import { Button } from "antd"
 import { Bell, BellOff } from "lucide-react"
 import { apiRequest } from "../../../shared/api/apiClient"
+import { putNotificationPreference } from "../api/notificationPreferenceApi"
+import { getEffectiveNewVideoCreatorIds, getEffectiveShortCreatorIds } from "../hooks/useTopicNotificationPreferences"
 import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
 import { getOrCreateClientId } from "../../../shared/api/clientId"
 import { getPushSubscriptionStatus, subscribeToPush, unsubscribeFromPush } from "../push/pushNotifications"
 import { VAPID_PUBLIC_KEY } from "../push/vapidPublicKey"
 
 type Status = "checking" | "unsupported" | "subscribed" | "unsubscribed"
-
-// Roadmap 4.6's own worked example uses these as the default local delivery
-// windows during Japanese development; a real per-window settings UI is
-// future work — this toggle only ever sets the on/off half of a preference.
-const DEFAULT_DELIVERY_WINDOWS = ["08:00", "18:00"]
 
 /** "failed": a backend write was rejected and the toggle kept (or restored) its previous state.
  * "uncertain": an enable attempt failed AND the cleanup that undoes any half-committed backend
@@ -43,16 +40,9 @@ function syncSubscriptionToBackend(
  * clientId (Roadmap 4.6, self-service). See syncSubscriptionToBackend's
  * docstring — same clientSecret/coordination reasoning. */
 function syncNotificationEnabledToBackend(clientId: string, clientSecret: string | null, enabled: boolean): Promise<unknown> {
-  return apiRequest(`/clients/${encodeURIComponent(clientId)}/notification-preference`, {
-    method: "PUT",
-    headers: clientSecret ? { "X-Client-Secret": clientSecret } : undefined,
-    body: {
-      enabled,
-      notificationLevel: "all",
-      notificationTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      deliveryWindows: DEFAULT_DELIVERY_WINDOWS,
-    },
-  })
+  // The write replaces the whole stored preference, so it carries the Settings per-creator 新片 switches too
+  // (otherwise turning notifications on/off would wipe them on the backend).
+  return putNotificationPreference(clientId, clientSecret, enabled, getEffectiveNewVideoCreatorIds(), getEffectiveShortCreatorIds())
 }
 
 /**
@@ -131,7 +121,18 @@ export function NotificationToggle() {
         return
       }
 
-      const subscription = await subscribeToPush(VAPID_PUBLIC_KEY)
+      let subscription: PushSubscriptionJSON | null
+      try {
+        subscription = await subscribeToPush(VAPID_PUBLIC_KEY)
+      } catch {
+        // The service worker never activated (or registration failed): nothing was written to the
+        // backend yet, so only the browser side needs undoing -- leave no half-made subscription
+        // and show the same error as any other failed enable.
+        await unsubscribeFromPush().catch(() => false)
+        setStatus("unsubscribed")
+        setSyncError("failed")
+        return
+      }
       if (!subscription) {
         setStatus("unsubscribed")
         return

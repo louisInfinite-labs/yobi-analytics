@@ -316,29 +316,29 @@ describe("Live Status status and search for the added channels", () => {
   )
 })
 
-describe("Live Status rows of group/staff/official channels cannot become Current Oshi", () => {
-  it("their name area is not an Oshi-switch button", () => {
+describe("Live Status rows of group/staff/official channels stay clickable (they are only excluded from My Oshi Settings)", () => {
+  it("their name area is the same enabled button as an individual row", () => {
     renderList()
 
     for (const id of NON_MEMBER_IDS) {
-      expect(screen.queryByRole("button", { name: `Switch Oshi to ${nameOf(id)}` })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: `Switch Oshi to ${nameOf(id)}` }), id).toBeEnabled()
     }
   })
 
-  it("clicking a non-member row neither switches Oshi nor opens the switch dialog", async () => {
+  it("clicking a non-member row runs the normal current-channel flow, including the switch dialog", async () => {
     const { onSelectCreator } = renderList({ confirmOshiSwitch: true })
     const user = userEvent.setup()
 
-    await user.click(screen.getByText(nameOf("vspo_official"), { selector: ".live-status-member__name" }))
+    await user.click(screen.getByRole("button", { name: `Switch Oshi to ${nameOf("vspo_official")}` }))
 
     expect(onSelectCreator).not.toHaveBeenCalled()
-    expect(screen.queryByText(/Switch your Oshi to/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Switch your Oshi to/)).toBeInTheDocument()
   })
 
-  it("selecting a live non-member's video plays it without any Oshi switch or confirm dialog", async () => {
+  it("selecting a live non-member's video switches the current channel first, exactly like an individual row", async () => {
     const id = toLegacyRosterId(getCreatorById("vspo_official")!)
     const { onSelectCreator, onSelectVideo } = renderList({
-      confirmOshiSwitch: true,
+      confirmOshiSwitch: false,
       statuses: { [id]: { kind: "live", videoId: "v1", title: "VSPO official broadcast" } },
     })
     const user = userEvent.setup()
@@ -346,12 +346,11 @@ describe("Live Status rows of group/staff/official channels cannot become Curren
 
     await user.click(row.querySelector(".live-status-member__status")!)
 
+    expect(onSelectCreator).toHaveBeenCalledWith(id)
     expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "v1", title: "VSPO official broadcast" }, id)
-    expect(onSelectCreator).not.toHaveBeenCalled()
-    expect(screen.queryByText(/Switch your Oshi to/)).not.toBeInTheDocument()
   })
 
-  it("hololive Official uses the verified main channel and is a plain row: live status works, no Oshi switch", async () => {
+  it("hololive Official uses the verified main channel: live status works and its row responds to a click", async () => {
     const official = getCreatorById("hololive_official")!
     const id = toLegacyRosterId(official)
     const { onSelectCreator, onSelectVideo } = renderList({
@@ -365,9 +364,13 @@ describe("Live Status rows of group/staff/official channels cannot become Curren
     expect(row.querySelector(".live-status-member__status")).toHaveTextContent("LIVE")
     await user.click(row.querySelector(".live-status-member__status")!)
 
-    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "vh", title: "hololive official broadcast" }, id)
+    // Same confirm-before-switch flow an individual creator gets; nothing is selected until it is confirmed.
+    expect(screen.getByText(/Switch your Oshi to/)).toBeInTheDocument()
     expect(onSelectCreator).not.toHaveBeenCalled()
-    expect(screen.queryByRole("button", { name: `Switch Oshi to ${official.displayName}` })).not.toBeInTheDocument()
+    expect(onSelectVideo).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: /^Switch$/ }))
+    expect(onSelectCreator).toHaveBeenCalledWith(id)
+    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "vh", title: "hololive official broadcast" }, id)
   })
 
   it("a graduated creator is still an individual creator: clicking her switches Oshi through the normal flow", async () => {

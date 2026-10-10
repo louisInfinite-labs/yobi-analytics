@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { ConfigProvider, Segmented } from "antd"
 import { Search } from "lucide-react"
 import { CreatorStatusList } from "./CreatorStatusList"
-import { isMyOshiEligible, resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
+import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { useCurrentPage } from "../../../app/navigation/useCurrentPage"
 import { useConfirmOshiSwitchPreference } from "../../oshi/hooks/useConfirmOshiSwitchPreference"
 import { useCreatorStatuses } from "../hooks/useCreatorStatuses"
@@ -285,12 +285,13 @@ export function LiveScheduleDock() {
                   // remaining use of it (see this component's own top
                   // docstring: the dock is mounted above every page, not
                   // just Home).
-                  // A group/staff/official channel is never Current Oshi, so Home's
-                  // central player (keyed to the Oshi) has nothing to select it into --
-                  // its stream plays in the modal instead.
-                  const channel = resolveCreatorKey(creatorId)
-                  if (page === "home" && channel && isMyOshiEligible(channel)) {
-                    selectHomeVideo(video, creatorId)
+                  // Every displayed channel (individual, official, group, staff) keeps this action, so on Home
+                  // it is selected into the same canonical player; whether a channel can be saved as an Oshi is a
+                  // separate rule and never decides it. Every video this list offers is a live or upcoming stream, and picking one is not watching it:
+                  // neither branch writes the seen state. Only the player's confirmed PLAYING while live counts
+                  // (see useWatchedDuringLive).
+                  if (page === "home") {
+                    selectHomeVideo(video, creatorId, { countsAsOpened: false })
                   } else {
                     setEmbed(video)
                   }
@@ -302,7 +303,14 @@ export function LiveScheduleDock() {
         </aside>
       </div>
 
-      {embed && <VideoPlayerModal videoId={embed.videoId} title={embed.title} onClose={() => setEmbed(null)} />}
+      {embed && (
+        <VideoPlayerModal
+          videoId={embed.videoId}
+          title={embed.title}
+          onClose={() => setEmbed(null)}
+          isLive={Object.values(statuses).some((status) => status.kind === "live" && status.videoId === embed.videoId)}
+        />
+      )}
     </>
   )
 }

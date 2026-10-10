@@ -342,6 +342,20 @@ def _handle_put_stream_notification_override(event: dict[str, Any]) -> dict[str,
     return {"clientId": client_id, "key": key, "value": raw_override}
 
 
+def _handle_delete_stream_notification_override(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: remove this client's override for one exact stream, so that stream falls back to the creator 全部 / topic reminders.
+
+    Deletes only that stream's own item; it never reads or touches any other setting. Deleting an override that does not exist is a
+    successful no-op (idempotent), like DELETE creator-reminder.
+    """
+    params = _merged_params(event)
+    client_id = heartbeat_api.parse_client_id(params.get("clientId"))
+    key = live_reminder.stream_override_key(params.get("videoId"))
+    _require_client_secret(event, client_id)
+    remote_config_store.delete_remote_config(client_id, key)
+    return {"clientId": client_id, "key": key, "deleted": True}
+
+
 def _handle_post_client_credential(event: dict[str, Any]) -> dict[str, Any]:
     """Issue a new client secret for a clientId that doesn't have one yet (PR #18 CodeRabbit hardening).
 
@@ -438,6 +452,7 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "PUT /clients/{clientId}/creator-reminder/{creatorId}/{scope}": _handle_put_creator_reminder,
     "DELETE /clients/{clientId}/creator-reminder/{creatorId}/{scope}": _handle_delete_creator_reminder,
     "PUT /clients/{clientId}/stream-notification-override/{videoId}": _handle_put_stream_notification_override,
+    "DELETE /clients/{clientId}/stream-notification-override/{videoId}": _handle_delete_stream_notification_override,
     "GET /admin/heartbeat-stats": _handle_get_admin_heartbeat_stats,
 }
 

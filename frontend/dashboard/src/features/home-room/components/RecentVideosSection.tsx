@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import { ConfigProvider, Segmented } from "antd"
 import { ChevronRight } from "lucide-react"
 import { OshiErrorState } from "./OshiErrorState"
@@ -6,10 +6,14 @@ import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { formatCompactCount } from "../../oshi-status/utils/oshiActivity"
+import { markContentSeen, migrateWatchedLiveToSeen } from "../../../shared/newContent/newContentTracking"
+import { useLiveStreams } from "../../../shared/api/hooks/useLiveStreams"
+import { toRecentVideo } from "../hooks/useRecentVideos"
+import { composeLatestLiveShelf } from "../utils/latestLiveShelf"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import type { VideoSortOption } from "../utils/recentVideosSelection"
-import { SPECIAL_VIDEO_FILTERS, SPECIAL_VIDEO_FILTER_LABEL_KEYS, type VideoSectionSelection } from "../model/specialVideoFilters"
-import { topicLabel } from "../model/videoTopicCatalog"
+import { SHORT_VIDEO_FILTER, SPECIAL_VIDEO_FILTERS, SPECIAL_VIDEO_FILTER_LABEL_KEYS, type SpecialVideoFilter, type VideoSectionSelection } from "../model/specialVideoFilters"
+import { buildVideoFilterEntries } from "../model/videoFilterCatalog"
 import {
   VIDEO_CONTENT_TYPES,
   VIDEO_VIEW_WINDOWS,
@@ -63,11 +67,22 @@ function formatCardMeta(video: RecentVideo): string {
  * videoId the API returned (never a substituted placeholder video). */
 function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video: RecentVideo) => void }) {
   const [thumbFailed, setThumbFailed] = useState(false)
+  const [locale] = useLocale()
   const isLiveNow = video.contentFormat === "live_now"
+  const isCurrentStream = isLiveNow || video.contentFormat === "live_upcoming"
   const meta = formatCardMeta(video)
 
   return (
-    <button type="button" className="oshi-video-card" onClick={() => onOpen(video)}>
+    <button
+      type="button"
+      className="oshi-video-card"
+      onClick={() => {
+        // No NEW badge here (Oshi Status owns it), but an open still clears the shared NEW state.
+        // A live/upcoming stream is never NEW and a click is not watching it: only an archive/upload counts as opened.
+        if (!isCurrentStream) markContentSeen(video.videoId)
+        onOpen(video)
+      }}
+    >
       <span className="oshi-video-card__thumbnail">
         {thumbFailed ? (
           <span className="home-placeholder">No thumbnail</span>
@@ -79,7 +94,7 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
             onError={() => setThumbFailed(true)}
           />
         )}
-        {isLiveNow && <span className="oshi-video-card__live-badge">LIVE</span>}
+        {isLiveNow && <span className="oshi-video-card__live-badge">{t(locale, "recentVideos.liveBadge")}</span>}
       </span>
       <span className="oshi-video-card__body">
         <span className="oshi-video-card__title">{video.title}</span>
@@ -452,13 +467,19 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   const [contentType, setContentType] = useState<VideoContentType>("all")
   const topicCatalog = useVideoTopicCatalog(fetchVideoTopics)
 
-  // The 3 special filters always render; backend topics only once GET /topics has actually
+  // The special filters always render; backend topics only once GET /topics has actually
   // succeeded -- never a stale/hardcoded topic list while loading or on a failed fetch (the
   // special filters alone stay usable in both of those states, per the architecture this models).
+  // Short is a content-format filter, placed immediately before the Other topic (at the end when
+  // there is no Other topic yet).
   const tagOptions = useMemo(() => {
-    const special = SPECIAL_VIDEO_FILTERS.map((filter) => ({ value: filter as VideoSectionSelection, label: t(locale, SPECIAL_VIDEO_FILTER_LABEL_KEYS[filter]) }))
-    if (topicCatalog.state.status !== "success") return special
-    return [...special, ...topicCatalog.state.topics.map((topic) => ({ value: topic.id, label: topicLabel(topic, locale) }))]
+    const option = (filter: SpecialVideoFilter) => ({
+      value: filter as VideoSectionSelection,
+      label: t(locale, SPECIAL_VIDEO_FILTER_LABEL_KEYS[filter]),
+    })
+    const special = SPECIAL_VIDEO_FILTERS.map(option)
+    const categories = buildVideoFilterEntries(topicCatalog.state.status === "success" ? topicCatalog.state.topics : null, locale)
+    return [...special, ...categories.map((entry) => ({ value: entry.id as VideoSectionSelection, label: entry.label }))]
   }, [locale, topicCatalog.state])
 
   const canonicalCreatorId = resolveCreatorKey(creatorId)?.creatorId
@@ -467,6 +488,25 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
     [selectedTag, canonicalCreatorId, contentType, sortOption, viewWindow],
   )
   const shelf = useOshiVideos(shelfQuery)
+
+  // 最新直播 = LIVE, then UPCOMING, then archives. The archive endpoint is archive-only by design (liveStatus=archived),
+  // so the creator's current live/upcoming streams come from the canonical GET /live-streams store and are merged in
+  // BEFORE anything is displayed -- never subject to the archive request's limit/offset. ALL is the union of 最新直播 and
+  // 最新影片, so while it shows newest-first livestream content (content type all/live) the current streams lead it too.
+  const { streams } = useLiveStreams()
+  const showsCurrentStreams =
+    selectedTag === "latestLive" || (selectedTag === "all" && sortOption === "newest" && (contentType === "all" || contentType === "live"))
+  const shelfVideos = useMemo(() => {
+    if (!showsCurrentStreams) return shelf.videos
+    const current = canonicalCreatorId ? streams.filter((stream) => stream.creatorId === canonicalCreatorId).map(toRecentVideo) : []
+    return composeLatestLiveShelf(current, shelf.videos)
+  }, [showsCurrentStreams, canonicalCreatorId, streams, shelf.videos])
+
+  // A stream the user watched while it was live is now observed as a completed archive: turn that marker into a
+  // permanent seen entry (never NEW). Only completed archives count -- a live/upcoming row is skipped.
+  useEffect(() => {
+    migrateWatchedLiveToSeen(shelfVideos.filter((video) => video.contentFormat === "live_archive").map((video) => video.videoId))
+  }, [shelfVideos])
 
   // The dropdowns only apply to the topic tags; the period dropdown only to the most-viewed sort.
   const showShelfFilters = !isQuickFilterSelection(selectedTag)
@@ -489,7 +529,7 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
           options={tagOptions}
           trailing={
             <>
-              <ContentTypeDropdown value={contentType} onChange={setContentType} locale={locale} hidden={!showShelfFilters} />
+              <ContentTypeDropdown value={contentType} onChange={setContentType} locale={locale} hidden={!showShelfFilters || selectedTag === SHORT_VIDEO_FILTER} />
               <VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showShelfFilters} />
               {showViewWindow && <ViewWindowDropdown value={viewWindow} onChange={setViewWindow} locale={locale} />}
             </>
@@ -504,7 +544,7 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
           onto the new creator's videos. */}
       <VideoTrack
         key={`${creatorId}:${shelfQuery ? oshiVideosQueryKey(shelfQuery) : selectedTag}`}
-        videos={shelf.videos}
+        videos={shelfVideos}
         emptyLabel={emptyLabel}
         error={shelf.error}
         onOpen={(video) => onSelectVideo({ videoId: video.videoId, title: video.title })}

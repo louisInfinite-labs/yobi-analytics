@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react"
+import { markContentSeen } from "../../../shared/newContent/newContentTracking"
 
 interface SelectedVideo {
   videoId: string
@@ -31,7 +32,11 @@ function subscribe(listener: () => void): () => void {
  * useHomeSelectedVideo's read side (below) drop a stale previous-creator
  * pick on its own once currentOshi has moved on, without this module or any
  * caller needing separate reset bookkeeping. */
-export function selectHomeVideo(video: SelectedVideo, creatorId: string): void {
+export function selectHomeVideo(video: SelectedVideo, creatorId: string, options: { countsAsOpened?: boolean } = {}): void {
+  // Every caller is an explicit user pick (never the automatic default selection), so it clears NEW for that video --
+  // except a live/upcoming stream (`countsAsOpened: false`): clicking one is not watching it, and its later archive
+  // must stay NEW-eligible unless the player confirms PLAYING while it is live (see useWatchedDuringLive).
+  if (options.countsAsOpened !== false) markContentSeen(video.videoId)
   state = { creatorId, video }
   notify()
 }

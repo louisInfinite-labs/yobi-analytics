@@ -5,7 +5,8 @@ import * as useLiveStreamsModule from "../../../shared/api/hooks/useLiveStreams"
 
 vi.mock("../../../shared/api/hooks/useLiveStreams", () => ({ useLiveStreams: vi.fn() }))
 
-const TICK_MS = 30_000
+// The shared minute clock (shared/time/minuteClock.ts) ticks at wall-clock minute boundaries: advancing a full minute always crosses exactly one.
+const TICK_MS = 60_000
 
 /** A real registry creatorId -- toScheduledStream skips anything else. */
 const CREATOR_ID = "aizawa_ema"
@@ -38,14 +39,14 @@ afterEach(() => {
 
 describe("useWeeklySchedule window", () => {
   it("keeps the same weekStart object across a status tick within the same local day", () => {
-    startAt(2026, 8, 23, 10, 0, 0) // Wed 2026-09-23
+    startAt(2026, 8, 23, 10, 0, 10) // Wed 2026-09-23
     const { result } = renderHook(() => useWeeklySchedule())
     const before = result.current.weekStart
 
     tick()
 
-    expect(result.current.now.getMinutes()).toBe(0)
-    expect(result.current.now.getSeconds()).toBe(30)
+    expect(result.current.now.getMinutes()).toBe(1) // the tick lands just after the next minute boundary (10:01:00)
+    expect(result.current.now.getSeconds()).toBe(0)
     expect(result.current.weekStart).toBe(before)
   })
 
@@ -55,7 +56,7 @@ describe("useWeeklySchedule window", () => {
     expect(todayIndex(result.current.days)).toBe(0)
     expect(result.current.weekStart).toEqual(new Date(2026, 8, 23))
 
-    tick() // Thu 00:00:10
+    tick() // Thu 00:00:00 (the minute boundary)
 
     expect(todayIndex(result.current.days)).toBe(0) // today is always day 0, no Sunday-week jump
     expect(result.current.weekStart).toEqual(new Date(2026, 8, 24))

@@ -38,6 +38,7 @@ from zoneinfo import ZoneInfo
 
 from api.holodex_client import holodex_get
 from api.holodex_normalization import normalize_holodex_archived_streams_response, normalize_holodex_live_response
+from api.livestream_classification import classify_unclassified_upcoming
 from tracking.creator_master import (
     Creator,
     is_current_member_eligible,
@@ -53,9 +54,11 @@ from analytics.video_ranking import TOPIC_SCOPE_ALL as VIDEO_RANKING_TOPIC_ALL
 from analytics.video_ranking import VALID_CONTENT_TYPE_SCOPES as VALID_VIDEO_RANKING_CONTENT_TYPES
 from analytics.video_ranking import VALID_METRICS as VALID_VIDEO_RANKING_METRICS
 from analytics.video_ranking import VALID_TOPIC_SCOPES as VALID_VIDEO_RANKING_TOPICS
+from analytics.video_ranking import CONTENT_TYPE_SHORT as VIDEO_RANKING_CONTENT_TYPE_SHORT
 from analytics.video_ranking import rank_video_rows
 from stores.video_ranking_store import S3VideoRankingStore
 from tracking.video_master import VALID_LIVE_STATUSES, Video
+from tracking.video_master import is_known_non_livestream
 from tracking.video_topics import OTHER_TOPIC, classify_video_topic
 from analytics.view_growth_analytics import (
     COLLECTION_START_DATE,
@@ -68,10 +71,12 @@ from analytics.view_growth_analytics import (
 )
 
 if os.environ.get("YOBI_STORAGE_BACKEND") == "dynamodb":
-    from stores.dynamodb_store import get_snapshot, get_video
+    from stores.dynamodb_store import get_snapshot, get_video, get_videos, set_video_classification
 else:
     from stores.snapshot_store import get_snapshot
-    from tracking.video_master import get_video
+    from tracking.video_master import get_video, get_videos
+
+    set_video_classification = None  # the local JSON store has no targeted classification write
 
 # The scheduled collection/ranking pipeline (history_worker.py/
 # ranking_reducer.py) only ever computes/persists results for this time
@@ -280,6 +285,21 @@ def parse_video_ranking_topic(raw: Any) -> str:
     if normalized in VALID_VIDEO_RANKING_TOPICS:
         return normalized
     raise ClientError(f"topic must be one of {sorted(VALID_VIDEO_RANKING_TOPICS)}, got {raw!r}")
+
+
+def parse_exclude_shorts(raw: Any) -> bool:
+    """Validate the optional, additive `excludeShorts` flag of the per-creator video endpoints: absent/empty/"false"
+    (case-insensitive) = off, "true" = drop contentType="short" rows after every other filter. It never changes what
+    contentType means: contentType=all alone still returns every row, and contentType=short with excludeShorts=true is
+    simply empty."""
+    if raw is None or raw == "":
+        return False
+    if not isinstance(raw, str):
+        raise ClientError(f"excludeShorts must be a string, got {raw!r}")
+    normalized = raw.strip().lower()
+    if normalized in {"true", "false"}:
+        return normalized == "true"
+    raise ClientError(f"excludeShorts must be 'true' or 'false', got {raw!r}")
 
 
 def parse_video_ranking_content_type(raw: Any) -> str:
@@ -515,6 +535,7 @@ def get_video_ranking(query: dict[str, Any]) -> dict[str, Any]:
     topic = parse_video_ranking_topic(query.get("topic"))
     content_type = parse_video_ranking_content_type(query.get("contentType"))
     live_status = parse_recent_creator_videos_live_status(query.get("liveStatus"))
+    exclude_shorts = parse_exclude_shorts(query.get("excludeShorts"))
     limit = parse_limit(query.get("limit")) or MAX_LIMIT
     report_dates = _leaderboard_report_dates(query.get("reportDate"))
 
@@ -538,7 +559,9 @@ def get_video_ranking(query: dict[str, Any]) -> dict[str, Any]:
 
     # creator -> topic -> contentType -> liveStatus -> rank -> limit (rank_video_rows filters first, then ranks).
     creator_rows = [row for row in result["videos"] if row.get("creatorId") == creator_id]
-    rows = rank_video_rows(creator_rows, metric=metric, topic=topic, content_type=content_type, live_status=live_status)[:limit]
+    rows = rank_video_rows(
+        creator_rows, metric=metric, topic=topic, content_type=content_type, live_status=live_status, exclude_shorts=exclude_shorts
+    )[:limit]
 
     return {
         "reportDate": result["reportDate"],
@@ -686,6 +709,7 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
     creator_id = parse_creator_id(query.get("creatorId"))
     content_type = parse_video_ranking_content_type(query.get("contentType"))
     live_status = parse_recent_creator_videos_live_status(query.get("liveStatus"))
+    exclude_shorts = parse_exclude_shorts(query.get("excludeShorts"))
     topic = parse_video_ranking_topic(query.get("topic"))
     sort = parse_recent_creator_videos_sort(query.get("sort"))
     limit = parse_recent_creator_videos_limit(query.get("limit"))
@@ -716,6 +740,8 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
         rows = [row for row in rows if row.get("topic") == topic]
     if content_type != VIDEO_RANKING_CONTENT_TYPE_ALL:
         rows = [row for row in rows if row.get("contentType") == content_type]
+    if exclude_shorts:
+        rows = [row for row in rows if row.get("contentType") != VIDEO_RANKING_CONTENT_TYPE_SHORT]
     if live_status != LIVE_STATUS_SCOPE_ALL:
         rows = [row for row in rows if row_matches_live_status(row, live_status)]
     by_video_id = sorted(rows, key=lambda row: row["videoId"])
@@ -1075,6 +1101,56 @@ def _is_within_lookahead(scheduled_start: str | None, *, now: datetime) -> bool:
     return scheduled_at <= now + timedelta(hours=_HOLODEX_MAX_UPCOMING_HOURS)
 
 
+def _persist_inferred_classification(video_id: str, classification: tuple[str, str | None]) -> None:
+    """Write a request-time classification into Video Master -- only while the stored record is still unclassified (the store's own
+    condition), so the canonical stored value is never overwritten and every consumer then agrees. Best effort: never fails a request."""
+    if set_video_classification is None:
+        return
+    try:
+        set_video_classification(video_id, classification[0], classification[1])
+    except Exception as exc:  # noqa: BLE001 -- a failed write only means the next collector pass classifies it instead
+        print(f"Warning: could not store the classification of {video_id!r} ({type(exc).__name__}): {exc}")
+
+
+def _without_known_non_livestreams(streams: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop every stream that is not a livestream: one Video Master classifies as an ordinary upload or a Short (an uploaded MV/Cover
+    Premiere, a Short), or one still UNCLASSIFIED that the YouTube Data API shows to be an upcoming Premiere.
+
+    Holodex lists a YouTube Premiere as an ordinary stream (it carries no field that tells the two apart), so the canonical
+    content classification -- the one stored in Video Master by the collector (collection.youtube_client) and shared with the
+    video shelves -- is joined on videoId here, with ONE batch read for the whole list and no per-stream request.
+    tracking.video_master.is_known_non_livestream is the single rule for a stored classification. Only for an UPCOMING stream with
+    no stored classification, the same collector classifier is asked through api.livestream_classification (and its definitive answer
+    is stored for every other consumer). A stream whose classification is missing, "live" or unreadable is kept, a failed lookup
+    keeps every stream rather than failing the endpoint (availability first; the next call retries), and nothing is ever decided from
+    the title.
+    """
+    if not streams:
+        return streams
+    try:
+        stored = get_videos([stream["videoId"] for stream in streams])
+    except Exception as exc:  # noqa: BLE001 -- any store failure must not take /live-streams down
+        print(f"Warning: Video Master classification lookup failed ({type(exc).__name__}): {exc}; returning streams unfiltered")
+        return streams
+
+    def stored_type(video_id: str) -> str | None:
+        return stored[video_id].content_type if video_id in stored else None
+
+    unclassified_upcoming = [stream["videoId"] for stream in streams if stream.get("status") == "upcoming" and stored_type(stream["videoId"]) is None]
+    inferred = classify_unclassified_upcoming(unclassified_upcoming)
+    for video_id, classification in inferred.items():
+        if video_id in stored:  # a record exists to classify (a not-yet-discovered video has none and is answered per request only)
+            _persist_inferred_classification(video_id, classification)
+
+    def is_premiere_or_video(video_id: str) -> bool:
+        if stored_type(video_id) is not None:
+            return is_known_non_livestream(stored_type(video_id))
+        classification = inferred.get(video_id)
+        return classification is not None and is_known_non_livestream(classification[0])
+
+    return [stream for stream in streams if not is_premiere_or_video(stream["videoId"])]
+
+
 def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     """`GET /live-streams`: current live/upcoming streams for Yobi's supported creators, sourced from Holodex.
 
@@ -1151,7 +1227,7 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
                 "topic": _live_stream_topic(stream.title),
             }
         )
-    return {"streams": streams}
+    return {"streams": _without_known_non_livestreams(streams)}
 
 
 # GET /recent-streams' own limit -- deliberately its own constant, not
@@ -1268,7 +1344,8 @@ def get_recent_streams(query: dict[str, Any]) -> dict[str, Any]:
         for item in archived
         if item.youtube_channel_id == creator.youtube_channel_id
     ]
-    return {"creatorId": creator.creator_id, "streams": streams, "hasMore": len(raw_payload) >= limit}
+    # hasMore stays derived from the RAW Holodex page (above), so dropping a Premiere/Short never ends pagination early.
+    return {"creatorId": creator.creator_id, "streams": _without_known_non_livestreams(streams), "hasMore": len(raw_payload) >= limit}
 
 
 # The daily pipeline finishes around 18:00 JST, so an omitted reportDate would

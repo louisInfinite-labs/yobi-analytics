@@ -126,6 +126,15 @@ export interface StreamNotificationOverride extends LiveReminderSetting {
   creatorId: string
 }
 
+/** Removes this one stream's override, so the stream falls back to the creator 全部 / topic reminders again. Deletes only that stream's own item. */
+export async function deleteStreamNotificationOverride(videoId: string): Promise<void> {
+  const clientId = getOrCreateClientId()
+  await apiRequest(`/clients/${encodeURIComponent(clientId)}/stream-notification-override/${encodeURIComponent(videoId)}`, {
+    method: "DELETE",
+    headers: await clientSecretHeaders(clientId),
+  })
+}
+
 /** Sets this one stream's override (from Schedule/Timeline). It outranks the
  * creator's 全部 and topic reminders for that exact stream only, and never
  * changes them. */

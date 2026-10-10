@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { StreamDetailModal } from "./StreamDetailModal"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { ORGANIZATION_LABELS } from "../../../entities/creator/model/domain"
-import { formatCountdown } from "../../live-status/model/creatorStatusFormat"
+import { formatAbsoluteTime, formatCountdown } from "../../live-status/model/creatorStatusFormat"
+import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import type { ScheduledStream } from "../model/scheduledStream"
 
 const creator = mockCreators.find((candidate) => candidate.kana)!
@@ -54,13 +55,27 @@ describe("StreamDetailModal", () => {
     expect(onSetReminder).toHaveBeenCalledWith(stream)
   })
 
-  it("shows the upcoming countdown using the existing shared formatCountdown implementation (hours + minutes), not a new/duplicated minutes-only format", () => {
+  it("shows the upcoming start the way the user's display setting says, through the shared formatter: countdown mode = the shared formatCountdown (hours + minutes)", () => {
+    window.localStorage.setItem("yobi.upcomingDisplayMode", "countdown")
+    resetAllSharedStateForTests()
     const upcoming: ScheduledStream = { ...stream, status: "upcoming", scheduledStartMs: 90 * 60_000 }
     const now = new Date(0)
     render(<StreamDetailModal stream={upcoming} locale="en" now={now} onClose={() => {}} onOpenStream={() => {}} onSetReminder={() => {}} />)
 
     const expected = formatCountdown(new Date(upcoming.scheduledStartMs).toISOString(), now, "en")
     expect(screen.getByText(expected)).toBeInTheDocument()
+  })
+
+  it.each(["24h", "12h"] as const)("absolute mode shows the clock time in the %s format (the same value the Home dock shows)", (timeFormat) => {
+    window.localStorage.setItem("yobi.upcomingDisplayMode", "absolute")
+    window.localStorage.setItem("yobi.timeFormat", timeFormat)
+    resetAllSharedStateForTests()
+    const upcoming: ScheduledStream = { ...stream, status: "upcoming", scheduledStartMs: Date.UTC(2026, 8, 23, 6, 30) }
+    const now = new Date(Date.UTC(2026, 8, 23, 5, 0))
+    render(<StreamDetailModal stream={upcoming} locale="en" now={now} onClose={() => {}} onOpenStream={() => {}} onSetReminder={() => {}} />)
+
+    expect(screen.getByText(formatAbsoluteTime(new Date(upcoming.scheduledStartMs).toISOString(), timeFormat))).toBeInTheDocument()
+    expect(screen.queryByText(/^In \d+h:\d+m$/)).not.toBeInTheDocument()
   })
 
   it.each([

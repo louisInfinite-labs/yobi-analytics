@@ -1,4 +1,5 @@
 import { render } from "@testing-library/react"
+import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ScheduleGrid } from "./ScheduleGrid"
 import type { ScheduleDay } from "../hooks/useWeeklySchedule"
@@ -79,5 +80,22 @@ describe("ScheduleGrid avatar LIVE badge", () => {
     const soon = { ...makeStream("a", "upcoming"), scheduledStartMs: new Date(2026, 8, 21, 22, 40).getTime() }
     const { container } = renderGrid(makeDays({ 45: [soon] }))
     expect(container.querySelector(".stream-avatar-live-badge")).toBeNull()
+  })
+
+  it("the hourly time labels follow the global 12h/24h setting (the same clock format Home shows)", () => {
+    const hourLabels = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll(".time-label"))
+        .map((node) => node.textContent)
+        .filter(Boolean)
+
+    const h24 = renderGrid(makeDays({})).container
+    expect([hourLabels(h24)[0], hourLabels(h24)[13], hourLabels(h24)[23]]).toEqual(["00:00", "13:00", "23:00"])
+
+    window.localStorage.setItem("yobi.timeFormat", "12h")
+    resetAllSharedStateForTests()
+    const h12 = renderGrid(makeDays({})).container
+    const labels = hourLabels(h12)
+    expect(labels).toHaveLength(24)
+    expect([labels[0], labels[1], labels[12], labels[13], labels[23]]).toEqual(["12:00 AM", "1:00 AM", "12:00 PM", "1:00 PM", "11:00 PM"])
   })
 })

@@ -22,6 +22,8 @@ export { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY }
 export interface NotificationCreator {
   creatorId: string
   displayName: string
+  /** The canonical registry's channel icon URL (backend Creator Master `avatarUrl`); null when the creator has none. */
+  avatarUrl: string | null
   organization: "hololive" | "vspo"
   youtubeChannelId: string
   active: boolean
@@ -43,6 +45,7 @@ function toNotificationCreator(creator: CanonicalCreator): NotificationCreator {
   return {
     creatorId: creator.creatorId,
     displayName: creator.displayName,
+    avatarUrl: creator.avatarUrl,
     organization: creator.organization,
     youtubeChannelId: creator.youtubeChannelId,
     active: creator.active,

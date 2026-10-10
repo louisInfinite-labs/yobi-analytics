@@ -639,6 +639,42 @@ def test_put_notification_preference_persists_it_with_a_valid_client_secret(monk
     assert stored["value"]["enabled"] is True
 
 
+def test_put_notification_preference_persists_the_short_card_members_unchanged(monkeypatch, client_secret):
+    stored = {}
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: stored.update(record))
+    body = {**_preference_body(), "newVideoShortCreatorOverride": {"aizawa_ema": True, "shirakami_fubuki": False}}
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/notification-preference",
+            path={"clientId": "c1"},
+            body=json.dumps(body),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert stored["value"]["newVideoShortCreatorOverride"] == {"aizawa_ema": True, "shirakami_fubuki": False}
+    assert "newVideoTopicOverride" not in stored["value"] and "newVideoShortEnabled" not in stored["value"]
+
+
+def test_put_notification_preference_rejects_a_non_boolean_short_member(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/notification-preference",
+            path={"clientId": "c1"},
+            body=json.dumps({**_preference_body(), "newVideoShortCreatorOverride": {"aizawa_ema": "yes"}}),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 400
+
+
 def test_put_notification_preference_without_a_client_secret_returns_403(monkeypatch, client_secret):
     def _boom(record):
         raise AssertionError("should never persist a preference without a valid client secret")
@@ -854,6 +890,37 @@ def test_put_stream_notification_override_rejects_a_missing_creator_id_and_an_am
 
     assert _put("v1", {"notifyAtStart": True, "advanceReminder": "1hour"})["statusCode"] == 400
     assert _put("a#b", {"creatorId": "aizawa_ema", "notifyAtStart": True, "advanceReminder": None})["statusCode"] == 400
+
+
+def _delete_stream_override(video_id, secret, *, with_secret=True):
+    return lambda_handler(
+        _event(
+            "DELETE /clients/{clientId}/stream-notification-override/{videoId}",
+            path={"clientId": "c1", "videoId": video_id},
+            headers={"x-client-secret": secret} if with_secret else {},
+        ),
+        None,
+    )
+
+
+def test_delete_stream_notification_override_deletes_only_that_streams_item(monkeypatch, client_secret):
+    deleted = []
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", lambda client_id, key: deleted.append((client_id, key)))
+    for other in ("put_remote_config", "get_remote_config", "list_remote_config", "list_remote_config_by_prefix"):
+        monkeypatch.setattr(remote_config_store, other, _boom)
+
+    response = _delete_stream_override("v1", client_secret)
+
+    assert response["statusCode"] == 200
+    assert json.loads(response["body"]) == {"clientId": "c1", "key": "streamOverride#v1", "deleted": True}
+    assert deleted == [("c1", "streamOverride#v1")]
+
+
+def test_delete_stream_notification_override_requires_the_client_secret_and_a_clean_video_id(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", _boom)
+
+    assert _delete_stream_override("v1", client_secret, with_secret=False)["statusCode"] == 403
+    assert _delete_stream_override("a#b", client_secret)["statusCode"] == 400
 
 
 # --- GET /admin/heartbeat-stats (admin-protected) ---

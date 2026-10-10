@@ -57,6 +57,23 @@ def test_recorded_event_is_queryable_by_its_discovery_date(notification_events_t
     assert events[0]["discoveredAt"] == "2026-09-03T18:00:00+09:00"
 
 
+def test_the_event_marks_a_short_so_the_dispatcher_can_deliver_it_only_to_clients_that_enabled_shorts(notification_events_table):
+    record_new_video_events(
+        [
+            _video(video_id="ordinary", topic="mv", content_type="upload"),
+            _video(video_id="short", topic="mv", content_type="short"),
+            _video(video_id="unclassified"),
+        ]
+    )
+
+    events = {event["videoId"]: event for event in list_events_for_date("2026-09-03")}
+
+    assert "contentType" not in events["ordinary"]
+    assert events["short"]["contentType"] == "short"
+    assert "contentType" not in events["unclassified"]
+    assert all("topic" not in event for event in events.values())  # Short is a format; no topic is stored on the event
+
+
 def test_list_events_for_date_only_returns_that_dates_events(notification_events_table):
     record_new_video_events([_video(video_id="v1", discovered_at="2026-09-02T18:00:00+09:00")])
     record_new_video_events([_video(video_id="v2", discovered_at="2026-09-03T18:00:00+09:00")])

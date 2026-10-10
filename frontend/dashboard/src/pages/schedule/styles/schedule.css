@@ -708,3 +708,96 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   display: flex;
   justify-content: flex-end;
 }
+
+/* ============ Creator filter (multi-select) ============ */
+
+.schedule-creator-filter {
+  min-width: 220px;
+  max-width: 340px;
+  padding-inline: 12px 6px;
+}
+
+.schedule-creator-filter[data-active="true"] {
+  border-color: #4a79b5;
+}
+
+.schedule-creator-filter__select.ant-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #e8eef7;
+}
+
+.schedule-creator-filter__select.ant-select .ant-select-selector {
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+}
+
+.schedule-creator-filter__select.ant-select .ant-select-selection-placeholder,
+.schedule-creator-filter__select.ant-select .ant-select-selection-search-input {
+  color: #9db0c9;
+}
+
+.schedule-creator-filter__select.ant-select .ant-select-selection-item {
+  background: #17304f;
+  color: #e8eef7;
+  border-radius: 6px;
+}
+
+.schedule-creator-filter__select.ant-select .ant-select-clear {
+  background: #0c1728;
+  color: #9db0c9;
+}
+
+.schedule-creator-filter__dropdown.ant-select-dropdown {
+  background: #0c1728;
+  border: 1px solid #29405d;
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.schedule-creator-filter__dropdown .ant-select-item-group {
+  color: #9db0c9;
+}
+
+.schedule-creator-filter__dropdown .ant-select-item-option {
+  color: #e8eef7;
+  border-radius: 6px;
+}
+
+.schedule-creator-filter__dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: rgba(157, 176, 201, 0.12);
+}
+
+.schedule-creator-filter__dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: rgba(74, 121, 181, 0.28);
+  font-weight: 600;
+}
+
+.schedule-creator-filter__dropdown .ant-select-item-empty {
+  color: #9db0c9;
+}
+
+.schedule-creator-filter__footer {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 4px 2px;
+  border-top: 1px solid #203650;
+  margin-top: 6px;
+}
+
+.schedule-creator-filter__action {
+  border: 1px solid #29405d;
+  background: transparent;
+  color: #e8eef7;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.schedule-creator-filter__action:hover,
+.schedule-creator-filter__action:focus-visible {
+  border-color: #4a79b5;
+}

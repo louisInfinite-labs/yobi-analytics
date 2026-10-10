@@ -464,6 +464,17 @@ def _build_scheduler_updates(rows: list[HistoryRow], *, video_master_store: Vide
             new_view_count=row.view_count,
             observed_at=row.observed_at,
         )
+        # A statistics observation can only ever say "upload" for a Short (YouTube exposes no Shorts flag there), so an
+        # existing "short" is sticky: it is decided from the Shorts shelf at discovery/backfill and never downgraded here.
+        observed_content_type, observed_live_status = row.content_type, row.live_status
+        if existing.content_type == "short" and row.content_type == "upload":
+            observed_content_type = "short"
+        elif existing.content_type == "upload" and row.content_type == "live" and row.live_status == "live":
+            # A Premiere classified as an upload while it was still UPCOMING (no duration, see collection.youtube_client.is_upcoming_premiere)
+            # reports as a running broadcast once it starts, and nothing verified tells a running Premiere from a running stream. The content
+            # FORMAT decided before the start is sticky: broadcast status changes, the format does not. Only a running observation is held;
+            # an upcoming or ended one is a fresh, definitive reading and still replaces the stored value.
+            observed_content_type, observed_live_status = "upload", None
         updates.append(
             replace(
                 existing,
@@ -479,11 +490,11 @@ def _build_scheduler_updates(rows: list[HistoryRow], *, video_master_store: Vide
                 # this field existed (a shard_exists retry) -- preserve
                 # whatever Video Master already has rather than clobbering a
                 # real, previously-observed classification with an unknown.
-                content_type=row.content_type if row.content_type is not None else existing.content_type,
+                content_type=observed_content_type if observed_content_type is not None else existing.content_type,
                 # live_status stays coupled to content_type: a row with a known content type owns BOTH,
                 # even a None live_status (a plain upload that used to be an upcoming/live stream must
                 # not keep the stale status and fall out of the "archived" scope).
-                live_status=row.live_status if row.content_type is not None else existing.live_status,
+                live_status=observed_live_status if observed_content_type is not None else existing.live_status,
             )
         )
     return updates

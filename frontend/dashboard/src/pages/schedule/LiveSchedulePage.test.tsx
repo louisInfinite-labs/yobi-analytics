@@ -27,12 +27,12 @@ describe("LiveSchedulePage", () => {
     expect(container.querySelectorAll(".day-column")).toHaveLength(7)
   })
 
-  it("renders the week-navigation and filter toolbar controls as disabled -- this phase has no history/beyond-7-day data to page into", () => {
+  it("keeps the week-navigation controls disabled (no history/beyond-7-day data to page into) while the creator filter is a live control", () => {
     render(<LiveSchedulePage />)
 
     expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled()
-    expect(screen.getByText("Filter").closest("button")).toBeDisabled()
+    expect(screen.getByRole("combobox", { name: "Filter by creator" })).toBeEnabled()
     expect(screen.queryByText("JST")).not.toBeInTheDocument()
   })
 })

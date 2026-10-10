@@ -36,6 +36,21 @@ describe("fetchOshiVideos", () => {
     ])
   })
 
+  it("maps the backend's contentType=short to the shorts format, and never guesses it from the title", async () => {
+    vi.mocked(apiRequest).mockResolvedValue({
+      videos: [
+        { videoId: "sh1", title: "plain title", publishedAt: "2026-09-02T00:00:00Z", contentType: "short", currentViewCount: 10 },
+        { videoId: "u2", title: "talk #shorts", publishedAt: "2026-09-01T00:00:00Z", contentType: "upload", currentViewCount: 5 },
+      ],
+      hasMore: false,
+    })
+
+    const page = await fetchOshiVideos({ ...query, topic: "all", contentType: "short" })
+
+    expect(vi.mocked(apiRequest).mock.calls[0][0]).toContain("contentType=short")
+    expect(page.videos.map((video) => video.contentFormat)).toEqual(["shorts", "normal_video"])
+  })
+
   it("reads the ranking endpoint as one bounded, unpaged response in the server's order", async () => {
     vi.mocked(apiRequest).mockResolvedValue({
       rows: [

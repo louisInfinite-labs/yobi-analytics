@@ -464,6 +464,24 @@ def test_content_type_is_serialized_and_deserialized(tmp_path):
     assert video.topic == "chatting"
 
 
+def test_a_short_content_type_round_trips_with_no_live_status_and_counts_as_classified(tmp_path):
+    """B18: "short" is a first-class content type (a YouTube Short from the channel's Shorts shelf)."""
+    from tracking.video_master import is_classification_incomplete
+
+    path = tmp_path / "video_master.json"
+    upsert_videos(
+        [Video(video_id="s1", creator_id="c1", title="A", published_at="2026-08-20T00:00:00Z", topic="mv", content_type="short")],
+        path,
+    )
+
+    raw = json.loads(path.read_text(encoding="utf-8"))[0]
+    assert raw["contentType"] == "short" and "liveStatus" not in raw
+    [video] = load_videos(path)
+    assert (video.content_type, video.live_status, video.topic) == ("short", None, "mv")
+    # Already decided: the classification catch-up and backfill must never re-observe it.
+    assert is_classification_incomplete("short", None) is False
+
+
 def test_old_record_without_content_type_stays_valid_and_keeps_its_shape(tmp_path):
     record = {"videoId": "v1", "creatorId": "c1", "title": "A", "publishedAt": "2026-08-20T00:00:00Z"}
     path = _video_json(tmp_path, [record])

@@ -1748,6 +1748,7 @@
   color: var(--notification-text-secondary);
   font-size: 16px;
   font-weight: 700;
+  overflow: hidden;
 }
 
 .notification-member-preview__name {
@@ -1894,6 +1895,17 @@
   color: var(--drawer-text-tertiary);
 }
 
+.topic-creator-drawer__save-error {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, #f87171 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, #f87171 12%, transparent);
+  color: #fecaca;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .topic-creator-drawer__search.ant-input-affix-wrapper {
   width: 100%;
   margin-bottom: var(--space-4);
@@ -2038,19 +2050,11 @@
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 
-.topic-creator-drawer__row:hover {
-  border-left-color: var(--creator-accent);
-  background: color-mix(in srgb, var(--creator-accent) 11%, transparent);
-}
-
+/* No mouse-hover background (or border) on a creator row: only the SELECTED state below tints it, and it looks the
+   same whether or not the pointer is over it. */
 .topic-creator-drawer__row:has(.ant-switch-checked) {
   border-left-color: var(--drawer-accent);
   background: color-mix(in srgb, var(--drawer-accent) 9%, transparent);
-}
-
-.topic-creator-drawer__row:has(.ant-switch-checked):hover {
-  border-left-color: var(--creator-accent);
-  background: color-mix(in srgb, var(--creator-accent) 11%, transparent);
 }
 
 .topic-creator-drawer__avatar {
@@ -2066,7 +2070,17 @@
   font-size: 12px;
   font-weight: 600;
   flex-shrink: 0;
+  overflow: hidden;
   transition: border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+/* The shared CreatorAvatarImage's channel icon fills its circular frame (the frame is a fixed size, so no layout shift). */
+.creator-avatar-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .topic-creator-drawer__row:hover .topic-creator-drawer__avatar {

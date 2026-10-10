@@ -69,6 +69,17 @@ def _content_type(path: Path) -> str:
     return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
+def _markdown_body(path: Path) -> bytes:
+    """The bytes uploaded for a Markdown page: UTF-8 with LF line endings only.
+
+    A Windows checkout (git core.autocrlf=true) holds these files with CRLF, and uploading the
+    raw bytes put CRLF into production (V1 localhost validation, 2026-10-09). CRLF and bare CR
+    are both normalized to LF here so the published object never depends on the local checkout.
+    """
+    text = path.read_bytes().decode("utf-8")
+    return text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+
+
 def _read_local_manifest(content_dir: Path) -> dict[str, Any]:
     return LocalAboutContentStore(content_dir).read_manifest()
 
@@ -175,7 +186,7 @@ def publish(client: Any, bucket: str, *, content_dir: Path = CONTENT_DIR, dry_ru
                 client.put_object(
                     Bucket=bucket,
                     Key=f"{S3AboutContentStore.PREFIX}/{relative_file}",
-                    Body=path.read_bytes(),
+                    Body=_markdown_body(path),
                     ContentType=_content_type(path),
                 )
             except Exception as exc:  # noqa: BLE001 - re-raised as AboutPublishError below
@@ -221,7 +232,7 @@ def main() -> None:
         print(f"Validated OK. Would publish {len(report['markdownFiles'])} Markdown object(s), then manifest.json LAST, to s3://{bucket}/{S3AboutContentStore.PREFIX}/:")
         for relative_file in report["markdownFiles"]:
             path = CONTENT_DIR / relative_file
-            print(f"  {S3AboutContentStore.PREFIX}/{relative_file}  ({_content_type(path)}, {path.stat().st_size} bytes)")
+            print(f"  {S3AboutContentStore.PREFIX}/{relative_file}  ({_content_type(path)}, {len(_markdown_body(path))} bytes)")
         manifest_path = CONTENT_DIR / "manifest.json"
         print(
             f"  {S3AboutContentStore.MANIFEST_KEY}  (application/json, {manifest_path.stat().st_size} bytes)  "

@@ -13,9 +13,13 @@
 
 .about-content {
   max-width: 720px;
+  /* Long unbroken strings (URLs, English compounds) wrap instead of widening the page. */
+  overflow-wrap: break-word;
 }
 
-.about-content h1 {
+/* Markdown `#` only (a direct child). The page title h1 lives inside .settings-page-header and keeps the
+   Settings title style (.settings-page-title: 28px / 700 / 1.25). */
+.about-content > h1 {
   margin: 0 0 var(--space-3);
   color: #f3eff5;
   font-size: 24px;
@@ -31,7 +35,9 @@
   line-height: 1.4;
 }
 
-.about-content h2:first-of-type {
+/* Only an H2 that directly follows the page header starts at the body's normal start position. The
+   first H2 of a page that opens with an intro paragraph (e.g. Acknowledgements) keeps its section gap. */
+.about-content > .settings-page-header + h2 {
   margin-top: 0;
 }
 
@@ -40,20 +46,29 @@
   color: #f3eff5;
   font-size: 16px;
   font-weight: 700;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .about-content p {
   margin: 0 0 var(--space-3);
   color: #aaa3b2;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.75;
 }
 
+/* The app's global reset (index.css) sets `ul { list-style: none }`; the article needs visible markers. */
 .about-content ul,
 .about-content ol {
   margin: 0 0 var(--space-3);
   padding-left: var(--space-5);
+}
+
+.about-content ul {
+  list-style: disc;
+}
+
+.about-content ol {
+  list-style: decimal;
 }
 
 .about-content li {
@@ -70,6 +85,8 @@
 
 .about-content a {
   color: var(--theme-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .about-content a:hover {

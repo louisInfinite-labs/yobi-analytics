@@ -8,6 +8,7 @@ import { MainNavbar } from "./navigation/MainNavbar"
 import { SettingsPage } from "../pages/settings/SettingsPage"
 import { useCurrentPage } from "./navigation/useCurrentPage"
 import { MemberThemeProvider } from "../shared/theme/MemberThemeProvider"
+import { useRetiredTopicResync } from "../features/notifications/hooks/useRetiredTopicResync"
 
 /** Reachable only via `?admin` on the Dashboard's own URL — see AdminPanel's
  * own docstring for why this isn't a normal, linked route. Deliberately not
@@ -26,6 +27,7 @@ function isAdminRoute(): boolean {
  * of the normal MainNavbar-driven nav. */
 function App() {
   const [page] = useCurrentPage()
+  useRetiredTopicResync()
   if (isAdminRoute()) {
     return (
       <MemberThemeProvider>

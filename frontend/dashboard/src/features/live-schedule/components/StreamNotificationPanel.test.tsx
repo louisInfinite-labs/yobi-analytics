@@ -11,6 +11,7 @@ vi.mock("../../notifications/api/liveReminderApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../notifications/api/liveReminderApi")>()),
   fetchReminderSettings: vi.fn(),
   saveStreamNotificationOverride: vi.fn(),
+  deleteStreamNotificationOverride: vi.fn(),
 }))
 
 const creator = getCreatorById("aizawa_ema")!
@@ -49,6 +50,7 @@ beforeEach(() => {
   // Call counts persist across tests unless cleared (the mocks are module-level).
   vi.mocked(liveReminderApi.fetchReminderSettings).mockClear()
   vi.mocked(liveReminderApi.saveStreamNotificationOverride).mockClear()
+  vi.mocked(liveReminderApi.deleteStreamNotificationOverride).mockReset().mockResolvedValue(undefined)
   mockSettings()
   vi.mocked(liveReminderApi.saveStreamNotificationOverride).mockResolvedValue(undefined)
 })
@@ -67,13 +69,14 @@ describe("StreamNotificationPanel", () => {
     ).toBeInTheDocument()
   })
 
-  it("the timing choices come from the existing shared REMINDER_TIME_VALUES source (exactly those 5, in that order, no unset or member_choice option)", async () => {
+  it("the timing choices are the existing shared REMINDER_TIME_VALUES (those 5, in that order) followed by ONE explicit per-stream OFF", async () => {
     render(<StreamNotificationPanel stream={stream} onClose={() => {}} />)
     const radios = await screen.findAllByRole("radio")
-    expect(radios).toHaveLength(REMINDER_TIME_VALUES.length)
+    expect(radios).toHaveLength(REMINDER_TIME_VALUES.length + 1)
     REMINDER_TIME_VALUES.forEach((value, index) => {
       expect(radios[index]).toBe(screen.getByRole("radio", { name: LABEL_FOR[value] }))
     })
+    expect(radios[REMINDER_TIME_VALUES.length]).toBe(screen.getByRole("radio", { name: "No reminder for this stream" }))
   })
 
   describe("a stream with no reminder at all", () => {
@@ -194,5 +197,80 @@ describe("StreamNotificationPanel", () => {
     rerender(<StreamNotificationPanel stream={otherStream} onClose={() => {}} />)
 
     await waitFor(() => expect(screen.getByRole("radio", { name: "30 minutes before" })).toBeChecked())
+  })
+
+  describe("per-stream OFF and removing the override", () => {
+    const own = (advanceReminder: "1hour" | null, notifyAtStart = true) => ({ creatorId: "aizawa_ema", notifyAtStart, advanceReminder })
+
+    it("saving 'No reminder for this stream' stores an explicit OFF override that replaces the creator's 30min 全部 setting for this stream only", async () => {
+      mockSettings({ creatorAll: { aizawa_ema: setting("30min") } })
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      const { rerender } = render(<StreamNotificationPanel stream={stream} onClose={() => {}} />)
+      await waitFor(() => expect(screen.getByRole("radio", { name: "30 minutes before" })).toBeChecked())
+
+      await user.click(screen.getByRole("radio", { name: "No reminder for this stream" }))
+      await user.click(screen.getByRole("button", { name: /Save/ }))
+
+      await waitFor(() =>
+        expect(liveReminderApi.saveStreamNotificationOverride).toHaveBeenCalledWith("v1", { creatorId: "aizawa_ema", notifyAtStart: false, advanceReminder: null }),
+      )
+      rerender(<StreamNotificationPanel stream={null} onClose={() => {}} />)
+      rerender(<StreamNotificationPanel stream={stream} onClose={() => {}} />)
+      await waitFor(() => expect(screen.getByRole("radio", { name: "No reminder for this stream" })).toBeChecked())
+      rerender(<StreamNotificationPanel stream={null} onClose={() => {}} />)
+      rerender(<StreamNotificationPanel stream={otherStream} onClose={() => {}} />)
+      await waitFor(() => expect(screen.getByRole("radio", { name: "30 minutes before" })).toBeChecked())
+    })
+
+    it("an already-stored OFF override opens with 'No reminder for this stream' selected, not a time", async () => {
+      mockSettings({ creatorAll: { aizawa_ema: setting("30min") }, streamOverrides: { v1: own(null, false) } })
+      render(<StreamNotificationPanel stream={stream} onClose={() => {}} />)
+
+      await waitFor(() => expect(screen.getByRole("radio", { name: "No reminder for this stream" })).toBeChecked())
+      expect(screen.getByRole("radio", { name: "At start" })).not.toBeChecked()
+    })
+
+    it("a stream with its own override shows 'Remove', which deletes only that override on the backend and falls back to the creator setting", async () => {
+      mockSettings({ creatorAll: { aizawa_ema: setting("30min") }, streamOverrides: { v1: own("1hour") } })
+      const onClose = vi.fn()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      const { rerender } = render(<StreamNotificationPanel stream={stream} onClose={onClose} />)
+      await waitFor(() => expect(screen.getByRole("radio", { name: "1 hour before" })).toBeChecked())
+
+      await user.click(screen.getByRole("button", { name: "Remove (use creator settings)" }))
+
+      await waitFor(() => expect(liveReminderApi.deleteStreamNotificationOverride).toHaveBeenCalledWith("v1"))
+      expect(liveReminderApi.deleteStreamNotificationOverride).toHaveBeenCalledTimes(1)
+      await waitFor(() => expect(onClose).toHaveBeenCalled())
+      expect(liveReminderApi.saveStreamNotificationOverride).not.toHaveBeenCalled()
+      rerender(<StreamNotificationPanel stream={null} onClose={() => {}} />)
+      rerender(<StreamNotificationPanel stream={stream} onClose={() => {}} />)
+      await waitFor(() => expect(screen.getByRole("radio", { name: "30 minutes before" })).toBeChecked())
+      expect(screen.queryByRole("button", { name: "Remove (use creator settings)" })).not.toBeInTheDocument()
+    })
+
+    it("offers no Remove when the stream has no override of its own", async () => {
+      mockSettings({ creatorAll: { aizawa_ema: setting("30min") } })
+      render(<StreamNotificationPanel stream={stream} onClose={() => {}} />)
+      await waitFor(() => expect(screen.getByRole("radio", { name: "30 minutes before" })).toBeChecked())
+
+      expect(screen.queryByRole("button", { name: "Remove (use creator settings)" })).not.toBeInTheDocument()
+    })
+
+    it("a failed Remove shows the error, keeps the drawer open and does NOT pretend the override is gone", async () => {
+      mockSettings({ creatorAll: { aizawa_ema: setting("30min") }, streamOverrides: { v1: own("1hour") } })
+      vi.mocked(liveReminderApi.deleteStreamNotificationOverride).mockRejectedValue(new Error("500"))
+      const onClose = vi.fn()
+      const user = userEvent.setup({ pointerEventsCheck: 0 })
+      render(<StreamNotificationPanel stream={stream} onClose={onClose} />)
+      await waitFor(() => expect(screen.getByRole("radio", { name: "1 hour before" })).toBeChecked())
+
+      await user.click(screen.getByRole("button", { name: "Remove (use creator settings)" }))
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't save this reminder. Please try again.")
+      expect(onClose).not.toHaveBeenCalled()
+      expect(screen.getByRole("radio", { name: "1 hour before" })).toBeChecked()
+      expect(screen.getByRole("button", { name: "Remove (use creator settings)" })).toBeInTheDocument()
+    })
   })
 })

@@ -5,6 +5,8 @@ import { OshiStatusPanel } from "./OshiStatusPanel"
 import * as useLastVisit from "../hooks/useLastVisit"
 import { fetchOshiStatus, type OshiStatusData, type OshiStatusRecentItem } from "../data/oshiStatus"
 import { ApiError } from "../../../shared/api/apiClient"
+import { startOfLocalDay } from "../../../shared/newContent/newContentTracking"
+import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 
 vi.mock("../hooks/useLastVisit", async () => {
   const actual = await vi.importActual<typeof import("../hooks/useLastVisit")>("../hooks/useLastVisit")
@@ -14,14 +16,18 @@ vi.mock("../data/oshiStatus", () => ({ fetchOshiStatus: vi.fn() }))
 
 const fetchMock = vi.mocked(fetchOshiStatus)
 const PREVIOUS_VISIT = new Date("2026-09-05T00:00:00+09:00")
-const now = new Date("2026-09-10T12:00:00+09:00")
+// Local-time constructors on purpose: NEW is judged against the browser's own local midnight, so these
+// fixtures must mean the same thing whatever time zone the tests run in.
+const now = new Date(2026, 8, 10, 12, 0, 0)
+const BASELINE_KEY = "yobi.newContent.trackingBaselineAt"
+const SEEN_KEY = "yobi.newContent.seenVideoIds"
 
 const seenItem: OshiStatusRecentItem = {
   videoId: "seen_video_1",
   kind: "upload",
   title: "Seen upload",
   thumbnailUrl: "https://img.youtube.com/vi/seen_video_1/hqdefault.jpg",
-  publishedAt: "2026-09-01T12:00:00+09:00",
+  publishedAt: new Date(2026, 8, 1, 12, 0, 0).toISOString(),
   currentViewCount: 100,
 }
 const unseenItem: OshiStatusRecentItem = {
@@ -29,7 +35,7 @@ const unseenItem: OshiStatusRecentItem = {
   videoId: "unseen_video_1",
   title: "Unseen upload",
   thumbnailUrl: null,
-  publishedAt: "2026-09-10T00:00:00+09:00",
+  publishedAt: new Date(2026, 8, 10, 9, 0, 0).toISOString(),
 }
 
 function status(overrides: Partial<OshiStatusData> = {}): OshiStatusData {
@@ -53,7 +59,7 @@ function renderPanel(creatorId = "ch_aizawa_ema", onSelectVideo = vi.fn()) {
     <OshiStatusPanel creatorId={id} status={{ kind: "offline" }} now={now} onSelectVideo={onSelectVideo} nowPlayingTitle={null} />
   )
   const view = render(ui(creatorId))
-  return { onSelectVideo, switchCreator: (id: string) => view.rerender(ui(id)) }
+  return { onSelectVideo, unmount: view.unmount, switchCreator: (id: string) => view.rerender(ui(id)) }
 }
 
 /** The label/value pairs of one panel section, e.g. section("This week"). */
@@ -70,6 +76,9 @@ beforeEach(() => {
   fetchMock.mockReset()
   fetchMock.mockResolvedValue(status())
   vi.mocked(useLastVisit.usePreviousVisit).mockReturnValue(PREVIOUS_VISIT)
+  // Tracking began (first use) on 09-10, so the baseline is that day's local 00:00.
+  localStorage.setItem(BASELINE_KEY, startOfLocalDay(now).toISOString())
+  resetAllSharedStateForTests()
 })
 
 describe("OshiStatusPanel: backend request", () => {
@@ -100,7 +109,7 @@ describe("OshiStatusPanel: backend request", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith("gawr_gura", PREVIOUS_VISIT))
     expect(screen.queryByText("Unseen upload")).not.toBeInTheDocument()
     expect(screen.queryByText("123.5K subscribers")).not.toBeInTheDocument()
-    expect(metrics("This week")).toEqual({ "View growth": "—", Streams: "—", Uploads: "—" })
+    expect(metrics("This week")).toEqual({ Streams: "—", Uploads: "—" })
   })
 
   it("requests nothing for a creator with no canonical id and shows the empty states", async () => {
@@ -135,19 +144,47 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
     expect(since.Streams).toBe("1")
   })
 
-  it("This week shows the backend's new uploads/streams and the 7-day channel view growth", async () => {
+  it("This week shows only the backend's new uploads and streams", async () => {
     renderPanel()
 
     await screen.findByText("Unseen upload")
-    expect(metrics("This week")).toEqual({ "View growth": "12.3K", Streams: "3", Uploads: "2" })
+    expect(metrics("This week")).toEqual({ Streams: "3", Uploads: "2" })
+  })
+
+  it("shows neither view-growth metric (this week, nor since the last visit) even though the backend still sends it", async () => {
+    renderPanel()
+
+    await screen.findByText("Unseen upload")
+    expect(metrics("This week")).not.toHaveProperty("View growth")
+    expect(metrics("Since your last visit")).not.toHaveProperty("View growth")
+    expect(screen.queryByText("View growth")).toBeNull()
+    expect(screen.queryByText("12.3K")).toBeNull() // the 7-day growth value that used to be shown
+  })
+
+  it("closes the freed space: each metrics row is a two-column grid with exactly its two metrics, no blank card", async () => {
+    renderPanel()
+
+    await screen.findByText("Unseen upload")
+    for (const row of Array.from(document.querySelectorAll(".oshi-status__metrics"))) {
+      expect(row.querySelectorAll(".oshi-status__metric")).toHaveLength(2)
+      expect(Array.from(row.querySelectorAll(".oshi-status__metric")).every((metric) => metric.textContent?.trim())).toBe(true)
+    }
+  })
+
+  it("keeps the other this-week and since-last-visit metrics (uploads, streams) in place", async () => {
+    renderPanel()
+
+    await screen.findByText("Unseen upload")
+    expect(Object.keys(metrics("This week")).sort()).toEqual(["Streams", "Uploads"])
+    expect(Object.keys(metrics("Since your last visit")).sort()).toEqual(["Streams", "Uploads"])
   })
 
   it("shows placeholders, never a fabricated 0, while the data is not available", () => {
     fetchMock.mockImplementation(() => new Promise(() => {}))
     renderPanel()
 
-    expect(metrics("Since your last visit")).toEqual({ Uploads: "—", Streams: "—", "View growth": "—" })
-    expect(metrics("This week")).toEqual({ "View growth": "—", Streams: "—", Uploads: "—" })
+    expect(metrics("Since your last visit")).toEqual({ Uploads: "—", Streams: "—" })
+    expect(metrics("This week")).toEqual({ Streams: "—", Uploads: "—" })
   })
 
   it("a failed request shows the normal error state with its code and the placeholders, never old or mock data", async () => {
@@ -157,7 +194,7 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
     const alert = await screen.findByRole("alert")
     expect(alert).toHaveTextContent("(Code: 503)")
     expect(screen.queryByText("No recent activity")).toBeNull() // the empty text is for a valid empty result only
-    expect(metrics("This week")).toEqual({ "View growth": "—", Streams: "—", Uploads: "—" })
+    expect(metrics("This week")).toEqual({ Streams: "—", Uploads: "—" })
     expect(document.querySelector(".oshi-status__subscriber-count")).toBeNull()
     expect(document.querySelector(".oshi-status__recent-row")).toBeNull()
   })
@@ -180,7 +217,7 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
 })
 
 describe("OshiStatusPanel Recent Activity", () => {
-  it("shows the NEW badge only for a video published after the previous visit", async () => {
+  it("shows the NEW badge only for content published on/after the tracking baseline", async () => {
     renderPanel()
     await screen.findByText("Unseen upload")
 
@@ -191,12 +228,53 @@ describe("OshiStatusPanel Recent Activity", () => {
     expect(seenRow?.querySelector(".oshi-status__recent-new-badge")).toBeNull()
   })
 
-  it("shows no NEW badge for any row on a first visit (no previous visit)", async () => {
+  it("still shows NEW for today's content on a first visit -- the old 'no previous visit means nothing is new' rule is gone", async () => {
     vi.mocked(useLastVisit.usePreviousVisit).mockReturnValue(null)
     renderPanel()
     await screen.findByText("Unseen upload")
 
-    expect(document.querySelectorAll(".oshi-status__recent-new-badge")).toHaveLength(0)
+    expect(document.querySelectorAll(".oshi-status__recent-new-badge")).toHaveLength(1)
+  })
+
+  it("opening a NEW row clears only that row's badge and still selects the video", async () => {
+    const user = userEvent.setup()
+    fetchMock.mockResolvedValue(status({ recent: [unseenItem, { ...unseenItem, videoId: "unseen_video_2", title: "Second unseen upload" }, seenItem] }))
+    const { onSelectVideo } = renderPanel()
+    await screen.findByText("Unseen upload")
+    expect(document.querySelectorAll(".oshi-status__recent-new-badge")).toHaveLength(2)
+
+    await user.click(screen.getByRole("button", { name: "Unseen upload" }))
+
+    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "unseen_video_1", title: "Unseen upload" })
+    expect(screen.getByText("Unseen upload").closest(".oshi-status__recent-row")?.querySelector(".oshi-status__recent-new-badge")).toBeNull()
+    expect(screen.getByText("Second unseen upload").closest(".oshi-status__recent-row")?.querySelector(".oshi-status__recent-new-badge")).not.toBeNull()
+    expect(JSON.parse(localStorage.getItem(SEEN_KEY) ?? "[]")).toEqual(["unseen_video_1"])
+  })
+
+  it("keeps an unopened row NEW across a reload and a later render (visiting never clears it)", async () => {
+    const first = renderPanel()
+    await screen.findByText("Unseen upload")
+    first.unmount()
+
+    resetAllSharedStateForTests() // what a reload does: the stores re-read localStorage
+    renderPanel()
+    await screen.findByText("Unseen upload")
+
+    expect(document.querySelectorAll(".oshi-status__recent-new-badge")).toHaveLength(1)
+  })
+
+  it("keeps a row NEW on a later day when it was never opened (the baseline is not re-stamped)", async () => {
+    renderPanel()
+    await screen.findByText("Unseen upload")
+    const nextDay = new Date(2026, 8, 11, 8, 0, 0)
+
+    const { unmount } = render(
+      <OshiStatusPanel creatorId="ch_aizawa_ema" status={{ kind: "offline" }} now={nextDay} onSelectVideo={vi.fn()} nowPlayingTitle={null} />,
+    )
+    await waitFor(() => expect(document.querySelectorAll(".oshi-status__recent-new-badge").length).toBeGreaterThan(0))
+    unmount()
+
+    expect(localStorage.getItem(BASELINE_KEY)).toBe(startOfLocalDay(now).toISOString())
   })
 
   it("keeps time, title and thumbnail as exactly 3 grid columns with no icon between them", async () => {
@@ -243,7 +321,7 @@ describe("OshiStatusPanel DEV reset", () => {
     expect(document.querySelector(".oshi-status__dev-reset")).not.toBeNull()
   })
 
-  it("clicking reset calls resetPreviousVisit and touches only the visit storage key", async () => {
+  it("clicking reset calls resetPreviousVisit and touches only the visit and NEW-tracking storage keys", async () => {
     const user = userEvent.setup()
     const resetSpy = vi.spyOn(useLastVisit, "resetPreviousVisit")
     localStorage.setItem("yobi.defaultOshiCreatorId", "ch_aizawa_ema")
@@ -258,6 +336,29 @@ describe("OshiStatusPanel DEV reset", () => {
     expect(localStorage.getItem("yobi.home.lastVisitAt")).not.toBeNull()
     expect(localStorage.getItem("yobi.defaultOshiCreatorId")).toBe("ch_aizawa_ema")
     expect(localStorage.getItem("yobi.locale")).toBe("en")
+  })
+
+  it("reset simulates first use TODAY: the baseline becomes today's local 00:00 (not now-24h) and opened ids are forgotten", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(now)
+    try {
+      const user = userEvent.setup({ advanceTimers: () => {} })
+      localStorage.setItem(BASELINE_KEY, new Date(2026, 8, 5, 0, 0, 0).toISOString())
+      localStorage.setItem(SEEN_KEY, JSON.stringify(["unseen_video_1"]))
+      resetAllSharedStateForTests()
+      renderPanel()
+      await screen.findByText("Unseen upload")
+      expect(document.querySelectorAll(".oshi-status__recent-new-badge")).toHaveLength(0) // already opened
+
+      await user.click(document.querySelector(".oshi-status__dev-reset") as HTMLButtonElement)
+
+      expect(localStorage.getItem(BASELINE_KEY)).toBe(startOfLocalDay(now).toISOString())
+      expect(localStorage.getItem(BASELINE_KEY)).not.toBe(new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString())
+      expect(JSON.parse(localStorage.getItem(SEEN_KEY) ?? "[]")).toEqual([])
+      await waitFor(() => expect(document.querySelectorAll(".oshi-status__recent-new-badge")).toHaveLength(1))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

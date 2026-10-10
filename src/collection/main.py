@@ -18,7 +18,13 @@ from googleapiclient.discovery import Resource
 from stores.snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
 from tracking.tracking_manifest import ManifestEntry, S3TrackingManifestStore, patch_shard, publish_tracking_manifest
 from tracking.tracking_schedule import select_due_video_ids
-from tracking.video_discovery import discover_all_videos, discover_new_videos, get_uploads_playlist_id
+from tracking.video_discovery import (
+    discover_all_videos,
+    discover_new_videos,
+    discover_short_video_ids,
+    get_shorts_playlist_id,
+    get_uploads_playlist_id,
+)
 from tracking.video_master import Video, VideoMasterError, load_video_ids_for_creator
 from tracking.video_topics import classify_video_topic
 from collection.youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_client, get_video_statistics
@@ -519,6 +525,14 @@ def _discover_creator(
     else:
         discovered = discover_all_videos(youtube, playlist_id)
 
+    # Shorts are decided from the channel's own Shorts shelf, never from duration or a title hashtag. Only looked up when
+    # something new was discovered; a lookup failure propagates so this creator's new videos are simply discovered on
+    # the next run instead of being filed as ordinary uploads for good.
+    short_ids: set[str] = set()
+    shorts_playlist_id = get_shorts_playlist_id(creator.youtube_channel_id) if discovered else None
+    if shorts_playlist_id:
+        short_ids = discover_short_video_ids(youtube, shorts_playlist_id, known_ids or None)
+
     videos = [
         Video(
             video_id=item["videoId"],
@@ -528,6 +542,7 @@ def _discover_creator(
             thumbnail_url=item.get("thumbnailUrl"),
             discovered_at=discovered_at,
             topic=classify_video_topic(item["title"]),
+            content_type="short" if item["videoId"] in short_ids else None,
         )
         for item in discovered
     ]

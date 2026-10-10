@@ -61,7 +61,7 @@ describe("useLiveStreamVideoPool (player pool: Holodex current + AWS archives)",
 
     await waitFor(() =>
       expect(result.current.videos).toEqual([
-        { videoId: "v1", title: "Ranked grind", publishedAt: "2026-09-29T10:00:00Z", contentFormat: "live_now" },
+        { videoId: "v1", title: "Ranked grind", publishedAt: "2026-09-29T10:00:00Z", eventAt: "2026-09-29T10:00:00Z", contentFormat: "live_now" },
       ]),
     )
   })
@@ -74,7 +74,7 @@ describe("useLiveStreamVideoPool (player pool: Holodex current + AWS archives)",
 
     await waitFor(() =>
       expect(result.current.videos).toEqual([
-        { videoId: "v2", title: "Anniversary goods", publishedAt: "2026-10-02T14:45:00Z", contentFormat: "live_upcoming" },
+        { videoId: "v2", title: "Anniversary goods", publishedAt: "2026-10-02T14:45:00Z", eventAt: "2026-10-02T14:45:00Z", contentFormat: "live_upcoming" },
       ]),
     )
   })
@@ -148,7 +148,7 @@ describe("useLiveStreamVideoPool (player pool: Holodex current + AWS archives)",
 
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.videos).toEqual([
-      { videoId: "v1", title: "Ranked grind", publishedAt: "2026-09-29T10:00:00Z", contentFormat: "live_now" },
+      { videoId: "v1", title: "Ranked grind", publishedAt: "2026-09-29T10:00:00Z", eventAt: "2026-09-29T10:00:00Z", contentFormat: "live_now" },
     ])
   })
 

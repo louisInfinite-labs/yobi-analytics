@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import * as apiClient from "../../../shared/api/apiClient"
 import {
   deleteCreatorReminder,
+  deleteStreamNotificationOverride,
   fetchReminderSettings,
   reminderValueToSetting,
   saveCreatorReminder,
@@ -72,6 +73,24 @@ describe("saveStreamNotificationOverride", () => {
       headers: { "X-Client-Secret": "secret-1" },
       body: { creatorId: "aizawa_ema", notifyAtStart: true, advanceReminder: "1hour" },
     })
+  })
+})
+
+describe("deleteStreamNotificationOverride", () => {
+  it("DELETEs only that one stream's override, with the client secret", async () => {
+    await deleteStreamNotificationOverride("v1")
+
+    expect(apiClient.apiRequest).toHaveBeenCalledTimes(1)
+    expect(apiClient.apiRequest).toHaveBeenCalledWith("/clients/client%201/stream-notification-override/v1", {
+      method: "DELETE",
+      headers: { "X-Client-Secret": "secret-1" },
+    })
+  })
+
+  it("propagates a backend failure instead of swallowing it", async () => {
+    vi.mocked(apiClient.apiRequest).mockRejectedValue(new Error("500"))
+
+    await expect(deleteStreamNotificationOverride("v1")).rejects.toThrow("500")
   })
 })
 
