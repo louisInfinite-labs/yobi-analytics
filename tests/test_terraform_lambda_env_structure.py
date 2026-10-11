@@ -22,31 +22,19 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 LAMBDA_TF = (REPO_ROOT / "terraform" / "lambda.tf").read_text()
 
 WRITER_LAMBDAS = ("collector", "history_worker", "ranking_reducer")
-# The API Lambda's environment as last applied (4c0e3c8): every one of these must stay exactly as it is ...
-API_LAST_APPLIED_ENVIRONMENT = {
-    "YOBI_ADMIN_API_KEY_SECRET_NAME": '"yobi-analytics/admin-api-key"',
-    "YOBI_STORAGE_BACKEND": '"dynamodb"',
-    "HOLODEX_SECRET_NAME": '"yobi-analytics/holodex-api-key"',
-}
-# ... and exactly ONE variable was added on purpose (V1, Item 3): the LOCATOR of the existing YouTube key, so GET /live-streams can classify a
-# still-unclassified upcoming Premiere. The value is a secret NAME, never the key; the same name the collector already uses.
-YOUTUBE_KEY_LOCATOR = {"YOUTUBE_API_KEY_SECRET_NAME": '"yobi-analytics/youtube-api-key"'}
-# SSM migration, stage 1: next to every old *_SECRET_NAME locator sits the *_SSM_PARAMETER locator of the same secret (a parameter NAME, never a value).
-# The code reads SSM first and uses the old secret only while the parameter is missing / not yet readable (ops/config.py).
+# Runtime secrets are read from SSM Parameter Store: every consumer's environment carries the parameter NAME (a locals reference), never a value,
+# and no Secrets Manager locator any more. The API Lambda has no history-bucket variable on purpose (see above).
 SSM_LOCATORS = {
     "YOBI_ADMIN_API_KEY_SSM_PARAMETER": "local.ssm_parameter_names.admin_api_key",
     "HOLODEX_SSM_PARAMETER": "local.ssm_parameter_names.holodex_api_key",
     "YOUTUBE_API_KEY_SSM_PARAMETER": "local.ssm_parameter_names.youtube_api_key",
 }
-API_ENVIRONMENT = {**API_LAST_APPLIED_ENVIRONMENT, **YOUTUBE_KEY_LOCATOR, **SSM_LOCATORS}
+API_ENVIRONMENT = {"YOBI_STORAGE_BACKEND": '"dynamodb"', **SSM_LOCATORS}
 # The dispatcher builds the reminder schedule through read_api.get_live_streams(), so it needs the same locators/switch as the API Lambda.
 DISPATCHER_ENVIRONMENT = {
     "VAPID_CLAIMS_SUB": "var.vapid_claims_sub",
-    "VAPID_PRIVATE_KEY_SECRET_NAME": '"yobi-analytics/vapid-private-key"',
-    "YOBI_STORAGE_BACKEND": '"dynamodb"',
-    "HOLODEX_SECRET_NAME": '"yobi-analytics/holodex-api-key"',
-    "YOUTUBE_API_KEY_SECRET_NAME": '"yobi-analytics/youtube-api-key"',
     "VAPID_PRIVATE_KEY_SSM_PARAMETER": "local.ssm_parameter_names.vapid_private_key",
+    "YOBI_STORAGE_BACKEND": '"dynamodb"',
     "HOLODEX_SSM_PARAMETER": "local.ssm_parameter_names.holodex_api_key",
     "YOUTUBE_API_KEY_SSM_PARAMETER": "local.ssm_parameter_names.youtube_api_key",
 }
@@ -79,14 +67,11 @@ def test_api_lambda_does_not_set_the_history_bucket_env_var():
     assert "YOBI_HISTORY_BUCKET" not in _environment_variables(block)
 
 
-def test_api_lambda_environment_is_the_last_applied_one_plus_only_the_youtube_key_and_ssm_locators():
-    """Same names and literal values as the applied config, plus only the intentional locator additions: no unrelated drift."""
+def test_api_lambda_environment_is_exactly_the_expected_one():
+    """The storage switch plus the three SSM parameter-name locators: no unrelated drift, no Secrets Manager locator."""
     block = _resource_block(LAMBDA_TF, 'resource "aws_lambda_function" "api"')
-    environment = _environment_variables(block)
 
-    assert environment == API_ENVIRONMENT
-    assert {name: environment[name] for name in API_LAST_APPLIED_ENVIRONMENT} == API_LAST_APPLIED_ENVIRONMENT
-    assert set(environment) - set(API_LAST_APPLIED_ENVIRONMENT) == set(YOUTUBE_KEY_LOCATOR) | set(SSM_LOCATORS)
+    assert _environment_variables(block) == API_ENVIRONMENT
 
 
 def test_dispatcher_lambda_environment_is_exactly_the_expected_one():
@@ -104,27 +89,30 @@ def test_no_lambda_environment_holds_a_plaintext_api_key():
         assert not set(_environment_variables(block)) & PLAINTEXT_SECRET_VARIABLES, resource
 
 
-def test_the_youtube_key_locator_is_the_one_secret_the_collector_already_uses():
-    """One canonical key: the API and dispatcher locators equal the collector's and the secret Terraform already references by name."""
-    secrets_tf = (REPO_ROOT / "terraform" / "secrets.tf").read_text()
-    secret_name = re.search(r'data "aws_secretsmanager_secret" "youtube_api_key" \{\s*name\s*=\s*"([^"]+)"', secrets_tf).group(1)
-    locator = '"' + secret_name + '"'
-    for resource in ("collector", "api", "notification_dispatcher"):
+def test_no_lambda_environment_has_a_secrets_manager_locator_any_more():
+    """Secrets Manager is retired from the runtime: no *_SECRET_NAME variable, and terraform no longer references any secret."""
+    for resource in re.findall(r'resource "aws_lambda_function" "(\w+)"', LAMBDA_TF):
         block = _resource_block(LAMBDA_TF, f'resource "aws_lambda_function" "{resource}"')
-        assert _environment_variables(block)["YOUTUBE_API_KEY_SECRET_NAME"] == locator, resource
+        if "environment" not in block:
+            continue
+        assert not [name for name in _environment_variables(block) if name.endswith("_SECRET_NAME")], resource
+    assert not (REPO_ROOT / "terraform" / "secrets.tf").exists()
+    assert "aws_secretsmanager_secret" not in "".join(path.read_text() for path in (REPO_ROOT / "terraform").glob("*.tf"))
 
 
-def test_the_youtube_key_read_policy_grants_only_get_secret_value_on_that_one_secret():
+def test_the_ssm_read_policy_grants_only_get_parameter_on_the_four_exact_parameters():
     import json
 
-    policy = json.loads((REPO_ROOT / "terraform" / "manual-iam" / "policy-lambda-youtube-key-read.json").read_text())
+    policy = json.loads((REPO_ROOT / "terraform" / "manual-iam" / "policy-lambda-ssm-parameter-read.json").read_text())
     [statement] = policy["Statement"]
 
     assert statement["Effect"] == "Allow"
-    assert statement["Action"] == ["secretsmanager:GetSecretValue"]
-    resource = statement["Resource"]
-    assert isinstance(resource, str) and resource.startswith("arn:aws:secretsmanager:ap-northeast-1:") and ":secret:yobi-analytics/youtube-api-key-" in resource
-    assert resource.count("*") == 1 and resource.endswith("-*")  # only AWS's random secret-name suffix is a wildcard; no broad read
+    assert statement["Action"] == ["ssm:GetParameter"]  # not GetParametersByPath, not ssm:*
+    assert sorted(statement["Resource"]) == sorted(
+        f"arn:aws:ssm:ap-northeast-1:189461315571:parameter/yobi-analytics/{name}"
+        for name in ("youtube-api-key", "holodex-api-key", "vapid-private-key", "admin-api-key")
+    )
+    assert not any("*" in resource for resource in statement["Resource"])
 
 
 def test_writer_lambdas_still_get_the_history_bucket_from_the_single_bucket_resource():
@@ -134,17 +122,14 @@ def test_writer_lambdas_still_get_the_history_bucket_from_the_single_bucket_reso
         assert _environment_variables(block).get("YOBI_HISTORY_BUCKET") == "aws_s3_bucket.history.id", name
 
 
-def test_every_ssm_locator_points_at_a_parameter_name_and_sits_next_to_its_old_secret_locator():
-    """Stage 1 keeps both locators per consumer; the SSM one is a locals reference to a /yobi-analytics/... NAME, never a value."""
+def test_every_ssm_locator_is_a_reference_to_one_of_the_four_parameter_names():
+    """The locals hold /yobi-analytics/... NAMES (never a value) and every locator in every environment points at one of them."""
     names = dict(re.findall(r'^\s*(\w+_api_key|vapid_private_key)\s*=\s*"(/yobi-analytics/[a-z0-9-]+)"', LAMBDA_TF, re.MULTILINE))
     assert set(names) == {"youtube_api_key", "admin_api_key", "vapid_private_key", "holodex_api_key"}
-    pairs = {
-        "collector": ("YOUTUBE_API_KEY_SECRET_NAME", "YOUTUBE_API_KEY_SSM_PARAMETER"),
-        "history_worker": ("YOUTUBE_API_KEY_SECRET_NAME", "YOUTUBE_API_KEY_SSM_PARAMETER"),
-        "api": ("HOLODEX_SECRET_NAME", "HOLODEX_SSM_PARAMETER"),
-        "notification_dispatcher": ("VAPID_PRIVATE_KEY_SECRET_NAME", "VAPID_PRIVATE_KEY_SSM_PARAMETER"),
-    }
-    for resource, (old, new) in pairs.items():
-        environment = _environment_variables(_resource_block(LAMBDA_TF, f'resource "aws_lambda_function" "{resource}"'))
-        assert old in environment and new in environment, resource
-        assert environment[new].startswith("local.ssm_parameter_names."), resource
+    for resource in re.findall(r'resource "aws_lambda_function" "(\w+)"', LAMBDA_TF):
+        block = _resource_block(LAMBDA_TF, f'resource "aws_lambda_function" "{resource}"')
+        if "environment" not in block:
+            continue
+        for name, expression in _environment_variables(block).items():
+            if name.endswith("_SSM_PARAMETER"):
+                assert expression.removeprefix("local.ssm_parameter_names.") in names, (resource, name)

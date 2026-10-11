@@ -112,7 +112,7 @@ npm run test:smoke
 |---|---|
 | Frontend | A throwaway local Vite dev server on port 5180 (separate from the existing suite's own port 5173) |
 | Backend | `scripts/local_api_server.py --port 8790 --enable-smoke-routes` — the local JSON-storage fixture, widened by exactly 4 hand-verified, AWS-safe routes (see that script's module docstring) |
-| Production AWS reads/writes | None. The 4 S3-backed per-creator routes stay excluded even under `--enable-smoke-routes`; `HOLODEX_SECRET_NAME` is unconditionally cleared before this process ever imports the real route handler, so Secrets Manager is structurally unreachable |
+| Production AWS reads/writes | None. The 4 S3-backed per-creator routes stay excluded even under `--enable-smoke-routes`; `HOLODEX_SSM_PARAMETER` is unconditionally cleared before this process ever imports the real route handler, so SSM Parameter Store is structurally unreachable |
 | Production-only cases | Skipped, not run — e.g. `api-contract.spec.ts`'s historical-data-unavailable test (`test.skip(!process.env.SMOKE_API_BASE_URL, ...)`), because its route is one of the excluded S3-backed ones |
 | Security-dependent cases | Remain `BLOCKED / PENDING SECURITY MERGE` regardless of mode — nothing in this repo implements them yet (see Scope) |
 
@@ -388,7 +388,7 @@ Verified against the real `_ROUTES`/error-mapping table in `src/api/api_handler.
 | ID | Steps | Expected | Automation |
 |---|---|---|---|
 | N1 | Normal `/live-streams` | 200, array of streams | AUTOMATED |
-| N2 | Holodex upstream error / missing key | 503 `HOLODEX_UNAVAILABLE` (verified: `get_holodex_api_key()` raises `MissingHolodexApiKeyError` when no `HOLODEX_SECRET_NAME`/key is configured, caught in `api_handler.py` and mapped to this exact response — reproducible without any real secret) | AUTOMATED |
+| N2 | Holodex upstream error / missing key | 503 `HOLODEX_UNAVAILABLE` (verified: `get_holodex_api_key()` raises `MissingHolodexApiKeyError` when no `HOLODEX_SSM_PARAMETER`/key is configured, caught in `api_handler.py` and mapped to this exact response — reproducible without any real secret) | AUTOMATED |
 | N3 | Stale/fallback behavior | **Not implemented.** Frontend's `liveStreamsStore.ts` keeps the last cached `streams` array from `yobi.liveStreams.cache` on a poll failure, but no consumer (Home, Dock, Schedule) reads `isLoading`/`error` off the store — there is no "stale"/"degraded" UI indicator anywhere. Document as a real functional gap; do not assert a stale-badge that doesn't exist | N/A — nothing to assert |
 | N4 | 429 from Holodex | Not distinctly modeled server-side beyond the generic `HolodexAPIError` → 503 path (no evidence of a dedicated 429-passthrough) | BLOCKED (undetermined without forcing real Holodex 429, which this suite should not attempt against a third party) |
 | N5 | User-visible impact of N2–N4 | Currently: none beyond whatever the last successfully cached data was (silent degradation) | MANUAL note only — nothing to automate against a UI state that doesn't exist |
