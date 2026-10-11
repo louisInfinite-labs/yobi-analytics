@@ -128,8 +128,8 @@ describe("B24: 管理成員 (member management) rows", () => {
     await openDrawer(user)
 
     const names = Array.from(document.querySelectorAll(".topic-creator-drawer__creator-name")).map((node) => node.textContent)
-    const expectedOrder = groupCreatorsForNotificationSettings().flatMap((agency) =>
-      agency.regions.flatMap((region) => region.subgroups.flatMap((subgroup) => subgroup.creators.map((creator) => creator.displayName))),
+    const expectedOrder = groupCreatorsForNotificationSettings().flatMap((group) =>
+      group.subgroups.flatMap((subgroup) => subgroup.creators.map((creator) => creator.displayName)),
     )
     expect(names.length).toBeGreaterThan(50)
     expect(names).toEqual(expectedOrder) // grouping and order are exactly the model's (no favorites in this state)
@@ -137,7 +137,7 @@ describe("B24: 管理成員 (member management) rows", () => {
     expect(within(row).getByRole("switch", { name: /live notifications/ })).toBeChecked()
     expect(within(row).getByRole("switch", { name: /new video notifications/ })).not.toBeChecked()
     // the icon sits first in the row, the name right after it (the existing grid: avatar / name / switches)
-    expect(row.firstElementChild).toBe(avatarOf(row))
+    expect(row.firstElementChild).toContainElement(avatarOf(row)) // the avatar (in its heart wrapper) is the first cell
     expect(row.children[1]).toHaveClass("topic-creator-drawer__creator-name")
 
     await user.click(within(row).getByRole("switch", { name: /new video notifications/ }))
@@ -211,10 +211,12 @@ describe("B24: no mouse-hover background on a creator row, selected and focus st
     expect(rowHoverRules).toEqual([])
   })
 
-  it("keeps the SELECTED row's own background and accent border", () => {
-    const selected = allRules().find(({ selector }) => selector === ".topic-creator-drawer__row:has(.ant-switch-checked)")!
-    expect(selected.body).toMatch(/border-left-color:\s*var\(--drawer-accent\)/)
-    expect(selected.body).toMatch(/background:\s*color-mix\(in srgb, var\(--drawer-accent\) 9%/)
+  it("a row is a plain container in EVERY state: no selected-row rule, no border, no background, no pseudo-element, no shadow", () => {
+    expect(allRules().find(({ selector }) => /topic-creator-drawer__row[^,{]*:has\(/.test(selector))).toBeUndefined()
+    const rowRules = allRules().filter(({ selector }) => selector.split(",").some((part) => /^\.topic-creator-drawer__row(\.[\w-]+)*$/.test(part.trim())))
+    expect(rowRules.length).toBeGreaterThan(0)
+    for (const { body } of rowRules) expect(body).not.toMatch(/border(-left|-right|-top|-bottom)?\s*:|border-\w+-color|background|box-shadow|filter/)
+    expect(allRules().filter(({ selector }) => /topic-creator-drawer__row[^,{]*::(before|after)/.test(selector))).toEqual([])
   })
 
   it("does not suppress the keyboard focus affordance on the drawer rows or their controls", () => {

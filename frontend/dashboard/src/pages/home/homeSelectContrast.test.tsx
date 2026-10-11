@@ -31,6 +31,7 @@ describe("the shared Home-style select (.oshi-videos__sort) stays readable where
 
   it("no page re-themes it: Settings and the drawer add only a width, never their own select colors", () => {
     expect(ruleBody(settings, ".display-setting-select").replace(/\s+/g, " ").trim()).toBe("width: 360px;")
+    expect(ruleBody(settings, ".topic-creator-drawer__reminder-select").replace(/\s+/g, " ").trim()).toBe("width: 100%;")
     expect(rulesOf(settings).filter(({ selector }) => /oshi-videos__sort/.test(selector))).toEqual([])
   })
 

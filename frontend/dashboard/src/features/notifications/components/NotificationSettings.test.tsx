@@ -305,9 +305,8 @@ describe("NotificationSettings master-detail layout", () => {
 
     await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
     await user.click(screen.getAllByRole("switch", { name: /live notifications/ })[0])
-    const reminderTrigger = screen.getAllByRole("button", { name: /'s reminder time/ })[0]
-    await user.click(reminderTrigger)
-    await user.click(screen.getByRole("menuitem", { name: "1 hour before" }))
+    const reminderTrigger = screen.getAllByRole("combobox", { name: /'s reminder time/ })[0]
+    await user.selectOptions(reminderTrigger, "1 hour before")
     await user.keyboard("{Escape}")
 
     expect(await within(topicCard).findByText("1 custom")).toBeInTheDocument()
@@ -391,7 +390,8 @@ describe("member drawer respects the topic's own notificationType", () => {
 
     await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
 
-    expect(screen.getByText("Notification type: Both")).toBeInTheDocument()
+    expect(screen.getByText("Notification type: Live + New Video")).toBeInTheDocument()
+    expect(screen.queryByText(/Notification type: Both/)).not.toBeInTheDocument()
     expect(screen.getAllByRole("switch", { name: /live notifications/ }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole("switch", { name: /new video notifications/ }).length).toBeGreaterThan(0)
     expect(screen.getAllByText("Reminder time").length).toBeGreaterThan(0)
@@ -421,9 +421,10 @@ describe("member drawer respects the topic's own notificationType", () => {
   })
 })
 
-// A creator's reminder is set per topic in Manage Members. "No reminder" (unset) is a real
-// choice and the default; the creator's 全部 reminder shadows that creator's topic reminders
-// without erasing them; a topic the backend doesn't support can't have its own reminder.
+// A creator's reminder is set per topic in Manage Members. The select lists only real timings (whether
+// notifications are on at all is the Live switch's job); a creator with no time yet shows a placeholder;
+// the creator's 全部 reminder shadows that creator's topic reminders without erasing them; a topic the
+// backend doesn't support can't have its own reminder.
 describe("member drawer reminders", () => {
   /** One Live-enabled creator in `topicId`, optionally with a reminder -- so the drawer shows exactly one reminder button. */
   function seedReminders(topics: Record<string, { reminder?: string }>, order: string[] = DEFAULT_ORDER) {
@@ -441,29 +442,35 @@ describe("member drawer reminders", () => {
   async function openDrawerFor(user: ReturnType<typeof userEvent.setup>, topicButton: RegExp) {
     await user.click(await screen.findByRole("button", { name: topicButton }))
     await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
-    return screen.findAllByRole("button", { name: /'s reminder time/ })
+    return screen.findAllByRole("combobox", { name: /'s reminder time/ })
   }
 
-  it("defaults a Live-enabled creator to 'No reminder' -- never to a time", async () => {
+  it("defaults a Live-enabled creator to a placeholder -- never to a time", async () => {
     seedReminders({ sf6: {} })
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderNotificationSettings()
 
     const [trigger] = await openDrawerFor(user, /^SF6/)
 
-    expect(trigger).toHaveTextContent("No reminder")
+    expect(trigger).toHaveDisplayValue("—")
+    expect(storedState().topics.sf6.reminderOverrides).toEqual({}) // showing the placeholder stores nothing
   })
 
-  it("offers 'No reminder' plus the five times, including 1 minute before", async () => {
+  it("offers ONLY the five real timings (no 'No reminder' option), including 1 minute before; the placeholder is not in the list", async () => {
     seedReminders({ sf6: {} })
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderNotificationSettings()
 
     const [trigger] = await openDrawerFor(user, /^SF6/)
-    await user.click(trigger)
-
-    const labels = screen.getAllByRole("menuitem").map((item) => item.textContent)
-    expect(labels).toEqual(["No reminder", "At start", "1 minute before", "10 minutes before", "30 minutes before", "1 hour before"])
+    const options = within(trigger).getAllByRole("option", { hidden: true })
+    expect(options.filter((item) => !(item as HTMLOptionElement).hidden).map((item) => item.textContent)).toEqual([
+      "At start",
+      "1 minute before",
+      "10 minutes before",
+      "30 minutes before",
+      "1 hour before",
+    ])
+    expect(within(trigger).queryByRole("option", { name: "No reminder", hidden: true })).toBeNull()
   })
 
   it("choosing a time stores it for that creator + topic and writes just that one backend item", async () => {
@@ -472,28 +479,27 @@ describe("member drawer reminders", () => {
     renderNotificationSettings()
 
     const [trigger] = await openDrawerFor(user, /^SF6/)
-    await user.click(trigger)
-    await user.click(screen.getByRole("menuitem", { name: "1 minute before" }))
+    await user.selectOptions(trigger, "1 minute before")
 
     expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "1min" })
     expect(liveReminderApi.saveCreatorReminder).toHaveBeenCalledTimes(1)
     expect(liveReminderApi.saveCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "sf6", { notifyAtStart: true, advanceReminder: "1min" })
   })
 
-  it("choosing 'No reminder' unsets it and deletes only that one backend item", async () => {
+  it("a creator that already has a time shows it, the list still has no 'No reminder', and picking another time replaces only that one", async () => {
     seedReminders({ sf6: { reminder: "10min" }, apex: { reminder: "30min" } })
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderNotificationSettings()
 
     const [trigger] = await openDrawerFor(user, /^SF6/)
-    expect(trigger).toHaveTextContent("10 minutes before")
-    await user.click(trigger)
-    await user.click(screen.getByRole("menuitem", { name: "No reminder" }))
+    expect(trigger).toHaveDisplayValue("10 minutes before")
+    expect(within(trigger).queryByRole("option", { name: "No reminder", hidden: true })).toBeNull()
+    expect(within(trigger).queryByRole("option", { name: "—", hidden: true })).toBeNull() // the placeholder only exists while unset
+    await user.selectOptions(trigger, "1 hour before")
 
-    expect(storedState().topics.sf6.reminderOverrides).toEqual({})
+    expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "1hour" })
     expect(storedState().topics.apex.reminderOverrides).toEqual({ aizawa_ema: "30min" })
-    expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledTimes(1)
-    expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "sf6")
+    expect(liveReminderApi.deleteCreatorReminder).not.toHaveBeenCalled()
   })
 
   it("shows a topic reminder as not in effect while the same creator's 全部 reminder is set, and keeps it stored", async () => {
@@ -503,7 +509,7 @@ describe("member drawer reminders", () => {
 
     const [trigger] = await openDrawerFor(user, /^SF6/)
 
-    expect(trigger).toHaveTextContent("10 minutes before")
+    expect(trigger).toHaveDisplayValue("10 minutes before")
     expect(screen.getByText('Not in effect (overridden by the "All" setting)')).toBeInTheDocument()
     expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "10min" })
   })
@@ -523,8 +529,7 @@ describe("member drawer reminders", () => {
     renderNotificationSettings()
 
     const [trigger] = await openDrawerFor(user, /^All/)
-    await user.click(trigger)
-    await user.click(screen.getByRole("menuitem", { name: "30 minutes before" }))
+    await user.selectOptions(trigger, "30 minutes before")
 
     expect(storedState().topics.all.reminderOverrides).toEqual({ aizawa_ema: "30min" })
     expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "10min" })
@@ -574,9 +579,8 @@ describe("member drawer reminders", () => {
       renderNotificationSettings()
 
       const [trigger] = await openDrawerFor(user, /^Other/)
-      await user.click(trigger)
 
-      expect(screen.queryByRole("menuitem")).not.toBeInTheDocument()
+      expect(trigger).toBeDisabled()
       expect(liveReminderApi.saveCreatorReminder).not.toHaveBeenCalled()
     })
   })

@@ -141,7 +141,6 @@ export type TranslationKey =
   | "notificationSettings.addTopicButtonAriaLabel"
   | "notificationSettings.reminder.1min"
   | "notificationSettings.notificationTypeLabel"
-  | "notificationSettings.notificationTypeBoth"
   | "notificationSettings.notificationTypeCombinedLabel"
   | "notificationSettings.notificationTypeSectionHelp"
   | "notificationSettings.topicListPanelTitle"
@@ -344,7 +343,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.addTopicButtonAriaLabel": "新增主題",
     "notificationSettings.reminder.1min": "1 分鐘前",
     "notificationSettings.notificationTypeLabel": "通知類型",
-    "notificationSettings.notificationTypeBoth": "兩者",
     "notificationSettings.notificationTypeCombinedLabel": "直播+新片",
     "notificationSettings.notificationTypeSectionHelp": "選擇這個主題要通知直播、新片，或兩者。",
     "notificationSettings.topicListPanelTitle": "通知主題",
@@ -552,7 +550,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.addTopicButtonAriaLabel": "Add topic",
     "notificationSettings.reminder.1min": "1 minute before",
     "notificationSettings.notificationTypeLabel": "Notification type",
-    "notificationSettings.notificationTypeBoth": "Both",
     "notificationSettings.notificationTypeCombinedLabel": "Live + New Video",
     "notificationSettings.notificationTypeSectionHelp": "Choose whether this topic notifies for live streams, new videos, or both.",
     "notificationSettings.topicListPanelTitle": "Notification topics",
@@ -760,7 +757,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.addTopicButtonAriaLabel": "トピックを追加",
     "notificationSettings.reminder.1min": "1分前",
     "notificationSettings.notificationTypeLabel": "通知タイプ",
-    "notificationSettings.notificationTypeBoth": "両方",
     "notificationSettings.notificationTypeCombinedLabel": "配信＋新着動画",
     "notificationSettings.notificationTypeSectionHelp": "このトピックで通知する対象（配信・新着動画・両方）を選択します。",
     "notificationSettings.topicListPanelTitle": "通知トピック",

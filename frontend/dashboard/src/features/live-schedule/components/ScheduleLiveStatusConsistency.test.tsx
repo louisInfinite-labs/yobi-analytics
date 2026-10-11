@@ -400,7 +400,7 @@ describe("Live Status, 收藏名單 and the Schedule filter agree on avatar, til
 
   it("no avatar rule on any of the three screens adds a glow: box-shadow, drop-shadow, colored ring, halo or pseudo-element", () => {
     const rules = [...rulesOf(settingsCss), ...rulesOf(homeCss), ...rulesOf(avatarCss)].filter(({ selector }) =>
-      /(favorites-roster__avatar(?!-wrap)|live-status-member__avatar(?!-wrap)|creator-avatar-circle|stream-avatar(?![\w-]))/.test(selector),
+      /(favorites-roster__avatar(?!-wrap)|live-status-member__avatar(?!-wrap)|creator-avatar-circle|topic-creator-drawer__avatar|stream-avatar(?![\w-]))/.test(selector),
     )
     expect(rules.length).toBeGreaterThanOrEqual(4)
     for (const { selector, body } of rules) {
