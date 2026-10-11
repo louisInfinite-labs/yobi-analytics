@@ -14,6 +14,13 @@ const NAV_ITEMS: { page: Page; labelKey: TranslationKey; Icon: ComponentType<{ s
   { page: "about", labelKey: "mainNavbar.about", Icon: Info },
 ]
 
+/** The Video Data page (影片數據) is development-only: a production build has no nav entry for it (and no route -- see useCurrentPage / App).
+ * `import.meta.env.DEV` is the project's own dev-only gate (the same one Home's dev controls use); it is replaced at build time, and the
+ * entry is not rendered, rather than hidden with CSS. */
+function visibleNavItems() {
+  return NAV_ITEMS.filter((item) => item.page !== "dashboard" || import.meta.env.DEV)
+}
+
 /** App-wide fixed nav (Mantine's "Main Navbar" naming -- see
  * ui.mantine.dev/category/navbars -- not "Sidebar"), originally ported
  * pixel-for-pixel from that page's own "Navbar with 2 sections" demo
@@ -43,7 +50,7 @@ export function MainNavbar() {
       <div className="main-navbar__logo">
         <img className="main-navbar__logo-icon" src={brandIcon} alt="OshiYobi" />
       </div>
-      {NAV_ITEMS.map((item) => {
+      {visibleNavItems().map((item) => {
         const label = t(locale, item.labelKey)
         return (
           <button
