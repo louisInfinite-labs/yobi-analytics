@@ -156,9 +156,22 @@ describe("about.css typography values", () => {
     return match![1]
   }
 
-  it("keeps the article at 720px, left aligned (not centered)", () => {
-    expect(rule(".about-content")).toContain("max-width: 720px")
-    expect(rule(".about-content")).not.toMatch(/margin:\s*0 auto|margin-inline:\s*auto/)
+  it("is one generous centered column (not full width, not the old 720px) with left-aligned text", () => {
+    const content = rule(".about-content")
+    expect(content).toContain("max-width: 880px")
+    expect(content).toContain("width: 100%")
+    expect(content).toContain("margin-left: auto")
+    expect(content).toContain("margin-right: auto")
+    expect(content).toContain("text-align: left")
+    expect(content).not.toContain("720px")
+  })
+
+  it("only the page title is centered; headings, paragraphs and lists are never text-align: center", () => {
+    const css = aboutCss.replace(/\r\n/g, "\n")
+    expect(css).toMatch(/\.about-content > \.settings-page-header,\n\.about-content > \.settings-page-header \.settings-page-title\s*\{[^}]*text-align: center/)
+    for (const selector of [".about-content h2", ".about-content h3", ".about-content p", ".about-content li"]) {
+      expect(rule(selector)).not.toMatch(/text-align:\s*center/)
+    }
   })
 
   it("the Markdown H1 rule does not override the page title, which keeps the Settings title style", () => {

@@ -12,15 +12,32 @@
    heading / #aaa3b2 body, --space-* tokens), not new ones. */
 
 .about-content {
-  max-width: 720px;
+  /* One readable column, horizontally centered inside the page content area. The column is generous (not the old narrow column that
+     forced early CJK wrapping) but never the full width, so prose keeps a comfortable line length on wide screens. The page's own
+     32px side padding (.settings-page__content) stays outside this column, so it never touches the viewport edge; below this width
+     the column simply shrinks with the page (width: 100%). */
+  width: 100%;
+  max-width: 880px;
+  margin-left: auto;
+  margin-right: auto;
+  /* Section headings, paragraphs, lists and links are all LEFT-aligned and share this column's left edge; only the page title
+     below is centered. */
+  text-align: left;
   /* Long unbroken strings (URLs, English compounds) wrap instead of widening the page. */
   overflow-wrap: break-word;
+}
+
+/* The page title (the h1 in the settings-page-header shell) is centered; everything under it stays left-aligned. */
+.about-content > .settings-page-header,
+.about-content > .settings-page-header .settings-page-title {
+  text-align: center;
 }
 
 /* Markdown `#` only (a direct child). The page title h1 lives inside .settings-page-header and keeps the
    Settings title style (.settings-page-title: 28px / 700 / 1.25). */
 .about-content > h1 {
   margin: 0 0 var(--space-3);
+  text-align: center;
   color: #f3eff5;
   font-size: 24px;
   font-weight: 700;
@@ -50,6 +67,8 @@
 }
 
 .about-content p {
+  /* Progressive enhancement: keeps a one-character last line (e.g. a lone "。" / "し。") from being left on its own when it can be avoided. */
+  text-wrap: pretty;
   margin: 0 0 var(--space-3);
   color: #aaa3b2;
   font-size: 14px;
