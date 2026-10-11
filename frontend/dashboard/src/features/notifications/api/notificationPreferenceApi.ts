@@ -10,6 +10,27 @@ import { getAllNotificationCreators } from "../model/notificationCreatorGrouping
 export const DEFAULT_DELIVERY_WINDOWS = ["08:00", "18:00"]
 
 const NOTIFICATION_LOCALE_SYNCED_KEY = "yobi.notificationLocaleSynced"
+const NOTIFICATIONS_DISABLED_KEY = "yobi.notificationsDisabled"
+
+/** True once a preference write with `enabled: false` succeeded for this browser and no later write turned notifications back on.
+ * Global OFF is the master switch: background syncs (language change, creator switches) must not infer "on" from a browser push
+ * subscription that merely outlived a failed unsubscribe. Browser-local bookkeeping about the last CONFIRMED backend write. */
+export function isNotificationDisabledByUser(): boolean {
+  try {
+    return window.localStorage.getItem(NOTIFICATIONS_DISABLED_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+
+function markNotificationEnabledState(enabled: boolean): void {
+  try {
+    if (enabled) window.localStorage.removeItem(NOTIFICATIONS_DISABLED_KEY)
+    else window.localStorage.setItem(NOTIFICATIONS_DISABLED_KEY, "1")
+  } catch {
+    // Without the marker a background sync falls back to the subscription check alone.
+  }
+}
 
 /** The locale the backend last CONFIRMED (a successful preference write) for this browser's push notifications, or null if never.
  * Browser-local bookkeeping only -- the backend value is the one the dispatcher reads. */
@@ -74,6 +95,8 @@ export function putNotificationPreference(
     body,
   }).then((result) => {
     markNotificationLocaleSynced(body.notificationLocale)
+    // Recorded as soon as the backend confirms, i.e. before the caller attempts the browser unsubscribe.
+    markNotificationEnabledState(enabled)
     return result
   })
 }

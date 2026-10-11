@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { createSharedState, useSharedState } from "../../../shared/state/sharedState"
 import { deleteCreatorReminder, reminderValueToSetting, saveCreatorReminder } from "../api/liveReminderApi"
-import { saveNotificationPreference } from "../api/notificationPreferenceApi"
+import { isNotificationDisabledByUser, saveNotificationPreference } from "../api/notificationPreferenceApi"
 import { getPushSubscriptionStatus } from "../push/pushNotifications"
 import { clearNotificationSaveFailed, reportNotificationSaveFailed } from "./notificationSaveStatus"
 import {
@@ -279,6 +279,8 @@ async function syncNewVideoSwitchesToBackend(next: TopicPreferencesState, option
     return
   }
   if (status !== "subscribed") return
+  // A subscription can outlive a successful disable (the browser unsubscribe failed afterwards): never write notifications back ON then.
+  if (isNotificationDisabledByUser()) return
   await saveNotificationPreference(true, effectiveNewVideoCreatorIds(next), effectiveShortCreatorIds(next))
 }
 
