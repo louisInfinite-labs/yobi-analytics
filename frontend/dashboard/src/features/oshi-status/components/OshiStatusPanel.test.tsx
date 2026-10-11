@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { getCreatorById } from "../../../entities/creator/data/creatorRegistry"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { OshiStatusPanel } from "./OshiStatusPanel"
@@ -363,10 +364,12 @@ describe("OshiStatusPanel DEV reset", () => {
 })
 
 describe("OshiStatusPanel: accent color is the canonical creator color", () => {
-  it("天音かなた's avatar fallback uses the canonical #76c0ea, not a frontend-owned color", () => {
+  it("天音かなた's avatar fallback (shown when her icon fails to load) uses the canonical #76c0ea, not a frontend-owned color", async () => {
     renderPanel("ch_amane_kanata")
+    fireEvent.error(document.querySelector(".oshi-status__creator-avatar img")!)
 
     const avatar = document.querySelector<HTMLElement>(".oshi-status__creator-avatar")!
+    await waitFor(() => expect(avatar.querySelector("img")).toBeNull())
 
     expect(avatar.style.background).toBe("rgb(118, 192, 234)")
   })
@@ -399,5 +402,48 @@ describe("OshiStatusPanel DEV reset in a production build", () => {
     resetPreviousVisit()
 
     expect(JSON.stringify(window.localStorage)).toBe(before)
+  })
+})
+
+describe("OshiStatusPanel creator avatar", () => {
+  const avatarImg = () => document.querySelector(".oshi-status__creator-avatar img") as HTMLImageElement | null
+  const avatarFallback = () => document.querySelector(".oshi-status__creator-avatar")?.textContent
+
+  it.each([
+    ["ch_aizawa_ema", "aizawa_ema", "藍"],
+    ["ch_shirakami_fubuki", "shirakami_fubuki", "白"],
+  ])("%s shows the registry channel icon, not the initial", async (legacyId, creatorId, initial) => {
+    renderPanel(legacyId)
+    await screen.findByText("Unseen upload")
+
+    const expected = getCreatorById(creatorId)?.avatarUrl
+    expect(expected).toBeTruthy()
+    expect(avatarImg()?.getAttribute("src")).toBe(expected)
+    expect(avatarFallback()).not.toBe(initial)
+  })
+
+  it("switching creator swaps the icon to the new creator's own", async () => {
+    const { switchCreator } = renderPanel("ch_aizawa_ema")
+    await screen.findByText("Unseen upload")
+
+    switchCreator("ch_shirakami_fubuki")
+
+    await waitFor(() => expect(avatarImg()?.getAttribute("src")).toBe(getCreatorById("shirakami_fubuki")?.avatarUrl))
+  })
+
+  it("shows the initial when the icon URL fails to load", async () => {
+    renderPanel("ch_aizawa_ema")
+    await screen.findByText("Unseen upload")
+
+    fireEvent.error(avatarImg()!)
+
+    await waitFor(() => expect(avatarImg()).toBeNull())
+    expect(avatarFallback()).toBe("藍")
+  })
+
+  it("falls back to the initial only when the creator has no registry icon", async () => {
+    renderPanel("ch_not_in_registry")
+
+    await waitFor(() => expect(avatarImg()).toBeNull())
   })
 })

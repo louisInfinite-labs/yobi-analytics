@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Avatar } from "antd"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { OshiErrorState } from "../../home-room/components/OshiErrorState"
@@ -142,6 +142,12 @@ function LiveOrNext({ status, now, onOpen }: { status: CreatorStatus; now: Date;
  * GET /creators/{creatorId}/oshi-status read model for the CURRENT creator. */
 export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlayingTitle }: OshiStatusPanelProps) {
   const creator = mockCreators.find((entry) => entry.channelId === creatorId)
+  // The channel icon is the canonical Creator Registry's `avatarUrl` (the backend Creator Master's YouTube channel icon); the mock roster
+  // above never carries one, so reading it from there always fell back to the initial.
+  const registryAvatarUrl = resolveCreatorKey(creatorId)?.avatarUrl ?? undefined
+  // Which icon URL failed to load, so the initial (with the creator-colored circle) shows only for that URL, and a different creator is tried again.
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
+  const avatarUrl = registryAvatarUrl && registryAvatarUrl !== failedAvatarUrl ? registryAvatarUrl : undefined
   const accent = getMemberAccent(creatorId, resolveCreatorKey(creatorId)?.themeColor)
   const previousVisit = usePreviousVisit()
   const [locale] = useLocale()
@@ -162,10 +168,14 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
           <div className="oshi-status__creator">
             <Avatar
               size={36}
-              src={creator?.avatarUrl}
+              src={avatarUrl}
               alt={creator?.channelName ?? creatorId}
               className="oshi-status__creator-avatar"
-              style={creator?.avatarUrl ? undefined : { background: accent.primary, color: accent.textAccent }}
+              onError={() => {
+                setFailedAvatarUrl(registryAvatarUrl ?? null)
+                return true
+              }}
+              style={avatarUrl ? undefined : { background: accent.primary, color: accent.textAccent }}
             >
               {creator?.channelName.charAt(0)}
             </Avatar>
