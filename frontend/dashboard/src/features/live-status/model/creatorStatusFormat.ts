@@ -5,6 +5,11 @@ import type { Locale } from "../../../shared/i18n/translations"
 export type UpcomingDisplayMode = "absolute" | "countdown"
 
 /** Clock time (24-hour HH:mm by default) in the viewer's own local time zone. */
+/** The number in a "NN LIVE" count: zero-padded to at least two digits (0 -> "00", 7 -> "07", 10 -> "10"); a larger count is never truncated. */
+export function formatLiveCount(count: number): string {
+  return String(count).padStart(2, "0")
+}
+
 export function formatAbsoluteTime(iso: string, timeFormat: TimeFormat = "24h"): string {
   return formatClockTime(new Date(iso), timeFormat)
 }

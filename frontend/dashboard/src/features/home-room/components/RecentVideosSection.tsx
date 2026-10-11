@@ -535,7 +535,10 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
             </>
           }
         />
-        <ViewAllButton locale={locale} />
+        {/* V1: the control has no destination yet (see ViewAllButton), so production does not render it at all -- no hidden/inert
+            element; it stays available to local development. `import.meta.env.DEV` is replaced at build time, so a production bundle
+            contains no trace of the element. */}
+        {import.meta.env.DEV && <ViewAllButton locale={locale} />}
       </header>
 
       {/* key = the creator + what the shelf is actually showing: a fresh track (scroll position and

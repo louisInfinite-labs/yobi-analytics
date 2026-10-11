@@ -3,6 +3,7 @@ import {
   formatAbsoluteTime,
   formatCountdown,
   formatCreatorStatus,
+  formatLiveCount,
   isScheduledTimeReached,
   reclassifyIfPastSchedule,
 } from "./creatorStatusFormat"
@@ -103,5 +104,19 @@ describe("formatCreatorStatus", () => {
   it("renders upcoming in countdown mode using an hours-minutes-later pattern", () => {
     const status: CreatorStatus = { kind: "upcoming", videoId: "v1", title: "t", scheduledStart: "2026-09-09T13:15:00.000Z" }
     expect(formatCreatorStatus(status, "countdown", now)).toEqual({ label: "1時間15分後", dotColor: "red", clickable: true })
+  })
+})
+
+describe("formatLiveCount", () => {
+  it.each([
+    [0, "00"],
+    [1, "01"],
+    [7, "07"],
+    [9, "09"],
+    [10, "10"],
+    [15, "15"],
+    [123, "123"],
+  ])("%i -> %s (two digits at least, never truncated)", (count, expected) => {
+    expect(formatLiveCount(count)).toBe(expected)
   })
 })

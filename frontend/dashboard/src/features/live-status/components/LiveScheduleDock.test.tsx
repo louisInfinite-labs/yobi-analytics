@@ -122,3 +122,32 @@ describe("LiveScheduleDock video selection", () => {
     expect(document.querySelector(".video-player-modal__backdrop")).toBeNull()
   })
 })
+
+describe("LiveScheduleDock trigger live count", () => {
+  function liveStatuses(count: number) {
+    return Object.fromEntries(Array.from({ length: count }, (_, index) => [`ch_live_${index}`, { kind: "live" as const, videoId: `v${index}`, title: "t" }]))
+  }
+
+  it.each([
+    [1, "01 LIVE"],
+    [9, "09 LIVE"],
+    [10, "10 LIVE"],
+    [15, "15 LIVE"],
+  ])("%i live creators read %s (zero-padded to two digits)", (count, expected) => {
+    mockPage("home")
+    vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: liveStatuses(count), now })
+
+    render(<LiveScheduleDock />)
+
+    expect(document.querySelector(".live-status-trigger")?.textContent).toContain(expected)
+  })
+
+  it("with nothing live the trigger does not show a count at all", () => {
+    mockPage("home")
+    vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: {}, now })
+
+    render(<LiveScheduleDock />)
+
+    expect(document.querySelector(".live-status-trigger")?.textContent).not.toMatch(/\d\d LIVE/)
+  })
+})

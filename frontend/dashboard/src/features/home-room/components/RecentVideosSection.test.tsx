@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { RecentVideosSection } from "./RecentVideosSection"
 import { fetchOshiVideos } from "../data/oshiVideos"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
@@ -163,5 +163,24 @@ describe("RecentVideosSection quick filters and controls", () => {
     expect(screen.getByRole("combobox", { name: "Sort videos" })).toBeInTheDocument()
     expect(screen.getByRole("combobox", { name: "Content type" })).toBeInTheDocument()
     expect(screen.queryByRole("combobox", { name: "Period" })).not.toBeInTheDocument() // only for most viewed
+  })
+})
+
+describe("RecentVideosSection View All in a production build", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it("is not in the DOM at all: no hidden or inert control, in any language", async () => {
+    vi.stubEnv("DEV", false)
+    vi.stubEnv("PROD", true)
+
+    await renderSection()
+
+    expect(document.querySelector(".oshi-videos__view-all")).toBeNull()
+    expect(screen.queryByRole("button", { name: /View All/ })).toBeNull()
+    for (const label of ["查看全部", "View All", "すべて見る"]) expect(document.body.textContent).not.toContain(label)
+    // The rest of the header is untouched: the filter bar still renders.
+    expect(document.querySelector(".oshi-videos__filters")).not.toBeNull()
   })
 })
