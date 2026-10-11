@@ -13,6 +13,8 @@ export interface ScheduledStream {
   /** Epoch ms of the stream's ACTUAL start, when the backend reports one (a live stream). The popup's "started ..." text uses this, never
    * scheduledStartMs (which only places the stream on the grid) or any published time. */
   actualStartMs?: number
+  /** The stream's own backend thumbnail (GET /live-streams `thumbnailUrl`), when it has one. */
+  thumbnailUrl?: string
   topics: string[]
 }
 

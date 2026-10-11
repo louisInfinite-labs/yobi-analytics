@@ -34,6 +34,7 @@ function toScheduledStream(dto: LiveStreamDto): ScheduledStream | null {
     status: dto.status,
     scheduledStartMs,
     ...(Number.isNaN(actualStartMs) ? {} : { actualStartMs }),
+    ...(dto.thumbnailUrl ? { thumbnailUrl: dto.thumbnailUrl } : {}),
     topics: dto.topic ? [dto.topic] : [],
   }
 }

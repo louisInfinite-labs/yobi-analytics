@@ -49,6 +49,7 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream, 
   const creator = creatorsById.get(stream.channelId)
   const visual = getScheduleCreatorAvatarVisual(stream.channelId, creator?.channelName ?? stream.channelId)
   const showLiveBadge = shouldShowLiveBadge(stream.status, stream.scheduledStartMs, now.getTime())
+  const isLive = stream.status === "live"
   const started = streamStartText(stream, locale, now.getTime(), displayMode, timeFormat)
 
   return (
@@ -74,9 +75,12 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream, 
         <h2 className="stream-detail-title">{stream.title}</h2>
 
         <div className="stream-modal-actions">
-          <button type="button" className="reminder-button" onClick={() => onSetReminder(stream)}>
-            {t(locale, "liveSchedule.setReminderButton")}
-          </button>
+          {/* A stream that is already live has started, so a pre-stream reminder no longer applies: the action is not rendered at all. */}
+          {!isLive && (
+            <button type="button" className="reminder-button" onClick={() => onSetReminder(stream)}>
+              {t(locale, "liveSchedule.setReminderButton")}
+            </button>
+          )}
           <button type="button" className="open-stream-button" onClick={() => onOpenStream(stream)}>
             {t(locale, "liveSchedule.openStreamButton")}
           </button>
