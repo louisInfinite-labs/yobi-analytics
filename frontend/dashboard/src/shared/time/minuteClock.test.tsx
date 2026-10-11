@@ -50,7 +50,7 @@ describe("useMinuteClock", () => {
       act(() => void vi.advanceTimersByTime(30_000))
     }
     // sampled at 04:29:40, :30:10, :30:40, :31:10, :31:40, :32:10 -- always the true floor of the remaining time, never a stale minute
-    expect(shown).toEqual(["In 1h:30m", "In 1h:29m", "In 1h:29m", "In 1h:28m", "In 1h:28m", "In 1h:27m"])
+    expect(shown).toEqual(["In 1h 30m", "In 1h 29m", "In 1h 29m", "In 1h 28m", "In 1h 28m", "In 1h 27m"])
   })
 
   it("stops its timer when nobody is subscribed and starts from a fresh value on the next mount", () => {

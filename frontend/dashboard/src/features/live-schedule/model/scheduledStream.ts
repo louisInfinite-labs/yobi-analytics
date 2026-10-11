@@ -7,9 +7,12 @@ export interface ScheduledStream {
   title: string
   description: string
   status: ScheduledStreamStatus
-  /** Epoch ms -- the slot this stream renders in and the modal's started/
-   * starts-in text are both derived from this, not stored separately. */
+  /** Epoch ms -- the slot this stream renders in and an upcoming stream's starts-in text are both derived from this, not stored
+   * separately. (A live stream's "started" text uses actualStartMs below.) */
   scheduledStartMs: number
+  /** Epoch ms of the stream's ACTUAL start, when the backend reports one (a live stream). The popup's "started ..." text uses this, never
+   * scheduledStartMs (which only places the stream on the grid) or any published time. */
+  actualStartMs?: number
   topics: string[]
 }
 

@@ -54,8 +54,19 @@ describe("CreatorStatusList", () => {
     renderList({
       statuses: { ...allOffline, ch_shirakami_fubuki: { kind: "live", videoId: "v1", title: "t1" } },
     })
-    expect(screen.getByText("01 LIVE")).toBeInTheDocument()
-    expect(screen.queryByText("02 LIVE")).not.toBeInTheDocument()
+    expect(screen.getByText("1 LIVE")).toBeInTheDocument()
+    expect(screen.queryByText("2 LIVE")).not.toBeInTheDocument()
+  })
+
+  it("shows each group's live count as the plain integer -- never zero-padded (1, 7, 9, 10, ...)", () => {
+    renderList({
+      statuses: Object.fromEntries(mockCreators.map((c) => [c.channelId, { kind: "live" as const, videoId: `v-${c.channelId}`, title: "t" }])),
+    })
+
+    const counts = Array.from(document.querySelectorAll(".live-status-group__live-count")).map((node) => node.textContent?.trim() ?? "")
+    expect(counts.length).toBeGreaterThan(0)
+    for (const text of counts) expect(text).toMatch(/^[1-9]\d* LIVE$/)
+    expect(counts.some((text) => /^\d{2,} LIVE$/.test(text))).toBe(true)
   })
 
   it("lists only the favorited creators when favoriteOnlyIds is set", () => {

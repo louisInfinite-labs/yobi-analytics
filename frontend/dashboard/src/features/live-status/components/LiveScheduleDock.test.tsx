@@ -129,11 +129,12 @@ describe("LiveScheduleDock trigger live count", () => {
   }
 
   it.each([
-    [1, "01 LIVE"],
-    [9, "09 LIVE"],
+    [1, "1 LIVE"],
+    [7, "7 LIVE"],
+    [9, "9 LIVE"],
     [10, "10 LIVE"],
     [15, "15 LIVE"],
-  ])("%i live creators read %s (zero-padded to two digits)", (count, expected) => {
+  ])("%i live creators read %s (the plain integer, never zero-padded)", (count, expected) => {
     mockPage("home")
     vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: liveStatuses(count), now })
 
