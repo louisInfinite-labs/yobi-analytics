@@ -112,7 +112,7 @@ npm run test:smoke
 |---|---|
 | Frontend | A throwaway local Vite dev server on port 5180 (separate from the existing suite's own port 5173) |
 | Backend | `scripts/local_api_server.py --port 8790 --enable-smoke-routes` — the local JSON-storage fixture, widened by exactly 4 hand-verified, AWS-safe routes (see that script's module docstring) |
-| Production AWS reads/writes | None. The 4 S3-backed per-creator routes stay excluded even under `--enable-smoke-routes`; `HOLODEX_SSM_PARAMETER` is unconditionally cleared before this process ever imports the real route handler, so Secrets Manager is structurally unreachable |
+| Production AWS reads/writes | None. The 4 S3-backed per-creator routes stay excluded even under `--enable-smoke-routes`; `HOLODEX_SSM_PARAMETER` is unconditionally cleared before this process ever imports the real route handler, so SSM Parameter Store is structurally unreachable |
 | Production-only cases | Skipped, not run — e.g. `api-contract.spec.ts`'s historical-data-unavailable test (`test.skip(!process.env.SMOKE_API_BASE_URL, ...)`), because its route is one of the excluded S3-backed ones |
 | Security-dependent cases | Remain `BLOCKED / PENDING SECURITY MERGE` regardless of mode — nothing in this repo implements them yet (see Scope) |
 
