@@ -1,6 +1,6 @@
 import { getCreators, isCurrentMemberEligible } from "../../../entities/creator/data/creatorRegistry"
-import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY, subgroupsForBranch } from "../../../entities/creator/utils/hololiveSubgrouping"
-import { sortNotificationCreatorsLikeLiveStatus } from "./notificationCreatorOrder"
+import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY } from "../../../entities/creator/utils/hololiveSubgrouping"
+import { groupEligibleCreatorsForLiveStatus } from "../../live-status/utils/liveStatusCanonicalRoster"
 import type { BranchKey } from "../../../entities/creator/model/domain"
 import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 
@@ -117,66 +117,41 @@ export function getAllNotificationCreators(): NotificationCreator[] {
 }
 
 export interface CreatorSubgroup {
-  /** null for a branch with no generation/unit subdivision (VSPO JP/EN,
-   * per this feature's own spec) -- rendered with no subgroup header. */
+  /** null for a branch with no generation/unit subdivision (VSPO JP/EN) -- rendered with no subgroup header. */
   label: string | null
   creators: NotificationCreator[]
 }
 
-export interface CreatorRegionGroup {
+/** One Live Status branch group ("VSPO! // JP", "HOLOLIVE // EN", ...) of this roster. */
+export interface NotificationBranchGroup {
   branch: BranchKey
-  /** "JP" / "EN" / "ID" -- the spec's own Region heading, one level below
-   * Agency and above Generation/Unit. */
-  regionLabel: string
   subgroups: CreatorSubgroup[]
 }
 
-export interface CreatorAgencyGroup {
-  /** "VSPO" / "HOLOLIVE" -- the spec's own top-level Agency heading. */
-  agencyLabel: string
-  regions: CreatorRegionGroup[]
+const NOTIFICATION_CREATOR_BY_ID = new Map(ALL_CREATORS.map((creator) => [creator.creatorId, creator]))
+
+/** Every creator in the roster, grouped EXACTLY as Live Status groups them: this is groupEligibleCreatorsForLiveStatus itself (the same
+ * branch order, the same generation/unit subgroups, the same member order, the same "VSPO! // JP" headings via LiveStatusGroups), narrowed
+ * to the creators this feature lists (isCurrentMemberEligible) and mapped to this feature's NotificationCreator records. There is no
+ * second grouping, ordering or labelling rule here -- not an agency/region tree, not a kana or alphabetical sort, not the Favorites list. */
+export function groupCreatorsForNotificationSettings(): NotificationBranchGroup[] {
+  return groupEligibleCreatorsForLiveStatus("", isCurrentMemberEligible).map((group) => ({
+    branch: group.branch,
+    subgroups: group.subgroups.map((subgroup) => ({
+      label: subgroup.label,
+      creators: subgroup.creators.flatMap((creator) => NOTIFICATION_CREATOR_BY_ID.get(creator.creatorId) ?? []),
+    })),
+  }))
 }
 
-/** Agency > Region display order, this feature's own spec order (VSPO
- * before HOLOLIVE; JP before EN before ID within each). */
-const AGENCY_REGION_ORDER: { agencyLabel: string; branch: BranchKey; regionLabel: string }[] = [
-  { agencyLabel: "VSPO", branch: "vspo_jp", regionLabel: "JP" },
-  { agencyLabel: "VSPO", branch: "vspo_en", regionLabel: "EN" },
-  { agencyLabel: "HOLOLIVE", branch: "holo_jp", regionLabel: "JP" },
-  { agencyLabel: "HOLOLIVE", branch: "holo_en", regionLabel: "EN" },
-  { agencyLabel: "HOLOLIVE", branch: "holo_id", regionLabel: "ID" },
-]
-
-/** Every creator in the roster, grouped into the spec's own three-level
- * tree -- Agency (VSPO/HOLOLIVE) > Region (JP/EN/ID) > Generation/Unit >
- * Creators -- in the spec's own fixed order (AGENCY_REGION_ORDER). Each
- * branch's creators are ordered to match Live Status's own display order
- * (sortNotificationCreatorsLikeLiveStatus) before being partitioned into
- * generations/units -- subgroupsForBranch itself never reorders a
- * subgroup's members (only its "Other" catch-all re-sorts, alphabetically,
- * on its own), so feeding it an already-ordered list is what makes each
- * subgroup come out ordered too. */
-export function groupCreatorsForNotificationSettings(): CreatorAgencyGroup[] {
-  const regionGroups: CreatorRegionGroup[] = AGENCY_REGION_ORDER.map(({ branch, regionLabel }) => ({
-    branch,
-    regionLabel,
-    subgroups: subgroupsForBranch(
-      branch,
-      sortNotificationCreatorsLikeLiveStatus(
-        branch,
-        ALL_CREATORS.filter((creator) => creator.branch === branch),
-      ),
-      (c) => c.displayName,
-    ),
-  })).filter((region) => region.subgroups.length > 0)
-
-  const agencyLabels = [...new Set(AGENCY_REGION_ORDER.map((entry) => entry.agencyLabel))]
-  return agencyLabels
-    .map((agencyLabel) => ({
-      agencyLabel,
-      regions: regionGroups.filter((region) =>
-        AGENCY_REGION_ORDER.some((entry) => entry.agencyLabel === agencyLabel && entry.branch === region.branch),
-      ),
-    }))
-    .filter((agency) => agency.regions.length > 0)
+/** `creators` reordered to Live Status' own order (the first place each appears in groupCreatorsForNotificationSettings) -- for the flat
+ * Favorites section, so it never invents a second ordering. */
+export function sortCreatorsLikeLiveStatus(creators: NotificationCreator[]): NotificationCreator[] {
+  const position = new Map<string, number>()
+  for (const group of groupCreatorsForNotificationSettings()) {
+    for (const subgroup of group.subgroups) {
+      for (const creator of subgroup.creators) if (!position.has(creator.creatorId)) position.set(creator.creatorId, position.size)
+    }
+  }
+  return [...creators].sort((a, b) => (position.get(a.creatorId) ?? Infinity) - (position.get(b.creatorId) ?? Infinity))
 }

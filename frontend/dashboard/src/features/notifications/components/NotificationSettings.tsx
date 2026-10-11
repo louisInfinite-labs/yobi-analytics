@@ -45,7 +45,7 @@ function topicLabelFor(entries: readonly VideoFilterEntry[], locale: Locale, top
 }
 
 /** One combined "which kinds of notification this topic sends" control
- * (直播/新片/兩者) -- a topic-level preference alongside, not instead of,
+ * (直播+新片 / 直播 / 新片) -- a topic-level preference alongside, not instead of,
  * each creator's own Live/New Video switches in the management drawer;
  * those keep deciding who is actually notified. */
 function NotificationTypeSection({ topicId, topicLabel }: { topicId: TopicCatalogId; topicLabel: string }) {
@@ -62,10 +62,9 @@ function NotificationTypeSection({ topicId, topicLabel }: { topicId: TopicCatalo
         value={getNotificationType(topicId)}
         options={[
           // Order confirmed with the user: combined option first, then Live,
-          // then New Video -- notificationTypeCombinedLabel is its own key
-          // (not the shared notificationTypeBoth) so the drawer's own
-          // "Notification type: 兩者" context line, which also reads
-          // notificationTypeBoth, is unaffected by this control's label.
+          // then New Video. These three labels are the ONE source of the
+          // notification-type wording: the member drawer's "Notification type:
+          // ..." line reads the same keys.
           { value: "both", label: t(locale, "notificationSettings.notificationTypeCombinedLabel") },
           { value: "live", label: t(locale, "notificationSettings.liveColumnHeader") },
           { value: "newVideo", label: t(locale, "notificationSettings.newVideoColumnHeader") },

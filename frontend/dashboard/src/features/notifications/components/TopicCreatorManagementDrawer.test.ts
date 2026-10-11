@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { excludeFavorites, filterAgencyGroups, filterCreatorList, matchesSearch } from "./TopicCreatorManagementDrawer"
-import { getAllNotificationCreators, groupCreatorsForNotificationSettings, type CreatorAgencyGroup } from "../model/notificationCreatorGrouping"
+import { excludeFavorites, filterBranchGroups, filterCreatorList, matchesSearch } from "./TopicCreatorManagementDrawer"
+import { getAllNotificationCreators, groupCreatorsForNotificationSettings, sortCreatorsLikeLiveStatus, type NotificationBranchGroup } from "../model/notificationCreatorGrouping"
+import { formatBranchHeading } from "../../live-status/components/LiveStatusGroups"
+import { groupEligibleCreatorsForLiveStatus } from "../../live-status/utils/liveStatusCanonicalRoster"
 import { isFavoriteCreatorId } from "../../favorites/utils/creatorFavoriteBridge"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { getCreatorById, isCurrentMemberEligible } from "../../../entities/creator/data/creatorRegistry"
@@ -15,7 +17,7 @@ import { getCreatorById, isCurrentMemberEligible } from "../../../entities/creat
 // comment on matchesSearch).
 describe("TopicCreatorManagementDrawer filtering/grouping logic", () => {
   const allCreators = getAllNotificationCreators()
-  const baseAgencyGroups = groupCreatorsForNotificationSettings()
+  const baseGroups = groupCreatorsForNotificationSettings()
 
   function findCreator(creatorId: string) {
     const creator = allCreators.find((entry) => entry.creatorId === creatorId)
@@ -23,22 +25,20 @@ describe("TopicCreatorManagementDrawer filtering/grouping logic", () => {
     return creator
   }
 
-  function flattenCreatorIds(agencyGroups: CreatorAgencyGroup[]): string[] {
-    return agencyGroups.flatMap((agency) =>
-      agency.regions.flatMap((region) => region.subgroups.flatMap((subgroup) => subgroup.creators.map((creator) => creator.creatorId))),
-    )
+  function flattenCreatorIds(groups: NotificationBranchGroup[]): string[] {
+    return groups.flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.creators.map((creator) => creator.creatorId)))
   }
 
-  it("excludeFavorites removes a favorited creator from their normal agency/region group entirely — no duplicate rendering (spec section 7)", () => {
-    const filtered = excludeFavorites(baseAgencyGroups, new Set(["aizawa_ema"]))
+  it("excludeFavorites removes a favorited creator from their normal branch group entirely — no duplicate rendering (spec section 7)", () => {
+    const filtered = excludeFavorites(baseGroups, new Set(["aizawa_ema"]))
     expect(flattenCreatorIds(filtered)).not.toContain("aizawa_ema")
     // Everyone else in her VSPO JP group stays.
     expect(flattenCreatorIds(filtered)).toContain("kaga_sumire")
   })
 
   it("excludeFavorites leaves every group's own creator count intact when nobody is favorited", () => {
-    const filtered = excludeFavorites(baseAgencyGroups, new Set())
-    expect(flattenCreatorIds(filtered).length).toBe(flattenCreatorIds(baseAgencyGroups).length)
+    const filtered = excludeFavorites(baseGroups, new Set())
+    expect(flattenCreatorIds(filtered).length).toBe(flattenCreatorIds(baseGroups).length)
   })
 
   it("matchesSearch matches a real creator's display name case-insensitively as a substring, and an empty/whitespace query matches everyone", () => {
@@ -54,15 +54,42 @@ describe("TopicCreatorManagementDrawer filtering/grouping logic", () => {
     expect(matches.map((creator) => creator.creatorId)).toEqual(["aizawa_ema"])
   })
 
-  it("filterAgencyGroups drops every subgroup/region/agency with zero matches (spec section 10: never a bare empty heading)", () => {
-    const filtered = filterAgencyGroups(baseAgencyGroups, "エマ")
+  it("filterBranchGroups drops every subgroup/branch with zero matches (spec section 10: never a bare empty heading)", () => {
+    const filtered = filterBranchGroups(baseGroups, "エマ")
     expect(flattenCreatorIds(filtered)).toEqual(["aizawa_ema"])
     expect(filtered).toHaveLength(1)
-    expect(filtered[0]?.agencyLabel).toBe("VSPO")
+    expect(filtered[0]?.branch).toBe("vspo_jp")
+    expect(formatBranchHeading(filtered[0]!.branch)).toBe("VSPO! // JP")
   })
 
-  it("filterAgencyGroups returns nothing at all once no real creator matches", () => {
-    expect(filterAgencyGroups(baseAgencyGroups, "no such creator exists xyz")).toEqual([])
+  it("filterBranchGroups returns nothing at all once no real creator matches", () => {
+    expect(filterBranchGroups(baseGroups, "no such creator exists xyz")).toEqual([])
+  })
+
+  describe("grouping, headings and member order are Live Status'", () => {
+    const liveStatusGroups = groupEligibleCreatorsForLiveStatus("", (creator) => isCurrentMemberEligible(creator))
+
+    it("has exactly Live Status' branch groups in Live Status' order (VSPO! // JP, VSPO! // EN, HOLOLIVE // JP, ...), each one complete heading", () => {
+      expect(baseGroups.map((group) => group.branch)).toEqual(liveStatusGroups.map((group) => group.branch))
+      const headings = baseGroups.map((group) => formatBranchHeading(group.branch))
+      expect(headings.slice(0, 2)).toEqual(["VSPO! // JP", "VSPO! // EN"])
+      // never a bare "VSPO" / "JP" / "EN" parent-and-child pair
+      expect(headings.every((heading) => /^(VSPO!|HOLOLIVE) \/\/ (JP|EN|ID)$/.test(heading))).toBe(true)
+    })
+
+    it("lists each group's subgroups and members in exactly Live Status' order", () => {
+      const ours = baseGroups.map((group) => group.subgroups.map((subgroup) => [subgroup.label, subgroup.creators.map((creator) => creator.creatorId)]))
+      const theirs = liveStatusGroups.map((group) => group.subgroups.map((subgroup) => [subgroup.label, subgroup.creators.map((creator) => creator.creatorId)]))
+      expect(ours).toEqual(theirs)
+    })
+
+    it("the flat Favorites order follows the same Live Status order, whatever order the favorites are given in", () => {
+      const ids = ["aizawa_ema", "kaga_sumire", "kanade_izuru"].filter((id) => allCreators.some((creator) => creator.creatorId === id))
+      const shuffled = [...ids].reverse().map(findCreator)
+      const expected = flattenCreatorIds(baseGroups).filter((id) => ids.includes(id))
+
+      expect(sortCreatorsLikeLiveStatus(shuffled).map((creator) => creator.creatorId)).toEqual([...new Set(expected)])
+    })
   })
 
   it("isFavoriteCreatorId bridges Favorites' own channelId space to a creatorId via the confirmed 'ch_' + creatorId convention", () => {

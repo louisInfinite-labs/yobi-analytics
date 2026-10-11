@@ -1115,11 +1115,10 @@
    change to Home's own scrollbar colors stays in sync here too), just
    applied to vertical scroll (width, not height) instead of Home's own
    horizontal one. No reserved gutter, same as Home -- overlay-style, not
-   layout-shifting. Scoped to these three Notification Settings scroll
-   regions only; Home's own rules and every other Settings page are
+   layout-shifting. Scoped to these two Notification Settings scroll
+   regions only (the member drawer owns its scrollbar next to its other rules -- a constant track, see .topic-creator-drawer .ant-drawer-body); Home's own rules and every other Settings page are
    untouched. ---- */
 .notification-topic-list-scroll,
-.topic-creator-drawer .ant-drawer-body,
 .notification-detail-panel {
   scrollbar-width: none;
   scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
@@ -1127,8 +1126,6 @@
 
 .notification-topic-list-scroll::-webkit-scrollbar,
 .notification-topic-list-scroll::-webkit-scrollbar-button,
-.topic-creator-drawer .ant-drawer-body::-webkit-scrollbar,
-.topic-creator-drawer .ant-drawer-body::-webkit-scrollbar-button,
 .notification-detail-panel::-webkit-scrollbar,
 .notification-detail-panel::-webkit-scrollbar-button {
   width: 0;
@@ -1137,26 +1134,22 @@
 }
 
 .notification-topic-list-scroll:hover,
-.topic-creator-drawer .ant-drawer-body:hover,
 .notification-detail-panel:hover {
   scrollbar-width: thin;
 }
 
 .notification-topic-list-scroll:hover::-webkit-scrollbar,
-.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar,
 .notification-detail-panel:hover::-webkit-scrollbar {
   width: 7px;
   background: var(--oshi-bg);
 }
 
 .notification-topic-list-scroll:hover::-webkit-scrollbar-button,
-.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar-button,
 .notification-detail-panel:hover::-webkit-scrollbar-button {
   display: none;
 }
 
 .notification-topic-list-scroll:hover::-webkit-scrollbar-track,
-.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar-track,
 .notification-detail-panel:hover::-webkit-scrollbar-track {
   background: var(--oshi-bg);
   border: 0;
@@ -1165,7 +1158,6 @@
 }
 
 .notification-topic-list-scroll:hover::-webkit-scrollbar-thumb,
-.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar-thumb,
 .notification-detail-panel:hover::-webkit-scrollbar-thumb {
   background: var(--oshi-surface-scrollbar-thumb);
   border: 0;
@@ -1175,13 +1167,11 @@
 }
 
 .notification-topic-list-scroll:hover::-webkit-scrollbar-thumb:hover,
-.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar-thumb:hover,
 .notification-detail-panel:hover::-webkit-scrollbar-thumb:hover {
   background: var(--oshi-surface-scrollbar-thumb-hover);
 }
 
 .notification-topic-list-scroll:hover::-webkit-scrollbar-corner,
-.topic-creator-drawer .ant-drawer-body:hover::-webkit-scrollbar-corner,
 .notification-detail-panel:hover::-webkit-scrollbar-corner {
   background: var(--oshi-bg);
 }
@@ -1809,17 +1799,36 @@
    override, independent of every other topic. ============ */
 
 .topic-creator-drawer {
-  --drawer-bg: #17141d;
-  --drawer-surface: #211d29;
-  --drawer-surface-strong: #292432;
-  --drawer-border: #393342;
-  --drawer-text-primary: #f3eff7;
-  --drawer-text-secondary: #b9b1c5;
-  --drawer-text-tertiary: #948b9f;
-  --drawer-accent: #c779a3;
+  /* Home's own surface / border / text tokens (the Live Status drawer's #0b1521 and the --oshi-* scale) -- there is no notification-only
+     theme. --drawer-accent is Home's accent (--creator-main) for the selected rows. */
+  --drawer-bg: #0b1521;
+  --drawer-surface: var(--oshi-surface-2);
+  --drawer-surface-strong: var(--oshi-surface-3);
+  --drawer-border: var(--oshi-border);
+  --drawer-text-primary: var(--oshi-text-1);
+  --drawer-text-secondary: var(--oshi-text-2);
+  --drawer-text-tertiary: var(--oshi-text-3);
+  --drawer-accent: var(--creator-main);
+
+  /* Fixed column widths shared by every row and column header, so the switches and reminder controls line up across groups. The reminder
+     column is only as wide as its select needs (the longest timing label of the current locale, see the data-locale rules below). */
+  --drawer-switch-col: 48px;
+  /* The reminder cell's left padding: with the column gap it is the breathing room between the New Video switch and the select (16px). */
+  --drawer-reminder-pad: var(--space-2);
+  --drawer-reminder-col: calc(80px + var(--drawer-reminder-pad));
+
+  /* The select's own dark scheme, so the system `Highlight` color below is the same one the open dropdown list highlights with. */
+  color-scheme: dark;
 }
 
-.topic-creator-drawer .ant-drawer-content,
+/* Notifications ON is shown by the switches themselves: the ON track is the dropdown-list highlight (--oshi-select-highlight, defined with
+   the shared select in home.css), not an accent of this drawer. OFF keeps its neutral track from the antd theme. */
+.topic-creator-drawer .ant-switch.ant-switch-checked,
+.topic-creator-drawer .ant-switch.ant-switch-checked:hover:not(.ant-switch-disabled) {
+  background: var(--oshi-select-highlight);
+}
+
+.topic-creator-drawer.ant-drawer-section,
 .topic-creator-drawer .ant-drawer-header,
 .topic-creator-drawer .ant-drawer-body {
   background: var(--drawer-bg);
@@ -1850,11 +1859,37 @@
 
 .topic-creator-drawer .ant-drawer-body {
   padding: var(--space-5);
+
+  /* Reserve the scrollbar's space up front: a scrollbar that appears while the pointer is over the drawer must not narrow every row.
+     An overlay scrollbar (hidden at rest, a 10px track once the pointer is over the drawer) did exactly that: every row lost 10px of width on
+     mouse-enter and got it back on mouse-leave. A thin classic scrollbar always occupies its track, and only its COLORS change on hover --
+     the same pattern Schedule's page scrollbar uses (see schedule.css). */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.topic-creator-drawer .ant-drawer-body:hover {
+  scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
 }
 
 .topic-creator-drawer__content {
   display: flex;
   flex-direction: column;
+}
+
+/* The reminder column = the select's natural width in that locale (its longest timing label, measured: zh-TW 78px, ja 84px, en 120px, plus a
+   2px margin) + the cell's left padding. A fixed value per locale, so every row and header line up. */
+.topic-creator-drawer__content[data-locale="zh-TW"] {
+  --drawer-reminder-col: calc(80px + var(--drawer-reminder-pad));
+}
+
+.topic-creator-drawer__content[data-locale="ja"] {
+  --drawer-reminder-col: calc(86px + var(--drawer-reminder-pad));
+}
+
+.topic-creator-drawer__content[data-locale="en"] {
+  --drawer-reminder-col: calc(122px + var(--drawer-reminder-pad));
 }
 
 .topic-creator-drawer__notification-type-context {
@@ -1875,29 +1910,9 @@
   line-height: 1.4;
 }
 
-.topic-creator-drawer__search.ant-input-affix-wrapper {
-  width: 100%;
+/* The search itself is Home's .live-status-search (markup in TopicCreatorManagementDrawer). */
+.topic-creator-drawer__search {
   margin-bottom: var(--space-4);
-  border-radius: var(--radius-sm);
-  border-color: var(--drawer-border);
-  background: var(--drawer-surface);
-  color: var(--drawer-text-primary);
-}
-
-.topic-creator-drawer__search.ant-input-affix-wrapper:hover,
-.topic-creator-drawer__search.ant-input-affix-wrapper-focused {
-  border-color: var(--drawer-accent);
-}
-
-.topic-creator-drawer__search .ant-input {
-  background: transparent;
-  color: var(--drawer-text-primary);
-}
-
-.topic-creator-drawer__search .ant-input-prefix,
-.topic-creator-drawer__search .ant-input-clear-icon,
-.topic-creator-drawer__search .ant-input::placeholder {
-  color: var(--drawer-text-tertiary);
 }
 
 .topic-creator-drawer__empty-state {
@@ -1908,54 +1923,16 @@
 }
 
 .topic-creator-drawer__group {
-  margin-bottom: var(--space-6);
-}
-
-.topic-creator-drawer__group-title {
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--drawer-text-primary);
-  margin: 0 0 var(--space-4);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--drawer-border);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.topic-creator-drawer__group-title span {
-  color: var(--drawer-accent);
-}
-
-.topic-creator-drawer__region {
   margin-bottom: var(--space-4);
 }
 
-.topic-creator-drawer__region:not(:first-child) {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--drawer-border);
-}
-
-.topic-creator-drawer__region-title {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--drawer-accent);
-  margin: 0 0 var(--space-3);
+/* The Favorites heading is a Live Status group heading too (.live-status-group__heading); only the h3 default margin is reset. */
+.topic-creator-drawer__favorites-heading {
+  margin: 0;
 }
 
 .topic-creator-drawer__subgroup {
   margin-bottom: var(--space-3);
-}
-
-.topic-creator-drawer__subgroup-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--drawer-text-tertiary);
-  margin: 0 0 var(--space-1);
 }
 
 /* avatar / flexible name / Live / New Video / reminder -- same fixed-grid
@@ -1967,10 +1944,8 @@
 .topic-creator-drawer__row,
 .topic-creator-drawer__column-header {
   display: grid;
-  /* Reminder column widened from 112px to 150px -- 112px was too narrow
-     for the zh-TW "not in effect" hint (未生效（套用主題時間）) to fit on
-     one line, wrapping mid-parenthesis in an ugly spot. */
-  grid-template-columns: 28px minmax(0, 1fr) 56px 56px 150px;
+  /* The reminder column is sized to its select (--drawer-reminder-col), not a wide reserve: the "not in effect" hint under it simply wraps. */
+  grid-template-columns: var(--creator-avatar-size) minmax(44px, 1fr) var(--drawer-switch-col) var(--drawer-switch-col) var(--drawer-reminder-col);
   align-items: center;
   gap: var(--space-2);
 }
@@ -1986,12 +1961,12 @@
    source order (same specificity, declared later). */
 .topic-creator-drawer__row.topic-creator-drawer__row--live-only,
 .topic-creator-drawer__column-header.topic-creator-drawer__column-header--live-only {
-  grid-template-columns: 28px minmax(0, 1fr) 56px 150px;
+  grid-template-columns: var(--creator-avatar-size) minmax(44px, 1fr) var(--drawer-switch-col) var(--drawer-reminder-col);
 }
 
 .topic-creator-drawer__row.topic-creator-drawer__row--newvideo-only,
 .topic-creator-drawer__column-header.topic-creator-drawer__column-header--newvideo-only {
-  grid-template-columns: 28px minmax(0, 1fr) 56px;
+  grid-template-columns: var(--creator-avatar-size) minmax(44px, 1fr) var(--drawer-switch-col);
 }
 
 .topic-creator-drawer__column-header {
@@ -2015,32 +1990,14 @@
   min-height: 48px;
   padding: 7px var(--space-2);
   border-radius: var(--radius-sm);
-  border-left: 2px solid transparent;
-  transition: background-color 120ms ease, border-color 120ms ease;
 }
 
-/* No mouse-hover background (or border) on a creator row: only the SELECTED state below tints it, and it looks the
-   same whether or not the pointer is over it. */
-.topic-creator-drawer__row:has(.ant-switch-checked) {
-  border-left-color: var(--drawer-accent);
-  background: color-mix(in srgb, var(--drawer-accent) 9%, transparent);
-}
-
+/* A creator row is a plain container in EVERY state (normal / hover / focus / switches on or off): no background, border, glow or accent --
+   notifications ON is shown by the switches alone. With no border or padding that changes, nothing about the row can move. */
 .topic-creator-drawer__avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--drawer-surface-strong);
-  border: 1px solid var(--drawer-border);
-  color: var(--drawer-text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
-  flex-shrink: 0;
-  overflow: hidden;
-  transition: border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  /* Live Status' creator avatar (the shared .creator-avatar-circle treatment): no border, ring or glow -- also not on hover. */
+  background: var(--oshi-surface-3);
+  color: var(--oshi-text-2);
 }
 
 /* The shared CreatorAvatarImage's channel icon fills its circular frame (the frame is a fixed size, so no layout shift). */
@@ -2050,12 +2007,6 @@
   height: 100%;
   object-fit: cover;
   border-radius: 50%;
-}
-
-.topic-creator-drawer__row:hover .topic-creator-drawer__avatar {
-  border-color: var(--creator-accent);
-  color: var(--creator-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--creator-accent) 16%, transparent);
 }
 
 .topic-creator-drawer__creator-name {
@@ -2078,6 +2029,12 @@
   justify-content: center;
 }
 
+/* 8px column gap + 8px here = 16px of breathing room between the New Video switch and the reminder select. */
+.topic-creator-drawer__reminder-cell {
+  padding-left: var(--drawer-reminder-pad);
+  box-sizing: border-box;
+}
+
 .topic-creator-drawer__reminder-cell-content {
   display: flex;
   flex-direction: column;
@@ -2086,13 +2043,9 @@
   width: 100%;
 }
 
-/* antd's own outlined/DownOutlined trigger Button, sized to fill the
-   grid's own reminder column exactly like the old Select did -- the
-   popup itself is left at antd's own default (content-based) width, no
-   custom classNames/styles needed here. */
-.topic-creator-drawer__reminder-trigger {
+/* Home's own native select (.oshi-videos__sort) fills the grid's reminder column; every other look is Home's. */
+.topic-creator-drawer__reminder-select {
   width: 100%;
-  justify-content: space-between;
 }
 
 .topic-creator-drawer__reminder-empty {
@@ -2112,25 +2065,20 @@
 }
 
 @media (max-width: 560px) {
+  /* 4px column gap + 12px of padding = the same 16px between the New Video switch and the reminder select. */
+  .topic-creator-drawer {
+    --drawer-reminder-pad: var(--space-3);
+  }
+
   .topic-creator-drawer .ant-drawer-body {
     padding: var(--space-4) var(--space-3);
   }
 
   .topic-creator-drawer__row,
   .topic-creator-drawer__column-header {
-    grid-template-columns: 28px minmax(92px, 1fr) 48px 48px minmax(112px, 136px);
     gap: var(--space-1);
   }
 
-  .topic-creator-drawer__row.topic-creator-drawer__row--live-only,
-  .topic-creator-drawer__column-header.topic-creator-drawer__column-header--live-only {
-    grid-template-columns: 28px minmax(92px, 1fr) 48px minmax(112px, 136px);
-  }
-
-  .topic-creator-drawer__row.topic-creator-drawer__row--newvideo-only,
-  .topic-creator-drawer__column-header.topic-creator-drawer__column-header--newvideo-only {
-    grid-template-columns: 28px minmax(92px, 1fr) 48px;
-  }
 }
 
 /* ============ Favorites Roster (My Favorites / 收藏名單): esports-style

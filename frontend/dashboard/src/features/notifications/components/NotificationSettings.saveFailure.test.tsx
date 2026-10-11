@@ -56,15 +56,14 @@ describe("Settings drawer when a notification write is rejected", () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     await openAllDrawer(user)
     await user.click(screen.getAllByRole("switch", { name: /live notifications/ })[0])
-    const trigger = screen.getAllByRole("button", { name: /'s reminder time/ })[0]
-    expect(trigger).toHaveTextContent("No reminder")
+    const trigger = screen.getAllByRole("combobox", { name: /'s reminder time/ })[0]
+    expect(trigger).toHaveDisplayValue("—")
     vi.mocked(liveReminderApi.saveCreatorReminder).mockRejectedValueOnce(new Error("HTTP 500"))
 
-    await user.click(trigger)
-    await user.click(screen.getByRole("menuitem", { name: "10 minutes before" }))
+    await user.selectOptions(trigger, "10 minutes before")
 
     expect(await screen.findByRole("alert")).toHaveTextContent(SAVE_FAILED)
-    expect(screen.getAllByRole("button", { name: /'s reminder time/ })[0]).toHaveTextContent("No reminder")
+    expect(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0]).toHaveDisplayValue("—")
     expect(storedState().topics.all.reminderOverrides).toEqual({})
   })
 
@@ -73,15 +72,13 @@ describe("Settings drawer when a notification write is rejected", () => {
     await openAllDrawer(user)
     await user.click(screen.getAllByRole("switch", { name: /live notifications/ })[0])
     vi.mocked(liveReminderApi.saveCreatorReminder).mockRejectedValueOnce(new Error("HTTP 500"))
-    await user.click(screen.getAllByRole("button", { name: /'s reminder time/ })[0])
-    await user.click(screen.getByRole("menuitem", { name: "10 minutes before" }))
+    await user.selectOptions(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0], "10 minutes before")
     await screen.findByRole("alert")
 
-    await user.click(screen.getAllByRole("button", { name: /'s reminder time/ })[0])
-    await user.click(screen.getByRole("menuitem", { name: "10 minutes before" }))
+    await user.selectOptions(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0], "10 minutes before")
 
     await vi.waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument())
-    expect(screen.getAllByRole("button", { name: /'s reminder time/ })[0]).toHaveTextContent("10 minutes before")
+    expect(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0]).toHaveDisplayValue("10 minutes before")
   })
 
   it("a failed new-video switch shows the error and leaves the switch OFF", async () => {
@@ -116,12 +113,11 @@ describe("Settings drawer when a notification write is rejected", () => {
     await openAllDrawer(user)
     await user.click(screen.getAllByRole("switch", { name: /live notifications/ })[0])
     vi.mocked(liveReminderApi.saveCreatorReminder).mockRejectedValueOnce(new Error("HTTP 500"))
-    await user.click(screen.getAllByRole("button", { name: /'s reminder time/ })[0])
-    await user.click(screen.getByRole("menuitem", { name: "1 hour before" }))
+    await user.selectOptions(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0], "1 hour before")
     await screen.findByRole("alert")
 
     resetAllSharedStateForTests() // what a page reload does to the in-memory stores
 
-    expect(screen.getAllByRole("button", { name: /'s reminder time/ })[0]).toHaveTextContent("No reminder")
+    expect(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0]).toHaveDisplayValue("—")
   })
 })

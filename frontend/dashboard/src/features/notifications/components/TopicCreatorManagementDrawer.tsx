@@ -1,7 +1,8 @@
 import { useMemo, useState, type CSSProperties } from "react"
-import { Button, ConfigProvider, Drawer, Dropdown, Input, Switch } from "antd"
-import { ChevronDown, Search } from "lucide-react"
+import { ConfigProvider, Drawer, Switch } from "antd"
+import { Heart, Search } from "lucide-react"
 import { CreatorAvatarImage } from "../../../entities/creator/components/CreatorAvatarImage"
+import { LiveStatusGroups } from "../../live-status/components/LiveStatusGroups"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
 import { clearNotificationSaveFailed, useNotificationSaveFailed } from "../hooks/notificationSaveStatus"
@@ -9,20 +10,16 @@ import { useReminderTopicSupport } from "../hooks/useReminderTopicSupport"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
 import { isFavoriteCreatorId } from "../../favorites/utils/creatorFavoriteBridge"
 import {
-  GAMERS_GROUP_LABEL_KEY,
   getAllNotificationCreators,
   groupCreatorsForNotificationSettings,
-  OTHER_GROUP_LABEL_KEY,
-  type CreatorAgencyGroup,
+  sortCreatorsLikeLiveStatus,
+  type NotificationBranchGroup,
   type NotificationCreator,
 } from "../model/notificationCreatorGrouping"
-import { sortFlatNotificationCreatorsLikeLiveStatus } from "../model/notificationCreatorOrder"
 import type { TopicCatalogId } from "../model/notificationTopicCatalog"
 import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, type ReminderTimeValue, type TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
-
-const NOTIFICATION_ACCENT = "#c779a3"
 
 type CreatorAccentStyle = CSSProperties & {
   "--creator-accent": string
@@ -45,19 +42,11 @@ interface TopicCreatorManagementDrawerProps {
   onClose: () => void
 }
 
-/** Same sentinel-label translation as NotificationSettings' own
- * subgroupTitle. */
-function subgroupTitle(locale: Locale, label: string): string {
-  if (label === OTHER_GROUP_LABEL_KEY) return t(locale, "notificationSettings.otherGroupLabel")
-  if (label === GAMERS_GROUP_LABEL_KEY) return t(locale, "notificationSettings.gamersGroupLabel")
-  return label
-}
-
 /** Same instant, no-Enter, whole-name-substring search as
- * NotificationSettings' own matchesSearch/filterAgencyGroups (this
+ * NotificationSettings' own matchesSearch/filterBranchGroups (this
  * feature's own spec section 10: reuse the existing search
  * implementation). Exported (along with filterCreatorList/
- * filterAgencyGroups/excludeFavorites below) purely so this feature's own
+ * filterBranchGroups/excludeFavorites below) purely so this feature's own
  * tests can exercise the actual filtering/grouping logic directly against
  * the real roster, without needing to mount antd's Drawer. */
 export function matchesSearch(creator: NotificationCreator, query: string): boolean {
@@ -69,45 +58,29 @@ export function filterCreatorList(creators: NotificationCreator[], query: string
   return creators.filter((creator) => matchesSearch(creator, query))
 }
 
-/** Filters the WHOLE Agency > Region > Subgroup > Creator hierarchy so an
- * empty subgroup/region/agency never leaves a bare heading on screen once
- * a search narrows results down (same reasoning/behavior as
- * NotificationSettings' own filterAgencyGroups). */
-export function filterAgencyGroups(agencyGroups: CreatorAgencyGroup[], query: string): CreatorAgencyGroup[] {
-  return agencyGroups
-    .map((agency) => ({
-      ...agency,
-      regions: agency.regions
-        .map((region) => ({
-          ...region,
-          subgroups: region.subgroups
-            .map((subgroup) => ({ ...subgroup, creators: filterCreatorList(subgroup.creators, query) }))
-            .filter((subgroup) => subgroup.creators.length > 0),
-        }))
-        .filter((region) => region.subgroups.length > 0),
+/** Filters the WHOLE branch > subgroup > creator hierarchy (Live Status' grouping) so an empty subgroup/branch never leaves a bare
+ * heading on screen once a search narrows results down. */
+export function filterBranchGroups(groups: NotificationBranchGroup[], query: string): NotificationBranchGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      subgroups: group.subgroups
+        .map((subgroup) => ({ ...subgroup, creators: filterCreatorList(subgroup.creators, query) }))
+        .filter((subgroup) => subgroup.creators.length > 0),
     }))
-    .filter((agency) => agency.regions.length > 0)
+    .filter((group) => group.subgroups.length > 0)
 }
 
-/** Removes every Favorite creator from the normal Agency/Region groups so
- * no creator ever renders twice (this feature's own spec section 7). */
-export function excludeFavorites(agencyGroups: CreatorAgencyGroup[], favoriteIds: ReadonlySet<string>): CreatorAgencyGroup[] {
-  return agencyGroups
-    .map((agency) => ({
-      ...agency,
-      regions: agency.regions
-        .map((region) => ({
-          ...region,
-          subgroups: region.subgroups
-            .map((subgroup) => ({
-              ...subgroup,
-              creators: subgroup.creators.filter((creator) => !favoriteIds.has(creator.creatorId)),
-            }))
-            .filter((subgroup) => subgroup.creators.length > 0),
-        }))
-        .filter((region) => region.subgroups.length > 0),
+/** Removes every Favorite creator from the normal branch groups so no creator ever renders twice (this feature's own spec section 7). */
+export function excludeFavorites(groups: NotificationBranchGroup[], favoriteIds: ReadonlySet<string>): NotificationBranchGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      subgroups: group.subgroups
+        .map((subgroup) => ({ ...subgroup, creators: subgroup.creators.filter((creator) => !favoriteIds.has(creator.creatorId)) }))
+        .filter((subgroup) => subgroup.creators.length > 0),
     }))
-    .filter((agency) => agency.regions.length > 0)
+    .filter((group) => group.subgroups.length > 0)
 }
 
 /** Which member-level columns a topic's own notificationType allows --
@@ -147,8 +120,9 @@ function ColumnHeader({ locale, notificationType }: { locale: Locale; notificati
   )
 }
 
-/** The dropdown key of the "no reminder" option (a real reminder value never equals it). */
-const UNSET_REMINDER_KEY = "__unset__"
+/** What the closed select shows while this creator has no reminder time yet. It is a placeholder, NOT an option: the open list holds only the
+ * real timings (whether notifications are on at all is the switch's job). */
+const UNSET_REMINDER_PLACEHOLDER = "—"
 
 /** Live's own reminder-time cell -- only shown once Live is enabled for
  * this creator+topic (New Video has no reminder-time concept at all -- see
@@ -184,40 +158,32 @@ function ReminderCell({
     )
   }
 
-  const unsetLabel = t(locale, "notificationSettings.reminder.unset")
-  const options = [
-    { value: UNSET_REMINDER_KEY, label: unsetLabel },
-    ...REMINDER_TIME_VALUES.map((value) => ({ value: value as string, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) })),
-  ]
+  const options = REMINDER_TIME_VALUES.map((value) => ({ value: value as string, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) }))
   const memberReminder = getMemberReminder(topicId, creator.creatorId)
-  const selectedKey = memberReminder ?? UNSET_REMINDER_KEY
-  const memberReminderLabel = options.find((option) => option.value === selectedKey)?.label ?? unsetLabel
   const shadowed = reminderSupported && isReminderShadowedByAll(topicId, creator.creatorId)
 
   return (
     <span className="topic-creator-drawer__reminder-cell-content">
-      <Dropdown
+      {/* Home's own dropdown, verbatim: the same native <select> and .oshi-videos__sort class Home's sort / content-type controls use, so its
+          height, padding, border, radius, colors, chevron, hover/focus and OPEN list are Home's by construction. */}
+      <select
+        className="oshi-videos__sort topic-creator-drawer__reminder-select"
         disabled={!reminderSupported}
-        menu={{
-          items: options.map((option) => ({ key: option.value, label: option.label })),
-          selectedKeys: [selectedKey],
-          onClick: ({ key }) => setMemberReminder(topicId, creator.creatorId, key === UNSET_REMINDER_KEY ? null : (key as ReminderTimeValue)),
-        }}
-        trigger={["click"]}
+        value={memberReminder ?? ""}
+        onChange={(event) => setMemberReminder(topicId, creator.creatorId, event.target.value as ReminderTimeValue)}
+        aria-label={t(locale, "notificationSettings.reminderSelectAriaLabel", { name: creator.displayName })}
       >
-        <Button
-          variant="outlined"
-          color="default"
-          size="small"
-          className="topic-creator-drawer__reminder-trigger"
-          disabled={!reminderSupported}
-          icon={<ChevronDown size={14} aria-hidden="true" />}
-          iconPlacement="end"
-          aria-label={t(locale, "notificationSettings.reminderSelectAriaLabel", { name: creator.displayName })}
-        >
-          {memberReminderLabel}
-        </Button>
-      </Dropdown>
+        {memberReminder === null && (
+          <option value="" disabled hidden>
+            {UNSET_REMINDER_PLACEHOLDER}
+          </option>
+        )}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
       {shadowed && <span className="topic-creator-drawer__reminder-not-in-effect">{t(locale, "notificationSettings.reminderNotInEffectHint")}</span>}
     </span>
   )
@@ -228,11 +194,14 @@ function CreatorRow({
   creator,
   notificationType,
   reminderSupported,
+  favorite = false,
 }: {
   topicId: TopicCatalogId
   creator: NotificationCreator
   notificationType: TopicNotificationType
   reminderSupported: boolean
+  /** A favorite creator's avatar carries the shared favorite heart (the same one Live Status / 收藏名單 / the Schedule filter use). */
+  favorite?: boolean
 }) {
   const [locale] = useLocale()
   const { isLiveEnabled, setLiveEnabled, isNewVideoEnabled, setNewVideoEnabled } = useTopicNotificationPreferences()
@@ -242,7 +211,10 @@ function CreatorRow({
 
   return (
     <div className={className} style={creatorAccentStyle(creator)}>
-      <CreatorAvatarImage avatarUrl={creator.avatarUrl} displayName={creator.displayName} className="topic-creator-drawer__avatar" />
+      <span className="creator-tile__avatar-wrap">
+        <CreatorAvatarImage avatarUrl={creator.avatarUrl} displayName={creator.displayName} className="topic-creator-drawer__avatar" />
+        {favorite && <Heart className="creator-avatar-heart" aria-hidden="true" fill="currentColor" />}
+      </span>
       <span className="topic-creator-drawer__creator-name">{creator.displayName}</span>
       {showLive && (
         <span className="topic-creator-drawer__switch-cell">
@@ -298,21 +270,21 @@ export function TopicCreatorManagementDrawer({ topicId, topicLabel, onClose }: T
   }
 
   const allCreators = useMemo(() => getAllNotificationCreators(), [])
-  const baseAgencyGroups = useMemo(() => groupCreatorsForNotificationSettings(), [])
+  const baseGroups = useMemo(() => groupCreatorsForNotificationSettings(), [])
 
   const favoriteIds = useMemo(
     () => new Set(allCreators.filter((creator) => isFavoriteCreatorId(creator.creatorId, favorites)).map((creator) => creator.creatorId)),
     [allCreators, favorites],
   )
   const favoriteCreators = useMemo(
-    () => sortFlatNotificationCreatorsLikeLiveStatus(allCreators.filter((creator) => favoriteIds.has(creator.creatorId))),
+    () => sortCreatorsLikeLiveStatus(allCreators.filter((creator) => favoriteIds.has(creator.creatorId))),
     [allCreators, favoriteIds],
   )
-  const nonFavoriteAgencyGroups = useMemo(() => excludeFavorites(baseAgencyGroups, favoriteIds), [baseAgencyGroups, favoriteIds])
+  const nonFavoriteGroups = useMemo(() => excludeFavorites(baseGroups, favoriteIds), [baseGroups, favoriteIds])
 
   const filteredFavorites = filterCreatorList(favoriteCreators, searchQuery)
-  const filteredAgencyGroups = filterAgencyGroups(nonFavoriteAgencyGroups, searchQuery)
-  const hasResults = filteredFavorites.length > 0 || filteredAgencyGroups.length > 0
+  const filteredGroups = filterBranchGroups(nonFavoriteGroups, searchQuery)
+  const hasResults = filteredFavorites.length > 0 || filteredGroups.length > 0
 
   const drawerTitle = topicId ? t(locale, "notificationSettings.managementDrawerTitle", { topic: topicLabel }) : ""
 
@@ -325,50 +297,27 @@ export function TopicCreatorManagementDrawer({ topicId, topicLabel, onClose }: T
       ? "notificationSettings.liveColumnHeader"
       : notificationType === "newVideo"
         ? "notificationSettings.newVideoColumnHeader"
-        : "notificationSettings.notificationTypeBoth"
+        : "notificationSettings.notificationTypeCombinedLabel"
 
   return (
     <ConfigProvider
       theme={{
-        token: { colorPrimary: NOTIFICATION_ACCENT },
         components: {
           Drawer: {
-            colorBgElevated: "#17141d",
-            colorText: "#f3eff7",
-            colorIcon: "#b9b1c5",
-            colorIconHover: "#f3eff7",
-          },
-          Input: {
-            colorBgContainer: "#211d29",
-            colorBorder: "#393342",
-            colorText: "#f3eff7",
-            colorTextPlaceholder: "#948b9f",
+            colorBgElevated: "#0b1521",
+            colorText: "rgba(255, 255, 255, 0.94)",
+            colorIcon: "rgba(255, 255, 255, 0.42)",
+            colorIconHover: "rgba(255, 255, 255, 0.94)",
           },
           Switch: {
-            colorPrimary: NOTIFICATION_ACCENT,
-            colorPrimaryHover: "#d28db2",
             colorTextQuaternary: "#4a4452",
-          },
-          Button: {
-            defaultBg: "#211d29",
-            defaultBorderColor: "#4a4352",
-            defaultColor: "#f3eff7",
-            defaultHoverBg: "#292432",
-            defaultHoverBorderColor: NOTIFICATION_ACCENT,
-            defaultHoverColor: "#f3eff7",
-          },
-          Dropdown: {
-            colorBgElevated: "#211d29",
-            colorText: "#f3eff7",
-            controlItemBgActive: "rgba(199, 121, 163, 0.18)",
-            controlItemBgActiveHover: "rgba(199, 121, 163, 0.24)",
           },
         },
       }}
     >
       <Drawer open={topicId !== null} onClose={handleClose} title={drawerTitle} size={480} className="topic-creator-drawer">
         {topicId && (
-          <div className="topic-creator-drawer__content">
+          <div className="topic-creator-drawer__content" data-locale={locale}>
             <p className="topic-creator-drawer__notification-type-context">
               {t(locale, "notificationSettings.managementDrawerNotificationType", { type: t(locale, notificationTypeLabelKey) })}
             </p>
@@ -382,51 +331,47 @@ export function TopicCreatorManagementDrawer({ topicId, topicLabel, onClose }: T
                 {t(locale, "notificationSettings.reminderUnsupportedTopic")}
               </p>
             )}
-            <Input
-              className="topic-creator-drawer__search"
-              prefix={<Search size={14} aria-hidden="true" />}
-              placeholder={t(locale, "notificationSettings.searchPlaceholder")}
-              allowClear
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-            />
+            <label className="live-status-search topic-creator-drawer__search">
+              <Search size={14} aria-hidden="true" />
+              <input
+                type="text"
+                placeholder={t(locale, "notificationSettings.searchPlaceholder")}
+                aria-label={t(locale, "notificationSettings.searchPlaceholder")}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            </label>
             {!hasResults && <p className="topic-creator-drawer__empty-state">{t(locale, "notificationSettings.noResults")}</p>}
             {filteredFavorites.length > 0 && (
               <section className="topic-creator-drawer__group">
-                <h3 className="topic-creator-drawer__group-title">
-                  <span aria-hidden="true">★</span> {t(locale, "notificationSettings.favoritesGroupLabel")}
+                <h3 className="live-status-group__heading topic-creator-drawer__favorites-heading">
+                  <span>
+                    <Heart className="creator-avatar-heart creator-avatar-heart--inline" aria-hidden="true" fill="currentColor" />{" "}
+                    {t(locale, "notificationSettings.favoritesGroupLabel")}
+                  </span>
                 </h3>
                 <ColumnHeader locale={locale} notificationType={notificationType} />
                 <div className="topic-creator-drawer__list">
                   {filteredFavorites.map((creator) => (
-                    <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} notificationType={notificationType} reminderSupported={reminderSupported} />
+                    <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} notificationType={notificationType} reminderSupported={reminderSupported} favorite />
                   ))}
                 </div>
               </section>
             )}
-            {filteredAgencyGroups.map((agency) => (
-              <section key={agency.agencyLabel} className="topic-creator-drawer__group">
-                <h3 className="topic-creator-drawer__group-title">{agency.agencyLabel}</h3>
-                {agency.regions.map((region) => (
-                  <div key={region.branch} className="topic-creator-drawer__region">
-                    <h4 className="topic-creator-drawer__region-title">{region.regionLabel}</h4>
-                    {region.subgroups.map((subgroup) => (
-                      <div key={subgroup.label ?? "__flat__"} className="topic-creator-drawer__subgroup">
-                        {subgroup.label && (
-                          <h5 className="topic-creator-drawer__subgroup-title">{subgroupTitle(locale, subgroup.label)}</h5>
-                        )}
-                        <ColumnHeader locale={locale} notificationType={notificationType} />
-                        <div className="topic-creator-drawer__list">
-                          {subgroup.creators.map((creator) => (
-                            <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} notificationType={notificationType} reminderSupported={reminderSupported} />
-                          ))}
-                        </div>
-                      </div>
+            <LiveStatusGroups
+              groups={filteredGroups}
+              locale={locale}
+              renderSubgroup={(creators) => (
+                <div className="topic-creator-drawer__subgroup">
+                  <ColumnHeader locale={locale} notificationType={notificationType} />
+                  <div className="topic-creator-drawer__list">
+                    {creators.map((creator) => (
+                      <CreatorRow key={creator.creatorId} topicId={topicId} creator={creator} notificationType={notificationType} reminderSupported={reminderSupported} />
                     ))}
                   </div>
-                ))}
-              </section>
-            ))}
+                </div>
+              )}
+            />
           </div>
         )}
       </Drawer>
