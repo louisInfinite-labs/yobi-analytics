@@ -95,7 +95,7 @@ function FavoriteTile({ creator }: { creator: CanonicalCreator }) {
 
   return (
     <Checkbox
-      className={`favorites-roster__tile${isFavorite ? " favorites-roster__tile--selected" : ""}`}
+      className={`creator-tile favorites-roster__tile${isFavorite ? " favorites-roster__tile--selected" : ""}`}
       style={creatorAccentStyle(creator)}
       checked={isFavorite}
       onChange={() => toggleFavorite(legacyFavoriteId)}
@@ -103,9 +103,9 @@ function FavoriteTile({ creator }: { creator: CanonicalCreator }) {
         name: spokenName,
       })}
     >
-      <span className="favorites-roster__avatar-wrap">
+      <span className="creator-tile__avatar-wrap favorites-roster__avatar-wrap">
         <span
-          className="favorites-roster__avatar"
+          className="creator-avatar-circle favorites-roster__avatar"
           aria-hidden="true"
           style={showImage ? undefined : { background: accent.primary, color: accent.textAccent }}
         >
@@ -120,9 +120,9 @@ function FavoriteTile({ creator }: { creator: CanonicalCreator }) {
             creator.displayName.charAt(0)
           )}
         </span>
-        {isFavorite && <Heart className="favorites-roster__favorite-icon" aria-hidden="true" fill="currentColor" />}
+        {isFavorite && <Heart className="creator-avatar-heart" aria-hidden="true" fill="currentColor" />}
       </span>
-      <span className="favorites-roster__name">{creator.displayName}</span>
+      <span className="creator-tile__name favorites-roster__name">{creator.displayName}</span>
     </Checkbox>
   )
 }
@@ -248,7 +248,7 @@ export function OshiSettings() {
                       {subgroup.label && (
                         <h3 className="favorites-roster__subgroup-title">{subgroupTitle(locale, subgroup.label)}</h3>
                       )}
-                      <div className="favorites-roster__grid">
+                      <div className="creator-tile-grid favorites-roster__grid">
                         {subgroup.creators.map((creator) => (
                           <FavoriteTile key={creator.creatorId} creator={creator} />
                         ))}

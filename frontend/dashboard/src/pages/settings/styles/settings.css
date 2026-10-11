@@ -839,8 +839,7 @@
    columns fit the available width (so the page stays responsive:
    4/3/2/1 on narrower viewports), it just never grows existing cards to
    use up leftover space in an under-filled row. */
-.oshi-settings__grid,
-.favorites-roster__grid {
+.oshi-settings__grid {
   display: grid;
   /* 124px, not 96px -- the roster's own longest single-line name
      ("綺々羅々ヴィヴィ") measures ~103px unwrapped at this font-size, plus
@@ -853,8 +852,7 @@
 
 /* Card is a plain vertical stack: the avatar+checkbox row on top, name
    underneath. */
-.oshi-settings__card,
-.favorites-roster__tile {
+.oshi-settings__card {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -915,8 +913,7 @@
    (e.g. "ACHRORA -\nmekPark") carry explicit `\n` line breaks at exact,
    requested positions -- `pre-line` renders those breaks while every other
    name (no `\n`) still wraps normally based on available width. */
-.oshi-settings__creator-name,
-.favorites-roster__name {
+.oshi-settings__creator-name {
   width: 100%;
   min-width: 0;
   font-size: 0.82rem;
@@ -1736,19 +1733,11 @@
 }
 
 .notification-member-preview__avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
+  /* Live Status' creator avatar (the shared .creator-avatar-circle treatment): no border, ring or glow. */
   margin: 0 auto;
 
-  border: 2px solid #625c68;
-  background: #292530;
+  background: var(--notification-surface-3);
   color: var(--notification-text-secondary);
-  font-size: 16px;
-  font-weight: 700;
-  overflow: hidden;
 }
 
 .notification-member-preview__name {
@@ -2356,72 +2345,12 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-primary) 30%, transparent);
 }
 
-.favorites-roster__avatar-wrap {
-  position: relative;
-  display: inline-flex;
-}
-
 .favorites-roster__avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.9rem;
-  font-weight: 700;
+  /* Live Status' creator avatar (the shared .creator-avatar-circle treatment): the selected / hover / favorite states never touch the
+     avatar itself (no ring, border or glow) -- selection is shown by the tile and the heart. */
   text-transform: uppercase;
-  /* Transparent by default so the selected/hover ring never shifts layout
-     when it appears -- only its color changes. */
-  border: 2px solid transparent;
-  transition: border-color 120ms ease;
-  box-sizing: border-box;
 }
 
-.favorites-roster__avatar-image {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-/* Per-member accent (--creator-accent, set inline per tile via
-   creatorAccentStyle -- see OshiSettings.tsx) -- same hover/selected logic
-   as Oshi Settings' own creator roster (.my-oshi-select__segment-item),
-   ported over per the user's own request, instead of the page-wide
-   --theme-primary this used before. */
-.favorites-roster__tile:hover .favorites-roster__avatar {
-  border-color: color-mix(in srgb, var(--creator-accent) 48%, transparent);
-}
-
-.favorites-roster__tile--selected .favorites-roster__avatar {
-  border-color: var(--creator-accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--creator-accent) 18%, transparent);
-}
-
-/* Same filled-heart visual semantic as Live Status's own favorite
-   indicator (creator-status-list__favorite-indicator, home.css) -- reused
-   for recognizability, NOT its swipe-only/pointer-events:none/display-only
-   treatment, since this page's own click target is the whole tile, not a
-   gesture. --live-red (not a roster-specific color) is the same token
-   Live Status already uses for this exact semantic. */
-.favorites-roster__favorite-icon {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: 16px;
-  height: 16px;
-  padding: 2px;
-  box-sizing: border-box;
-  color: var(--live-red);
-  background: var(--roster-bg);
-  border-radius: 50%;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
-}
-
-/* Width, font size, line height and wrapping are shared directly with
-   .oshi-settings__creator-name above. Only Favorites-specific positioning
-   and dark-palette color live here. */
 .favorites-roster__name {
   position: relative;
   color: var(--roster-text-secondary);
