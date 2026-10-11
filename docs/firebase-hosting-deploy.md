@@ -9,18 +9,13 @@ The dashboard (`frontend/dashboard`) is a static Vite SPA. Firebase Hosting serv
 | `frontend/dashboard/firebase.json` | `public: dist`; SPA rewrite `** -> /index.html`; `no-cache` for `/index.html` and `/sw.js`; `immutable` 1-year cache for hashed `/assets/**`; basic security headers (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`) |
 | `frontend/dashboard/.env.production` | `VITE_API_BASE_URL` (public API URL, not a secret). Wins over a developer's `.env.local`, so hosted builds do not depend on a local env file |
 | `frontend/dashboard/.gitignore` | ignores `.firebase/` |
+| `frontend/dashboard/.firebaserc` | default project `oshiyobi` |
 
-No Firebase project id is committed. `.firebaserc` is created locally by `firebase use`.
+`frontend/dashboard/.firebaserc` pins the project: `oshiyobi` (default site https://oshiyobi.web.app). A project id is not a secret.
 
-## One-time setup (user)
+## Setup
 
-1. Create (or pick) a Firebase project in the Firebase console: https://console.firebase.google.com -> Add project. Hosting is available on the free Spark plan.
-2. Install the CLI and log in (a browser sign-in; it cannot be automated):
-   ```
-   npm install -g firebase-tools
-   firebase login
-   ```
-3. Tell Claude the **project id**, or run `firebase use --add` in `frontend/dashboard`.
+The Firebase CLI must be installed and logged in (`npm install -g firebase-tools`, `firebase login`); the project `oshiyobi` already exists.
 
 ## Deploy
 
