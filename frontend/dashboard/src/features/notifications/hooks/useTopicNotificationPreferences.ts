@@ -282,6 +282,13 @@ async function syncNewVideoSwitchesToBackend(next: TopicPreferencesState, option
   await saveNotificationPreference(true, effectiveNewVideoCreatorIds(next), effectiveShortCreatorIds(next))
 }
 
+/** Re-sends the full preference (which carries the current notification locale) when this browser has notifications enabled -- the
+ * backend-first write behind the dashboard-language -> push-notification-language sync. Silent: a failure raises no banner and the
+ * locale marker stays unconfirmed, so the next app start / language change retries. Resolves true when it wrote or had nothing to write. */
+export function resyncNotificationPreferenceSilently(): Promise<boolean> {
+  return runSerialized(NEW_VIDEO_SYNC_KEY, () => syncNewVideoSwitchesToBackend(topicPreferencesStore.get()), { silent: true })
+}
+
 /** One-time clean-up after the load-time migration dropped a retired card whose members had enabled new videos: re-sends the current
  * preference so the backend stops holding those creators' per-creator switches, with NO Settings visit needed. Only when this browser
  * has notifications enabled (otherwise the backend preference is OFF and the enable flow sends the migrated state). Silent: a failure

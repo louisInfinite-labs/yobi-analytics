@@ -1,12 +1,33 @@
 import { apiRequest } from "../../../shared/api/apiClient"
 import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
 import { getOrCreateClientId } from "../../../shared/api/clientId"
+import { getLocale } from "../../../shared/i18n/hooks/useLocale"
 import { getAllNotificationCreators } from "../model/notificationCreatorGrouping"
 
 // Roadmap 4.6's own worked example uses these as the default local delivery
 // windows during Japanese development; a real per-window settings UI is
 // future work.
 export const DEFAULT_DELIVERY_WINDOWS = ["08:00", "18:00"]
+
+const NOTIFICATION_LOCALE_SYNCED_KEY = "yobi.notificationLocaleSynced"
+
+/** The locale the backend last CONFIRMED (a successful preference write) for this browser's push notifications, or null if never.
+ * Browser-local bookkeeping only -- the backend value is the one the dispatcher reads. */
+export function getSyncedNotificationLocale(): string | null {
+  try {
+    return window.localStorage.getItem(NOTIFICATION_LOCALE_SYNCED_KEY)
+  } catch {
+    return null
+  }
+}
+
+function markNotificationLocaleSynced(locale: string): void {
+  try {
+    window.localStorage.setItem(NOTIFICATION_LOCALE_SYNCED_KEY, locale)
+  } catch {
+    // Without the marker the next app start simply re-sends the preference once more.
+  }
+}
 
 /** The full notification preference this client stores (PUT .../notification-preference replaces the whole
  * item, so every writer must send everything). `newVideoCreatorOverride` carries the Settings per-creator
@@ -24,6 +45,9 @@ export function buildNotificationPreference(
     enabled,
     notificationLevel: "all",
     notificationTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    // The language of this client's push notifications (zh-TW / ja / en): follows the dashboard language, and is part of the
+    // full preference so every writer (enable toggle, Settings switches, the language-change sync) carries it.
+    notificationLocale: getLocale(),
     deliveryWindows: DEFAULT_DELIVERY_WINDOWS,
     newVideoCreatorOverride: Object.fromEntries(
       getAllNotificationCreators().map((creator) => [creator.creatorId, newVideoEnabledCreatorIds.has(creator.creatorId)]),
@@ -43,10 +67,14 @@ export function putNotificationPreference(
   newVideoEnabledCreatorIds: ReadonlySet<string>,
   shortEnabledCreatorIds: ReadonlySet<string>,
 ): Promise<unknown> {
+  const body = buildNotificationPreference(enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds)
   return apiRequest(`/clients/${encodeURIComponent(clientId)}/notification-preference`, {
     method: "PUT",
     headers: clientSecret ? { "X-Client-Secret": clientSecret } : undefined,
-    body: buildNotificationPreference(enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds),
+    body,
+  }).then((result) => {
+    markNotificationLocaleSynced(body.notificationLocale)
+    return result
   })
 }
 

@@ -23,6 +23,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from analytics.view_growth_analytics import InvalidTimeZoneError, validate_time_zone
+from notifications.notification_text import DEFAULT_LOCALE, normalize_locale
 from tracking.video_master import CONTENT_TYPE_SHORT
 
 # Roadmap 4.6 lists "notificationLevel" as a possible setting without fixing
@@ -58,6 +59,9 @@ class NotificationPreference:
     # not a topic, so it has its own map and its own default: an absent creator is OFF, so a preference stored before this
     # field existed (or one with no Short card) never receives a Short. Ordinary videos never read this map.
     new_video_short_creator_overrides: dict[str, bool] = field(default_factory=dict)
+    # The language of this client's push notifications (zh-TW / ja / en), set from the dashboard language. A preference stored before this
+    # field existed, or one with a missing / unsupported value, is en.
+    locale: str = DEFAULT_LOCALE
 
 
 def _parse_hhmm(raw: Any, *, field_name: str) -> time:
@@ -158,6 +162,7 @@ def parse_notification_preference(raw: Any) -> NotificationPreference:
         quiet_hours=quiet_hours,
         new_video_creator_overrides=new_video_creator_overrides,
         new_video_short_creator_overrides=new_video_short_creator_overrides,
+        locale=normalize_locale(raw.get("notificationLocale")),
     )
 
 

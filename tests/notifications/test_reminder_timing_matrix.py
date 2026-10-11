@@ -40,7 +40,7 @@ from .test_notification_dispatcher import (  # noqa: F401  (autouse fixtures mus
 START = datetime.fromtimestamp(_START_MS / 1000, tz=timezone.utc)
 TIMINGS = {"1hour": 60, "30min": 30, "10min": 10, "1min": 1}
 ALL_TIMINGS = [*TIMINGS, "start"]
-BODY_LABEL = {"1min": "1 minute", "10min": "10 minutes", "30min": "30 minutes", "1hour": "1 hour"}
+TITLE_SUFFIX = {"start": "is live now", "1min": "goes live in 1 minute", "10min": "goes live in 10 minutes", "30min": "goes live in 30 minutes", "1hour": "goes live in 1 hour"}
 
 
 def fire_at(timing: str) -> datetime:
@@ -107,8 +107,8 @@ def test_each_of_the_five_timings_fires_in_its_own_window_with_a_valid_payload(m
     payload = on_time[0]
     assert payload["data"]["videoId"] == STREAM["videoId"]
     assert payload["title"].strip() and payload["body"].strip(), "push_sender.build_payload requires a non-empty body"
-    expected_body = "The stream has started" if timing == "start" else f"Starts in {BODY_LABEL[timing]}"
-    assert payload["body"] == expected_body
+    assert payload["title"].endswith(TITLE_SUFFIX[timing]), payload["title"]  # the default (en) wording for a client with no locale
+    assert payload["body"] == STREAM["title"]  # the original stream title, never rewritten
 
 
 def test_a_reminder_pushed_with_an_empty_body_would_be_rejected_by_the_real_sender():

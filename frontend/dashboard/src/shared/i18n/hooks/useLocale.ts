@@ -33,6 +33,11 @@ const localeStore = createSharedState<Locale>(STORAGE_KEY, readLocale, (value) =
  * change this — out of this task's scope — so today it only auto-detects
  * from the browser; `setLocale` is ready for whichever future settings UI
  * needs it. */
+/** The current app locale outside React (non-hook callers such as the notification preference writer). */
+export function getLocale(): Locale {
+  return localeStore.get()
+}
+
 export function useLocale() {
   return useSharedState(localeStore)
 }
