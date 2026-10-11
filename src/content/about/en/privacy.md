@@ -51,9 +51,3 @@ Your local OshiYobi settings are not provided to YouTube, Google, or Holodex as 
 You can change OshiYobi's settings, or turn off push notifications in your browser, at any time.
 
 You can also remove the settings saved in Local Storage by clearing this site's data in your browser.
-
-## Contact
-
-If you have questions about this site or its use of data, you can get in touch through:
-
-**[Contact]**

@@ -36,12 +36,6 @@ Starting from the Oshi you follow, browse recent videos and streams by topic, co
 
 Focus on one Oshi, or see what's currently getting the most attention.
 
-### Growth and change
-
-See how video and channel numbers change over time, not just a single snapshot.
-
-Observable numbers like view counts help show how content performs and grows over a period of time.
-
 ## Centered on your Oshi
 
 OshiYobi uses the Oshi you choose as its main point of view.
@@ -49,7 +43,3 @@ OshiYobi uses the Oshi you choose as its main point of view.
 You can start with the people you already follow, or use observable numbers like view counts to see what's getting the most attention right now.
 
 **Start from the Oshi you follow, and keep up with what's worth noticing recently.**
-
-## Stay connected
-
-OshiYobi brings together scattered streams, videos, and upcoming-stream announcements, so you can keep up with your Oshi's latest moments without looking for them one by one.

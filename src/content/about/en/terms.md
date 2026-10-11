@@ -68,9 +68,3 @@ Rights to images, videos, names, trademarks, and other content provided by third
 The information OshiYobi provides is mainly intended to help you view and organize public content more conveniently.
 
 To the extent permitted by law, OshiYobi is not liable for errors, delays, or service interruptions in third-party data, or for losses arising from the use of information on this site.
-
-## Contact
-
-If you have questions about this site or its use of data, you can get in touch through:
-
-**[Contact]**

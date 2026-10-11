@@ -17,5 +17,3 @@ This information lets OshiYobi bring together content from different channels in
 Finally, thanks to every VTuber who keeps creating content, and to the viewers and community who continue to support them.
 
 It's because there are new streams, videos, and interactions every day that OshiYobi has content worth organizing and recording.
-
-**We hope OshiYobi can bring you a little closer to the Oshi you love.**
