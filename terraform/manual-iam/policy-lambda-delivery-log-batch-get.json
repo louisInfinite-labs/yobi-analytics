@@ -1,0 +1,13 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BulkReadTheNotificationDeliveryLog",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:BatchGetItem"
+      ],
+      "Resource": "arn:aws:dynamodb:ap-northeast-1:189461315571:table/YobiNotificationDeliveryLog"
+    }
+  ]
+}

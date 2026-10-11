@@ -29,8 +29,10 @@ never delivered, if the process that claimed it died mid-flight).
 from __future__ import annotations
 
 import os
+import random
+import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Iterable
 
 import boto3
 from botocore.exceptions import ClientError
@@ -46,6 +48,19 @@ _CLAIM_EXPIRY = timedelta(minutes=20)
 _STATUS_CLAIMED = "claimed"
 _STATUS_DELIVERED = "delivered"
 _STATUS_SUPPRESSED = "suppressed"
+
+# DynamoDB BatchGetItem accepts at most 100 keys per request.
+_BATCH_GET_LIMIT = 100
+# UnprocessedKeys are retried a few times with a short backoff; a request that still has leftovers raises.
+_BATCH_GET_MAX_ATTEMPTS = 5
+
+# A delivered/suppressed row is permanent (nothing in the product ever removes or rewrites it), so once a warm Lambda container
+# has seen one it need not read it again on the next minute's run. The cache is bounded by a TTL -- so a row an operator
+# deliberately deleted to force a re-send is honoured again within a few minutes -- and pruned to the ids still being asked about.
+# Each client's entry lives for a jittered 0.5x-1.5x of the TTL so the periodic full re-read of every client does not land on the
+# same run (with hundreds of clients a simultaneous re-read would be as slow as a cold container).
+_SETTLED_CACHE_TTL_SECONDS = 15 * 60
+_settled_cache: dict[str, tuple[float, set[str]]] = {}  # clientId -> (monotonic seconds this entry expires at, settled videoIds)
 
 
 class NotificationDeliveryLogStoreError(Exception):
@@ -89,6 +104,68 @@ def already_delivered(client_id: str, video_id: str, *, now: datetime | None = N
     if item["status"] in (_STATUS_DELIVERED, _STATUS_SUPPRESSED):
         return True
     return not _is_expired(item["claimedAt"], now=now)
+
+
+def delivered_video_ids(client_id: str, video_ids: Iterable[str], *, now: datetime | None = None) -> set[str]:
+    """The subset of video_ids for which already_delivered(client_id, video_id) would be True, read in bulk.
+
+    The dispatcher asks this once per client for the whole candidate window instead of one GetItem per (client, event)
+    -- before this, a run's duration and DynamoDB reads grew with clients x events (about 289 sequential reads per client
+    per minute). Same semantics as already_delivered(): a delivered or suppressed row counts, a still-live claim counts,
+    an expired claim does not.
+
+    Reads use BatchGetItem (100 keys per request, UnprocessedKeys retried). Rows that are delivered or suppressed are
+    permanent, so they are remembered per warm container for _SETTLED_CACHE_TTL_SECONDS and not read again; a live claim is
+    never cached, because it can still be released or confirmed.
+    """
+    wanted = set(video_ids)
+    if not wanted:
+        _settled_cache.pop(client_id, None)
+        return set()
+    expires_at, settled = _settled_cache.get(client_id, (0.0, set()))
+    if time.monotonic() >= expires_at:
+        expires_at = time.monotonic() + _SETTLED_CACHE_TTL_SECONDS * (0.5 + random.random())
+        settled = set()  # expired (or first sight of this client): re-read everything
+    settled = settled & wanted  # prune ids that have left the candidate window
+    to_read = sorted(wanted - settled)
+    handled = set(settled)
+    reference = now or datetime.now(timezone.utc)
+    for start in range(0, len(to_read), _BATCH_GET_LIMIT):
+        for item in _batch_get_rows(client_id, to_read[start : start + _BATCH_GET_LIMIT]):
+            status = item["status"]
+            if status in (_STATUS_DELIVERED, _STATUS_SUPPRESSED):
+                settled.add(item["videoId"])
+                handled.add(item["videoId"])
+            elif not _is_expired(item["claimedAt"], now=reference):
+                handled.add(item["videoId"])
+    _settled_cache[client_id] = (expires_at, settled)
+    return handled
+
+
+def _batch_get_rows(client_id: str, video_ids: list[str]) -> list[dict[str, Any]]:
+    """BatchGetItem of up to _BATCH_GET_LIMIT (client_id, video_id) rows; returns the rows that exist."""
+    resource = _resource()
+    request = {
+        NOTIFICATION_DELIVERY_LOG_TABLE: {
+            "Keys": [{"clientId": client_id, "videoId": video_id} for video_id in video_ids],
+            "ProjectionExpression": "videoId, #status, claimedAt",
+            "ExpressionAttributeNames": {"#status": "status"},
+        }
+    }
+    rows: list[dict[str, Any]] = []
+    for attempt in range(_BATCH_GET_MAX_ATTEMPTS):
+        try:
+            response = resource.batch_get_item(RequestItems=request)
+        except ClientError as exc:
+            raise NotificationDeliveryLogStoreError(f"Failed to read {NOTIFICATION_DELIVERY_LOG_TABLE}: {exc}") from exc
+        rows.extend(response.get("Responses", {}).get(NOTIFICATION_DELIVERY_LOG_TABLE, []))
+        request = response.get("UnprocessedKeys") or {}
+        if not request:
+            return rows
+        time.sleep(0.05 * 2**attempt)
+    raise NotificationDeliveryLogStoreError(
+        f"Failed to read {NOTIFICATION_DELIVERY_LOG_TABLE}: BatchGetItem still had unprocessed keys after {_BATCH_GET_MAX_ATTEMPTS} attempts"
+    )
 
 
 def mark_delivered(client_id: str, video_id: str, claimed_at: str, *, now: datetime | None = None) -> bool:
