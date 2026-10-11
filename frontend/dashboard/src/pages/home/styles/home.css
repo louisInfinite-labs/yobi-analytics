@@ -479,7 +479,11 @@
   display: flex;
   flex-direction: column;
 
-  overflow: hidden;
+  /* The sections now carry full-size 16:9 thumbnails, so the body scrolls as a whole instead of clipping. */
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  scrollbar-width: thin;
 }
 
 .oshi-status__section {
@@ -497,11 +501,7 @@
 }
 
 .oshi-status__section--recent {
-  min-height: 0;
-
-  flex: 1 1 auto;
-
-  overflow: hidden;
+  flex: 0 0 auto;
 }
 
 .oshi-status__section-title {
@@ -648,17 +648,12 @@
 
   gap: 0;
 
-  /* The list itself scrolls (not the section around it) if taller rows --
-     the thumbnail column below made every row taller than the old
-     time+text-only version -- ever don't all fit; the section's own
-     compact-sections/Recent-absorbs-remaining-space layout is unchanged. */
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* No inner scroll: the rows carry full-size thumbnails, so the panel body (.oshi-status__body) scrolls instead. */
 }
 
-/* Exactly 3 columns, always: time+NEW / title / thumbnail. NEW lives INSIDE
+/* Two columns on the first line (time+NEW / title); the full-width thumbnail sits below them. NEW lives INSIDE
    column 1 (.oshi-status__recent-time-column below) -- it must never become
-   a 4th column, eat into the title's space, or shrink the thumbnail. */
+   another column or eat into the title's space. */
 .oshi-status__recent-row {
   min-width: 0;
 
@@ -666,8 +661,7 @@
 
   grid-template-columns:
     58px
-    minmax(0, 1fr)
-    48px;
+    minmax(0, 1fr);
 
   align-items: start;
   column-gap: 8px;
@@ -764,15 +758,88 @@
   outline-offset: 2px;
 }
 
-.oshi-status__recent-thumbnail {
-  width: 48px;
+/* Video thumbnails in the four Oshi Status sections (Now Playing, Live / Next, Recent Activity): 377px wide on desktop, scaling down
+   proportionally with the panel (max-width: 100%), always 16:9 (aspect-ratio) and never stretched (object-fit: cover). A clickable one is
+   a <button> running the same handler as its title; the now-playing one is display-only. */
+.oshi-status__thumb {
+  appearance: none;
 
-  aspect-ratio: 16 / 9;
+  position: relative;
 
   display: block;
 
-  object-fit: cover;
+  width: 377px;
+  max-width: 100%;
+
+  aspect-ratio: 16 / 9;
+
+  margin: 0;
+  padding: 0;
+
+  overflow: hidden;
+
+  border: 0;
   border-radius: 3px;
+
+  background: var(--oshi-surface-2);
+
+  cursor: pointer;
+}
+
+.oshi-status__thumb--static {
+  cursor: default;
+}
+
+.oshi-status__thumb img {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+}
+
+.oshi-status__thumb:focus-visible {
+  outline: 1px solid var(--creator-main);
+  outline-offset: 2px;
+}
+
+.oshi-status__thumb-placeholder {
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: var(--oshi-text-3);
+
+  font-size: 10px;
+}
+
+.oshi-status__thumb-skeleton {
+  display: block;
+
+  width: 377px;
+  max-width: 100%;
+
+  aspect-ratio: 16 / 9;
+}
+
+.oshi-status__now-playing-thumb,
+.oshi-status__next-thumb {
+  margin-top: 6px;
+}
+
+.oshi-status__next-thumb {
+  grid-column: 1 / -1;
+}
+
+.oshi-status__recent-row > .oshi-status__thumb,
+.oshi-status__recent-row > .oshi-status__thumb-skeleton {
+  grid-column: 1 / -1;
+
+  margin-top: 6px;
 }
 
 /* ============ Oshi Videos ============ */
@@ -1966,14 +2033,16 @@
 
 .oshi-switch-confirm__panel {
   width: min(360px, 100%);
-  background: var(--surface-card);
+  /* The dark Oshi Status surface: the ghost buttons below use Oshi Status's own (white-alpha) --oshi-* tokens, which are
+     unreadable on the previous white card. Only the colors changed -- size, radius, shadow and layout are as before. */
+  background: var(--oshi-surface-2);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  color: var(--text-primary);
+  color: var(--oshi-text-1);
 }
 
 .oshi-switch-confirm__message {
@@ -1986,7 +2055,7 @@
   align-items: center;
   gap: var(--space-2);
   font-size: 0.82rem;
-  color: var(--text-secondary);
+  color: var(--oshi-text-2);
   cursor: pointer;
 }
 
@@ -1996,28 +2065,46 @@
   gap: var(--space-2);
 }
 
+/* Cancel / Switch use Oshi Status's ghost-button look (.oshi-status__dev-reset): 1px --oshi-border, 3px radius, transparent
+   background, --oshi-text-3 text that brightens (with a stronger border) on hover, and the same 1px focus outline the Oshi
+   Status links use. Only the look is shared: this dialog keeps its own padding and 0.85rem font (that control is a 22px /
+   10px dev utility). Switch is the confirm action, so it rests in the stronger text/border state. */
 .oshi-switch-confirm__cancel,
 .oshi-switch-confirm__confirm {
+  appearance: none;
+
   padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 3px;
+
+  background: transparent;
+  color: var(--oshi-text-3);
+
   font-size: 0.85rem;
+
   cursor: pointer;
 }
 
-.oshi-switch-confirm__cancel {
-  background: transparent;
-  border: 1px solid var(--surface-border);
-  color: var(--text-primary);
+.oshi-switch-confirm__cancel:hover,
+.oshi-switch-confirm__confirm:hover {
+  color: var(--oshi-text-1);
+  border-color: var(--oshi-text-3);
 }
 
-.oshi-switch-confirm__cancel:hover {
-  background: var(--surface-hover);
+.oshi-switch-confirm__cancel:focus-visible,
+.oshi-switch-confirm__confirm:focus-visible {
+  outline: 1px solid var(--creator-main, var(--oshi-text-1));
+  outline-offset: 2px;
 }
 
 .oshi-switch-confirm__confirm {
-  background: var(--theme-primary);
-  border: 1px solid var(--theme-primary);
-  color: #fff;
+  color: var(--oshi-text-1);
+  border-color: var(--oshi-text-3);
+}
+
+.oshi-switch-confirm__confirm:hover {
+  border-color: var(--oshi-text-1);
 }
 
 /* ============ Narrower desktops ============ */

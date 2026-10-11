@@ -64,6 +64,7 @@ export type TranslationKey =
   | "oshiStatus.newBadge"
   | "oshiStatus.subscribers"
   | "oshiStatus.nowPlaying"
+  | "oshiStatus.thumbnailLabel"
   | "oshiStatus.devResetVisit"
   | "errorState.code"
   | "errorState.defaultMessage"
@@ -273,6 +274,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.newBadge": "NEW",
     "oshiStatus.subscribers": "訂閱者",
     "oshiStatus.nowPlaying": "正在播放",
+    "oshiStatus.thumbnailLabel": "縮圖：{{title}}",
     "oshiStatus.devResetVisit": "重置造訪",
     "errorState.code": "(代碼: {{code}})",
     "errorState.defaultMessage": "載入資料時發生錯誤。",
@@ -481,6 +483,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.newBadge": "NEW",
     "oshiStatus.subscribers": "subscribers",
     "oshiStatus.nowPlaying": "Now Playing",
+    "oshiStatus.thumbnailLabel": "Thumbnail: {{title}}",
     "oshiStatus.devResetVisit": "Reset visit",
     "errorState.code": "(Code: {{code}})",
     "errorState.defaultMessage": "Something went wrong loading this data.",
@@ -689,6 +692,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.newBadge": "NEW",
     "oshiStatus.subscribers": "登録者数",
     "oshiStatus.nowPlaying": "再生中",
+    "oshiStatus.thumbnailLabel": "サムネイル：{{title}}",
     "oshiStatus.devResetVisit": "訪問をリセット",
     "errorState.code": "(コード: {{code}})",
     "errorState.defaultMessage": "データの読み込み中にエラーが発生しました。",

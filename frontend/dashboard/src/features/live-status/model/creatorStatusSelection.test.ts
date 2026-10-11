@@ -51,6 +51,26 @@ describe("pickStatus: live streams", () => {
   })
 })
 
+describe("pickStatus: the stream's own thumbnail", () => {
+  it("carries a live stream's backend thumbnailUrl onto the status", () => {
+    const live = stream({ videoId: "live1", status: "live", actualStart: at(-HOUR), thumbnailUrl: "https://img.example/live1.jpg" })
+
+    expect(pickStatus([live], NOW)).toEqual({ kind: "live", videoId: "live1", title: "title live1", thumbnailUrl: "https://img.example/live1.jpg" })
+  })
+
+  it("carries the nearest upcoming stream's backend thumbnailUrl onto the status", () => {
+    const upcoming = stream({ videoId: "up1", scheduledStart: at(2 * HOUR), thumbnailUrl: "https://img.example/up1.jpg" })
+
+    expect(pickStatus([upcoming], NOW)).toMatchObject({ kind: "upcoming", videoId: "up1", thumbnailUrl: "https://img.example/up1.jpg" })
+  })
+
+  it("leaves the field off when the stream has no usable thumbnail", () => {
+    const live = stream({ videoId: "live1", status: "live", actualStart: at(-HOUR), thumbnailUrl: "" })
+
+    expect("thumbnailUrl" in pickStatus([live], NOW)).toBe(false)
+  })
+})
+
 describe("pickStatus: the next rolling 24 hours", () => {
   it("includes an upcoming stream at +23h59m", () => {
     const status = pickStatus([stream({ videoId: "a", scheduledStart: at(23 * HOUR + 59 * MINUTE) })], NOW)

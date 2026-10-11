@@ -1,5 +1,7 @@
 import { getCreatorById } from "../../../entities/creator/data/creatorRegistry"
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { OshiStatusPanel } from "./OshiStatusPanel"
@@ -244,7 +246,7 @@ describe("OshiStatusPanel Recent Activity", () => {
     await screen.findByText("Unseen upload")
     expect(document.querySelectorAll(".oshi-status__recent-new-badge")).toHaveLength(2)
 
-    await user.click(screen.getByRole("button", { name: "Unseen upload" }))
+    await user.click(screen.getByText("Unseen upload"))
 
     expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "unseen_video_1", title: "Unseen upload" })
     expect(screen.getByText("Unseen upload").closest(".oshi-status__recent-row")?.querySelector(".oshi-status__recent-new-badge")).toBeNull()
@@ -278,7 +280,7 @@ describe("OshiStatusPanel Recent Activity", () => {
     expect(localStorage.getItem(BASELINE_KEY)).toBe(startOfLocalDay(now).toISOString())
   })
 
-  it("keeps time, title and thumbnail as exactly 3 grid columns with no icon between them", async () => {
+  it("keeps time and title on the first line with the thumbnail below, and no icon between them", async () => {
     renderPanel()
     await screen.findByText("Unseen upload")
 
@@ -286,7 +288,7 @@ describe("OshiStatusPanel Recent Activity", () => {
     expect(row.children).toHaveLength(3)
     expect(row.querySelector(".oshi-status__recent-time-column")).not.toBeNull()
     expect(row.querySelector(".oshi-status__recent-content")).not.toBeNull()
-    expect(row.querySelector(".oshi-status__recent-thumbnail")).not.toBeNull()
+    expect(row.querySelector(".oshi-status__thumb")).not.toBeNull()
   })
 
   it("uses the backend thumbnail when there is one, else YouTube's own thumbnail for the video id", async () => {
@@ -304,10 +306,10 @@ describe("OshiStatusPanel Recent Activity", () => {
     const { onSelectVideo } = renderPanel()
     await screen.findByText("Unseen upload")
 
-    await user.click(within(document.body).getByRole("button", { name: "Unseen upload" }))
+    await user.click(screen.getByText("Unseen upload"))
     expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "unseen_video_1", title: "Unseen upload" })
 
-    await user.click(screen.getByRole("button", { name: "Seen upload" }))
+    await user.click(screen.getByText("Seen upload"))
     expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "seen_video_1", title: "Seen upload" })
 
     expect(document.querySelector(".video-player-modal__backdrop")).toBeNull()
@@ -445,5 +447,184 @@ describe("OshiStatusPanel creator avatar", () => {
     renderPanel("ch_not_in_registry")
 
     await waitFor(() => expect(avatarImg()).toBeNull())
+  })
+})
+
+describe("OshiStatusPanel thumbnails", () => {
+  const WATCHED_KEY = "yobi.newContent.watchedDuringLive"
+  const LIVE = { kind: "live", videoId: "live_video_1", title: "Live right now", thumbnailUrl: "https://img.example/live_video_1.jpg" } as const
+  const UPCOMING = {
+    kind: "upcoming",
+    videoId: "upcoming_video_1",
+    title: "Starts soon",
+    scheduledStart: new Date(2026, 8, 10, 20, 0, 0).toISOString(),
+    thumbnailUrl: "https://img.example/upcoming_video_1.jpg",
+  } as const
+
+  function renderThumbs(props: Partial<React.ComponentProps<typeof OshiStatusPanel>> = {}) {
+    const onSelectVideo = vi.fn()
+    render(<OshiStatusPanel creatorId="ch_aizawa_ema" status={{ kind: "offline" }} now={now} onSelectVideo={onSelectVideo} nowPlayingTitle={null} {...props} />)
+    return { onSelectVideo }
+  }
+  const thumbImg = (scope: string) => document.querySelector<HTMLImageElement>(`${scope} .oshi-status__thumb img`)
+
+  describe("最近動態 (Recent Activity)", () => {
+    it("shows the backend thumbnail field, and the app's videoId fallback only when there is none", async () => {
+      renderThumbs()
+      await screen.findByText("Unseen upload")
+
+      const seen = screen.getByText("Seen upload").closest(".oshi-status__recent-row")!.querySelector("img")!
+      const unseen = screen.getByText("Unseen upload").closest(".oshi-status__recent-row")!.querySelector("img")!
+      expect(seen.getAttribute("src")).toBe(seenItem.thumbnailUrl)
+      expect(unseen.getAttribute("src")).toBe("https://img.youtube.com/vi/unseen_video_1/hqdefault.jpg")
+    })
+
+    it("clicking the thumbnail does exactly what clicking the title does: same selection, same seen marking, that videoId only", async () => {
+      const user = userEvent.setup()
+      const { onSelectVideo } = renderThumbs()
+      await screen.findByText("Unseen upload")
+      const row = screen.getByText("Unseen upload").closest(".oshi-status__recent-row") as HTMLElement
+
+      await user.click(row.querySelector(".oshi-status__thumb") as HTMLElement)
+
+      expect(onSelectVideo).toHaveBeenCalledTimes(1)
+      expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "unseen_video_1", title: "Unseen upload" })
+      expect(JSON.parse(localStorage.getItem(SEEN_KEY) ?? "[]")).toEqual(["unseen_video_1"])
+      expect(row.querySelector(".oshi-status__recent-new-badge")).toBeNull()
+    })
+
+    it("the title and the thumbnail are two entry points to one action: neither selects any other video", async () => {
+      const user = userEvent.setup()
+      const { onSelectVideo } = renderThumbs()
+      await screen.findByText("Seen upload")
+      const row = screen.getByText("Seen upload").closest(".oshi-status__recent-row") as HTMLElement
+
+      await user.click(screen.getByText("Seen upload"))
+      const viaTitle = onSelectVideo.mock.calls[0][0]
+      await user.click(row.querySelector(".oshi-status__thumb") as HTMLElement)
+
+      expect(onSelectVideo.mock.calls[1][0]).toEqual(viaTitle)
+    })
+
+    it("falls back to the app's videoId thumbnail when the backend image fails, then to a neutral placeholder", async () => {
+      renderThumbs()
+      await screen.findByText("Seen upload")
+      const rowOf = () => screen.getByText("Seen upload").closest(".oshi-status__recent-row") as HTMLElement
+
+      fireEvent.error(rowOf().querySelector("img")!)
+      await waitFor(() => expect(rowOf().querySelector("img")?.getAttribute("src")).toBe("https://img.youtube.com/vi/seen_video_1/hqdefault.jpg"))
+
+      fireEvent.error(rowOf().querySelector("img")!)
+      await waitFor(() => expect(rowOf().querySelector("img")).toBeNull())
+      expect(rowOf().querySelector(".oshi-status__thumb-placeholder")?.textContent).toBeTruthy()
+    })
+  })
+
+  describe("直播中 (live)", () => {
+    it("shows the live stream's own backend thumbnail", () => {
+      renderThumbs({ status: LIVE })
+
+      expect(thumbImg(".oshi-status__next")?.getAttribute("src")).toBe(LIVE.thumbnailUrl)
+    })
+
+    it("falls back to the videoId thumbnail when the status carries none", () => {
+      renderThumbs({ status: { kind: "live", videoId: "live_video_2", title: "No thumb live" } })
+
+      expect(thumbImg(".oshi-status__next")?.getAttribute("src")).toBe("https://img.youtube.com/vi/live_video_2/hqdefault.jpg")
+    })
+
+    it("a thumbnail click selects that exact live video like the title does, and by itself marks nothing watched or seen", async () => {
+      const user = userEvent.setup()
+      const { onSelectVideo } = renderThumbs({ status: LIVE })
+      const before = [localStorage.getItem(SEEN_KEY), localStorage.getItem(WATCHED_KEY)]
+
+      await user.click(document.querySelector(".oshi-status__next .oshi-status__thumb") as HTMLElement)
+      await user.click(screen.getByText("Live right now"))
+
+      expect(onSelectVideo).toHaveBeenNthCalledWith(1, { videoId: "live_video_1", title: "Live right now" })
+      expect(onSelectVideo).toHaveBeenNthCalledWith(2, { videoId: "live_video_1", title: "Live right now" })
+      expect([localStorage.getItem(SEEN_KEY), localStorage.getItem(WATCHED_KEY)]).toEqual(before)
+    })
+  })
+
+  describe("接下來 (upcoming)", () => {
+    it("shows the upcoming stream's own backend thumbnail", () => {
+      renderThumbs({ status: UPCOMING })
+
+      expect(thumbImg(".oshi-status__next")?.getAttribute("src")).toBe(UPCOMING.thumbnailUrl)
+    })
+
+    it("a thumbnail click selects that exact scheduled video like the title does, and by itself marks nothing watched or seen", async () => {
+      const user = userEvent.setup()
+      const { onSelectVideo } = renderThumbs({ status: UPCOMING })
+      const before = [localStorage.getItem(SEEN_KEY), localStorage.getItem(WATCHED_KEY)]
+
+      await user.click(document.querySelector(".oshi-status__next .oshi-status__thumb") as HTMLElement)
+
+      expect(onSelectVideo).toHaveBeenCalledTimes(1)
+      expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "upcoming_video_1", title: "Starts soon" })
+      expect([localStorage.getItem(SEEN_KEY), localStorage.getItem(WATCHED_KEY)]).toEqual(before)
+    })
+
+    it("offline shows the empty state and no thumbnail", () => {
+      renderThumbs({ status: { kind: "offline" } })
+
+      expect(document.querySelector(".oshi-status__next")).toBeNull()
+      expect(document.querySelector(".oshi-status__next-thumb")).toBeNull()
+    })
+  })
+
+  describe("正在播放 (now playing)", () => {
+    it("shows the playing video's thumbnail, display-only (the title has no action, so there is nothing to mirror)", async () => {
+      const { onSelectVideo } = renderThumbs({ nowPlayingTitle: "Playing title", nowPlayingVideoId: "playing_video_1" })
+
+      const thumb = document.querySelector(".oshi-status__now-playing .oshi-status__thumb") as HTMLElement
+      expect(thumb.querySelector("img")?.getAttribute("src")).toBe("https://img.youtube.com/vi/playing_video_1/hqdefault.jpg")
+      expect(thumb.tagName).not.toBe("BUTTON")
+      await userEvent.setup().click(thumb)
+      expect(onSelectVideo).not.toHaveBeenCalled()
+    })
+
+    it("uses the backend thumbnail the panel already holds for that video (the live status, or a recent row)", async () => {
+      renderThumbs({ status: LIVE, nowPlayingTitle: "Live right now", nowPlayingVideoId: LIVE.videoId })
+      expect(thumbImg(".oshi-status__now-playing")?.getAttribute("src")).toBe(LIVE.thumbnailUrl)
+    })
+
+    it("uses a recent row's backend thumbnail for the same video", async () => {
+      renderThumbs({ nowPlayingTitle: "Seen upload", nowPlayingVideoId: "seen_video_1" })
+      await screen.findAllByText("Seen upload")
+
+      await waitFor(() => expect(thumbImg(".oshi-status__now-playing")?.getAttribute("src")).toBe(seenItem.thumbnailUrl))
+    })
+
+    it("shows no thumbnail when only a title is known (no videoId to key it by)", () => {
+      renderThumbs({ nowPlayingTitle: "Some title" })
+
+      expect(document.querySelector(".oshi-status__now-playing-thumb")).toBeNull()
+    })
+  })
+
+  it("each thumbnail has its own accessible name, distinct from its title's, so one item never exposes two controls with the same name", async () => {
+    renderThumbs({ status: LIVE })
+    await screen.findByText("Unseen upload")
+
+    expect(screen.getByRole("button", { name: "Unseen upload" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Thumbnail: Unseen upload" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Thumbnail: Live right now" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Live right now" })).toBeInTheDocument()
+  })
+
+  it("every thumbnail is 16:9 and cover-fit with a 377px desktop width that never exceeds its container", async () => {
+    renderThumbs({ status: LIVE, nowPlayingTitle: "Live right now", nowPlayingVideoId: LIVE.videoId })
+    await screen.findByText("Unseen upload")
+
+    const thumbs = document.querySelectorAll(".oshi-status__thumb")
+    expect(thumbs.length).toBeGreaterThanOrEqual(4) // now playing + live + two recent rows
+    const css = readFileSync(resolve(__dirname, "../../../pages/home/styles/home.css"), "utf-8").replace(/\r\n/g, "\n")
+    const block = /\.oshi-status__thumb \{([^}]*)\}/.exec(css)![1]
+    expect(block).toContain("width: 377px")
+    expect(block).toContain("max-width: 100%")
+    expect(block).toContain("aspect-ratio: 16 / 9")
+    expect(/\.oshi-status__thumb img \{([^}]*)\}/.exec(css)![1]).toContain("object-fit: cover")
   })
 })
