@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { RecentVideosSection } from "./RecentVideosSection"
 import { fetchOshiVideos, type OshiVideosPage } from "../data/oshiVideos"
 import { fetchVideoTopics } from "../data/videoTopics"
 import type { BackendVideoTopic } from "../model/videoTopicCatalog"
 import { getCreators, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
+import { LOAD_MORE_RETRY_COOLDOWN_MS } from "../hooks/useOshiVideos"
 import { buildOshiVideosRequest, type OshiVideosQuery } from "../model/oshiVideosQuery"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
@@ -187,6 +188,73 @@ describe("B23: selecting Short", () => {
     const secondCall = fetchMock.mock.calls.at(-1)!
     expect(secondCall[0]).toMatchObject({ contentType: "short", topic: "all" })
     expect(secondCall[1]).toBe(20)
+  })
+})
+
+describe("shelf paging over 3+ pages (level-triggered prefetch)", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const pageOf = (from: number, count: number): RecentVideo[] =>
+    Array.from({ length: count }, (_, i) => ({ videoId: `pg-${from + i}`, title: `Short ${from + i}`, publishedAt: "2026-09-01T00:00:00Z", contentFormat: "shorts" as const }))
+  // 3 pages of 20 and a short 4th: 65 shorts.
+  const serverPage = (offset: number): OshiVideosPage => {
+    const count = offset >= 60 ? 5 : 20
+    return { videos: pageOf(offset, count), nextOffset: offset + count, hasMore: offset + count < 65 }
+  }
+  const scrollTo = (leadingIndex: number) => {
+    const viewport = document.querySelector<HTMLElement>(".oshi-videos__viewport")!
+    viewport.scrollLeft = leadingIndex * 10 // jsdom has no layout: card width 0 + the 10px gap
+    fireEvent.scroll(viewport)
+  }
+
+  it("keeps prefetching on every page as the user scrolls on, with the same lead each time (13 of 20, 33 of 40, 53 of 60)", async () => {
+    fetchMock.mockImplementation(async (query, offset = 0) => (query.contentType !== "short" ? { videos: [], nextOffset: 0, hasMore: false } : serverPage(offset)))
+    const user = userEvent.setup()
+    await renderWithTopics()
+    await pickTag(user, "Short")
+    await waitFor(() => expect(cardTitles()).toHaveLength(20))
+
+    scrollTo(12) // not near the end yet
+    expect(cardTitles()).toHaveLength(20)
+    scrollTo(13)
+    await waitFor(() => expect(cardTitles()).toHaveLength(40))
+    scrollTo(33)
+    await waitFor(() => expect(cardTitles()).toHaveLength(60))
+    scrollTo(53)
+    await waitFor(() => expect(cardTitles()).toHaveLength(65))
+    expect(fetchMock.mock.calls.filter(([query]) => query.contentType === "short").map(([, offset]) => offset)).toEqual([0, 20, 40, 60])
+  })
+
+  it("a failed page is not the end: the next scroll retries the same offset (after the cooldown) and paging continues", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    let failNext = true
+    fetchMock.mockImplementation(async (query, offset = 0) => {
+      if (query.contentType !== "short") return { videos: [], nextOffset: 0, hasMore: false }
+      if (offset === 20 && failNext) {
+        failNext = false
+        throw new Error("503")
+      }
+      return serverPage(offset)
+    })
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    await renderWithTopics()
+    await pickTag(user, "Short")
+    await waitFor(() => expect(cardTitles()).toHaveLength(20))
+
+    scrollTo(19)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, offset]) => offset === 20)).toBe(true))
+    await waitFor(() => expect(cardTitles()).toHaveLength(20)) // the failed page added nothing and removed nothing
+
+    vi.setSystemTime(Date.now() + LOAD_MORE_RETRY_COOLDOWN_MS + 1)
+    scrollTo(19) // still the end of what is loaded: this scroll asks again
+    await waitFor(() => expect(cardTitles()).toHaveLength(40))
+    scrollTo(39)
+    await waitFor(() => expect(cardTitles()).toHaveLength(60))
+    scrollTo(59)
+    await waitFor(() => expect(cardTitles()).toHaveLength(65))
+    expect(fetchMock.mock.calls.filter(([query]) => query.contentType === "short").map(([, offset]) => offset)).toEqual([0, 20, 20, 40, 60])
   })
 })
 

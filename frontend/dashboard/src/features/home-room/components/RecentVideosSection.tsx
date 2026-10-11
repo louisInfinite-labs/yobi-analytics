@@ -40,7 +40,7 @@ interface RecentVideosSectionProps {
  * no later than that window. */
 const PREFETCH_AT_INDEX = 13
 
-/** How far the track's own next-prefetch threshold advances each time -- one page's worth. */
+/** One page's worth of cards: the spacing between prefetch points (13, 33, 53, ...). */
 const VISIBLE_COUNT_STEP = 20
 
 /** Matches .oshi-videos__list's own `gap`, so a scroll step lands one card
@@ -109,10 +109,14 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
  * left-button grab-to-scroll (below); there is no dedicated arrow-button
  * affordance any more.
  *
- * `onNearEnd` fires once the leading visible card reaches `nextThresholdRef`
- * (starting at PREFETCH_AT_INDEX), which then advances by VISIBLE_COUNT_STEP
- * so the row keeps prefetching every ~20 cards as the user keeps scrolling
- * right, instead of firing once and never again. */
+ * `onNearEnd` fires on every scroll once the leading visible card reaches the
+ * prefetch point of the cards loaded right now: PREFETCH_AT_INDEX for the first
+ * page, then +VISIBLE_COUNT_STEP for each further page (13, 33, 53, ...). It
+ * is level-triggered, not a one-shot threshold that advances when it fires:
+ * the point is derived from the loaded count, so a request the loader ignored
+ * (one was in flight) or one that failed is simply asked again by the next
+ * scroll -- a dropped trigger can no longer strand the shelf. The loader itself
+ * coalesces and rate-limits (useOshiVideos). */
 function VideoTrack({
   videos,
   emptyLabel,
@@ -128,7 +132,6 @@ function VideoTrack({
   onNearEnd: () => void
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
-  const nextThresholdRef = useRef(PREFETCH_AT_INDEX)
   // Mouse-only grab-to-scroll state. `didDragRef` is what actually
   // suppresses the click a real drag would otherwise fire on whatever card
   // ends up under the pointer at release -- `dragRef` itself is reset (and
@@ -144,10 +147,8 @@ function VideoTrack({
     const card = viewport.querySelector<HTMLElement>(".oshi-video-card")
     if (!card) return
     const leadingIndex = Math.floor(viewport.scrollLeft / (card.offsetWidth + CARD_GAP))
-    if (leadingIndex >= nextThresholdRef.current) {
-      nextThresholdRef.current += VISIBLE_COUNT_STEP
-      onNearEnd()
-    }
+    const loadedPages = Math.max(0, Math.floor((videos.length - 1 - PREFETCH_AT_INDEX) / VISIBLE_COUNT_STEP))
+    if (leadingIndex >= PREFETCH_AT_INDEX + loadedPages * VISIBLE_COUNT_STEP) onNearEnd()
   }
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {

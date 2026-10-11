@@ -40,7 +40,15 @@ function appendUnique(shown: RecentVideo[], incoming: RecentVideo[]): RecentVide
  * - The most-viewed ranking is one bounded response: the first batch is shown and loadMore()
  *   reveals the rest locally (no request), so the shelf never renders ~100 cards at once.
  * - A failed request or a valid-but-empty combination shows an empty shelf --
- *   never mock data, another creator's videos, or the previous results. */
+ *   never mock data, another creator's videos, or the previous results.
+ * - Paging never drops a request and never gives up: a loadMore() that arrives while a page is in
+ *   flight is remembered and runs as soon as that page lands (so a fast scroll can never skip a page);
+ *   a FAILED page keeps what is shown, keeps hasMore true, and is retried by the next loadMore() once
+ *   LOAD_MORE_RETRY_COOLDOWN_MS has passed. */
+/** After a failed page, further loadMore() calls are ignored for this long, so a scroll handler that keeps calling it on a dead
+ * connection cannot hammer the API; the first call after it retries the SAME offset. */
+export const LOAD_MORE_RETRY_COOLDOWN_MS = 1500
+
 export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
   const key = query ? oshiVideosQueryKey(query) : null
   // The effect/loadMore below depend on the key alone (the query is fully
@@ -51,10 +59,15 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
   const [result, setResult] = useState<ShelfResult | null>(null)
   const generationRef = useRef(0)
   const loadingMoreRef = useRef(false)
+  /** A loadMore() that arrived while a page was in flight: run as soon as that page lands. */
+  const queuedMoreRef = useRef(false)
+  const retryNotBeforeRef = useRef(0)
 
   useEffect(() => {
     const generation = ++generationRef.current
     loadingMoreRef.current = false
+    queuedMoreRef.current = false
+    retryNotBeforeRef.current = 0
     if (!stableQuery || key === null) return
 
     fetchOshiVideos(stableQuery, 0)
@@ -72,7 +85,12 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
   }, [stableQuery, key])
 
   const loadMore = useCallback(() => {
-    if (!stableQuery || key === null || loadingMoreRef.current) return
+    if (!stableQuery || key === null) return
+    if (loadingMoreRef.current) {
+      queuedMoreRef.current = true // not dropped: it runs when the in-flight page lands
+      return
+    }
+    if (Date.now() < retryNotBeforeRef.current) return
     const current = result
     if (!current || current.key !== key || !current.hasMore) return
     if (current.pending.length > 0) {
@@ -87,22 +105,34 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
     const generation = generationRef.current
     loadingMoreRef.current = true
 
-    fetchOshiVideos(stableQuery, current.nextOffset)
-      .then((page) => {
-        if (generation !== generationRef.current) return
-        setResult((prev) =>
-          prev && prev.key === key
-            ? { ...prev, videos: appendUnique(prev.videos, page.videos), nextOffset: page.nextOffset, hasMore: page.hasMore }
-            : prev,
-        )
-      })
-      .catch(() => {
-        // A failed background page just stops further loading; what is shown stays.
-        if (generation === generationRef.current) setResult((prev) => (prev && prev.key === key ? { ...prev, hasMore: false } : prev))
-      })
-      .finally(() => {
-        if (generation === generationRef.current) loadingMoreRef.current = false
-      })
+    /** Fetches `offset`, appends it, then keeps going while another loadMore() was queued and the source has more. */
+    const fetchPage = (offset: number) => {
+      fetchOshiVideos(stableQuery, offset)
+        .then((page) => {
+          if (generation !== generationRef.current) return
+          setResult((prev) =>
+            prev && prev.key === key
+              ? { ...prev, videos: appendUnique(prev.videos, page.videos), nextOffset: page.nextOffset, hasMore: page.hasMore }
+              : prev,
+          )
+          if (queuedMoreRef.current && page.hasMore && page.videos.length > 0) {
+            queuedMoreRef.current = false
+            fetchPage(page.nextOffset)
+            return
+          }
+          queuedMoreRef.current = false
+          loadingMoreRef.current = false
+        })
+        .catch(() => {
+          if (generation !== generationRef.current) return
+          // A failed page is NOT the end of the list: what is shown stays, hasMore stays true, and the same offset is retried by a later
+          // loadMore() after the cooldown.
+          queuedMoreRef.current = false
+          retryNotBeforeRef.current = Date.now() + LOAD_MORE_RETRY_COOLDOWN_MS
+          loadingMoreRef.current = false
+        })
+    }
+    fetchPage(current.nextOffset)
   }, [stableQuery, key, result])
 
   if (key === null) return { videos: [], loading: false, error: null, loadMore, hasMore: false }
