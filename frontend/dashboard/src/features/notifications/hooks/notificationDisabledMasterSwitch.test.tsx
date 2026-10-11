@@ -1,6 +1,6 @@
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useNotificationLocaleSync } from "./useNotificationLocaleSync"
 import { NotificationToggle } from "../components/NotificationToggle"
 import { apiRequest } from "../../../shared/api/apiClient"
@@ -45,7 +45,30 @@ beforeEach(() => {
   vi.mocked(subscribeToPush).mockReset()
 })
 
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 describe("global OFF is the master switch for the notification-language sync", () => {
+  it("still holds for the rest of the page session when storage rejects the marker write after a confirmed disable", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError")
+    })
+    await putNotificationPreference("c1", "secret-1", false, new Set(), new Set())
+    expect(isNotificationDisabledByUser()).toBe(true)
+    const { result } = mountLocaleSync()
+
+    act(() => result.current[1]("zh-TW"))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+
+    expect(preferenceWrites().filter((body) => body.enabled)).toHaveLength(0)
+    vi.restoreAllMocks()
+    await putNotificationPreference("c1", "secret-1", true, new Set(), new Set()) // a confirmed enable clears the in-session state
+    expect(isNotificationDisabledByUser()).toBe(false)
+  })
+
   it("never writes notifications back ON when the disable succeeded but the browser subscription survived", async () => {
     // The toggle's disable path: the backend write (enabled:false) succeeds first, then unsubscribeFromPush() throws, so the
     // PushSubscription remains and getPushSubscriptionStatus() keeps saying "subscribed".

@@ -12,23 +12,30 @@ export const DEFAULT_DELIVERY_WINDOWS = ["08:00", "18:00"]
 const NOTIFICATION_LOCALE_SYNCED_KEY = "yobi.notificationLocaleSynced"
 const NOTIFICATIONS_DISABLED_KEY = "yobi.notificationsDisabled"
 
+// Kept in module memory when storage itself fails after a confirmed write, so the OFF state still holds for the rest of this page
+// session (same pattern as getOrCreateClientId). Null whenever storage holds the answer. Across a reload an unavailable store cannot
+// carry it -- but that browser also cannot persist its clientId, so the reloaded page is a different client anyway.
+let memoryOnlyDisabled: boolean | null = null
+
 /** True once a preference write with `enabled: false` succeeded for this browser and no later write turned notifications back on.
  * Global OFF is the master switch: background syncs (language change, creator switches) must not infer "on" from a browser push
  * subscription that merely outlived a failed unsubscribe. Browser-local bookkeeping about the last CONFIRMED backend write. */
 export function isNotificationDisabledByUser(): boolean {
   try {
-    return window.localStorage.getItem(NOTIFICATIONS_DISABLED_KEY) === "1"
+    if (window.localStorage.getItem(NOTIFICATIONS_DISABLED_KEY) === "1") return true
   } catch {
-    return false
+    // Unreadable storage: fall through to the in-session value.
   }
+  return memoryOnlyDisabled === true
 }
 
 function markNotificationEnabledState(enabled: boolean): void {
   try {
     if (enabled) window.localStorage.removeItem(NOTIFICATIONS_DISABLED_KEY)
     else window.localStorage.setItem(NOTIFICATIONS_DISABLED_KEY, "1")
+    memoryOnlyDisabled = null
   } catch {
-    // Without the marker a background sync falls back to the subscription check alone.
+    memoryOnlyDisabled = !enabled
   }
 }
 
