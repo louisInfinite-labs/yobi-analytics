@@ -2,6 +2,6 @@
  * "Shared Holodex Status Model"). Priority when multiple videos exist: live
  * first, otherwise the nearest upcoming stream, otherwise offline. */
 export type CreatorStatus =
-  | { kind: "live"; videoId: string; title: string }
-  | { kind: "upcoming"; videoId: string; title: string; scheduledStart: string }
+  | { kind: "live"; videoId: string; title: string; thumbnailUrl?: string }
+  | { kind: "upcoming"; videoId: string; title: string; scheduledStart: string; thumbnailUrl?: string }
   | { kind: "offline" }

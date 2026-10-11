@@ -107,6 +107,7 @@ export function HomePage() {
           now={now}
           onSelectVideo={openVideo}
           nowPlayingTitle={embed?.title ?? null}
+          nowPlayingVideoId={embed?.videoId ?? null}
         />
       </main>
     </div>

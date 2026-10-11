@@ -19,6 +19,11 @@ export function isWithinLiveStatusUpcomingWindow(scheduledStart: string | null, 
   return startMs > nowMs && startMs <= nowMs + LIVE_STATUS_UPCOMING_WINDOW_MS
 }
 
+/** The stream's own backend thumbnail (GET /live-streams `thumbnailUrl`), carried onto the status only when it is a usable string. */
+function thumbnailField(stream: LiveStreamDto): { thumbnailUrl?: string } {
+  return stream.thumbnailUrl ? { thumbnailUrl: stream.thumbnailUrl } : {}
+}
+
 /** One creator's Live Status: a live stream always wins (no time limit);
  * otherwise the nearest upcoming stream inside the next 24 hours; otherwise
  * offline (spec, same priority creatorStatus.ts documents). `now` is the one
@@ -28,7 +33,7 @@ export function pickStatus(streams: LiveStreamDto[] | undefined, now: Date): Cre
   if (!streams || streams.length === 0) return { kind: "offline" }
 
   const live = streams.find((stream) => stream.status === "live")
-  if (live) return { kind: "live", videoId: live.videoId, title: live.title }
+  if (live) return { kind: "live", videoId: live.videoId, title: live.title, ...thumbnailField(live) }
 
   const nearestUpcoming = streams
     .filter(
@@ -37,7 +42,13 @@ export function pickStatus(streams: LiveStreamDto[] | undefined, now: Date): Cre
     )
     .sort((a, b) => new Date(a.scheduledStart).getTime() - new Date(b.scheduledStart).getTime())[0]
   if (nearestUpcoming) {
-    return { kind: "upcoming", videoId: nearestUpcoming.videoId, title: nearestUpcoming.title, scheduledStart: nearestUpcoming.scheduledStart }
+    return {
+      kind: "upcoming",
+      videoId: nearestUpcoming.videoId,
+      title: nearestUpcoming.title,
+      scheduledStart: nearestUpcoming.scheduledStart,
+      ...thumbnailField(nearestUpcoming),
+    }
   }
 
   return { kind: "offline" }

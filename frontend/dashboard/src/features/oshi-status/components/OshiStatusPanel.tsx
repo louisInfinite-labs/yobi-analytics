@@ -33,13 +33,60 @@ interface OshiStatusPanelProps {
    * shown separately in Live/Next below) -- those are different concepts
    * that happen to often match. Null when nothing is loaded in the player. */
   nowPlayingTitle: string | null
+  /** The videoId of that same player video, so its thumbnail can be shown. Optional: without it no thumbnail is shown. */
+  nowPlayingVideoId?: string | null
 }
 
-/** One Recent Activity row: [time + NEW] / [clickable title] / [thumbnail],
- * always exactly these three grid columns -- see home.css's own
- * .oshi-status__recent-row. NEW lives under the timestamp specifically so
- * it can never eat into the title's own width or shrink the thumbnail;
- * every entry here is a real backend video with a videoId, so the title is always clickable. */
+/** The existing app-wide thumbnail path for a video with no backend `thumbnailUrl` (Home's cards, the Schedule modal and the old Recent
+ * Activity thumbnail all key YouTube's own JPG endpoint by the real videoId) -- never a substituted video. */
+function fallbackThumbnailUrl(videoId: string): string {
+  return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+}
+
+/** A 16:9 video thumbnail (377px wide on desktop, scaling down with the panel, never distorted: object-fit cover). Source order: the
+ * backend's own thumbnail field, then the app's videoId-keyed fallback, then a neutral 16:9 placeholder -- no other request is made.
+ * With `onOpen` it is a button that runs the SAME handler as the item's title; without it (the now-playing video, which has no title
+ * action) it is display-only. */
+function StatusThumbnail({
+  videoId,
+  thumbnailUrl,
+  label,
+  onOpen,
+}: {
+  videoId: string
+  thumbnailUrl?: string | null
+  label: string
+  onOpen?: () => void
+}) {
+  const [locale] = useLocale()
+  // A distinct accessible name: the title button beside it already carries the plain title, and two controls must not share one name.
+  const accessibleName = t(locale, "oshiStatus.thumbnailLabel", { title: label })
+  const sources = [thumbnailUrl || null, fallbackThumbnailUrl(videoId)].filter((url): url is string => Boolean(url))
+  // How many of this video's sources have failed to load; past the end -> the placeholder.
+  const [failed, setFailed] = useState<{ videoId: string; count: number }>({ videoId, count: 0 })
+  const attempt = failed.videoId === videoId ? failed.count : 0
+  const src = sources[attempt]
+  const image = src ? (
+    <img key={src} src={src} alt="" draggable={false} onError={() => setFailed({ videoId, count: attempt + 1 })} />
+  ) : (
+    <span className="oshi-status__thumb-placeholder">{t(locale, "liveSchedule.noThumbnail")}</span>
+  )
+
+  return onOpen ? (
+    <button type="button" className="oshi-status__thumb" aria-label={accessibleName} onClick={onOpen}>
+      {image}
+    </button>
+  ) : (
+    <div className="oshi-status__thumb oshi-status__thumb--static" role="img" aria-label={accessibleName}>
+      {image}
+    </div>
+  )
+}
+
+/** One Recent Activity row: [time + NEW] [clickable title] on the first line, the full-width thumbnail below
+ * -- see home.css's own .oshi-status__recent-row. NEW lives under the timestamp specifically so
+ * it can never eat into the title's own width; every entry here is a real backend video with a videoId,
+ * so the title and the thumbnail are always clickable. */
 function RecentActivityRow({
   entry,
   now,
@@ -58,6 +105,11 @@ function RecentActivityRow({
   // also keeps its later archive from being NEW (see newContentTracking.ts).
   const { isNew: isNewContent } = useNewContent()
   const isNew = isNewContent({ videoId: entry.videoId, publishedAt: entry.publishedAt }, now)
+  // One handler for the title AND the thumbnail, so they can never diverge (same seen-marking, same selected video).
+  const open = () => {
+    markContentSeen(entry.videoId)
+    onOpen({ videoId: entry.videoId, title: entry.title })
+  }
 
   return (
     <div className="oshi-status__recent-row">
@@ -69,20 +121,12 @@ function RecentActivityRow({
         <button
           type="button"
           className="oshi-status__recent-video-link"
-          onClick={() => {
-            markContentSeen(entry.videoId)
-            onOpen({ videoId: entry.videoId, title: entry.title })
-          }}
+          onClick={open}
         >
           {entry.title}
         </button>
       </div>
-      <img
-        className="oshi-status__recent-thumbnail"
-        src={entry.thumbnailUrl ?? `https://img.youtube.com/vi/${entry.videoId}/hqdefault.jpg`}
-        alt=""
-        draggable={false}
-      />
+      <StatusThumbnail videoId={entry.videoId} thumbnailUrl={entry.thumbnailUrl} label={entry.title} onOpen={open} />
     </div>
   )
 }
@@ -110,6 +154,8 @@ function LiveOrNext({ status, now, onOpen }: { status: CreatorStatus; now: Date;
   if (status.kind === "offline") {
     return <div className="oshi-empty-state">{t(locale, "oshiStatus.noScheduledStream")}</div>
   }
+  // The title and the thumbnail run this one handler (a live/upcoming pick never counts as watched by itself -- HomePage's openVideo decides).
+  const open = status.videoId ? () => onOpen({ videoId: status.videoId, title: status.title }) : undefined
   return (
     <div className="oshi-status__next">
       <div className="oshi-status__next-main">
@@ -119,18 +165,19 @@ function LiveOrNext({ status, now, onOpen }: { status: CreatorStatus; now: Date;
         {/* The CURRENT LIVE title and the nearest UPCOMING title both open that exact stream, with the status's own videoId and
           * the same onOpen handler the recent rows use -- no title search, no navigation to the recent list. A status
           * without a usable videoId stays plain text. */}
-        {status.videoId ? (
-          <button
-            type="button"
-            className="oshi-status__next-title oshi-status__next-title--link"
-            onClick={() => onOpen({ videoId: status.videoId, title: status.title })}
-          >
+        {open ? (
+          <button type="button" className="oshi-status__next-title oshi-status__next-title--link" onClick={open}>
             {status.title}
           </button>
         ) : (
           <div className="oshi-status__next-title">{status.title}</div>
         )}
       </div>
+      {open && (
+        <div className="oshi-status__next-thumb">
+          <StatusThumbnail videoId={status.videoId} thumbnailUrl={status.thumbnailUrl} label={status.title} onOpen={open} />
+        </div>
+      )}
     </div>
   )
 }
@@ -140,7 +187,7 @@ function LiveOrNext({ status, now, onOpen }: { status: CreatorStatus; now: Date;
  * Live/Next comes from the shared Holodex status; everything else (subscriber count,
  * since-last-visit and this-week counts, view growth, the recent rows) is the backend's
  * GET /creators/{creatorId}/oshi-status read model for the CURRENT creator. */
-export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlayingTitle }: OshiStatusPanelProps) {
+export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlayingTitle, nowPlayingVideoId = null }: OshiStatusPanelProps) {
   const creator = mockCreators.find((entry) => entry.channelId === creatorId)
   // The channel icon is the canonical Creator Registry's `avatarUrl` (the backend Creator Master's YouTube channel icon); the mock roster
   // above never carries one, so reading it from there always fell back to the initial.
@@ -154,6 +201,13 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
   const [timeFormat] = useTimeFormat()
   const { data, loading, error } = useOshiStatus(resolveCreatorKey(creatorId)?.creatorId, previousVisit)
   const recent = data?.recent ?? []
+  // The now-playing video's backend thumbnail, when this panel already holds one for that videoId (the live/upcoming status or a recent row).
+  const nowPlayingThumbnail =
+    nowPlayingVideoId === null
+      ? undefined
+      : status.kind !== "offline" && status.videoId === nowPlayingVideoId
+        ? status.thumbnailUrl
+        : recent.find((entry) => entry.videoId === nowPlayingVideoId)?.thumbnailUrl
   // The backend's recent rows are uploads and COMPLETED livestreams only: a stream watched while live that shows up
   // here as a "livestream" row is now an archive, so its marker becomes a permanent seen entry.
   useEffect(() => {
@@ -206,6 +260,11 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
           <div className="oshi-status__now-playing">
             <div className="oshi-status__now-playing-label">{t(locale, "oshiStatus.nowPlaying")}</div>
             <div className="oshi-status__now-playing-title">{nowPlayingTitle}</div>
+            {nowPlayingVideoId && (
+              <div className="oshi-status__now-playing-thumb">
+                <StatusThumbnail videoId={nowPlayingVideoId} thumbnailUrl={nowPlayingThumbnail} label={nowPlayingTitle} />
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -244,7 +303,7 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
                 <div key={row} className="oshi-status__recent-row">
                   <span className="oshi-loading-line" style={{ height: 9, width: 34 }} />
                   <span className="oshi-loading-line" style={{ height: 9 }} />
-                  <span className="oshi-loading-line" style={{ height: 27, width: 48 }} />
+                  <span className="oshi-loading-line oshi-status__thumb-skeleton" />
                 </div>
               ))}
             </div>
