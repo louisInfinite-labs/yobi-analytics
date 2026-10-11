@@ -1,11 +1,8 @@
-import { Select } from "antd"
 import { UpcomingDisplaySettings } from "../../features/live-status/components/UpcomingDisplaySettings"
 import { useLocale } from "../../shared/i18n/hooks/useLocale"
 import { useTimeFormat } from "../../shared/i18n/hooks/useTimeFormat"
 import type { TimeFormat } from "../../shared/i18n/model/timeFormat"
 import { t } from "../../shared/i18n/translations"
-
-const SELECT_CLASS_NAMES = { popup: { root: "display-settings-select-dropdown" } }
 
 export function DisplaySettings() {
   const [locale] = useLocale()
@@ -33,14 +30,18 @@ export function DisplaySettings() {
               <h2 className="display-setting-label">{t(locale, "displaySettings.timeFormatLabel")}</h2>
               <p className="display-setting-help">{t(locale, "displaySettings.timeFormatHelp")}</p>
             </div>
-            <Select
-              className="display-setting-select"
-              classNames={SELECT_CLASS_NAMES}
+            <select
+              className="oshi-videos__sort display-setting-select"
               aria-label={t(locale, "displaySettings.timeFormatLabel")}
-              options={timeFormatOptions}
               value={timeFormat}
-              onChange={setTimeFormat}
-            />
+              onChange={(event) => setTimeFormat(event.target.value as TimeFormat)}
+            >
+              {timeFormatOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="display-setting-row">

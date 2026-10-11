@@ -27,6 +27,11 @@
   --oshi-border: rgba(255, 255, 255, 0.08);
   --oshi-border-strong: rgba(255, 255, 255, 0.13);
 
+  /* The highlight of the open dropdown list: the browser's own `Highlight` system color under color-scheme: dark (measured rgb(25, 103, 210),
+     identical to the selected row of the open .oshi-videos__sort list). It is a keyword, resolved where it is USED, so anything that uses it
+     must sit under `color-scheme: dark` (the select itself and the notification drawer both declare it). */
+  --oshi-select-highlight: Highlight;
+
   --creator-main: #b4f1f9;
   --creator-sub: #1b8796;
 
@@ -973,6 +978,25 @@
   outline: none;
 }
 
+/* The ONE dropdown treatment for every Home-style native select (Home's sort / content-type / period, Display Settings, the notification
+   drawer's reminder time): the select declares its own dark color scheme. The app root is color-scheme: light, and a native <select>'s open
+   list follows the scheme of the select itself -- so outside .oshi-home (Settings, a portalled drawer) the list opened as the browser's light
+   surface while the text stayed Home's light-on-dark, which made it unreadable. Declaring it here, on the shared class, fixes every
+   consumer at once (no per-page workaround) and keeps the closed state, the open list and the chevron in the same dark family.
+   The options also carry explicit Home surface/text colors for browsers that paint the list from the option's own style. */
+.oshi-videos__sort {
+  color-scheme: dark;
+}
+
+.oshi-videos__sort option {
+  background: var(--oshi-surface-2);
+  color: var(--oshi-text-1);
+}
+
+.oshi-videos__sort option:disabled {
+  color: var(--oshi-text-3);
+}
+
 /* Sibling of VideoSectionTagBar inside .oshi-videos__header (NOT a child of
    .oshi-videos__filters, which scrolls) -- margin-left: auto pushes it to
    the header's far-right edge regardless of how wide the Segmented/Sort
@@ -1522,21 +1546,20 @@
 .live-status-filter-row .ant-segmented-item {
   flex: 1 1 0;
   min-width: 0;
+}
 
+/* The shared look of Home's ALL / 收藏 filter chips (Live Status' selector and 收藏名單's): 2px-radius chips, a 2px-radius selected thumb, and
+   600-weight labels centered in their chip. The tokens are HOME_FILTER_SEGMENTED_TOKENS (shared/theme/homeFilterSegmentedTheme.ts). Font
+   size / padding / line-height stay Ant Design's untouched defaults (14px). */
+.home-filter-segmented .ant-segmented-item {
   border-radius: 2px;
 }
 
-.live-status-filter-row .ant-segmented-thumb {
+.home-filter-segmented .ant-segmented-thumb {
   border-radius: 2px;
 }
 
-/* width: 100% + its own flex/justify-content fill and horizontally center
-   the label within this control's stretched 50/50 item (external layout);
-   weight 600 is Home's own label weight. Font size / padding / line-height
-   stay Ant Design's untouched defaults (14px -- unchanged from before). */
-.live-status-view-segment-label {
-  width: 100%;
-
+.home-filter-segment-label {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1546,6 +1569,11 @@
   font-weight: 600;
 
   white-space: nowrap;
+}
+
+/* Live Status only: the label fills its stretched 50/50 chip. */
+.live-status-view-segment-label {
+  width: 100%;
 }
 
 .live-status-drawer__body {

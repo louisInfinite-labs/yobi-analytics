@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from "react"
-import { Checkbox, ConfigProvider, Segmented } from "antd"
+import { HOME_FILTER_SEGMENTED_TOKENS } from "../../../shared/theme/homeFilterSegmentedTheme"
+import { Checkbox, ConfigProvider, Segmented, theme as antdTheme } from "antd"
 import { Heart } from "lucide-react"
 import { toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
@@ -166,30 +167,10 @@ export function OshiSettings() {
 
   return (
     // Scoped to this component's own subtree only -- Checkbox and Segmented
-    // are the only antd controls used here. The Segmented below now gets
-    // its actual visual style (background/border/radius/item height/font/
-    // colors/hover) from the shared .shared-filter-segmented class,
-    // matching Live Reminder Time and Live Status' own All/Favorites
-    // toggle 1:1 (confirmed with the user) -- the theme-tinted Segmented
-    // tokens just below (incl. this control's own active-member-colored
-    // itemSelectedBg) are now superseded by that shared class, not removed
-    // outright, in case a future control in this same subtree still wants
-    // them. Checkbox itself is unaffected, still themed off colorPrimary.
-    <ConfigProvider
-      theme={{
-        token: { colorPrimary: theme.primary },
-        components: {
-          Segmented: {
-            trackBg: "var(--roster-surface)",
-            itemColor: "var(--roster-text-secondary)",
-            itemHoverColor: "var(--roster-text-primary)",
-            itemHoverBg: "color-mix(in srgb, var(--roster-text-primary) 8%, transparent)",
-            itemSelectedBg: theme.primary,
-            itemSelectedColor: "#ffffff",
-          },
-        },
-      }}
-    >
+    // are the only antd controls used here. Checkbox is themed off colorPrimary;
+    // the ALL / 收藏 Segmented is HOME's filter control and has its own provider
+    // below.
+    <ConfigProvider theme={{ token: { colorPrimary: theme.primary } }}>
       <div className="favorites-roster">
         <header className="favorites-roster__header settings-page-header settings-page-header--with-meta">
           <div className="settings-page-header-copy">
@@ -202,15 +183,19 @@ export function OshiSettings() {
         </header>
 
         <div className="favorites-roster__controls">
-          <Segmented
-            classNames={{ root: "favorites-roster__segmented shared-filter-segmented" }}
-            value={viewMode}
-            onChange={(value) => setViewMode(value as ViewMode)}
-            options={[
-              { value: "all", label: t(locale, "recentVideos.tag.all") },
-              { value: "favorites", label: t(locale, "oshiSettings.viewFilter.favoritesOnly") },
-            ]}
-          />
+          {/* Home's filter control, exactly as Live Status renders it: the same tokens (HOME_FILTER_SEGMENTED_TOKENS), the same look classes,
+              and antd's own default primary (the focus ring), not this page's member accent -- no Favorites-specific palette. */}
+          <ConfigProvider theme={{ token: { colorPrimary: antdTheme.defaultSeed.colorPrimary }, components: { Segmented: HOME_FILTER_SEGMENTED_TOKENS } }}>
+            <Segmented
+              classNames={{ root: "favorites-roster__segmented home-filter-segmented", label: "home-filter-segment-label" }}
+              value={viewMode}
+              onChange={(value) => setViewMode(value as ViewMode)}
+              options={[
+                { value: "all", label: t(locale, "recentVideos.tag.all") },
+                { value: "favorites", label: t(locale, "oshiSettings.viewFilter.favoritesOnly") },
+              ]}
+            />
+          </ConfigProvider>
           <input
             type="text"
             className="favorites-roster__search"

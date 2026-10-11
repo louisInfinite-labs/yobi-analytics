@@ -153,10 +153,8 @@ export type TranslationKey =
   | "notificationSettings.reminderSectionHelpDisabledNewVideo"
   | "notificationSettings.overrideSectionTitle"
   | "notificationSettings.overrideBadgeCount"
-  | "notificationSettings.resetButton"
   | "notificationSettings.removeTopicButton"
   | "notificationSettings.removeTopicButtonAriaLabel"
-  | "notificationSettings.resetButtonAriaLabel"
   | "notificationSettings.memberPreviewMoreLabel"
   | "notificationSettings.emptySelection"
   | "languageSettings.picker.zhTW"
@@ -358,10 +356,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminderSectionHelpDisabledNewVideo": "目前只接收新片通知，直播提醒時間無法設定。",
     "notificationSettings.overrideSectionTitle": "個別成員設定（選用）",
     "notificationSettings.overrideBadgeCount": "{{count}} 個別設定",
-    "notificationSettings.resetButton": "重設",
     "notificationSettings.removeTopicButton": "移除",
     "notificationSettings.removeTopicButtonAriaLabel": "移除「{{topic}}」",
-    "notificationSettings.resetButtonAriaLabel": "重設「{{topic}}」的預設設定",
     "notificationSettings.memberPreviewMoreLabel": "+{{count}}",
     "notificationSettings.emptySelection": "請從左側選擇一個主題",
     "myOshiSettings.selectAria": "將 {{name}} 設為我推",
@@ -568,10 +564,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminderSectionHelpDisabledNewVideo": "Live reminder timing is unavailable while only New Video notifications are enabled.",
     "notificationSettings.overrideSectionTitle": "Per-member overrides (optional)",
     "notificationSettings.overrideBadgeCount": "{{count}} custom",
-    "notificationSettings.resetButton": "Reset",
     "notificationSettings.removeTopicButton": "Remove",
     "notificationSettings.removeTopicButtonAriaLabel": "Remove \"{{topic}}\"",
-    "notificationSettings.resetButtonAriaLabel": "Reset \"{{topic}}\" to its defaults",
     "notificationSettings.memberPreviewMoreLabel": "+{{count}}",
     "notificationSettings.emptySelection": "Select a topic on the left",
     "myOshiSettings.selectAria": "Set {{name}} as my Oshi",
@@ -778,10 +772,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminderSectionHelpDisabledNewVideo": "新着動画通知のみが有効なため、配信リマインド時間は設定できません。",
     "notificationSettings.overrideSectionTitle": "個別メンバー設定（任意）",
     "notificationSettings.overrideBadgeCount": "{{count}}件カスタム",
-    "notificationSettings.resetButton": "リセット",
     "notificationSettings.removeTopicButton": "削除",
     "notificationSettings.removeTopicButtonAriaLabel": "「{{topic}}」を削除",
-    "notificationSettings.resetButtonAriaLabel": "「{{topic}}」を既定値にリセット",
     "notificationSettings.memberPreviewMoreLabel": "+{{count}}",
     "notificationSettings.emptySelection": "左側からトピックを選択してください",
     "myOshiSettings.selectAria": "{{name}} を推しに設定",

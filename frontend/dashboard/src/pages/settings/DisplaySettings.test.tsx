@@ -1,25 +1,23 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { DisplaySettings } from "./DisplaySettings"
 import { resetAllSharedStateForTests } from "../../shared/state/sharedState"
+import { readStylesheet, rulesOf, ruleBody } from "../../test/readStylesheet"
 
 const TIME_FORMAT_KEY = "yobi.timeFormat"
 const MODE_KEY = "yobi.upcomingDisplayMode"
 const COUNTDOWN_LANGUAGE_KEY = "yobi.countdownLanguage"
 
-/** Opens an antd Select by its accessible name and picks the option with the given text. */
+/** Picks the option with the given text in Home's native select, found by its accessible name. */
 async function choose(user: ReturnType<typeof userEvent.setup>, selectName: string, optionText: string) {
-  await user.click(screen.getByRole("combobox", { name: selectName }))
-  await user.click(await screen.findByText(optionText, { selector: ".ant-select-item-option-content" }))
+  await user.selectOptions(screen.getByRole("combobox", { name: selectName }), optionText)
 }
 
-/** The displayed value of an antd Select found by its accessible name -- the
- * combobox role sits on the hidden `<input>`, whose own text content is
- * always empty, so the visible label is read from its `.ant-select-content`
- * wrapper's `title` instead. */
+/** The displayed option text of a native select found by its accessible name. */
 function selectedValue(selectName: string): string | null {
-  return screen.getByRole("combobox", { name: selectName }).closest(".ant-select-content")?.getAttribute("title") ?? null
+  const select = screen.getByRole("combobox", { name: selectName }) as HTMLSelectElement
+  return select.selectedOptions[0]?.textContent ?? null
 }
 
 beforeEach(() => {
@@ -99,5 +97,43 @@ describe("DisplaySettings", () => {
 
     expect(selectedValue("Time format")).toBe("12-hour (AM/PM)")
     expect(selectedValue("Upcoming streams")).toBe("Countdown")
+  })
+})
+
+describe("DisplaySettings uses Home's palette and Home's select", () => {
+  let css = ""
+  beforeAll(async () => {
+    css = await readStylesheet("src/pages/settings/styles/settings.css")
+  })
+
+  it("both controls are Home's own native select (.oshi-videos__sort) -- not an antd Select with a Settings-only skin", () => {
+    render(<DisplaySettings />)
+
+    for (const select of screen.getAllByRole("combobox")) {
+      expect(select.tagName).toBe("SELECT")
+      expect(select).toHaveClass("oshi-videos__sort")
+    }
+    expect(document.querySelector(".ant-select")).toBeNull()
+    // only the width is this page's own; every other look is Home's .oshi-videos__sort
+    expect(ruleBody(css, ".display-setting-select").replace(/\s+/g, " ").trim()).toBe("width: 360px;")
+  })
+
+  it("every Settings tab paints Home's page surface (--oshi-bg), and the page title / description use Home's text tokens", () => {
+    expect(ruleBody(css, ".settings-page__content")).toMatch(/background:\s*var\(--oshi-bg\)/)
+    expect(ruleBody(css, ".settings-page-title")).toMatch(/color:\s*var\(--oshi-text-1\)/)
+    expect(ruleBody(css, ".settings-page-description")).toMatch(/color:\s*var\(--oshi-text-2\)/)
+    expect(ruleBody(css, ".display-setting-row")).toMatch(/border-bottom:\s*1px solid var\(--oshi-border\)/)
+    expect(ruleBody(css, ".display-setting-label")).toMatch(/color:\s*var\(--oshi-text-1\)/)
+    expect(ruleBody(css, ".display-setting-help")).toMatch(/color:\s*var\(--oshi-text-3\)/)
+  })
+
+  it("no purple / pink Display-only palette is left on any display-setting rule", () => {
+    const displayRules = rulesOf(css).filter(({ selector }) => /display-setting|display-settings/.test(selector))
+    expect(displayRules.length).toBeGreaterThan(5)
+    for (const { body } of displayRules) {
+      expect(body).not.toMatch(/#c87ca4|200,\s*124,\s*164|196,\s*184,\s*204|181,\s*168,\s*190|28,\s*24,\s*34|#211c26|#17141d|#efebf1|#aaa3b2|#96909e|#b9b3c1|#9a94a3|#f3eff5/i)
+    }
+    expect(css).not.toMatch(/--display-(accent|control|divider|text)/)
+    expect(css).not.toMatch(/display-settings-select-dropdown/)
   })
 })
