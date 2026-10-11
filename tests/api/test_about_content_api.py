@@ -160,22 +160,30 @@ class TestLocalBackedRealContent:
             assert "](https://policies.google.com/privacy)" in privacy
             assert "](https://www.youtube.com/t/terms)" in terms
 
-    def test_contact_placeholder_never_resolved_to_a_link(self, local_real_content):
-        """The placeholder stays a bare bracket -- never followed by "(...)",
-        i.e. never turned into a real Markdown link."""
+    def test_contact_section_and_placeholder_are_gone_from_every_locale(self, local_real_content):
+        """The contact section is intentionally absent for now (no contact method is published): neither the heading nor the bare
+        placeholder may be shipped in any language, and a placeholder, if one is ever added back, must never become a link."""
         payload = get_about_content()
-        found_at_least_one = False
         for locale in ("zh-TW", "en", "ja"):
             for page_id in ("privacy", "terms"):
                 markdown = next(p for p in payload["locales"][locale]["pages"] if p["id"] == page_id)["markdown"]
                 for placeholder in ("[聯絡方式]", "[Contact]", "[お問い合わせ先]"):
-                    idx = markdown.find(placeholder)
-                    if idx == -1:
-                        continue
-                    found_at_least_one = True
-                    after = markdown[idx + len(placeholder) : idx + len(placeholder) + 1]
-                    assert after != "("
-        assert found_at_least_one
+                    assert placeholder not in markdown
+                for heading in ("## 聯絡方式", "## Contact", "## お問い合わせ"):
+                    assert heading not in markdown
+
+    def test_about_pages_have_no_growth_section_stay_connected_or_closing_line(self, local_real_content):
+        """成長與變化 / 保持連結 (and their ja / en counterparts) and the acknowledgements' closing sentence are removed, in all three languages."""
+        payload = get_about_content()
+        gone = {
+            "zh-TW": ("成長與變化", "保持連結", "再靠近一點"),
+            "ja": ("成長と変化", "つながりを保つ", "もう少し近づけられますように"),
+            "en": ("Growth and change", "Stay connected", "a little closer to the Oshi you love"),
+        }
+        for locale, phrases in gone.items():
+            for page in payload["locales"][locale]["pages"]:
+                for phrase in phrases:
+                    assert phrase not in page["markdown"], f"{locale}/{page['id']} still contains {phrase!r}"
 
 
 class TestValidateAboutContent:
