@@ -18,7 +18,6 @@ import type { TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { TopicCreatorManagementDrawer } from "./TopicCreatorManagementDrawer"
 
-const NOTIFICATION_ACCENT = "#5a5261"
 
 /** How many member avatars the Notification Members section previews
  * before folding the rest into a "+N" bubble -- keeps the row bounded on
@@ -192,7 +191,6 @@ interface DetailPanelProps {
   onSelectDraftTopic: (topicId: TopicCatalogId) => void
   onManage: () => void
   onSave: () => void
-  onReset: () => void
   onRemove: () => void
 }
 
@@ -201,7 +199,7 @@ interface DetailPanelProps {
  * active. Selecting a topic never navigates away or opens a second panel
  * (section 19): everything here is the SAME component tree, just re-keyed
  * to a different topicId. */
-function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraftTopic, onManage, onSave, onReset, onRemove }: DetailPanelProps) {
+function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraftTopic, onManage, onSave, onRemove }: DetailPanelProps) {
   const [locale] = useLocale()
 
   if (topicId === null) {
@@ -230,7 +228,7 @@ function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraf
   }
 
   const topicLabel = topicLabelFor(entries, locale, topicId)
-  // Short is a video format with no live channel, so it has no notification type to pick and nothing for Reset to restore.
+  // Short is a video format with no live channel, so it has no notification type to pick.
   const isShort = isShortCard(topicId)
 
   return (
@@ -243,34 +241,24 @@ function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraf
       {!isShort && <NotificationTypeSection topicId={topicId} topicLabel={topicLabel} />}
       <MembersSection topicId={topicId} topicLabel={topicLabel} onManage={onManage} />
 
-      <div className="notification-detail-actions">
-        {isDraft ? (
-          <Button type="primary" className="notification-save-button" onClick={onSave}>
-            {t(locale, "notificationSettings.saveTopicButton")}
-          </Button>
-        ) : (
-          <>
-            {!isPermanentTopic(topicId) && (
-              <Button
-                className="notification-reset-button notification-remove-button"
-                onClick={onRemove}
-                aria-label={t(locale, "notificationSettings.removeTopicButtonAriaLabel", { topic: topicLabel })}
-              >
-                {t(locale, "notificationSettings.removeTopicButton")}
-              </Button>
-            )}
-            {!isShort && (
-              <Button
-                className="notification-reset-button"
-                onClick={onReset}
-                aria-label={t(locale, "notificationSettings.resetButtonAriaLabel", { topic: topicLabel })}
-              >
-                {t(locale, "notificationSettings.resetButton")}
-              </Button>
-            )}
-          </>
-        )}
-      </div>
+      {/* No actions, no row: a saved permanent topic has nothing to Save or Remove, so the footer (and its divider and padding) is not rendered. */}
+      {(isDraft || !isPermanentTopic(topicId)) && (
+        <div className="notification-detail-actions">
+          {isDraft ? (
+            <Button type="primary" className="notification-save-button" onClick={onSave}>
+              {t(locale, "notificationSettings.saveTopicButton")}
+            </Button>
+          ) : (
+            <Button
+              className="notification-action-button notification-remove-button"
+              onClick={onRemove}
+              aria-label={t(locale, "notificationSettings.removeTopicButtonAriaLabel", { topic: topicLabel })}
+            >
+              {t(locale, "notificationSettings.removeTopicButton")}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -286,7 +274,7 @@ export function NotificationSettings() {
   const [locale] = useLocale()
   const [managingTopicId, setManagingTopicId] = useState<TopicCatalogId | null>(null)
   const [sortMode, setSortMode] = useState<SortMode>("saved")
-  const { savedTopicIds, addTopic, removeTopic, discardUnsavedTopic, resetTopicDefaults } = useTopicNotificationPreferences()
+  const { savedTopicIds, addTopic, removeTopic, discardUnsavedTopic } = useTopicNotificationPreferences()
 
   const [selectedTopicId, setSelectedTopicId] = useState<TopicCatalogId | null>(savedTopicIds[0] ?? null)
 
@@ -349,28 +337,27 @@ export function NotificationSettings() {
   return (
     <ConfigProvider
       theme={{
-        token: { colorPrimary: NOTIFICATION_ACCENT },
         components: {
           // Segmented/Select popups are portaled outside this page's own
-          // dark-scoped DOM subtree, so the .notification-settings-page
-          // CSS custom properties can't reach them -- themed here via
-          // antd's own component tokens instead.
+          // DOM subtree, so page-scoped CSS custom properties can't reach
+          // them -- they are themed here with Home's own tokens (the same
+          // --oshi-* values Display Settings and Home read), never a page palette.
           Segmented: {
-            trackBg: "#211d29",
-            itemColor: "#b9b1c5",
-            itemHoverColor: "#f3eff7",
-            itemHoverBg: "color-mix(in srgb, #f3eff7 8%, transparent)",
-            itemSelectedBg: "#332d38",
-            itemSelectedColor: "#f3eff7",
+            trackBg: "var(--oshi-surface-2)",
+            itemColor: "var(--oshi-text-2)",
+            itemHoverColor: "var(--oshi-text-1)",
+            itemHoverBg: "rgba(255, 255, 255, 0.05)",
+            itemSelectedBg: "var(--oshi-surface-3)",
+            itemSelectedColor: "var(--oshi-text-1)",
           },
           Select: {
-            colorBgContainer: "#292432",
-            colorBorder: "#393342",
-            colorText: "#f3eff7",
-            colorTextPlaceholder: "#948b9f",
-            colorBgElevated: "#211d29",
-            optionSelectedBg: "rgba(90, 82, 97, 0.35)",
-            colorTextQuaternary: "#948b9f",
+            colorBgContainer: "rgba(0, 0, 0, 0.2)",
+            colorBorder: "var(--oshi-border)",
+            colorText: "var(--oshi-text-2)",
+            colorTextPlaceholder: "var(--oshi-text-3)",
+            colorBgElevated: "var(--oshi-surface-2)",
+            optionSelectedBg: "var(--oshi-surface-3)",
+            colorTextQuaternary: "var(--oshi-text-3)",
           },
         },
       }}
@@ -438,7 +425,6 @@ export function NotificationSettings() {
               onSelectDraftTopic={selectDraftTopic}
               onManage={() => setManagingTopicId(draft.active ? draft.topicId : selectedTopicId)}
               onSave={saveDraft}
-              onReset={() => selectedTopicId !== null && resetTopicDefaults(selectedTopicId)}
               onRemove={() => {
                 if (selectedTopicId === null) return
                 const removed = selectedTopicId

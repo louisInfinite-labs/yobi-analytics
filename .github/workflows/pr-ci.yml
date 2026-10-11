@@ -174,8 +174,11 @@ jobs:
           src/pages/home/HomePage.liveWatch.test.tsx
           src/features/live-status/components/LiveScheduleDock.test.tsx
           src/features/live-status/model/creatorStatusFormat.test.ts
+          src/pages/home/homeSelectContrast.test.tsx
           src/app/App.dashboardGate.test.tsx
           src/app/navigation/MainNavbar.test.tsx
+          src/pages/settings/DisplaySettings.test.tsx
+          src/pages/settings/SettingsThemeConsistency.test.tsx
           src/features/notifications/api/notificationPreferenceApi.test.ts
           src/features/notifications/components/NotificationSettings.shortCard.test.tsx
           src/features/notifications/model/notificationTopicCatalog.test.ts
