@@ -7,7 +7,7 @@ import { useDefaultOshiCreator } from "../../oshi/hooks/useDefaultOshiCreator"
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import { useSwipeToFavorite } from "../../favorites/hooks/useSwipeToFavorite"
 import { groupEligibleCreatorsForLiveStatus } from "../utils/liveStatusCanonicalRoster"
-import { formatCreatorStatus, type UpcomingDisplayMode } from "../model/creatorStatusFormat"
+import { formatCreatorStatus, formatLiveCount, type UpcomingDisplayMode } from "../model/creatorStatusFormat"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY } from "../../../entities/creator/utils/hololiveSubgrouping"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
@@ -311,7 +311,7 @@ export function CreatorStatusList({
               {liveCount > 0 && (
                 <span className="live-status-group__live-count">
                   <span className="live-status-group__live-dot" aria-hidden="true" />
-                  {String(liveCount).padStart(2, "0")} LIVE
+                  {formatLiveCount(liveCount)} LIVE
                 </span>
               )}
             </div>

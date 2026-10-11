@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { OshiStatusPanel } from "./OshiStatusPanel"
 import * as useLastVisit from "../hooks/useLastVisit"
 import { fetchOshiStatus, type OshiStatusData, type OshiStatusRecentItem } from "../data/oshiStatus"
@@ -369,5 +369,35 @@ describe("OshiStatusPanel: accent color is the canonical creator color", () => {
     const avatar = document.querySelector<HTMLElement>(".oshi-status__creator-avatar")!
 
     expect(avatar.style.background).toBe("rgb(118, 192, 234)")
+  })
+})
+
+describe("OshiStatusPanel DEV reset in a production build", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it("renders no reset control, hidden or otherwise, in any language", async () => {
+    vi.stubEnv("DEV", false)
+    vi.stubEnv("PROD", true)
+    renderPanel()
+    await screen.findByText("Unseen upload")
+
+    expect(document.querySelector(".oshi-status__dev-reset")).toBeNull()
+    for (const label of ["重置造訪", "Reset visit", "訪問をリセット"]) expect(document.body.textContent).not.toContain(label)
+  })
+
+  it("the reset functions themselves are no-ops outside development", async () => {
+    window.localStorage.setItem("yobi.newContent.seenVideoIds", JSON.stringify(["a"]))
+    vi.stubEnv("DEV", false)
+    vi.stubEnv("PROD", true)
+    const { resetNewContentTracking } = await import("../../../shared/newContent/newContentTracking")
+    const { resetPreviousVisit } = await import("../hooks/useLastVisit")
+    const before = JSON.stringify(window.localStorage)
+
+    resetNewContentTracking()
+    resetPreviousVisit()
+
+    expect(JSON.stringify(window.localStorage)).toBe(before)
   })
 })

@@ -15,7 +15,7 @@ import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
 import { creatorThemeStyle } from "../../../shared/theme/creatorThemeStyle"
 import { selectHomeVideo } from "../../home-room/hooks/useHomeSelectedVideo"
 import { t, type Locale } from "../../../shared/i18n/translations"
-import { formatCountdown } from "../model/creatorStatusFormat"
+import { formatCountdown, formatLiveCount } from "../model/creatorStatusFormat"
 import type { CreatorStatus } from "../model/creatorStatus"
 import { VideoPlayerModal } from "../../media-player/components/VideoPlayerModal"
 
@@ -43,7 +43,7 @@ function summarize(
 ): { text: string; dotColor: "red" | "grey" } {
   const values = Object.values(statuses)
   const liveCount = values.filter((s) => s.kind === "live").length
-  if (liveCount > 0) return { text: `${liveCount} LIVE`, dotColor: "red" }
+  if (liveCount > 0) return { text: `${formatLiveCount(liveCount)} LIVE`, dotColor: "red" }
 
   const nextUpcoming = values
     .filter((s): s is Extract<CreatorStatus, { kind: "upcoming" }> => s.kind === "upcoming")
@@ -220,25 +220,21 @@ export function LiveScheduleDock() {
             </div>
 
             <div className="live-status-filter-row">
-              {/* Visual style (background/border/radius/item height/font/
-               * colors/hover) comes from the shared .shared-filter-segmented
-               * class below, matching Live Reminder Time and Favorites' own
-               * All/Favorites toggle 1:1 (confirmed with the user) -- this
-               * ConfigProvider's own Segmented tokens (incl. the
-               * --creator-main-tinted itemSelectedBg this control used to
-               * render with) are now superseded by that shared class, not
-               * removed outright, in case a future control in this same
-               * subtree still wants them. */}
+              {/* Same visual language as Home's Video List filter bar (RecentVideosSection's VideoSectionTagBar): the track sits on
+               * --oshi-surface-1 with no border, 4px radius and 2px padding, items are 2px-radius chips, the selected one is the fixed neutral
+               * --oshi-surface-3 (never creator-tinted) with full-strength text, unselected text is --oshi-text-3 with Home's hover wash.
+               * Only the look is shared: the font size stays this drawer's own 14px (Home's bar is 10px) and the control stays a full-width
+               * 50/50 pair -- the ConfigProvider tokens below are Home's, and no .shared-filter-segmented skin overrides them. */}
               <ConfigProvider
                 theme={{
                   components: {
                     Segmented: {
-                      trackBg: "var(--oshi-surface-2)",
+                      trackBg: "var(--oshi-surface-1)",
                       trackPadding: 2,
                       itemColor: "var(--oshi-text-3)",
                       itemHoverColor: "var(--oshi-text-1)",
                       itemHoverBg: "rgba(255, 255, 255, 0.05)",
-                      itemSelectedBg: "color-mix(in srgb, var(--creator-main) 18%, var(--oshi-surface-3))",
+                      itemSelectedBg: "var(--oshi-surface-3)",
                       itemSelectedColor: "var(--oshi-text-1)",
                       borderRadius: 4,
                       borderRadiusSM: 4,
@@ -248,7 +244,7 @@ export function LiveScheduleDock() {
               >
                 <Segmented<ViewMode>
                   classNames={{
-                    root: "live-status-view-segmented shared-filter-segmented",
+                    root: "live-status-view-segmented",
                     label: "live-status-view-segment-label",
                   }}
                   value={viewMode}
