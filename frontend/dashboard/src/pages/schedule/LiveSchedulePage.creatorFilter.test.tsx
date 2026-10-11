@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { LiveSchedulePage } from "./LiveSchedulePage"
@@ -43,7 +43,9 @@ const FIXTURE = [
 const ALL = FIXTURE.map((stream) => stream.videoId).sort()
 
 const shown = () => Array.from(document.querySelectorAll(".stream-avatar-button")).map((node) => node.getAttribute("aria-label")!).sort()
-const combobox = () => screen.getByRole("combobox", { name: "Filter by creator" })
+const filterButton = () => screen.getByRole("button", { name: "Filter by creator" })
+const tiles = () => Array.from(document.querySelectorAll<HTMLElement>(".schedule-creator-item"))
+const tileNamed = (name: string) => tiles().find((tile) => tile.querySelector(".creator-tile__name")?.textContent === name)!
 
 async function renderPage() {
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime, pointerEventsCheck: 0 })
@@ -51,15 +53,16 @@ async function renderPage() {
   await waitFor(() => expect(shown()).toEqual(ALL))
   return user
 }
-async function pick(user: ReturnType<typeof userEvent.setup>, ...names: string[]) {
-  await user.click(combobox())
-  for (const name of names) await user.click(await screen.findByTitle(name))
+// The filter is a right-side drawer: open it once, then pick / un-pick creators by clicking their tiles.
+async function openFilter(user: ReturnType<typeof userEvent.setup>) {
+  if (!document.querySelector(".schedule-creator-drawer.ant-drawer-open")) await user.click(filterButton())
+  await waitFor(() => expect(tiles().length).toBeGreaterThan(0))
 }
-// maxTagCount=2: at most two tags are drawn and the rest collapse into one "+ N ..." chip.
-const selectedTags = () =>
-  Array.from(document.querySelectorAll(".schedule-creator-filter .ant-select-selection-item-content"))
-    .map((node) => node.textContent ?? "")
-    .filter((text) => !text.startsWith("+"))
+async function pick(user: ReturnType<typeof userEvent.setup>, ...names: string[]) {
+  await openFilter(user)
+  for (const name of names) await user.click(tileNamed(name))
+}
+const selectedTags = () => tiles().filter((tile) => tile.getAttribute("aria-pressed") === "true").map((tile) => tile.querySelector(".creator-tile__name")!.textContent ?? "")
 
 beforeEach(() => {
   localStorage.setItem("yobi.locale", "en")
@@ -103,28 +106,24 @@ describe("Schedule creator filter", () => {
     const user = await renderPage()
     await pick(user, "藍沢エマ", "花芽すみれ")
     expect(shown()).toEqual(["EMA-1500", "EMA-1530", "SUMIRE-1500", "SUMIRE-1530"])
-    expect(selectedTags()).toEqual(["藍沢エマ", "花芽すみれ"])
+    expect(selectedTags().sort()).toEqual(["花芽すみれ", "藍沢エマ"].sort())
 
-    await user.click(document.querySelector<HTMLElement>(".schedule-creator-filter .ant-select-selection-item-remove")!) // the first tag (藍沢エマ)
+    await user.click(tileNamed("藍沢エマ")) // click again = deselect
 
     expect(selectedTags()).toEqual(["花芽すみれ"])
     expect(shown()).toEqual(["SUMIRE-1500", "SUMIRE-1530"])
   })
 
-  it("Clear filter and the clear icon both restore the full schedule", async () => {
+  it("Clear filter restores the full schedule", async () => {
     const user = await renderPage()
     await pick(user, "藍沢エマ")
     expect(shown()).toEqual(["EMA-1500", "EMA-1530"])
 
     await user.click(await screen.findByRole("button", { name: "Clear filter" }))
+
     await waitFor(() => expect(shown()).toEqual(ALL))
     expect(selectedTags()).toEqual([])
-
-    await pick(user, "兎田ぺこら")
-    expect(shown()).toEqual(["PEKORA-1800"])
-    await user.hover(document.querySelector(".schedule-creator-filter .ant-select")!)
-    await user.click(document.querySelector<HTMLElement>(".schedule-creator-filter .ant-select-clear")!)
-    await waitFor(() => expect(shown()).toEqual(ALL))
+    expect(screen.queryByRole("button", { name: "Clear filter" })).not.toBeInTheDocument()
   })
 
   it("changing the selection never leaves a stale result: A, then A+B, then only B", async () => {
@@ -134,31 +133,32 @@ describe("Schedule creator filter", () => {
     expect(shown()).toEqual(["EMA-1500", "EMA-1530"])
     await pick(user, "兎田ぺこら")
     expect(shown()).toEqual(["EMA-1500", "EMA-1530", "PEKORA-1800"])
-    await user.click(document.querySelectorAll<HTMLElement>(".schedule-creator-filter .ant-select-selection-item-remove")[0])
+    await user.click(tileNamed("藍沢エマ"))
     expect(shown()).toEqual(["PEKORA-1800"])
   })
 
-  it("the options stay the full unfiltered list while a selection is active, and are searchable", async () => {
+  it("the tiles stay the full unfiltered list while a selection is active, and are searchable", async () => {
     const user = await renderPage()
     await pick(user, "藍沢エマ")
+    expect(tiles().map((tile) => tile.querySelector(".creator-tile__name")!.textContent)).toEqual(expect.arrayContaining(["兎田ぺこら", "白上フブキ", "藍沢エマ"]))
 
-    await user.click(combobox())
-    await user.type(combobox(), "フブキ")
+    await user.type(within(document.querySelector<HTMLElement>(".schedule-creator-drawer")!).getByRole("textbox"), "フブキ")
 
-    expect(await screen.findByTitle("白上フブキ")).toBeInTheDocument()
-    expect(screen.queryByTitle("兎田ぺこら")).not.toBeInTheDocument()
+    expect(tiles().filter((tile) => tile.querySelector(".creator-tile__name")!.textContent === "白上フブキ").length).toBeGreaterThan(0)
+    expect(tiles().some((tile) => tile.querySelector(".creator-tile__name")!.textContent === "兎田ぺこら")).toBe(false)
   })
 
-  it("favorites are listed first in their own group and can be added in one click", async () => {
+  it("favorites carry the shared heart, stay in Live Status' order (no separate Favorites group), and can be added in one click", async () => {
     localStorage.setItem("yobi.favoriteCreatorIds", JSON.stringify(["ch_kaga_sumire", "ch_usada_pekora"]))
     resetAllSharedStateForTests()
     const user = await renderPage()
 
-    await user.click(combobox())
-    const groups = Array.from(document.querySelectorAll(".schedule-creator-filter__dropdown .ant-select-item-group")).map((node) => node.textContent)
-    expect(groups).toEqual(["Favorites", "All creators"])
-    const optionTitles = Array.from(document.querySelectorAll(".schedule-creator-filter__dropdown .ant-select-item-option")).map((node) => node.getAttribute("title"))
-    expect(optionTitles.slice(0, 2).sort()).toEqual(["兎田ぺこら", "花芽すみれ"].sort())
+    await openFilter(user)
+    const headings = Array.from(document.querySelectorAll(".schedule-creator-drawer .live-status-group__heading")).map((node) => node.textContent)
+    expect(headings).toEqual(["VSPO! // JP", "HOLOLIVE // JP"])
+    expect(headings).not.toContain("Favorites")
+    const hearted = tiles().filter((tile) => tile.querySelector(".creator-avatar-heart")).map((tile) => tile.querySelector(".creator-tile__name")!.textContent)
+    expect(hearted.sort()).toEqual(["兎田ぺこら", "花芽すみれ"].sort())
 
     await user.click(await screen.findByRole("button", { name: "Add all favorites (2)" }))
 

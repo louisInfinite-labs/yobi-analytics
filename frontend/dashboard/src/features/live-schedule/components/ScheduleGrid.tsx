@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from "react"
+import { HiddenStreamsPopover } from "./HiddenStreamsPopover"
 import { getScheduleCreatorAvatarVisual } from "../utils/creatorAvatar"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { SLOT_COUNT, initialScrollSlotIndex, slotLabel } from "../model/scheduleGrid"
@@ -37,27 +38,14 @@ function StreamAvatarGroup({ streams, locale, onSelectStream }: { streams: Sched
           <div key={stream.id} className="stream-avatar-item">
             {stream.status === "live" && <span className="stream-avatar-live-badge">{t(locale, "liveSchedule.liveBadge")}</span>}
             <button type="button" className="stream-avatar-button" onClick={() => onSelectStream(stream)} aria-label={stream.title}>
-              <span className="stream-avatar" style={visual.avatarUrl ? undefined : { background: visual.background, color: visual.color }}>
+              <span className="creator-avatar-circle stream-avatar" style={visual.avatarUrl ? undefined : { background: visual.background, color: visual.color }}>
                 {visual.avatarUrl ? <img src={visual.avatarUrl} alt="" /> : visual.initial}
               </span>
             </button>
           </div>
         )
       })}
-      {hiddenStreams.length > 0 && (
-        // Opens the first hidden stream -- there's no overflow-list/popover
-        // in the approved spec, so this is the simplest control that still
-        // makes every stream in the slot reachable rather than only the
-        // first 3.
-        <button
-          type="button"
-          className="more-streams"
-          onClick={() => onSelectStream(hiddenStreams[0])}
-          aria-label={t(locale, "liveSchedule.moreStreamsAria", { count: String(hiddenStreams.length) })}
-        >
-          +{hiddenStreams.length}
-        </button>
-      )}
+      {hiddenStreams.length > 0 && <HiddenStreamsPopover streams={hiddenStreams} locale={locale} onSelectStream={onSelectStream} />}
     </div>
   )
 }

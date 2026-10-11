@@ -18,7 +18,8 @@
      + 2px gap + 27px avatar (39px) inside one row. The page scrolls
      vertically to fit the resulting taller grid (see .schedule-grid) rather
      than shrinking this back down to force everything into one viewport. */
-  --schedule-time-slot-height: 44px;
+  /* Tall enough for a Live Status-sized (--creator-avatar-size) avatar plus the LIVE badge above it. */
+  --schedule-time-slot-height: 56px;
 }
 
 /* Page renders inside the existing app-shell's content area (next to
@@ -358,15 +359,15 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
    the 44px row, leaving 5px between one row's avatar and the next row's badge. */
 .stream-avatar-group {
   position: absolute;
-  top: calc(50% + 4.5px);
+  top: calc(50% + 7px);
   left: 50%;
   transform: translate(-50%, -50%);
 
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 
-  height: 28px;
+  height: var(--creator-avatar-size);
   z-index: 4;
 }
 
@@ -380,8 +381,8 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
 }
 
 .stream-avatar-button {
-  width: 27px;
-  height: 27px;
+  width: var(--creator-avatar-size);
+  height: var(--creator-avatar-size);
   padding: 0;
 
   border: 0;
@@ -392,34 +393,15 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
 }
 
 .stream-avatar {
-  width: 27px;
-  height: 27px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  border-radius: 50%;
-  border: 1.5px solid rgba(220, 233, 247, 0.72);
+  /* The Live Status creator avatar (.creator-avatar-circle: --creator-avatar-size, circular, cover-fit, no border / ring / glow);
+     only the fallback initial's colors are set per creator inline. */
   background: #16233a;
-
-  font-size: 11px;
-  font-weight: 700;
   color: var(--schedule-text-main);
-
-  transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
-.stream-avatar img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.stream-avatar-button:hover .stream-avatar {
-  transform: scale(1.08);
-  box-shadow: 0 0 0 2px rgba(57, 178, 255, 0.28);
+.stream-avatar-button:focus-visible {
+  outline: 1px solid var(--creator-main, #b9c8dc);
+  outline-offset: 2px;
 }
 
 /* Same pill language as Home's .oshi-video-card__live-badge (--live-red,
@@ -447,14 +429,14 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
 }
 
 .more-streams {
-  height: 25px;
+  height: 28px;
   min-width: 35px;
   padding: 0 9px;
 
   border-radius: 999px;
-  border: 1px solid #344b69;
-  background: #14223a;
-  color: #b9c8dc;
+  border: 1px solid var(--oshi-border-strong);
+  background: var(--oshi-surface-2);
+  color: var(--oshi-text-2);
 
   font-size: 11px;
   font-weight: 650;
@@ -464,6 +446,156 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   justify-content: center;
 
   cursor: pointer;
+}
+
+.more-streams:hover,
+.more-streams[aria-expanded="true"] {
+  color: var(--oshi-text-1);
+  border-color: var(--oshi-text-3);
+}
+
+.more-streams:focus-visible {
+  outline: 1px solid var(--creator-main, var(--oshi-text-1));
+  outline-offset: 2px;
+}
+
+/* ============ "+N" hidden-streams popover ============
+   Portalled to <body> and positioned from the trigger (HiddenStreamsPopover.tsx), so no overflow on the Schedule grid can clip it.
+   Surface, border and text come from Home's --oshi-* tokens. */
+.hidden-streams-popover {
+  position: fixed;
+  z-index: 1100;
+
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 16px));
+  max-height: min(70vh, 460px);
+
+  padding: 4px;
+  overflow-y: auto;
+
+  background: var(--oshi-surface-2);
+  border: 1px solid var(--oshi-border-strong);
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+
+  color: var(--oshi-text-1);
+}
+
+.hidden-streams-popover__item {
+  appearance: none;
+
+  width: 100%;
+
+  display: grid;
+  grid-template-columns: var(--creator-avatar-size) minmax(0, 1fr) 96px;
+  align-items: center;
+  column-gap: 10px;
+
+  padding: 6px;
+
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+
+  color: inherit;
+  font: inherit;
+  text-align: left;
+
+  cursor: pointer;
+}
+
+.hidden-streams-popover__item:hover,
+.hidden-streams-popover__item:focus-visible {
+  background: var(--oshi-surface-3);
+}
+
+.hidden-streams-popover__item:focus-visible {
+  outline: 1px solid var(--creator-main, var(--oshi-text-1));
+  outline-offset: -1px;
+}
+
+.hidden-streams-popover__text {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hidden-streams-popover__creator {
+  overflow: hidden;
+
+  color: var(--oshi-text-1);
+  font-size: 12px;
+  font-weight: 650;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.hidden-streams-popover__title {
+  display: -webkit-box;
+  overflow: hidden;
+
+  color: var(--oshi-text-2);
+  font-size: 11px;
+  line-height: 1.35;
+
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.hidden-streams-popover__time {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+
+  color: var(--oshi-text-3);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.hidden-streams-popover__live {
+  padding: 0 5px;
+
+  border-radius: 999px;
+  background: var(--live-red);
+
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+}
+
+.hidden-streams-popover__thumb {
+  width: 96px;
+  aspect-ratio: 16 / 9;
+
+  overflow: hidden;
+
+  border-radius: 3px;
+  background: var(--oshi-surface-3);
+}
+
+.hidden-streams-popover__thumb img {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+}
+
+.hidden-streams-popover__thumb-placeholder {
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: var(--oshi-text-3);
+  font-size: 9px;
 }
 
 .live-badge {
@@ -652,6 +784,11 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   margin-top: 22px;
 }
 
+/* With no reminder action (a live stream) the open-stream action takes the whole row instead of leaving an empty column. */
+.stream-modal-actions > .open-stream-button:only-child {
+  grid-column: 1 / -1;
+}
+
 .reminder-button {
   height: 50px;
 
@@ -685,15 +822,114 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   cursor: pointer;
 }
 
+/* ============ One-off stream reminder drawer ============
+   Home's own surface: the Live Status drawer's #0b1521 with its strong left border, and the --oshi-* text / border scale -- the same
+   tokens the notification-member drawer uses. No light theme, no purple notification palette. */
+.stream-reminder-drawer.ant-drawer-section,
+.stream-reminder-drawer .ant-drawer-section {
+  background: #0b1521;
+
+  border-left: 1px solid var(--oshi-border-strong);
+
+  color: var(--oshi-text-1);
+}
+
+.stream-reminder-drawer .ant-drawer-header {
+  border-bottom: 1px solid var(--oshi-border);
+}
+
+.stream-reminder-drawer .ant-drawer-title {
+  color: var(--oshi-text-1);
+}
+
+.stream-reminder-drawer .ant-drawer-close {
+  color: var(--oshi-text-3);
+}
+
+.stream-reminder-drawer .ant-drawer-close:hover {
+  color: var(--oshi-text-1);
+}
+
+.stream-reminder-drawer .ant-drawer-body {
+  background: transparent;
+}
+
 .stream-reminder-section__description {
   margin: 0 0 10px;
-  color: var(--schedule-text-secondary);
+  color: var(--oshi-text-2);
   font-size: 13px;
   line-height: 1.5;
 }
 
-.stream-reminder-options {
+/* The six timing choices are a two-row, three-column grid across the whole drawer body: every option the same size, fully visible,
+   labels allowed to wrap rather than clip. The antd Segmented keeps its radios (keyboard, aria, change handling); only its
+   flex row becomes a grid, and the sliding thumb is dropped because it cannot slide across a wrapped grid -- the selected
+   item carries its own background instead. */
+.stream-reminder-drawer .stream-reminder-options.ant-segmented {
+  display: block;
+
+  width: 100%;
   margin-top: 6px;
+  padding: 0;
+
+  border: 0;
+  background: transparent;
+
+  --ant-segmented-item-selected-bg: var(--oshi-surface-3);
+  --ant-segmented-item-hover-bg: transparent;
+  --ant-color-primary-border: var(--oshi-text-3);
+}
+
+.stream-reminder-drawer .stream-reminder-options .ant-segmented-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-items: stretch;
+  gap: var(--space-2);
+
+  width: 100%;
+}
+
+.stream-reminder-drawer .stream-reminder-options .ant-segmented-thumb {
+  display: none;
+}
+
+.stream-reminder-drawer .stream-reminder-options .ant-segmented-item {
+  min-width: 0;
+  min-height: 40px;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 3px;
+  background: transparent;
+
+  color: var(--oshi-text-2);
+  font-size: 13px;
+
+  white-space: normal;
+}
+
+.stream-reminder-drawer .stream-reminder-options .ant-segmented-item-label {
+  min-height: 0;
+  padding: 4px var(--space-2);
+
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+
+  line-height: 1.3;
+}
+
+.stream-reminder-drawer .stream-reminder-options .ant-segmented-item:not(.ant-segmented-item-selected):not(.ant-segmented-item-disabled):hover {
+  border-color: var(--oshi-text-3);
+  background: transparent;
+
+  color: var(--oshi-text-1);
+}
+
+.stream-reminder-drawer .stream-reminder-options .ant-segmented-item-selected {
+  border-color: var(--oshi-text-3);
+  background: var(--oshi-surface-3);
+
+  color: var(--oshi-text-1);
 }
 
 .stream-reminder-error {
@@ -707,97 +943,233 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   margin-top: 24px;
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-2);
 }
 
-/* ============ Creator filter (multi-select) ============ */
+/* Save / Remove use Home's dialog ghost-button look (the Oshi switch confirm's Cancel / Switch): 1px --oshi-border, 3px radius, a
+   transparent background and --oshi-text-3 text that brightens on hover. Save is the confirm action, so it rests in the stronger
+   text / border state; a disabled Save is the same button, dimmed. */
+.stream-reminder-drawer .stream-reminder-actions .ant-btn {
+  height: auto;
+  padding: var(--space-2) var(--space-4);
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: none;
+
+  color: var(--oshi-text-3);
+  font-size: 0.85rem;
+}
+
+.stream-reminder-drawer .stream-reminder-actions .ant-btn:not(:disabled):hover {
+  border-color: var(--oshi-text-3);
+  background: transparent;
+
+  color: var(--oshi-text-1);
+}
+
+.stream-reminder-drawer .stream-reminder-actions .ant-btn-primary {
+  border-color: var(--oshi-text-3);
+
+  color: var(--oshi-text-1);
+}
+
+.stream-reminder-drawer .stream-reminder-actions .ant-btn-primary:not(:disabled):hover {
+  border-color: var(--oshi-text-1);
+}
+
+.stream-reminder-drawer .stream-reminder-actions .ant-btn:disabled {
+  border-color: var(--oshi-border);
+  background: transparent;
+
+  color: var(--oshi-text-3);
+  opacity: 0.45;
+
+  cursor: not-allowed;
+}
+
+.stream-reminder-drawer .stream-reminder-actions .ant-btn:focus-visible {
+  outline: 1px solid var(--creator-main, var(--oshi-text-1));
+  outline-offset: 2px;
+}
+
+/* ============ Creator filter (right-side drawer) ============
+   The trigger keeps the toolbar's own control look; the drawer itself is Home's: the Live Status drawer's surface (#0b1521 with its strong
+   left border and shadow), Home's --oshi-* text tokens, and the same .live-status-search / .live-status-group__* classes for the search
+   and the "VSPO! // JP" headings. Creators are three to a row on desktop and use the shared Live Status avatar size. */
 
 .schedule-creator-filter {
-  min-width: 220px;
-  max-width: 340px;
-  padding-inline: 12px 6px;
+  min-width: 120px;
+  padding-inline: 14px;
+
+  font-family: inherit;
+
+  cursor: pointer;
 }
 
 .schedule-creator-filter[data-active="true"] {
   border-color: #4a79b5;
 }
 
-.schedule-creator-filter__select.ant-select {
-  flex: 1 1 auto;
-  min-width: 0;
-  color: #e8eef7;
-}
+.schedule-creator-filter__count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
 
-.schedule-creator-filter__select.ant-select .ant-select-selector {
-  background: transparent;
-  box-shadow: none;
-  padding-inline: 0;
-}
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 
-.schedule-creator-filter__select.ant-select .ant-select-selection-placeholder,
-.schedule-creator-filter__select.ant-select .ant-select-selection-search-input {
-  color: #9db0c9;
-}
-
-.schedule-creator-filter__select.ant-select .ant-select-selection-item {
+  border-radius: 999px;
   background: #17304f;
+
   color: #e8eef7;
-  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
 }
 
-.schedule-creator-filter__select.ant-select .ant-select-clear {
-  background: #0c1728;
-  color: #9db0c9;
+.schedule-creator-drawer .ant-drawer-content-wrapper {
+  max-width: 100vw;
+
+  box-shadow: -12px 0 28px rgba(0, 0, 0, 0.28);
 }
 
-.schedule-creator-filter__dropdown.ant-select-dropdown {
-  background: #0c1728;
-  border: 1px solid #29405d;
-  border-radius: 8px;
-  padding: 6px;
+.schedule-creator-drawer .ant-drawer-section {
+  background: #0b1521;
+
+  border-left: 1px solid var(--oshi-border-strong);
+
+  color: var(--oshi-text-1);
 }
 
-.schedule-creator-filter__dropdown .ant-select-item-group {
-  color: #9db0c9;
+.schedule-creator-drawer .ant-drawer-header {
+  padding: 12px 16px;
+
+  border-bottom: 1px solid var(--oshi-border);
 }
 
-.schedule-creator-filter__dropdown .ant-select-item-option {
-  color: #e8eef7;
-  border-radius: 6px;
+.schedule-creator-drawer .ant-drawer-title {
+  color: var(--oshi-text-1);
+
+  font-size: 13px;
+  font-weight: 650;
 }
 
-.schedule-creator-filter__dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
-  background: rgba(157, 176, 201, 0.12);
+.schedule-creator-drawer .ant-drawer-close {
+  color: var(--oshi-text-3);
 }
 
-.schedule-creator-filter__dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
-  background: rgba(74, 121, 181, 0.28);
-  font-weight: 600;
+.schedule-creator-drawer .ant-drawer-close:hover {
+  color: var(--oshi-text-1);
 }
 
-.schedule-creator-filter__dropdown .ant-select-item-empty {
-  color: #9db0c9;
-}
-
-.schedule-creator-filter__footer {
+.schedule-creator-drawer .ant-drawer-body {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 6px 4px 2px;
-  border-top: 1px solid #203650;
-  margin-top: 6px;
+  flex-direction: column;
+
+  padding: 0;
+
+  /* The drawer body is the one vertical scroller: it stays inside the viewport and scrolls its own list. */
+  overflow: hidden;
 }
 
-.schedule-creator-filter__action {
-  border: 1px solid #29405d;
+.schedule-creator-drawer__controls {
+  flex: 0 0 auto;
+
+  padding: 12px 16px;
+
+  border-bottom: 1px solid var(--oshi-border);
+}
+
+.schedule-creator-drawer__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  margin-top: 8px;
+}
+
+.schedule-creator-drawer__selected-count {
+  margin-right: auto;
+
+  color: var(--oshi-text-3);
+  font-size: 11px;
+}
+
+.schedule-creator-drawer__action {
+  appearance: none;
+
+  height: 24px;
+  padding: 0 8px;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 3px;
   background: transparent;
-  color: #e8eef7;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
+
+  color: var(--oshi-text-3);
+  font: inherit;
+  font-size: 11px;
+
   cursor: pointer;
 }
 
-.schedule-creator-filter__action:hover,
-.schedule-creator-filter__action:focus-visible {
-  border-color: #4a79b5;
+.schedule-creator-drawer__action:hover {
+  color: var(--oshi-text-1);
+  border-color: var(--oshi-text-3);
+}
+
+.schedule-creator-drawer__action:focus-visible {
+  outline: 1px solid var(--creator-main, var(--oshi-text-1));
+  outline-offset: 2px;
+}
+
+.schedule-creator-drawer__list {
+  flex: 1 1 auto;
+  min-height: 0;
+
+  overflow-y: auto;
+
+  padding-bottom: 16px;
+
+  scrollbar-width: thin;
+}
+
+/* The creator tile itself (layout, avatar, name, heart) is the shared .creator-tile / .creator-tile-grid -- this is only the Schedule drawer's
+   own button reset and its Home-token colors. The drawer is 520px wide and the tile 124px, so three tiles fit a row on desktop and the
+   auto-fill grid reflows to fewer columns by itself when the viewport is narrower. */
+.schedule-creator-grid {
+  justify-content: center;
+
+  padding: 4px 12px;
+}
+
+.schedule-creator-item {
+  appearance: none;
+
+  border: 0;
+  background: transparent;
+
+  color: var(--oshi-text-2);
+  font: inherit;
+
+  cursor: pointer;
+}
+
+.schedule-creator-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+
+  color: var(--oshi-text-1);
+}
+
+.schedule-creator-item[aria-pressed="true"] {
+  background: var(--oshi-surface-3);
+
+  color: var(--oshi-text-1);
+}
+
+.schedule-creator-item:focus-visible {
+  outline: 1px solid var(--creator-main, var(--oshi-text-1));
+  outline-offset: -1px;
 }

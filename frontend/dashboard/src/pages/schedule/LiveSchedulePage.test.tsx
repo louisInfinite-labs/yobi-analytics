@@ -32,7 +32,7 @@ describe("LiveSchedulePage", () => {
 
     expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled()
-    expect(screen.getByRole("combobox", { name: "Filter by creator" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Filter by creator" })).toBeEnabled()
     expect(screen.queryByText("JST")).not.toBeInTheDocument()
   })
 })
@@ -73,7 +73,36 @@ describe("LiveSchedulePage timetable", () => {
     }
   })
 
-  it("opens the stream detail dialog from an avatar with creator, title and both actions, and closes it with Escape", async () => {
+  it("opens the stream detail dialog from an avatar with creator, title and both actions (an UPCOMING stream), and closes it with Escape", async () => {
+    vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue([
+      {
+        videoId: "v1",
+        creatorId: "aizawa_ema",
+        channelName: "藍沢エマ",
+        title: "Ranked grind",
+        status: "upcoming",
+        scheduledStart: new Date(2026, 8, 23, 12, 0, 0).toISOString(),
+        actualStart: null,
+        thumbnailUrl: "https://img.youtube.com/vi/v1/hqdefault.jpg",
+      },
+    ])
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { container } = render(<LiveSchedulePage />)
+    await waitFor(() => expect(container.querySelector(".stream-avatar-button")).toBeInTheDocument())
+
+    await user.click(container.querySelector<HTMLElement>(".stream-avatar-button")!)
+
+    const dialog = screen.getByRole("dialog")
+    expect(dialog.querySelector(".creator-detail-name")?.textContent).toBeTruthy()
+    expect(dialog.querySelector(".stream-detail-title")?.textContent).toBeTruthy()
+    expect(within(dialog).getByRole("button", { name: "Set Reminder" })).toBeEnabled()
+    expect(within(dialog).getByRole("button", { name: "Open Stream" })).toBeEnabled()
+
+    await user.keyboard("{Escape}")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("a currently LIVE stream opens the same dialog with NO Set Reminder action (only Open Stream), and closes with Escape", async () => {
     vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue([
       {
         videoId: "v1",
@@ -95,7 +124,7 @@ describe("LiveSchedulePage timetable", () => {
     const dialog = screen.getByRole("dialog")
     expect(dialog.querySelector(".creator-detail-name")?.textContent).toBeTruthy()
     expect(dialog.querySelector(".stream-detail-title")?.textContent).toBeTruthy()
-    expect(within(dialog).getByRole("button", { name: "Set Reminder" })).toBeEnabled()
+    expect(within(dialog).queryByRole("button", { name: "Set Reminder" })).not.toBeInTheDocument()
     expect(within(dialog).getByRole("button", { name: "Open Stream" })).toBeEnabled()
 
     await user.keyboard("{Escape}")

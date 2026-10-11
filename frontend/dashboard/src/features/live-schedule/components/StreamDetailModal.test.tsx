@@ -45,6 +45,15 @@ describe("StreamDetailModal", () => {
     expect(screen.getAllByRole("button").filter((button) => button.classList.contains("reminder-button") || button.classList.contains("open-stream-button"))).toHaveLength(2)
   })
 
+  it("a currently live stream has NO reminder action at all (not disabled, not a placeholder); the open-stream action remains", () => {
+    const live: ScheduledStream = { ...stream, status: "live" }
+    render(<StreamDetailModal stream={live} locale="en" now={new Date(0)} onClose={() => {}} onOpenStream={() => {}} onSetReminder={() => {}} />)
+    expect(screen.queryByRole("button", { name: "Set Reminder" })).not.toBeInTheDocument()
+    expect(document.querySelector(".reminder-button")).toBeNull()
+    expect(document.querySelector(".stream-modal-actions")!.children).toHaveLength(1)
+    expect(screen.getByRole("button", { name: "Open Stream" })).toBeInTheDocument()
+  })
+
   it("the reminder action is enabled and opens the single-stream notification setting", async () => {
     const user = userEvent.setup()
     const onSetReminder = vi.fn()

@@ -173,6 +173,7 @@ jobs:
           src/shared/newContent/newContentWatchedLive.test.ts
           src/pages/home/HomePage.liveWatch.test.tsx
           src/features/live-status/components/LiveScheduleDock.test.tsx
+          src/features/live-schedule/components/ScheduleLiveStatusConsistency.test.tsx
           src/features/live-status/model/creatorStatusFormat.test.ts
           src/pages/home/homeSelectContrast.test.tsx
           src/app/App.dashboardGate.test.tsx
