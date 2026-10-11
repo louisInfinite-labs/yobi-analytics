@@ -18,7 +18,7 @@ export function CreatorAvatarImage({ avatarUrl, displayName, className }: Creato
   const showImage = Boolean(avatarUrl) && failedUrl !== avatarUrl
 
   return (
-    <span className={className} aria-hidden="true">
+    <span className={`creator-avatar-circle ${className}`} aria-hidden="true">
       {showImage ? (
         <img className="creator-avatar-image" src={avatarUrl ?? undefined} alt="" draggable={false} onError={() => setFailedUrl(avatarUrl ?? null)} />
       ) : (
