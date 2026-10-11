@@ -9,33 +9,11 @@ import { useSwipeToFavorite } from "../../favorites/hooks/useSwipeToFavorite"
 import { groupEligibleCreatorsForLiveStatus } from "../utils/liveStatusCanonicalRoster"
 import { formatCreatorStatus, type UpcomingDisplayMode } from "../model/creatorStatusFormat"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
-import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY } from "../../../entities/creator/utils/hololiveSubgrouping"
+import { formatBranchHeading, liveStatusSubgroupTitle } from "./LiveStatusGroups"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
-import { type BranchKey } from "../../../entities/creator/model/domain"
 import type { CreatorStatus } from "../model/creatorStatus"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { OshiSwitchConfirmDialog } from "../../oshi/components/OshiSwitchConfirmDialog"
-
-/** Every subgroup label is a real, locale-independent generation/unit name
- * (e.g. "1期生", "FLOW GLOW") EXCEPT the two sentinel keys below -- same
- * pattern as OshiSettings'/NotificationSettings' own subgroupTitle. */
-function subgroupTitle(locale: Locale, label: string): string {
-  if (label === OTHER_GROUP_LABEL_KEY) return t(locale, "creatorStatusList.otherGroupLabel")
-  if (label === GAMERS_GROUP_LABEL_KEY) return t(locale, "creatorStatusList.gamersGroupLabel")
-  return label
-}
-
-/** "VSPO! // JP" / "HOLOLIVE // EN" -- same agency-exclamation + "//" region
- * convention Favorites/Oshi Settings already use (formatRegionHeading in
- * MyOshiSettings.tsx/OshiSettings.tsx), applied to this list's own existing
- * BranchKey grouping. This only reformats the heading TEXT -- BRANCH_LABELS
- * and the BranchKey grouping itself (which creators belong to which branch)
- * are completely untouched, so no new grouping rule is introduced. */
-function formatBranchHeading(branch: BranchKey): string {
-  const org = branch.startsWith("vspo") ? "VSPO!" : "HOLOLIVE"
-  const region = branch.endsWith("_jp") ? "JP" : branch.endsWith("_en") ? "EN" : "ID"
-  return `${org} // ${region}`
-}
 
 /** Avatar + favorite indicator. antd's own Avatar already falls back to its
  * `children` whenever `src` is unset or fails to load (see antd's Avatar.js
@@ -75,7 +53,7 @@ function CreatorAvatar({ creator, isFavorite }: { creator: CanonicalCreator; isF
         {creator.displayName.charAt(0)}
       </Avatar>
       {isFavorite && (
-        <Heart className="live-status-member__favorite-indicator" aria-hidden="true" fill="currentColor" />
+        <Heart className="creator-avatar-heart live-status-member__favorite-indicator" aria-hidden="true" fill="currentColor" />
       )}
     </span>
   )
@@ -318,7 +296,7 @@ export function CreatorStatusList({
             {group.subgroups.map((subgroup, subgroupIndex) => (
               <Fragment key={subgroup.label ?? "__flat__"}>
                 {subgroup.label && (
-                  <div className="live-status-group__subheading">{subgroupTitle(locale, subgroup.label)}</div>
+                  <div className="live-status-group__subheading">{liveStatusSubgroupTitle(locale, subgroup.label)}</div>
                 )}
                 {/* An unlabeled block AFTER the named groups (the organization-level channel) gets a
                     separator so it does not read as the last named group's own row. */}

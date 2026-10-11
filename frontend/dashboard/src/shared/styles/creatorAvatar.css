@@ -1,0 +1,123 @@
+/* ============ Creator avatar -- one source of truth ============
+   Live Status' creator avatar (CreatorStatusList's CreatorAvatar: a circular channel icon, object-fit cover, NO border, NO ring, NO glow)
+   is the reference for every creator avatar in the app. The size lives in this one token so Live Status, Schedule, Favorites and the
+   notification member views can never drift apart; `.creator-avatar-circle` is the shared visual treatment for the ones that are not
+   antd <Avatar>s. Nothing here may ever add a border, box-shadow, drop-shadow, outline or ring (not on hover, selected or favorite either). */
+:root {
+  --creator-avatar-size: 36px;
+}
+
+.creator-avatar-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  flex: 0 0 auto;
+
+  width: var(--creator-avatar-size);
+  height: var(--creator-avatar-size);
+
+  box-sizing: border-box;
+  overflow: hidden;
+
+  border: 0;
+  border-radius: 50%;
+  box-shadow: none;
+  filter: none;
+  outline: 0;
+
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.creator-avatar-circle img {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* ============ Favorite heart -- one definition ============
+   Live Status' heart (top-right of the avatar: 10px, --live-red fill, a soft dark drop-shadow so it reads on any icon) is the reference.
+   Every screen that marks a favorite creator draws it with this class inside a position:relative avatar wrapper, so the shape, size and
+   offset from the avatar edge can never differ between screens. It is a favorite MARKER, not a glow on the avatar. */
+.creator-avatar-heart {
+  position: absolute;
+
+  top: -2px;
+  right: -2px;
+
+  width: 10px;
+  height: 10px;
+
+  fill: var(--live-red);
+
+  /* An explicit outline: the SVG stroke defaults to currentColor, which made the same heart read differently on every screen (a dark outline
+     in 收藏名單, a light one in Live Status). One value, everywhere. */
+  stroke: rgba(0, 0, 0, 0.88);
+
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+
+  pointer-events: none;
+}
+
+/* ============ Creator tile -- one definition ============
+   The corrected 收藏名單 tile (no glow): the avatar centered on top, the name centered directly below it on the same center line, long names
+   wrapping onto further lines that stay centered, in fixed 124px tiles. 收藏名單 and the Schedule creator filter both use these classes; each
+   adds only its own colors / interaction states. */
+.creator-tile-grid {
+  display: grid;
+
+  /* 124px: the roster's longest single-line name ("綺々羅々ヴィヴィ") fits on one line with the tile's own padding; a fixed size keeps every
+     tile the same width, and auto-fill reflows the column count with the available width. */
+  grid-template-columns: repeat(auto-fill, 124px);
+  gap: var(--space-3);
+}
+
+.creator-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  gap: var(--space-1);
+  padding: var(--space-2);
+
+  border-radius: var(--radius-sm);
+
+  min-width: 0;
+}
+
+.creator-tile__avatar-wrap {
+  position: relative;
+
+  display: inline-flex;
+}
+
+.creator-tile__name {
+  width: 100%;
+  min-width: 0;
+
+  font-size: 0.82rem;
+  line-height: 1.25;
+
+  text-align: center;
+
+  /* pre-line keeps the explicit "\n" breaks a few names carry while every other name wraps normally; overflow-wrap breaks a single long
+     unbroken word instead of overflowing the tile. */
+  white-space: pre-line;
+  overflow-wrap: break-word;
+}
+
+/* The same heart inline, as a group heading's marker (the notification drawer's Favorites heading): static instead of pinned to an avatar,
+   everything else -- fill, outline, size, shadow -- is the one definition above. */
+.creator-avatar-heart--inline {
+  position: static;
+
+  display: inline-block;
+
+  vertical-align: -1px;
+}

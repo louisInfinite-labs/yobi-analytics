@@ -1805,37 +1805,21 @@
 .live-status-member__avatar-wrap {
   position: relative;
 
-  width: 36px;
-  height: 36px;
+  width: var(--creator-avatar-size);
+  height: var(--creator-avatar-size);
 
   display: block;
 }
 
 .live-status-member__avatar {
-  width: 36px;
-  height: 36px;
+  width: var(--creator-avatar-size);
+  height: var(--creator-avatar-size);
 
   display: block;
 
   border-radius: 50%;
 
   object-fit: cover;
-}
-
-.live-status-member__favorite-indicator {
-  position: absolute;
-
-  top: -2px;
-  right: -2px;
-
-  width: 10px;
-  height: 10px;
-
-  fill: var(--live-red);
-
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
-
-  pointer-events: none;
 }
 
 .live-status-member__main {
