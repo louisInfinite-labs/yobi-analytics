@@ -16,6 +16,7 @@ import { creatorThemeStyle } from "../../../shared/theme/creatorThemeStyle"
 import { selectHomeVideo } from "../../home-room/hooks/useHomeSelectedVideo"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { formatCountdown } from "../model/creatorStatusFormat"
+import { HOME_FILTER_SEGMENTED_TOKENS } from "../../../shared/theme/homeFilterSegmentedTheme"
 import type { CreatorStatus } from "../model/creatorStatus"
 import { VideoPlayerModal } from "../../media-player/components/VideoPlayerModal"
 
@@ -224,28 +225,18 @@ export function LiveScheduleDock() {
                * --oshi-surface-1 with no border, 4px radius and 2px padding, items are 2px-radius chips, the selected one is the fixed neutral
                * --oshi-surface-3 (never creator-tinted) with full-strength text, unselected text is --oshi-text-3 with Home's hover wash.
                * Only the look is shared: the font size stays this drawer's own 14px (Home's bar is 10px) and the control stays a full-width
-               * 50/50 pair -- the ConfigProvider tokens below are Home's, and no .shared-filter-segmented skin overrides them. */}
+               * 50/50 pair -- the tokens are the shared HOME_FILTER_SEGMENTED_TOKENS, and no .shared-filter-segmented skin overrides them. */}
               <ConfigProvider
                 theme={{
                   components: {
-                    Segmented: {
-                      trackBg: "var(--oshi-surface-1)",
-                      trackPadding: 2,
-                      itemColor: "var(--oshi-text-3)",
-                      itemHoverColor: "var(--oshi-text-1)",
-                      itemHoverBg: "rgba(255, 255, 255, 0.05)",
-                      itemSelectedBg: "var(--oshi-surface-3)",
-                      itemSelectedColor: "var(--oshi-text-1)",
-                      borderRadius: 4,
-                      borderRadiusSM: 4,
-                    },
+                    Segmented: HOME_FILTER_SEGMENTED_TOKENS,
                   },
                 }}
               >
                 <Segmented<ViewMode>
                   classNames={{
-                    root: "live-status-view-segmented",
-                    label: "live-status-view-segment-label",
+                    root: "live-status-view-segmented home-filter-segmented",
+                    label: "live-status-view-segment-label home-filter-segment-label",
                   }}
                   value={viewMode}
                   onChange={setViewMode}

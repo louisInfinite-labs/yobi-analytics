@@ -20,7 +20,9 @@
   min-width: 0;
   box-sizing: border-box;
   padding: var(--space-5) var(--space-6);
-  background: #17141d;
+
+  /* Every Settings tab paints Home's own page surface (--oshi-bg); a tab that needs its own look sets only its own content, never a page palette. */
+  background: var(--oshi-bg);
 }
 
 /* Shared Settings page header: every Settings page starts at the shell's own
@@ -37,7 +39,7 @@
 
 .settings-page-title {
   margin: 0;
-  color: #f3eff5;
+  color: var(--oshi-text-1);
   font-size: 28px;
   font-weight: 700;
   line-height: 1.25;
@@ -46,7 +48,7 @@
 
 .settings-page-description {
   margin: 10px 0 0;
-  color: #aaa3b2;
+  color: var(--oshi-text-2);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.6;
@@ -284,35 +286,20 @@
 /* ============ Main Oshi Select: esports-style single creator selector ============ */
 
 .settings-page__content--main-oshi {
-  --main-oshi-surface: #211d29;
-  --main-oshi-surface-strong: #292432;
-  --main-oshi-border: #393342;
-  --main-oshi-text-primary: #f3eff7;
-  --main-oshi-text-secondary: #b9b1c5;
-  --main-oshi-text-tertiary: #948b9f;
+  --main-oshi-surface: var(--oshi-surface-2);
+  --main-oshi-surface-strong: var(--oshi-surface-3);
+  --main-oshi-border: var(--oshi-border);
+  --main-oshi-text-primary: var(--oshi-text-1);
+  --main-oshi-text-secondary: var(--oshi-text-2);
+  --main-oshi-text-tertiary: var(--oshi-text-3);
 
   color: var(--main-oshi-text-primary);
 }
 
-/* ============ Notification Settings' own page background -- same dark
-   esports palette as Oshi Settings (confirmed with the user: "背景顏色要跟
-   我推設定同一套"), reusing the identical hex values under this page's own
-   --notif-page-* prefix (same convention .settings-page__content--main-oshi
-   and .settings-page__content--favorites already each use their own scoped
-   copy of this app's one shared dark palette) rather than inventing a
-   different dark theme for a third page. ============ */
+/* Notification Settings has no page palette of its own: its page, surfaces, text and dividers are Home's --oshi-* tokens (see
+   .notification-settings-page below), the same ones Display Settings reads. */
 .settings-page__content--notification {
-  --notif-page-bg: #17141d;
-  --notif-page-surface: #211d29;
-  --notif-page-surface-strong: #292432;
-  --notif-page-border: #393342;
-  --notif-page-text-primary: #f3eff7;
-  --notif-page-text-secondary: #b9b1c5;
-  --notif-page-text-tertiary: #948b9f;
-  --notif-accent: #c779a3;
-  --notif-accent-muted: #684052;
-
-  color: var(--notif-page-text-primary);
+  color: var(--oshi-text-1);
 }
 
 .my-oshi-select {
@@ -967,26 +954,22 @@
    var(--notif-accent)` is explicitly removed, not carried over). */
 
 .notification-settings-page {
-  /* Low-saturation dark palette (correction pass: pink/purple removed as
-     the page's theme color) -- selected/active states read through
-     surface + border contrast only, no colored accent. Blue is kept only
-     for the existing "manage members" functional actions. */
-  --notification-page-bg: #17141d;
-  --notification-surface-1: #1b1821;
-  --notification-surface-2: #201c24;
-  --notification-surface-3: #26212b;
-  --notification-border: #34303b;
-  --notification-border-soft: #34303b;
-  --notification-border-hover: #4a4350;
-  --notification-border-selected: #5a5261;
-  --notification-divider: #35303a;
-  --notification-text-primary: #f1edf3;
-  --notification-text-secondary: #aaa3ae;
-  --notification-text-muted: #827b88;
-  --notification-selected-bg: #302a35;
-  --notification-selected-bg-hover: #37303d;
-  --notification-blue: #2a7ed2;
-  --notification-blue-text: #75bced;
+  /* These names stay (the page's rules read them) but they are ALIASES of Home's tokens, never a palette: the same surfaces, borders and
+     text colors Display Settings and Home use. Selected / hover states read through surface and border contrast only. */
+  --notification-page-bg: var(--oshi-bg);
+  --notification-surface-1: var(--oshi-surface-1);
+  --notification-surface-2: var(--oshi-surface-2);
+  --notification-surface-3: var(--oshi-surface-3);
+  --notification-border: var(--oshi-border);
+  --notification-border-soft: var(--oshi-border);
+  --notification-border-hover: var(--oshi-border-strong);
+  --notification-border-selected: var(--oshi-text-3);
+  --notification-divider: var(--oshi-border);
+  --notification-text-primary: var(--oshi-text-1);
+  --notification-text-secondary: var(--oshi-text-2);
+  --notification-text-muted: var(--oshi-text-3);
+  --notification-selected-bg: var(--oshi-surface-3);
+  --notification-selected-bg-hover: var(--oshi-surface-3);
 
   box-sizing: border-box;
   width: 100%;
@@ -1349,7 +1332,7 @@
 }
 
 .notification-topic-item:hover {
-  background: #25212a;
+  background: var(--notification-surface-2);
   border-color: var(--notification-border-hover);
 }
 
@@ -1461,16 +1444,16 @@
   gap: 10px;
 
   background: transparent;
-  border: 1px dashed #48414f;
+  border: 1px dashed var(--notification-border-hover);
   border-radius: 12px;
 
-  color: #ddd4e1;
+  color: var(--notification-text-secondary);
 }
 
 .notification-add-topic.ant-btn:hover {
   border-color: var(--notification-border-hover);
-  background: #201b25;
-  color: #ddd4e1;
+  background: var(--notification-surface-2);
+  color: var(--notification-text-secondary);
 }
 
 .notification-add-topic__icon {
@@ -1481,8 +1464,8 @@
   display: grid;
   place-items: center;
 
-  background: #2d2831;
-  color: #bdb5c2;
+  background: var(--notification-surface-3);
+  color: var(--notification-text-secondary);
 }
 
 /* ---- Right: detail panel -- one continuous settings surface, no left
@@ -1493,7 +1476,7 @@
   min-height: 0;
 
   background: var(--notification-surface-1);
-  border: 1px solid #3b3543;
+  border: 1px solid var(--notification-border);
   border-radius: 14px;
 
   padding: 20px 24px 16px;
@@ -1518,7 +1501,7 @@
 
 .notification-detail-header__title {
   margin: 0;
-  color: #f8f3fb;
+  color: var(--notification-text-primary);
   font-size: 24px;
   line-height: 1.15;
   font-weight: 700;
@@ -1553,7 +1536,7 @@
 
 .notification-detail-section__title {
   margin: 0 0 4px;
-  color: #f4eff7;
+  color: var(--notification-text-primary);
   font-size: 18px;
   line-height: 1.3;
   font-weight: 700;
@@ -1561,7 +1544,7 @@
 
 .notification-detail-section__description {
   margin: 0 0 10px;
-  color: #9e96a7;
+  color: var(--notification-text-muted);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -1684,11 +1667,11 @@
 .notification-type-control.ant-segmented {
   margin-top: 2px;
   max-width: 420px;
-  background: #221e29;
+  background: var(--notification-surface-2);
 }
 
 .notification-type-control .ant-segmented-item {
-  color: #ddd7e2;
+  color: var(--notification-text-secondary);
 }
 
 .notification-type-control .ant-segmented-item-selected {
@@ -1705,20 +1688,21 @@
   gap: 20px;
 }
 
+/* Home's ghost button (the Oshi switch dialog's Cancel / Switch): transparent, 1px --oshi-border, text that brightens on hover. */
 .notification-members-manage.ant-btn {
   min-width: 138px;
   height: 40px;
   border-radius: 9px;
 
-  background: #172237;
-  border: 1px solid #1764b5;
-  color: var(--notification-blue-text);
+  background: transparent;
+  border: 1px solid var(--oshi-border);
+  color: var(--oshi-text-2);
 }
 
 .notification-members-manage.ant-btn:hover {
-  background: #192945;
-  border-color: var(--notification-blue);
-  color: var(--notification-blue-text);
+  background: transparent;
+  border-color: var(--oshi-text-3);
+  color: var(--oshi-text-1);
 }
 
 .notification-member-preview {
@@ -1753,7 +1737,7 @@
 
 .notification-member-preview__name {
   margin-top: 5px;
-  color: #e0dae4;
+  color: var(--notification-text-primary);
   font-size: 12px;
   line-height: 1.3;
 
@@ -1770,9 +1754,9 @@
   place-items: center;
   margin: 0 auto;
 
-  background: #26222c;
-  border: 1px solid #423c48;
-  color: #c4bdc9;
+  background: var(--notification-surface-3);
+  border: 1px solid var(--notification-border);
+  color: var(--notification-text-secondary);
   font-size: 13px;
   font-weight: 600;
 }
@@ -1790,20 +1774,16 @@
   border-top: 1px solid var(--notification-divider);
 }
 
-.notification-reset-button.ant-btn {
-  min-width: 90px;
-  height: 40px;
-
-  border-radius: 9px;
-  border: 1px solid #494250;
-  background: #29252e;
-  color: #e1dbe5;
+.notification-action-button.ant-btn {
+  border: 1px solid var(--oshi-border);
+  background: transparent;
+  color: var(--oshi-text-3);
 }
 
-.notification-reset-button.ant-btn:hover {
-  border-color: #6a5f70;
-  background: #322c38;
-  color: #e1dbe5;
+.notification-action-button.ant-btn:hover {
+  border-color: var(--oshi-text-3);
+  background: transparent;
+  color: var(--oshi-text-1);
 }
 
 .notification-save-button.ant-btn {
@@ -1821,12 +1801,12 @@
 
 .notification-save-button.ant-btn:hover {
   background: var(--notification-selected-bg-hover);
-  border-color: #625969;
+  border-color: var(--oshi-text-3);
   color: var(--notification-text-primary);
 }
 
 .notification-settings-page :focus-visible {
-  outline: 2px solid #7ab8ff;
+  outline: 2px solid var(--creator-main, var(--oshi-text-1));
   outline-offset: 2px;
 }
 
@@ -2197,12 +2177,12 @@
      text-secondary ~8:1, text-tertiary ~4.6:1 (small/muted labels only).
      Member-accent tokens (--theme-primary etc, set by MemberThemeProvider)
      still drive selection/hover accents on top of this neutral palette. */
-  --roster-bg: #17141d;
-  --roster-surface: #211d29;
-  --roster-border: #34303d;
-  --roster-text-primary: #f3eff7;
-  --roster-text-secondary: #b6aec2;
-  --roster-text-tertiary: #948b9f;
+  --roster-bg: var(--oshi-bg);
+  --roster-surface: var(--oshi-surface-2);
+  --roster-border: var(--oshi-border);
+  --roster-text-primary: var(--oshi-text-1);
+  --roster-text-secondary: var(--oshi-text-2);
+  --roster-text-tertiary: var(--oshi-text-3);
 
   color: var(--roster-text-primary);
 }
@@ -2217,7 +2197,7 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--theme-primary);
+  color: var(--roster-text-primary);
 }
 
 .favorites-roster__controls {
@@ -2282,7 +2262,7 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--roster-text-secondary);
+  color: var(--roster-text-primary);
 }
 
 .favorites-roster__region-count {
@@ -2424,7 +2404,7 @@
    and dark-palette color live here. */
 .favorites-roster__name {
   position: relative;
-  color: var(--roster-text-secondary);
+  color: var(--roster-text-primary);
 }
 
 .favorites-roster__tile:hover .favorites-roster__name {
@@ -2449,20 +2429,13 @@
     width: 100%;
   }
 }
+/* Display Settings reads Home's palette directly: the page surface, text, divider and control all come from the --oshi-* tokens and
+   Home's own .oshi-videos__sort select -- there is no purple / pink Display theme. Layout, spacing and wording are unchanged. */
 .display-settings-page {
-  --display-text-primary: #f3eff5;
-  --display-text-secondary: #aaa3b2;
-  --display-text-muted: #96909e;
-  --display-accent: #c87ca4;
-  --display-divider: rgba(196, 184, 204, 0.14);
-  --display-control-bg: rgba(28, 24, 34, 0.72);
-  --display-control-border: rgba(181, 168, 190, 0.23);
-  --display-control-border-hover: rgba(204, 183, 212, 0.38);
-
   width: 100%;
   min-height: 100%;
   box-sizing: border-box;
-  color: var(--display-text-primary);
+  color: var(--oshi-text-1);
 }
 
 .display-settings-content {
@@ -2474,7 +2447,7 @@
 .display-settings-header-divider {
   width: 100%;
   height: 1px;
-  background: rgba(196, 184, 204, 0.16);
+  background: var(--oshi-border);
 }
 
 .display-setting-row {
@@ -2483,7 +2456,7 @@
   align-items: center;
   column-gap: 48px;
   min-height: 144px;
-  border-bottom: 1px solid var(--display-divider);
+  border-bottom: 1px solid var(--oshi-border);
 }
 
 .display-setting-row:last-child {
@@ -2492,7 +2465,7 @@
 
 .display-setting-label {
   margin: 0;
-  color: #efebf1;
+  color: var(--oshi-text-1);
   font-size: 17px;
   font-weight: 600;
   line-height: 1.4;
@@ -2500,69 +2473,14 @@
 
 .display-setting-help {
   margin: 7px 0 0;
-  color: var(--display-text-muted);
+  color: var(--oshi-text-3);
   font-size: 13px;
   line-height: 1.55;
 }
 
+/* Home's own native select (.oshi-videos__sort) fills the row's control column; only the width is this page's own. */
 .display-setting-select {
   width: 360px;
-}
-
-.display-settings-page .display-setting-select.ant-select {
-  height: 52px;
-  padding: 0 16px;
-  background: var(--display-control-bg);
-  border: 1px solid var(--display-control-border);
-  border-radius: 6px;
-  box-shadow: none;
-}
-
-.display-settings-page .display-setting-select .ant-select-content {
-  display: flex;
-  align-items: center;
-  color: #b9b3c1;
-  font-size: 14px;
-  font-weight: 400;
-}
-
-.display-settings-page .display-setting-select .ant-select-suffix {
-  color: #9a94a3;
-}
-
-.display-settings-page .display-setting-select.ant-select:not(.ant-select-disabled):hover {
-  border-color: var(--display-control-border-hover);
-}
-
-.display-settings-page .display-setting-select.ant-select-focused,
-.display-settings-page .display-setting-select.ant-select-open {
-  border-color: rgba(200, 124, 164, 0.52);
-  box-shadow: 0 0 0 1px rgba(200, 124, 164, 0.08);
-}
-
-.display-settings-select-dropdown.ant-select-dropdown {
-  padding: 6px;
-  background: #211c26;
-  border: 1px solid rgba(196, 184, 204, 0.16);
-  border-radius: 6px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
-}
-
-.display-settings-select-dropdown.ant-select-dropdown .ant-select-item {
-  min-height: 38px;
-  border-radius: 4px;
-  color: #b7b0bd;
-}
-
-.display-settings-select-dropdown.ant-select-dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.display-settings-select-dropdown.ant-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled),
-.display-settings-select-dropdown.ant-select-dropdown .ant-select-item-option-selected.ant-select-item-option-active:not(.ant-select-item-option-disabled) {
-  color: #f0eaf1;
-  background: rgba(200, 124, 164, 0.1);
-  font-weight: 500;
 }
 
 @media (max-width: 900px) {

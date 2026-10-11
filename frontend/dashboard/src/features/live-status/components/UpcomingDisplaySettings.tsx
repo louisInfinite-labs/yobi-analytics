@@ -1,4 +1,3 @@
-import { Select } from "antd"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { t } from "../../../shared/i18n/translations"
@@ -19,16 +18,14 @@ export function UpcomingDisplaySettings() {
   const absoluteLabel = timeFormat === "12h" ? "h:mm AM/PM" : "HH:mm"
 
   return (
-    <Select
-      className="display-setting-select"
-      classNames={{ popup: { root: "display-settings-select-dropdown" } }}
+    <select
+      className="oshi-videos__sort display-setting-select"
       value={mode}
-      onChange={(next) => setMode(next as typeof mode)}
+      onChange={(event) => setMode(event.target.value as typeof mode)}
       aria-label={t(locale, "displaySettings.upcomingLabel")}
-      options={[
-        { value: "absolute", label: absoluteLabel },
-        { value: "countdown", label: t(locale, "displaySettings.upcomingCountdownOption") },
-      ]}
-    />
+    >
+      <option value="absolute">{absoluteLabel}</option>
+      <option value="countdown">{t(locale, "displaySettings.upcomingCountdownOption")}</option>
+    </select>
   )
 }

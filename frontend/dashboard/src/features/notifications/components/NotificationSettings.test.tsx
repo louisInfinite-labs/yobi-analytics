@@ -244,10 +244,11 @@ describe("NotificationSettings master-detail layout", () => {
 
     expect(screen.getByRole("button", { name: /^Singing/ })).toHaveAttribute("aria-current", "true")
     expect(screen.getByRole("button", { name: "Add topic" })).toBeInTheDocument()
-    // The saved Singing topic is a normal topic now -- Reset instead of Save.
+    // The saved Singing topic is a normal topic now -- Remove instead of Save, and there is no Reset action at all.
     const detail = within(getDetailPanel())
     expect(detail.getByRole("heading", { level: 2, name: "Singing" })).toBeInTheDocument()
-    expect(detail.getByRole("button", { name: /^Reset/ })).toBeInTheDocument()
+    expect(detail.getByRole("button", { name: /^Remove/ })).toBeInTheDocument()
+    expect(detail.queryByRole("button", { name: /Reset/ })).not.toBeInTheDocument()
     expect(detail.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
   })
 
@@ -312,21 +313,18 @@ describe("NotificationSettings master-detail layout", () => {
     expect(await within(topicCard).findByText("1 custom")).toBeInTheDocument()
   })
 
-  it("Reset restores a saved topic's notification type, without touching enabled members", async () => {
+  it("no topic page has a Reset action -- not hidden, not in the DOM -- while Remove stays for a non-permanent topic", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderNotificationSettings()
 
-    await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
-    await user.click(screen.getAllByRole("switch", { name: /live notifications/ })[0])
-    await user.keyboard("{Escape}")
-
-    const detail = within(getDetailPanel())
-    await user.click(detail.getByRole("radio", { name: "Live" }))
-
-    await user.click(detail.getByRole("button", { name: /^Reset/ }))
-
-    expect(detail.getByRole("radio", { name: "Live + New Video" })).toBeChecked()
-    expect(detail.getByText("1 selected")).toBeInTheDocument()
+    expect(within(getDetailPanel()).queryByRole("button", { name: /Reset|重設/ })).not.toBeInTheDocument()
+    expect(document.querySelector(".notification-reset-button")).toBeNull()
+    expect(document.querySelector(".notification-detail-actions")).toBeNull() // a permanent topic has no actions, so no empty footer row remains
+    await user.click(screen.getByRole("button", { name: "Add topic" }))
+    await pickSinging(user)
+    await user.click(within(getDetailPanel()).getByRole("button", { name: "Save" }))
+    expect(within(getDetailPanel()).queryByRole("button", { name: /Reset|重設/ })).not.toBeInTheDocument()
+    expect(within(getDetailPanel()).getByRole("button", { name: /^Remove/ })).toBeInTheDocument()
   })
 })
 
