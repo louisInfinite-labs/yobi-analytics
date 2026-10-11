@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { createSharedState, useSharedState } from "../../../shared/state/sharedState"
 import { deleteCreatorReminder, reminderValueToSetting, saveCreatorReminder } from "../api/liveReminderApi"
-import { isNotificationDisabledByUser, saveNotificationPreference } from "../api/notificationPreferenceApi"
+import { saveNotificationPreference } from "../api/notificationPreferenceApi"
 import { getPushSubscriptionStatus } from "../push/pushNotifications"
 import { clearNotificationSaveFailed, reportNotificationSaveFailed } from "./notificationSaveStatus"
 import {
@@ -279,8 +279,9 @@ async function syncNewVideoSwitchesToBackend(next: TopicPreferencesState, option
     return
   }
   if (status !== "subscribed") return
-  // A subscription can outlive a successful disable (the browser unsubscribe failed afterwards): never write notifications back ON then.
-  if (isNotificationDisabledByUser()) return
+  // Global OFF is the master switch: a subscription can outlive a successful disable (the browser unsubscribe failed afterwards), and an
+  // explicit disable can arrive while this write is queued or in flight. saveNotificationPreference therefore checks the disabled state
+  // inside the preference write queue itself, right before the PUT -- never write notifications back ON after the user turned them off.
   await saveNotificationPreference(true, effectiveNewVideoCreatorIds(next), effectiveShortCreatorIds(next))
 }
 

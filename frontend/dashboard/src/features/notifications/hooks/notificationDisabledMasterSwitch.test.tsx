@@ -2,6 +2,7 @@ import { act, render, renderHook, screen, waitFor } from "@testing-library/react
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useNotificationLocaleSync } from "./useNotificationLocaleSync"
+import { resyncNotificationPreferenceSilently } from "./useTopicNotificationPreferences"
 import { NotificationToggle } from "../components/NotificationToggle"
 import { apiRequest } from "../../../shared/api/apiClient"
 import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
@@ -155,5 +156,83 @@ describe("global OFF is the master switch for the notification-language sync", (
     mountLocaleSync() // next app start
 
     await waitFor(() => expect(getSyncedNotificationLocale()).toBe("ja"))
+  })
+})
+
+/** A promise the test settles by hand, to hold one backend PUT in flight deterministically. */
+function deferred() {
+  let resolve!: () => void
+  let reject!: (error: Error) => void
+  const promise = new Promise<undefined>((res, rej) => {
+    resolve = () => res(undefined)
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+const tick = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)) })
+
+describe("an explicit disable always wins over an automatic sync, whatever the timing", () => {
+  it("a sync already in flight when the user disables completes FIRST; the disable is written after it and is the final state", async () => {
+    const syncPut = deferred()
+    vi.mocked(apiRequest).mockImplementationOnce(() => syncPut.promise) // the automatic sync's PUT, held in flight
+    window.localStorage.setItem("yobi.locale", "ja")
+    resetAllSharedStateForTests()
+    mountLocaleSync() // 1. automatic sync starts
+    await waitFor(() => expect(preferenceWrites()).toHaveLength(1))
+    expect(preferenceWrites()[0].enabled).toBe(true)
+
+    const disable = putNotificationPreference("c1", "secret-1", false, new Set(), new Set()) // 2. the user disables
+    await tick()
+    expect(preferenceWrites()).toHaveLength(1) // the disable PUT waits its turn instead of racing the sync
+
+    syncPut.resolve() // 4. the old sync completes afterwards ...
+    await disable // 3. ... and only then does the disable's backend write run and succeed
+
+    expect(preferenceWrites().map((body) => body.enabled)).toEqual([true, false])
+    expect(isNotificationDisabledByUser()).toBe(true) // final backend state is enabled=false
+  })
+
+  it("a sync still waiting for its turn when the disable lands is skipped instead of re-enabling", async () => {
+    const disablePut = deferred()
+    vi.mocked(apiRequest).mockImplementationOnce(() => disablePut.promise)
+    const disable = putNotificationPreference("c1", "secret-1", false, new Set(), new Set())
+    await tick()
+
+    const sync = resyncNotificationPreferenceSilently() // Settings creator-switch / locale sync, queued behind the disable
+    await tick()
+    disablePut.resolve()
+    await disable
+
+    expect(await sync).toBe(true)
+    expect(preferenceWrites().map((body) => body.enabled)).toEqual([false])
+  })
+
+  it("a failed disable write does not mark the client disabled, and the sync that was in flight stands", async () => {
+    const syncPut = deferred()
+    vi.mocked(apiRequest).mockImplementationOnce(() => syncPut.promise).mockRejectedValueOnce(new Error("backend down"))
+    window.localStorage.setItem("yobi.locale", "ja")
+    resetAllSharedStateForTests()
+    mountLocaleSync()
+    await waitFor(() => expect(preferenceWrites()).toHaveLength(1))
+
+    const disable = putNotificationPreference("c1", "secret-1", false, new Set(), new Set())
+    disable.catch(() => undefined)
+    syncPut.resolve()
+
+    await expect(disable).rejects.toThrow("backend down")
+    expect(isNotificationDisabledByUser()).toBe(false)
+    expect(getSyncedNotificationLocale()).toBe("ja")
+  })
+
+  it("disable -> explicit enable -> the automatic sync works again", async () => {
+    await putNotificationPreference("c1", "secret-1", false, new Set(), new Set())
+    await resyncNotificationPreferenceSilently()
+    expect(preferenceWrites().map((body) => body.enabled)).toEqual([false]) // still OFF: nothing re-enabled it
+
+    await putNotificationPreference("c1", "secret-1", true, new Set(), new Set()) // the user explicitly enables again
+    await resyncNotificationPreferenceSilently()
+
+    expect(preferenceWrites().map((body) => body.enabled)).toEqual([false, true, true])
   })
 })

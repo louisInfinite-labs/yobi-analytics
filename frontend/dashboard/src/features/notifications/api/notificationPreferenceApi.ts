@@ -86,9 +86,21 @@ export function buildNotificationPreference(
   }
 }
 
-/** Writes the full preference with an already-obtained credential (the push toggle manages its own secret so it
- * can clean up after a partial failure). */
-export function putNotificationPreference(
+// Every preference PUT -- the toggle's explicit enable/disable AND the automatic syncs (language change, creator switches) -- runs through
+// this one queue, one at a time in call order. PUT replaces the whole item, so two writes in flight could land out of order; serialized,
+// an older automatic sync can never complete AFTER a newer explicit disable and overwrite it.
+let writeChain: Promise<unknown> = Promise.resolve()
+
+function inWriteOrder<T>(task: () => Promise<T>): Promise<T> {
+  const run = writeChain.then(task, task)
+  writeChain = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
+function writePreference(
   clientId: string,
   clientSecret: string | null,
   enabled: boolean,
@@ -108,14 +120,31 @@ export function putNotificationPreference(
   })
 }
 
-/** Writes the full preference as this browser's client, obtaining the credential itself. Rejects if the
- * backend does -- callers must not treat the change as saved in that case. */
+/** Writes the full preference with an already-obtained credential (the push toggle manages its own secret so it
+ * can clean up after a partial failure). Queued behind every earlier preference write (see writeChain). */
+export function putNotificationPreference(
+  clientId: string,
+  clientSecret: string | null,
+  enabled: boolean,
+  newVideoEnabledCreatorIds: ReadonlySet<string>,
+  shortEnabledCreatorIds: ReadonlySet<string>,
+): Promise<unknown> {
+  return inWriteOrder(() => writePreference(clientId, clientSecret, enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds))
+}
+
+/** The AUTOMATIC writer (language change, creator switches): writes the full preference as this browser's client, obtaining the
+ * credential itself. Queued behind every earlier preference write, and a write that would turn notifications ON is skipped when the
+ * user has disabled them -- that check runs inside the queue, immediately before the PUT, so a disable that was queued or completed
+ * ahead of this sync always wins. Rejects if the backend does -- callers must not treat the change as saved in that case. */
 export async function saveNotificationPreference(
   enabled: boolean,
   newVideoEnabledCreatorIds: ReadonlySet<string>,
   shortEnabledCreatorIds: ReadonlySet<string>,
 ): Promise<void> {
-  const clientId = getOrCreateClientId()
-  const clientSecret = await getOrCreateClientSecret(clientId)
-  await putNotificationPreference(clientId, clientSecret, enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds)
+  await inWriteOrder(async () => {
+    if (enabled && isNotificationDisabledByUser()) return
+    const clientId = getOrCreateClientId()
+    const clientSecret = await getOrCreateClientSecret(clientId)
+    await writePreference(clientId, clientSecret, enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds)
+  })
 }
