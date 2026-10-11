@@ -8,6 +8,7 @@ import { MainNavbar } from "./navigation/MainNavbar"
 import { SettingsPage } from "../pages/settings/SettingsPage"
 import { useCurrentPage } from "./navigation/useCurrentPage"
 import { MemberThemeProvider } from "../shared/theme/MemberThemeProvider"
+import { useNotificationLocaleSync } from "../features/notifications/hooks/useNotificationLocaleSync"
 import { useRetiredTopicResync } from "../features/notifications/hooks/useRetiredTopicResync"
 
 /** Reachable only via `?admin` on the Dashboard's own URL — see AdminPanel's
@@ -28,6 +29,7 @@ function isAdminRoute(): boolean {
 function App() {
   const [page] = useCurrentPage()
   useRetiredTopicResync()
+  useNotificationLocaleSync()
   if (isAdminRoute()) {
     return (
       <MemberThemeProvider>

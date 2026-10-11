@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { buildNotificationPreference, putNotificationPreference, saveNotificationPreference } from "./notificationPreferenceApi"
+import { buildNotificationPreference, getSyncedNotificationLocale, putNotificationPreference, saveNotificationPreference } from "./notificationPreferenceApi"
+import { getLocale } from "../../../shared/i18n/hooks/useLocale"
+import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { apiRequest } from "../../../shared/api/apiClient"
 import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
 import { getAllNotificationCreators } from "../model/notificationCreatorGrouping"
@@ -8,6 +10,8 @@ vi.mock("../../../shared/api/apiClient", () => ({ apiRequest: vi.fn() }))
 vi.mock("../../../shared/api/clientCredential", () => ({ getOrCreateClientSecret: vi.fn() }))
 
 beforeEach(() => {
+  window.localStorage.clear()
+  resetAllSharedStateForTests()
   vi.mocked(apiRequest).mockReset().mockResolvedValue(undefined)
   vi.mocked(getOrCreateClientSecret).mockReset().mockResolvedValue("secret-1")
 })
@@ -17,7 +21,7 @@ describe("buildNotificationPreference", () => {
     const roster = getAllNotificationCreators()
     const body = buildNotificationPreference(true, new Set([roster[0].creatorId]), new Set())
 
-    expect(Object.keys(body).sort()).toEqual(["deliveryWindows", "enabled", "newVideoCreatorOverride", "newVideoShortCreatorOverride", "notificationLevel", "notificationTimeZone"])
+    expect(Object.keys(body).sort()).toEqual(["deliveryWindows", "enabled", "newVideoCreatorOverride", "newVideoShortCreatorOverride", "notificationLevel", "notificationLocale", "notificationTimeZone"])
     expect(body.enabled).toBe(true)
     expect(body.deliveryWindows).toEqual(["08:00", "18:00"])
     expect(Object.keys(body.newVideoCreatorOverride).sort()).toEqual(roster.map((creator) => creator.creatorId).sort())
@@ -85,5 +89,28 @@ describe("saveNotificationPreference", () => {
     vi.mocked(apiRequest).mockRejectedValueOnce(new Error("HTTP 500"))
 
     await expect(saveNotificationPreference(true, new Set(), new Set())).rejects.toThrow("HTTP 500")
+  })
+})
+
+describe("notification locale", () => {
+  it.each(["zh-TW", "ja", "en"] as const)("the preference carries the dashboard language (%s) as notificationLocale", (locale) => {
+    window.localStorage.setItem("yobi.locale", locale)
+    resetAllSharedStateForTests()
+
+    expect(getLocale()).toBe(locale)
+    expect(buildNotificationPreference(true, new Set(), new Set()).notificationLocale).toBe(locale)
+  })
+
+  it("records the locale as synced only after the backend write succeeded", async () => {
+    window.localStorage.setItem("yobi.locale", "ja")
+    resetAllSharedStateForTests()
+    expect(getSyncedNotificationLocale()).toBeNull()
+
+    vi.mocked(apiRequest).mockRejectedValueOnce(new Error("backend down"))
+    await expect(putNotificationPreference("c1", "secret", true, new Set(), new Set())).rejects.toThrow("backend down")
+    expect(getSyncedNotificationLocale()).toBeNull()
+
+    await putNotificationPreference("c1", "secret", true, new Set(), new Set())
+    expect(getSyncedNotificationLocale()).toBe("ja")
   })
 })
