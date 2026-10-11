@@ -4,11 +4,9 @@ import { getScheduleCreatorAvatarVisual } from "../utils/creatorAvatar"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { shouldShowLiveBadge, type ScheduledStream } from "../model/scheduledStream"
 import { t, type Locale } from "../../../shared/i18n/translations"
-import { formatUpcomingStart } from "../../live-status/model/creatorStatusFormat"
+import { streamStartText } from "../model/streamStartText"
 import { useUpcomingDisplayMode } from "../../live-status/hooks/useUpcomingDisplayMode"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
-import type { UpcomingDisplayMode } from "../../live-status/model/creatorStatusFormat"
-import type { TimeFormat } from "../../../shared/i18n/model/timeFormat"
 
 const creatorsById = new Map(mockCreators.map((creator) => [creator.channelId, creator]))
 
@@ -19,18 +17,6 @@ interface StreamDetailModalProps {
   onClose: () => void
   onOpenStream: (stream: ScheduledStream) => void
   onSetReminder: (stream: ScheduledStream) => void
-}
-
-/** An upcoming stream's start uses creatorStatusFormat's shared formatter (the same one Home's dock and Oshi Status use), so the user's
- * "upcoming time display" setting (clock time vs countdown) and 12h/24h format apply here exactly as on Home. "Started ... ago" has no
- * shared equivalent to reuse, so that branch's calculation is unchanged. */
-function startedTimeText(stream: ScheduledStream, locale: Locale, nowMs: number, mode: UpcomingDisplayMode, timeFormat: TimeFormat): string | null {
-  if (stream.status === "ended") return null
-  if (stream.status === "live") {
-    const minutes = Math.max(0, Math.round(Math.abs(nowMs - stream.scheduledStartMs) / 60_000))
-    return t(locale, "liveSchedule.startedMinutesAgo", { minutes: String(minutes) })
-  }
-  return formatUpcomingStart(new Date(stream.scheduledStartMs).toISOString(), mode, new Date(nowMs), locale, timeFormat)
 }
 
 /** 16:9 real YouTube/Holodex thumbnail ratio (spec's own correction over an
@@ -63,7 +49,7 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream, 
   const creator = creatorsById.get(stream.channelId)
   const visual = getScheduleCreatorAvatarVisual(stream.channelId, creator?.channelName ?? stream.channelId)
   const showLiveBadge = shouldShowLiveBadge(stream.status, stream.scheduledStartMs, now.getTime())
-  const started = startedTimeText(stream, locale, now.getTime(), displayMode, timeFormat)
+  const started = streamStartText(stream, locale, now.getTime(), displayMode, timeFormat)
 
   return (
     <Modal open onCancel={onClose} footer={null} centered width={820} rootClassName="stream-detail-dialog">

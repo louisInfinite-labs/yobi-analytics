@@ -23,6 +23,7 @@ function toScheduledStream(dto: LiveStreamDto): ScheduledStream | null {
   if (!startIso) return null
   const scheduledStartMs = new Date(startIso).getTime()
   if (Number.isNaN(scheduledStartMs)) return null
+  const actualStartMs = dto.actualStart ? new Date(dto.actualStart).getTime() : Number.NaN
 
   return {
     id: dto.videoId,
@@ -32,6 +33,7 @@ function toScheduledStream(dto: LiveStreamDto): ScheduledStream | null {
     description: "",
     status: dto.status,
     scheduledStartMs,
+    ...(Number.isNaN(actualStartMs) ? {} : { actualStartMs }),
     topics: dto.topic ? [dto.topic] : [],
   }
 }

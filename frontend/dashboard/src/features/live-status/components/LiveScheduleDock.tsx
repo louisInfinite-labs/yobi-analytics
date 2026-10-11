@@ -15,7 +15,7 @@ import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
 import { creatorThemeStyle } from "../../../shared/theme/creatorThemeStyle"
 import { selectHomeVideo } from "../../home-room/hooks/useHomeSelectedVideo"
 import { t, type Locale } from "../../../shared/i18n/translations"
-import { formatCountdown, formatLiveCount } from "../model/creatorStatusFormat"
+import { formatCountdown } from "../model/creatorStatusFormat"
 import type { CreatorStatus } from "../model/creatorStatus"
 import { VideoPlayerModal } from "../../media-player/components/VideoPlayerModal"
 
@@ -43,7 +43,7 @@ function summarize(
 ): { text: string; dotColor: "red" | "grey" } {
   const values = Object.values(statuses)
   const liveCount = values.filter((s) => s.kind === "live").length
-  if (liveCount > 0) return { text: `${formatLiveCount(liveCount)} LIVE`, dotColor: "red" }
+  if (liveCount > 0) return { text: `${liveCount} LIVE`, dotColor: "red" }
 
   const nextUpcoming = values
     .filter((s): s is Extract<CreatorStatus, { kind: "upcoming" }> => s.kind === "upcoming")

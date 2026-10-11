@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest"
 import {
   formatAbsoluteTime,
   formatCountdown,
+  formatLiveStart,
+  formatStartedAgo,
   formatCreatorStatus,
-  formatLiveCount,
   isScheduledTimeReached,
   reclassifyIfPastSchedule,
 } from "./creatorStatusFormat"
@@ -20,7 +21,7 @@ describe("formatCountdown", () => {
   it("never shows a negative value once the target time has passed", () => {
     const now = new Date("2026-09-09T12:00:00.000Z")
     const target = new Date("2026-09-09T11:00:00.000Z").toISOString()
-    expect(formatCountdown(target, now)).toBe("0時間0分後")
+    expect(formatCountdown(target, now)).toBe("0分後")
   })
 
   it("formats hours and minutes together for a target more than an hour away", () => {
@@ -38,13 +39,61 @@ describe("formatCountdown", () => {
   it("renders Chinese using an hours-minutes-later pattern", () => {
     const now = new Date("2026-09-09T00:00:00.000Z")
     const target = new Date("2026-09-09T01:05:00.000Z").toISOString()
-    expect(formatCountdown(target, now, "zh-TW")).toBe("1小時5分後")
+    expect(formatCountdown(target, now, "zh-TW")).toBe("1小時5分鐘後")
   })
 
-  it("renders English as In Xh:Xm", () => {
+  it("renders English as In Xh Xm", () => {
     const now = new Date("2026-09-09T00:00:00.000Z")
     const target = new Date("2026-09-09T01:05:00.000Z").toISOString()
-    expect(formatCountdown(target, now, "en")).toBe("In 1h:5m")
+    expect(formatCountdown(target, now, "en")).toBe("In 1h 5m")
+  })
+
+  it.each([
+    [5, { "zh-TW": "5分鐘後", ja: "5分後", en: "In 5m" }],
+    [65, { "zh-TW": "1小時5分鐘後", ja: "1時間5分後", en: "In 1h 5m" }],
+    [150, { "zh-TW": "2小時30分鐘後", ja: "2時間30分後", en: "In 2h 30m" }],
+    [0, { "zh-TW": "0分鐘後", ja: "0分後", en: "In 0m" }],
+  ] as const)("%i minutes away: the hour part is omitted while it is 0, and never a minute-only 65 / 150", (minutes, expected) => {
+    const now = new Date("2026-09-09T00:00:00.000Z")
+    const target = new Date(now.getTime() + minutes * 60_000).toISOString()
+
+    for (const locale of ["zh-TW", "ja", "en"] as const) expect(formatCountdown(target, now, locale)).toBe(expected[locale])
+  })
+
+  it("never writes a zero-hour part (no 0小時5分鐘後 / 0時間5分後 / In 0h 5m)", () => {
+    const now = new Date("2026-09-09T00:00:00.000Z")
+    const target = new Date(now.getTime() + 5 * 60_000).toISOString()
+
+    for (const locale of ["zh-TW", "ja", "en"] as const) expect(formatCountdown(target, now, locale)).not.toMatch(/0小時|0時間|0h/)
+  })
+})
+
+describe("formatStartedAgo (a currently-live stream)", () => {
+  const start = new Date("2026-09-09T00:00:00.000Z")
+  const at = (minutes: number) => new Date(start.getTime() + minutes * 60_000)
+
+  it.each([
+    [5, { "zh-TW": "5分鐘前開始", ja: "5分前に開始", en: "Started 5m ago" }],
+    [65, { "zh-TW": "1小時5分鐘前開始", ja: "1時間5分前に開始", en: "Started 1h 5m ago" }],
+    [349, { "zh-TW": "5小時49分鐘前開始", ja: "5時間49分前に開始", en: "Started 5h 49m ago" }],
+  ] as const)("%i minutes after the actual start", (minutes, expected) => {
+    for (const locale of ["zh-TW", "ja", "en"] as const) expect(formatStartedAgo(start.toISOString(), at(minutes), locale)).toBe(expected[locale])
+  })
+
+  it("floors partial minutes and is never negative", () => {
+    expect(formatStartedAgo(start.toISOString(), new Date(start.getTime() + 5 * 60_000 + 59_000), "zh-TW")).toBe("5分鐘前開始")
+    expect(formatStartedAgo(start.toISOString(), new Date(start.getTime() - 60_000), "zh-TW")).toBe("0分鐘前開始")
+  })
+})
+
+describe("formatLiveStart", () => {
+  const start = new Date(2026, 8, 9, 7, 45).toISOString()
+  const now = new Date(2026, 8, 9, 13, 34)
+
+  it("relative mode is the shared started-ago text; clock mode is the actual start time, with no elapsed minutes", () => {
+    expect(formatLiveStart(start, "countdown", now, "zh-TW")).toBe("5小時49分鐘前開始")
+    expect(formatLiveStart(start, "absolute", now, "zh-TW", "24h")).toBe("07:45")
+    expect(formatLiveStart(start, "absolute", now, "zh-TW", "12h")).toBe(formatAbsoluteTime(start, "12h"))
   })
 })
 
@@ -104,19 +153,5 @@ describe("formatCreatorStatus", () => {
   it("renders upcoming in countdown mode using an hours-minutes-later pattern", () => {
     const status: CreatorStatus = { kind: "upcoming", videoId: "v1", title: "t", scheduledStart: "2026-09-09T13:15:00.000Z" }
     expect(formatCreatorStatus(status, "countdown", now)).toEqual({ label: "1時間15分後", dotColor: "red", clickable: true })
-  })
-})
-
-describe("formatLiveCount", () => {
-  it.each([
-    [0, "00"],
-    [1, "01"],
-    [7, "07"],
-    [9, "09"],
-    [10, "10"],
-    [15, "15"],
-    [123, "123"],
-  ])("%i -> %s (two digits at least, never truncated)", (count, expected) => {
-    expect(formatLiveCount(count)).toBe(expected)
   })
 })
