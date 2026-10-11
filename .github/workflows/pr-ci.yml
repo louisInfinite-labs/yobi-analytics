@@ -108,6 +108,9 @@ jobs:
           tests/notifications/test_vapid_key_handling.py
           tests/stores/test_delivery_log_bulk_lookup.py
           tests/stores/test_notification_delivery_log_store.py
+          tests/notifications/test_notification_text.py
+          tests/notifications/test_localized_push_dispatch.py
+          tests/ops/test_config.py
           tests/api/test_api_handler.py
 
   frontend-focused-tests:
@@ -196,6 +199,9 @@ jobs:
           src/features/live-status/components/CreatorStatusList.test.tsx
           src/features/notifications/components/NotificationSettings.test.tsx
           src/features/notifications/components/NotificationToggle.test.tsx
+          src/features/notifications/hooks/useNotificationLocaleSync.test.tsx
+          src/features/notifications/hooks/notificationDisabledMasterSwitch.test.tsx
+          src/features/notifications/push/serviceWorker.test.ts
           src/features/notifications/hooks/useTopicNotificationPreferences.test.ts
           src/features/notifications/push/pushNotifications.test.ts
           src/features/oshi/hooks/useDefaultOshiCreator.test.ts

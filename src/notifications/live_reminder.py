@@ -131,6 +131,9 @@ class StreamScheduleEntry:
     creator_id: str
     scheduled_start_ms: int
     topic: str | None = None
+    # The stream's own (original-language) title, shown as the notification body. Optional: a snapshot written before titles were
+    # stored has none, and the notification then uses its localized fallback body.
+    title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -155,6 +158,7 @@ class ResolvedReminder:
     creator_id: str
     scheduled_start_ms: int
     setting: LiveReminderSetting
+    stream_title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -292,7 +296,10 @@ def _parse_schedule_entries(raw: Any) -> dict[str, StreamScheduleEntry]:
         topic = value.get("topic")
         if topic is not None and (not isinstance(topic, str) or topic not in REMINDER_TOPIC_IDS):
             raise ClientError(f"streamSchedule[{video_id!r}].topic must be one of {sorted(REMINDER_TOPIC_IDS)} or null, got {topic!r}")
-        result[video_id] = StreamScheduleEntry(creator_id=creator_id, scheduled_start_ms=scheduled_start_ms, topic=topic)
+        # Optional and lenient: a missing or non-string title only means the notification body falls back; it never invalidates the snapshot.
+        raw_title = value.get("title")
+        title = raw_title if isinstance(raw_title, str) and raw_title.strip() else None
+        result[video_id] = StreamScheduleEntry(creator_id=creator_id, scheduled_start_ms=scheduled_start_ms, topic=topic, title=title)
     return result
 
 

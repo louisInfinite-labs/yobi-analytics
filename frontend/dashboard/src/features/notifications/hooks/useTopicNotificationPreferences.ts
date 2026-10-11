@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { createSharedState, useSharedState } from "../../../shared/state/sharedState"
 import { deleteCreatorReminder, reminderValueToSetting, saveCreatorReminder } from "../api/liveReminderApi"
-import { saveNotificationPreference } from "../api/notificationPreferenceApi"
+import { isNotificationDisabledByUser, saveNotificationPreference } from "../api/notificationPreferenceApi"
 import { getPushSubscriptionStatus } from "../push/pushNotifications"
 import { clearNotificationSaveFailed, reportNotificationSaveFailed } from "./notificationSaveStatus"
 import {
@@ -279,7 +279,16 @@ async function syncNewVideoSwitchesToBackend(next: TopicPreferencesState, option
     return
   }
   if (status !== "subscribed") return
+  // A subscription can outlive a successful disable (the browser unsubscribe failed afterwards): never write notifications back ON then.
+  if (isNotificationDisabledByUser()) return
   await saveNotificationPreference(true, effectiveNewVideoCreatorIds(next), effectiveShortCreatorIds(next))
+}
+
+/** Re-sends the full preference (which carries the current notification locale) when this browser has notifications enabled -- the
+ * backend-first write behind the dashboard-language -> push-notification-language sync. Silent: a failure raises no banner and the
+ * locale marker stays unconfirmed, so the next app start / language change retries. Resolves true when it wrote or had nothing to write. */
+export function resyncNotificationPreferenceSilently(): Promise<boolean> {
+  return runSerialized(NEW_VIDEO_SYNC_KEY, () => syncNewVideoSwitchesToBackend(topicPreferencesStore.get()), { silent: true })
 }
 
 /** One-time clean-up after the load-time migration dropped a retired card whose members had enabled new videos: re-sends the current

@@ -85,6 +85,7 @@ from stores import notification_delivery_log_store
 from notifications import notification_dispatch
 from stores import notification_events_store
 from notifications import live_reminder
+from notifications import notification_text
 from notifications import push_sender
 from stores import remote_config_store
 from api import remote_config_api
@@ -104,12 +105,6 @@ _PUSH_SUBSCRIPTION_KEY = "pushSubscription"
 # than skipped between two polls, while staying tight enough to honour
 # "1min"/"10min" at their configured offset rather than merely eventually.
 _REMINDER_WINDOW = timedelta(minutes=1)
-
-# The notification body of each reminder. push_sender.build_payload REQUIRES a non-empty body, so a reminder pushed with
-# body="" was rejected before it ever reached the push service ("body is required"): the claim was released and retried
-# every minute until the fire window closed, i.e. no start/advance reminder was ever delivered.
-_START_REMINDER_BODY = "The stream has started"
-_ADVANCE_REMINDER_BODY_LABELS = {"1min": "1 minute", "10min": "10 minutes", "30min": "30 minutes", "1hour": "1 hour"}
 
 # How stale the persisted "streamSchedule" snapshot may get before this run
 # actually queries Holodex again -- reused, not invented: this Lambda's own
@@ -256,6 +251,8 @@ def _refresh_and_load_stream_schedule(*, now: datetime) -> dict[str, live_remind
             # get creator 全部 or a stream override.
             "topic": None if topic == OTHER_TOPIC else topic,
         }
+        if isinstance(stream.get("title"), str) and stream["title"].strip():
+            fresh_entries[stream["videoId"]]["title"] = stream["title"]  # the original title, shown as the notification body
 
     fresh_value = {"entries": fresh_entries, "refreshedAt": now.isoformat()}
     record = remote_config_api.write_remote_config(
@@ -295,7 +292,10 @@ def _resolve_reminders_for_client(
         if setting is None:
             continue
         resolved[video_id] = live_reminder.ResolvedReminder(
-            creator_id=schedule_entry.creator_id, scheduled_start_ms=schedule_entry.scheduled_start_ms, setting=setting
+            creator_id=schedule_entry.creator_id,
+            scheduled_start_ms=schedule_entry.scheduled_start_ms,
+            setting=setting,
+            stream_title=schedule_entry.title,
         )
     return resolved
 
@@ -350,10 +350,15 @@ def _deliver_if_due(
         return False
 
     creator = creators_by_id.get(candidate["creatorId"])
+    text = notification_text.new_video_notification(
+        locale=preference.locale,
+        creator_name=creator.display_name if creator else None,
+        video_title=candidate.get("title"),
+    )
     result = push_sender.send_push_notification(
         subscription,
-        title=f"{creator.display_name} has a new video" if creator else "New video",
-        body=candidate["title"],
+        title=text.title,
+        body=text.body,
         data={"videoId": video_id},
         vapid_private_key=vapid_private_key,
         vapid_claims=vapid_claims,
@@ -410,8 +415,10 @@ def _deliver_reminders_if_due(
     ):
         if _send_reminder(
             video_id,
-            "advance",
-            body=f"Starts in {_ADVANCE_REMINDER_BODY_LABELS[setting.advance_reminder]}",
+            notification_text.KIND_ADVANCE,
+            advance=setting.advance_reminder,
+            stream_title=override.stream_title,
+            locale=preference.locale,
             client_id=client_id,
             creator_id=override.creator_id,
             creators_by_id=creators_by_id,
@@ -426,8 +433,10 @@ def _deliver_reminders_if_due(
     ):
         if _send_reminder(
             video_id,
-            "start",
-            body=_START_REMINDER_BODY,
+            notification_text.KIND_START,
+            advance=None,
+            stream_title=override.stream_title,
+            locale=preference.locale,
             client_id=client_id,
             creator_id=override.creator_id,
             creators_by_id=creators_by_id,
@@ -452,7 +461,9 @@ def _send_reminder(
     video_id: str,
     kind: str,
     *,
-    body: str,
+    advance: str | None,
+    stream_title: str | None,
+    locale: str,
     client_id: str,
     creator_id: str,
     creators_by_id: dict[str, Any],
@@ -476,12 +487,17 @@ def _send_reminder(
         return False
 
     creator = creators_by_id.get(creator_id)
-    name = creator.display_name if creator else "A creator"
-    title = f"{name} is live now" if kind == "start" else f"{name} is starting soon"
+    text = notification_text.reminder_notification(
+        locale=locale,
+        kind=kind,
+        advance=advance,
+        creator_name=creator.display_name if creator else None,
+        stream_title=stream_title,
+    )
     result = push_sender.send_push_notification(
         subscription,
-        title=title,
-        body=body,
+        title=text.title,
+        body=text.body,
         data={"videoId": video_id, "reminderKind": kind},
         vapid_private_key=vapid_private_key,
         vapid_claims=vapid_claims,

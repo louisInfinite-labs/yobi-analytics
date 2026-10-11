@@ -1,12 +1,61 @@
 import { apiRequest } from "../../../shared/api/apiClient"
 import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
 import { getOrCreateClientId } from "../../../shared/api/clientId"
+import { getLocale } from "../../../shared/i18n/hooks/useLocale"
 import { getAllNotificationCreators } from "../model/notificationCreatorGrouping"
 
 // Roadmap 4.6's own worked example uses these as the default local delivery
 // windows during Japanese development; a real per-window settings UI is
 // future work.
 export const DEFAULT_DELIVERY_WINDOWS = ["08:00", "18:00"]
+
+const NOTIFICATION_LOCALE_SYNCED_KEY = "yobi.notificationLocaleSynced"
+const NOTIFICATIONS_DISABLED_KEY = "yobi.notificationsDisabled"
+
+// Kept in module memory when storage itself fails after a confirmed write, so the OFF state still holds for the rest of this page
+// session (same pattern as getOrCreateClientId). Null whenever storage holds the answer. Across a reload an unavailable store cannot
+// carry it -- but that browser also cannot persist its clientId, so the reloaded page is a different client anyway.
+let memoryOnlyDisabled: boolean | null = null
+
+/** True once a preference write with `enabled: false` succeeded for this browser and no later write turned notifications back on.
+ * Global OFF is the master switch: background syncs (language change, creator switches) must not infer "on" from a browser push
+ * subscription that merely outlived a failed unsubscribe. Browser-local bookkeeping about the last CONFIRMED backend write. */
+export function isNotificationDisabledByUser(): boolean {
+  try {
+    if (window.localStorage.getItem(NOTIFICATIONS_DISABLED_KEY) === "1") return true
+  } catch {
+    // Unreadable storage: fall through to the in-session value.
+  }
+  return memoryOnlyDisabled === true
+}
+
+function markNotificationEnabledState(enabled: boolean): void {
+  try {
+    if (enabled) window.localStorage.removeItem(NOTIFICATIONS_DISABLED_KEY)
+    else window.localStorage.setItem(NOTIFICATIONS_DISABLED_KEY, "1")
+    memoryOnlyDisabled = null
+  } catch {
+    memoryOnlyDisabled = !enabled
+  }
+}
+
+/** The locale the backend last CONFIRMED (a successful preference write) for this browser's push notifications, or null if never.
+ * Browser-local bookkeeping only -- the backend value is the one the dispatcher reads. */
+export function getSyncedNotificationLocale(): string | null {
+  try {
+    return window.localStorage.getItem(NOTIFICATION_LOCALE_SYNCED_KEY)
+  } catch {
+    return null
+  }
+}
+
+function markNotificationLocaleSynced(locale: string): void {
+  try {
+    window.localStorage.setItem(NOTIFICATION_LOCALE_SYNCED_KEY, locale)
+  } catch {
+    // Without the marker the next app start simply re-sends the preference once more.
+  }
+}
 
 /** The full notification preference this client stores (PUT .../notification-preference replaces the whole
  * item, so every writer must send everything). `newVideoCreatorOverride` carries the Settings per-creator
@@ -24,6 +73,9 @@ export function buildNotificationPreference(
     enabled,
     notificationLevel: "all",
     notificationTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    // The language of this client's push notifications (zh-TW / ja / en): follows the dashboard language, and is part of the
+    // full preference so every writer (enable toggle, Settings switches, the language-change sync) carries it.
+    notificationLocale: getLocale(),
     deliveryWindows: DEFAULT_DELIVERY_WINDOWS,
     newVideoCreatorOverride: Object.fromEntries(
       getAllNotificationCreators().map((creator) => [creator.creatorId, newVideoEnabledCreatorIds.has(creator.creatorId)]),
@@ -43,10 +95,16 @@ export function putNotificationPreference(
   newVideoEnabledCreatorIds: ReadonlySet<string>,
   shortEnabledCreatorIds: ReadonlySet<string>,
 ): Promise<unknown> {
+  const body = buildNotificationPreference(enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds)
   return apiRequest(`/clients/${encodeURIComponent(clientId)}/notification-preference`, {
     method: "PUT",
     headers: clientSecret ? { "X-Client-Secret": clientSecret } : undefined,
-    body: buildNotificationPreference(enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds),
+    body,
+  }).then((result) => {
+    markNotificationLocaleSynced(body.notificationLocale)
+    // Recorded as soon as the backend confirms, i.e. before the caller attempts the browser unsubscribe.
+    markNotificationEnabledState(enabled)
+    return result
   })
 }
 

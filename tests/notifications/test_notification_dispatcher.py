@@ -489,7 +489,7 @@ def test_sends_a_due_start_and_advance_reminder_independently_in_the_same_run(mo
     sent_titles.clear()
     response = lambda_handler({}, None)
     assert response["delivered"] == 1
-    assert "starting soon" in sent_titles[0]
+    assert "goes live in 30 minutes" in sent_titles[0]
 
 
 def test_creator_disabled_override_still_prevents_reminder_delivery(monkeypatch):
@@ -780,7 +780,9 @@ def test_schedule_snapshot_refreshes_on_every_run_independent_of_any_saved_overr
 
     assert written["clientId"] == live_reminder.SYSTEM_CLIENT_ID
     assert written["key"] == live_reminder.STREAM_SCHEDULE_KEY
-    assert written["value"]["entries"] == {"v2": {"creatorId": "aizawa_ema", "scheduledStartMs": 1_000_000_000_000, "topic": None}}
+    assert written["value"]["entries"] == {
+        "v2": {"creatorId": "aizawa_ema", "scheduledStartMs": 1_000_000_000_000, "topic": None, "title": "Ranked grind"}
+    }
 
 
 def test_stale_schedule_entries_are_dropped_on_the_next_successful_refresh(monkeypatch):

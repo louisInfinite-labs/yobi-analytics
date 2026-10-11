@@ -53,7 +53,9 @@ function RecentActivityRow({
   timeFormat: TimeFormat
   onOpen: (video: { videoId: string; title: string }) => void
 }) {
-  // NEW is shared with Home's Video List (same seen state, keyed by videoId) and only an explicit open clears it.
+  // NEW is displayed only here. The seen state (keyed by videoId) is shared with Home's Video List, which shows no badge: opening an
+  // eligible archive or upload in either list calls markContentSeen; live/upcoming clicks do not. A confirmed PLAYING of a live stream
+  // also keeps its later archive from being NEW (see newContentTracking.ts).
   const { isNew: isNewContent } = useNewContent()
   const isNew = isNewContent({ videoId: entry.videoId, publishedAt: entry.publishedAt }, now)
 

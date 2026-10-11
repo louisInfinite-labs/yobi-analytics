@@ -1,0 +1,18 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadTheFourRuntimeSecretParametersOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter"
+      ],
+      "Resource": [
+        "arn:aws:ssm:ap-northeast-1:189461315571:parameter/yobi-analytics/youtube-api-key",
+        "arn:aws:ssm:ap-northeast-1:189461315571:parameter/yobi-analytics/holodex-api-key",
+        "arn:aws:ssm:ap-northeast-1:189461315571:parameter/yobi-analytics/vapid-private-key",
+        "arn:aws:ssm:ap-northeast-1:189461315571:parameter/yobi-analytics/admin-api-key"
+      ]
+    }
+  ]
+}
