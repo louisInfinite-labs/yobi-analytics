@@ -13,7 +13,8 @@ const PAGE_PATHS: Record<Page, string> = {
 function readPage(): Page {
   switch (window.location.pathname) {
     case "/dashboard":
-      return "dashboard"
+      // Development-only (see MainNavbar): in production this URL is not a page, so it falls through to Home like any unknown path.
+      return import.meta.env.DEV ? "dashboard" : "home"
     case "/setting":
       return "settings"
     case "/schedule":
