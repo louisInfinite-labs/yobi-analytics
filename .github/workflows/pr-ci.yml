@@ -198,6 +198,7 @@ jobs:
           src/features/notifications/components/NotificationSettings.test.tsx
           src/features/notifications/components/NotificationToggle.test.tsx
           src/features/notifications/hooks/useNotificationLocaleSync.test.tsx
+          src/features/notifications/hooks/notificationDisabledMasterSwitch.test.tsx
           src/features/notifications/push/serviceWorker.test.ts
           src/features/notifications/hooks/useTopicNotificationPreferences.test.ts
           src/features/notifications/push/pushNotifications.test.ts
