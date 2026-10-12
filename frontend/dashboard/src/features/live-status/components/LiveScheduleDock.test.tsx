@@ -123,6 +123,73 @@ describe("LiveScheduleDock video selection", () => {
   })
 })
 
+describe("LiveScheduleDock creator selection works on every page (it navigates to that creator's Home)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockLiveStatuses()
+  })
+
+  async function clickCreatorRow(namePattern: RegExp) {
+    const user = userEvent.setup()
+    await user.click(document.querySelector(".live-status-trigger") as HTMLElement)
+    const row = Array.from(document.querySelectorAll<HTMLElement>(".live-status-member__creator-button")).find((button) =>
+      namePattern.test(button.getAttribute("aria-label") ?? ""),
+    )
+    expect(row).toBeDefined()
+    await user.click(row!)
+    // The confirm-before-switch dialog is the existing preference-driven step; confirm it when shown.
+    const confirm = screen.queryByRole("button", { name: /^Switch$/ })
+    if (confirm) await user.click(confirm)
+  }
+
+  for (const page of ["schedule", "settings", "about", "home"] as const) {
+    it(`H. ${page}: picking a creator hands it to the router's selectCreator, which moves to that creator's Home`, async () => {
+      mockPage(page)
+      render(<LiveScheduleDock />)
+      await clickCreatorRow(/Noa|のあ/)
+
+      expect(useCurrentPageModule.selectCreator).toHaveBeenCalledTimes(1)
+      expect(useCurrentPageModule.selectCreator).toHaveBeenCalledWith("ch_kurumi_noa")
+      expect(useCurrentPageModule.switchCreatorForVideo).not.toHaveBeenCalled()
+    })
+  }
+})
+
+describe("I. picking a STREAM keeps its existing behaviour (creator routing does not change it)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockLiveStatuses()
+  })
+
+  it("off Home it still opens the existing modal and never navigates", async () => {
+    mockPage("schedule")
+    render(<LiveScheduleDock />)
+    await openAndSelectVideo()
+
+    expect(document.querySelector(".video-player-modal__backdrop")).not.toBeNull()
+    expect(useHomeSelectedVideoModule.selectHomeVideo).not.toHaveBeenCalled()
+    expect(useCurrentPageModule.selectCreator).not.toHaveBeenCalled()
+  })
+
+  it("a stream of ANOTHER creator switches creator through the stream-specific switch (not the navigating selectCreator)", async () => {
+    const noa = toLegacyRosterId(getCreatorById("kurumi_noa")!)
+    vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({
+      statuses: { [noa]: { kind: "live", videoId: "vn", title: "noa live" } },
+      now,
+    })
+    mockPage("schedule")
+    render(<LiveScheduleDock />)
+    const user = userEvent.setup()
+    await user.click(document.querySelector(".live-status-trigger") as HTMLElement)
+    await user.click(document.querySelector('.live-status-member__status[data-status="live"]') as HTMLElement)
+    await user.click(screen.getByRole("button", { name: /^Switch$/ }))
+
+    expect(useCurrentPageModule.switchCreatorForVideo).toHaveBeenCalledWith(noa)
+    expect(useCurrentPageModule.selectCreator).not.toHaveBeenCalled()
+    expect(document.querySelector(".video-player-modal__backdrop")).not.toBeNull() // the modal, exactly as before
+  })
+})
+
 describe("LiveScheduleDock trigger live count", () => {
   function liveStatuses(count: number) {
     return Object.fromEntries(Array.from({ length: count }, (_, index) => [`ch_live_${index}`, { kind: "live" as const, videoId: `v${index}`, title: "t" }]))

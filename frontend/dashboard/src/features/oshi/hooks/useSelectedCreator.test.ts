@@ -58,3 +58,47 @@ describe("useSelectedCreator", () => {
     expect(result.current[0]).toBe(mockCreators[0].channelId)
   })
 })
+
+describe("useSelectedCreator is seeded from the session's Home route, never from a permanent preference", () => {
+  it("an explicit creator Home recorded for this session is restored on a reload of the same session", () => {
+    window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_kurumi_noa")
+    window.sessionStorage.setItem("yobi.session.homePath", "/creator/usada-pekora")
+    resetAllSharedStateForTests()
+
+    const { result } = renderHook(() => useSelectedCreator())
+    expect(result.current[0]).toBe("ch_usada_pekora")
+  })
+
+  it("a root Home ('/') session means the Oshi, whatever was viewed before", () => {
+    window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_kurumi_noa")
+    window.sessionStorage.setItem("yobi.session.homePath", "/")
+    resetAllSharedStateForTests()
+
+    expect(renderHook(() => useSelectedCreator()).result.current[0]).toBe("ch_kurumi_noa")
+  })
+
+  it("a new session (empty sessionStorage) starts from the Oshi", () => {
+    window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_kurumi_noa")
+    window.sessionStorage.setItem("yobi.session.homePath", "/creator/usada-pekora")
+    window.sessionStorage.clear()
+    resetAllSharedStateForTests()
+
+    expect(renderHook(() => useSelectedCreator()).result.current[0]).toBe("ch_kurumi_noa")
+  })
+
+  it("an unknown or stale session route is ignored (the Oshi is used)", () => {
+    window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_kurumi_noa")
+    window.sessionStorage.setItem("yobi.session.homePath", "/creator/not-a-real-creator")
+    resetAllSharedStateForTests()
+
+    expect(renderHook(() => useSelectedCreator()).result.current[0]).toBe("ch_kurumi_noa")
+  })
+
+  it("setting the creator writes nothing to storage by itself (the router records the session Home route)", () => {
+    const { result } = renderHook(() => useSelectedCreator())
+    act(() => result.current[1]("ch_usada_pekora"))
+
+    expect(window.localStorage.length).toBe(0)
+    expect(window.sessionStorage.length).toBe(0)
+  })
+})

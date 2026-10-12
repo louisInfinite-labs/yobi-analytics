@@ -178,6 +178,9 @@ export interface CreatorStatusListProps {
   /** Avatar+name click (spec: "switches the active Oshi") — never opens
    * YouTube and never touches favorite state. */
   onSelectCreator: (channelId: string) => void
+  /** The creator switch that PRECEDES picking another creator's stream (see handleVideoSelect). Defaults to onSelectCreator. The Dock passes a
+   * switch that never leaves the current page, so picking a stream behaves exactly as it always has (modal off Home, central player on Home). */
+  onSelectCreatorForVideo?: (channelId: string) => void
   /** Favorites-only filter: when set, only creators in this set are listed
    * at all — a stricter filter than search, applied first. Omit to list
    * every creator (the "all" mode). */
@@ -216,6 +219,7 @@ export function CreatorStatusList({
   query,
   onSelectVideo,
   onSelectCreator,
+  onSelectCreatorForVideo,
   favoriteOnlyIds,
   favorites,
   onToggleFavorite,
@@ -240,6 +244,8 @@ export function CreatorStatusList({
   // Settings > 我推設定.
   const [currentOshiId] = useSelectedCreator()
   const [defaultOshiId] = useDefaultOshiCreator()
+
+  const switchCreatorForVideo = onSelectCreatorForVideo ?? onSelectCreator
 
   function handleCreatorClick(creator: CanonicalCreator) {
     const legacyId = toLegacyRosterId(creator)
@@ -266,7 +272,7 @@ export function CreatorStatusList({
     if (confirmOshiSwitch) {
       setPendingSwitch({ channelId: legacyId, channelName: creator.displayName, video })
     } else {
-      onSelectCreator(legacyId)
+      switchCreatorForVideo(legacyId)
       onSelectVideo(video, legacyId)
     }
   }
@@ -338,8 +344,12 @@ export function CreatorStatusList({
           locale={locale}
           onCancel={() => setPendingSwitch(null)}
           onConfirm={(dontAskAgain) => {
-            onSelectCreator(pendingSwitch.channelId)
-            if (pendingSwitch.video) onSelectVideo(pendingSwitch.video, pendingSwitch.channelId)
+            if (pendingSwitch.video) {
+              switchCreatorForVideo(pendingSwitch.channelId)
+              onSelectVideo(pendingSwitch.video, pendingSwitch.channelId)
+            } else {
+              onSelectCreator(pendingSwitch.channelId)
+            }
             if (dontAskAgain) onConfirmOshiSwitchChange(false)
             setPendingSwitch(null)
           }}
