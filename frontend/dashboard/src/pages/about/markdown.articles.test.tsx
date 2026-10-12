@@ -228,3 +228,27 @@ describe("about.css typography values", () => {
     expect(strong).toContain("font-weight: 700")
   })
 })
+
+describe("the Privacy page in every language discloses Google Analytics", () => {
+  const HEADINGS: Record<string, string> = {
+    "zh-TW": "使用情況分析（Google Analytics）",
+    ja: "利用状況の分析（Google アナリティクス）",
+    en: "Usage analytics (Google Analytics)",
+  }
+
+  for (const [locale, heading] of Object.entries(HEADINGS)) {
+    it(`${locale}: its own section renders with both links, real paragraphs and no literal Markdown`, () => {
+      const source = readFileSync(`${ROOT}/../../src/content/about/${locale}/privacy.md`, "utf-8")
+      const container = renderMd(source)
+
+      const h2 = Array.from(container.querySelectorAll("h2")).find((element) => element.textContent === heading)
+      expect(h2).toBeDefined()
+      const following: Element[] = []
+      for (let next = h2!.nextElementSibling; next && next.tagName !== "H2"; next = next.nextElementSibling) following.push(next)
+      expect(following.filter((element) => element.tagName === "P").length).toBeGreaterThanOrEqual(4)
+      const hrefs = following.flatMap((element) => Array.from(element.querySelectorAll("a")).map((a) => a.getAttribute("href")))
+      expect(hrefs).toEqual(["https://policies.google.com/technologies/partner-sites", "https://tools.google.com/dlpage/gaoptout"])
+      expect(container.textContent).not.toMatch(/\*\*|\]\(|^## /m)
+    })
+  }
+})

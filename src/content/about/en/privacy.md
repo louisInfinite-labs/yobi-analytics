@@ -4,6 +4,8 @@ OshiYobi doesn't require you to log in.
 
 Most personalization settings are only saved in the browser you're currently using. Only features that need backend processing, such as push notifications, send the data required for that feature to OshiYobi's backend.
 
+In addition, OshiYobi uses Google Analytics to collect anonymous usage statistics; see "Usage analytics" below.
+
 ## Where are your settings saved?
 
 The creators you follow or favorite, along with general display and filter settings, are all saved in your current browser's **Local Storage**.
@@ -30,6 +32,18 @@ These logs are mainly used to find errors, keep the service stable, and prevent 
 
 They are not used to build a profile of your interests, or to decide which VTuber content you should see.
 
+## Usage analytics (Google Analytics)
+
+OshiYobi uses **Google Analytics (through Firebase)** to understand how the site is used, such as which pages are viewed, the type of browser and device, and the approximate region (estimated from your IP address).
+
+To tell visitors apart, Google Analytics stores a random identifier in your browser (as a cookie or similar technology). This identifier doesn't contain your name, email address, or Google/YouTube account information, and isn't linked to your account.
+
+This data is processed by Google. OshiYobi only uses the resulting statistics to understand how the site is used and to improve the service. For how Google handles this data, please see:
+
+[How Google uses data when you use our partners' sites or apps](https://policies.google.com/technologies/partner-sites)
+
+You can stop the collection by blocking or clearing cookies and site data in your browser, or by installing Google's [Google Analytics opt-out browser add-on](https://tools.google.com/dlpage/gaoptout). Stopping collection doesn't affect how OshiYobi works.
+
 ## YouTube API Services
 
 OshiYobi uses **YouTube API Services** to obtain some public video and channel data.
@@ -51,3 +65,5 @@ Your local OshiYobi settings are not provided to YouTube, Google, or Holodex as 
 You can change OshiYobi's settings, or turn off push notifications in your browser, at any time.
 
 You can also remove the settings saved in Local Storage by clearing this site's data in your browser.
+
+You can also stop Google Analytics collection with the methods described under "Usage analytics".

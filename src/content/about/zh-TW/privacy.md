@@ -4,6 +4,8 @@ OshiYobi 不需要登入帳戶。
 
 大部分個人化設定都只會保存在你目前使用的瀏覽器內。只有推送通知等需要後台運作的功能，才會把完成該功能所需要的資料傳送到 OshiYobi 的後台。
 
+另外，OshiYobi 會使用 Google Analytics 收集匿名的使用統計，詳情請見下方「使用情況分析」。
+
 ## 你的設定會保存在哪裡？
 
 你關注或收藏的創作者、顯示與篩選等一般設定，都會保存在目前瀏覽器的 **Local Storage（本機儲存空間）**。
@@ -30,6 +32,18 @@ OshiYobi 不需要登入帳戶。
 
 它們不會用來建立你的興趣檔案，或決定你應該看到哪些 VTuber 內容。
 
+## 使用情況分析（Google Analytics）
+
+OshiYobi 使用 **Google Analytics（透過 Firebase）** 了解網站的使用情況，例如哪些頁面被瀏覽、使用的瀏覽器與裝置類型，以及大概的地區（由 IP 位址推算）。
+
+為了區分不同的訪客，Google Analytics 會在你的瀏覽器儲存一個隨機識別碼（以 Cookie 或類似技術）。這個識別碼不包含你的姓名、電郵、Google 或 YouTube 帳戶資料，也不會與你的帳戶連結。
+
+這些資料由 Google 處理。OshiYobi 只會把統計結果用於了解網站的使用情況及改善服務。Google 對資料的處理方式，請參閱：
+
+[Google 如何在你使用合作夥伴的網站或應用程式時使用資料](https://policies.google.com/technologies/partner-sites)
+
+你可以在瀏覽器中封鎖或清除 Cookie 與網站資料，或安裝 Google 提供的 [Google Analytics 停用瀏覽器外掛程式](https://tools.google.com/dlpage/gaoptout)，停止資料收集。停止收集不會影響 OshiYobi 的使用。
+
 ## YouTube API Services
 
 OshiYobi 使用 **YouTube API Services** 取得部分公開的影片與頻道資料。
@@ -51,3 +65,5 @@ OshiYobi 的部分功能會使用第三方提供的公開資料。
 你可以隨時修改 OshiYobi 的設定，或在瀏覽器中關閉推送通知。
 
 你亦可以透過清除瀏覽器的網站資料，移除保存在 Local Storage 的設定。
+
+你亦可以按照「使用情況分析」所說明的方法，停止 Google Analytics 的資料收集。
