@@ -127,14 +127,14 @@ describe("the five approved zh-TW source documents render with their Markdown hi
     }
   }
 
-  it("acknowledgements opens with a normal paragraph, then H2 sections, and ends with a bold paragraph", () => {
+  it("acknowledgements opens with a normal paragraph, then H2 sections, and ends with a plain paragraph (no closing bold line)", () => {
     const container = renderMd(acknowledgementsMd)
     const tags = shape(container)
 
     expect(tags[0]).toBe("P")
     expect(tags.filter((tag) => tag === "H2")).toHaveLength(3)
     expect(tags.at(-1)).toBe("P")
-    expect(container.querySelector("p:last-child > strong")).not.toBeNull()
+    expect(container.querySelector("p:last-child > strong")).toBeNull()
   })
 
   it("never turns a standalone bold sentence into a heading", () => {
