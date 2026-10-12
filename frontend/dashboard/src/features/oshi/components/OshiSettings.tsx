@@ -54,6 +54,12 @@ function creatorAccentStyle(creator: CanonicalCreator): CreatorAccentStyle {
   }
 }
 
+/** The name as My Favorites shows it. The Hololive group channel's full name is the one name allowed (and required) to use two lines here, and
+ * only broken after its hyphen: "hololive ホロライブ -" / "VTuber Group". Every other name is shown exactly as it is. */
+function rosterDisplayName(creator: CanonicalCreator): string {
+  return creator.creatorId === "hololive_official" ? creator.displayName.replace(" - ", " -" + String.fromCharCode(10)) : creator.displayName
+}
+
 /** One roster tile: avatar + name + a favorite indicator, all reading/
  * writing the SAME shared favorites store Live Status itself uses
  * (useFavoriteCreators) -- toggling here is immediately visible as Live
@@ -123,7 +129,7 @@ function FavoriteTile({ creator }: { creator: CanonicalCreator }) {
         </span>
         {isFavorite && <Heart className="creator-avatar-heart" aria-hidden="true" fill="currentColor" />}
       </span>
-      <span className="creator-tile__name favorites-roster__name">{creator.displayName}</span>
+      <span className="creator-tile__name favorites-roster__name">{rosterDisplayName(creator)}</span>
     </Checkbox>
   )
 }

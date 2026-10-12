@@ -70,10 +70,10 @@ async function pickSinging(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("NotificationSettings master-detail layout", () => {
-  it("lists the 5 permanent default topics, in order, plus an Add topic tile -- confirmed with the user: 全部/SF6/VALO/APEX/Minecraft are never removed", () => {
+  it("lists the 5 permanent default topics in the shared display order (the same as Home), plus an Add topic tile -- 全部/SF6/VALO/APEX/Minecraft are never removed", () => {
     renderNotificationSettings()
     const names = [...document.querySelectorAll(".notification-topic-item__name")].map((el) => el.textContent)
-    expect(names).toEqual(["All", "SF6", "VALO", "Apex", "Minecraft"])
+    expect(names).toEqual(["All", "Apex", "Minecraft", "SF6", "VALO"])
     expect(screen.getByRole("heading", { level: 1, name: "Push Notifications" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add topic" })).toBeInTheDocument()
   })
@@ -262,10 +262,10 @@ describe("NotificationSettings master-detail layout", () => {
     for (const alreadySaved of ["SF6", "VALO", "APEX", "Minecraft"]) {
       expect(screen.queryByTitle(alreadySaved)).not.toBeInTheDocument()
     }
-    // Home's list in Home's order: Singing, MV, Chatting, Short (immediately before Other), Other.
+    // Home's list in Home's display order: Chatting, Singing, MV, Short (immediately before Other), Other.
     await screen.findByTitle("Singing")
     const options = [...document.querySelectorAll(".ant-select-item-option")]
-    expect(options.map((option) => option.getAttribute("title"))).toEqual(["Singing", "MV", "Chatting", "Short", "Other"])
+    expect(options.map((option) => option.getAttribute("title"))).toEqual(["Chatting", "Singing", "MV", "Short", "Other"])
     // The old notification-only hard-coded categories are gone.
     for (const retired of ["GTA", "7 DAYS TO DIE", "雀魂", "Endfield"]) expect(screen.queryByTitle(retired)).not.toBeInTheDocument()
   })

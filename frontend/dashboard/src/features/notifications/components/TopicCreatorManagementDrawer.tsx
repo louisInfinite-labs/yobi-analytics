@@ -315,7 +315,7 @@ export function TopicCreatorManagementDrawer({ topicId, topicLabel, onClose }: T
         },
       }}
     >
-      <Drawer open={topicId !== null} onClose={handleClose} title={drawerTitle} size={480} className="topic-creator-drawer">
+      <Drawer open={topicId !== null} onClose={handleClose} title={drawerTitle} size={600} className="topic-creator-drawer">
         {topicId && (
           <div className="topic-creator-drawer__content" data-locale={locale}>
             <p className="topic-creator-drawer__notification-type-context">

@@ -76,21 +76,35 @@ describe("B. a backend-only future topic the frontend has never seen needs no fr
   })
 })
 
-describe("C. backend order is preserved, not re-sorted by any local rule", () => {
-  it("renders topics in the exact (deliberately non-alphabetical) order /topics returned them", async () => {
+describe("C. topics follow the product display order (not alphabetical, not the order /topics returned them)", () => {
+  it("renders Chatting, MV, VALO in that order whatever order /topics returned them", async () => {
     fetchTopicsMock.mockResolvedValue([
+      { id: "valorant", labels: { en: "VALO" } },
       { id: "mv", labels: { en: "MV" } },
       { id: "chatting", labels: { en: "Chatting" } },
-      { id: "valorant", labels: { en: "VALO" } },
     ])
     renderSection()
 
     await screen.findByText("MV")
     const labels = renderedTagLabels()
     const indexOf = (label: string) => labels.indexOf(label)
-    expect(indexOf("MV")).toBeGreaterThanOrEqual(0)
-    expect(indexOf("MV")).toBeLessThan(indexOf("Chatting"))
-    expect(indexOf("Chatting")).toBeLessThan(indexOf("VALO"))
+    expect(indexOf("Chatting")).toBeGreaterThanOrEqual(0)
+    expect(indexOf("Chatting")).toBeLessThan(indexOf("MV"))
+    expect(indexOf("MV")).toBeLessThan(indexOf("VALO"))
+  })
+
+  it("a topic the backend adds later still appears (after the known ones, in the backend's order)", async () => {
+    fetchTopicsMock.mockResolvedValue([
+      { id: "new_topic_b", labels: { en: "New B" } },
+      { id: "new_topic_a", labels: { en: "New A" } },
+      { id: "valorant", labels: { en: "VALO" } },
+    ])
+    renderSection()
+
+    await screen.findByText("New B")
+    const labels = renderedTagLabels()
+    expect(labels.indexOf("VALO")).toBeLessThan(labels.indexOf("New B"))
+    expect(labels.indexOf("New B")).toBeLessThan(labels.indexOf("New A"))
   })
 })
 

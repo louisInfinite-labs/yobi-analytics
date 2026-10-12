@@ -628,3 +628,23 @@ describe("OshiStatusPanel thumbnails", () => {
     expect(/\.oshi-status__thumb img \{([^}]*)\}/.exec(css)![1]).toContain("object-fit: cover")
   })
 })
+
+describe("the Oshi Status 'live / next' section title (display text only)", () => {
+  it.each([
+    ["zh-TW", "直播／接下來 24小時內"],
+    ["ja", "ライブ／今後24時間以内"],
+    ["en", "Live / Next 24 Hours"],
+  ] as const)("%s reads %s", async (locale, expected) => {
+    localStorage.setItem("yobi.locale", locale)
+    resetAllSharedStateForTests()
+    render(<OshiStatusPanel creatorId="ch_aizawa_ema" status={{ kind: "offline" }} now={now} onSelectVideo={vi.fn()} nowPlayingTitle={null} />)
+
+    const titles = Array.from(document.querySelectorAll(".oshi-status__section-title")).map((element) => element.textContent)
+    expect(titles).toContain(expected)
+  })
+
+  it("is the only place that wording is used: Schedule's own strings do not carry it", () => {
+    const schedule = readFileSync(resolve(process.cwd(), "src/pages/schedule/LiveSchedulePage.tsx"), "utf-8")
+    expect(schedule).not.toContain("oshiStatus.liveNext")
+  })
+})

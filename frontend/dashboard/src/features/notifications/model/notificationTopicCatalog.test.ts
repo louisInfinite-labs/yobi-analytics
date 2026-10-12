@@ -8,15 +8,15 @@ const BACKEND_TOPICS = ["valorant", "sf6", "apex", "minecraft", "singing", "mv",
 const ENTRIES = buildVideoFilterEntries(BACKEND_TOPICS, "en")
 
 describe("the selectable categories are Home's list", () => {
-  it("is VALO, SF6, Apex, Minecraft, Singing, MV, Chatting, Short, Other -- Short immediately before Other", () => {
+  it("is Chatting, Singing, MV, Apex, Minecraft, SF6, VALO, Short, Other -- the same display order as Home", () => {
     expect(getSelectableTopics(ENTRIES, []).map((entry) => entry.id)).toEqual([
-      "valorant",
-      "sf6",
-      "apex",
-      "minecraft",
+      "chatting",
       "singing",
       "mv",
-      "chatting",
+      "apex",
+      "minecraft",
+      "sf6",
+      "valorant",
       "short",
       "other",
     ])
@@ -31,11 +31,11 @@ describe("the selectable categories are Home's list", () => {
   })
 
   it("excludes the cards already saved: after the 5 permanent defaults the dropdown offers the rest, in order", () => {
-    expect(getSelectableTopics(ENTRIES, DEFAULT_SAVED).map((entry) => entry.id)).toEqual(["singing", "mv", "chatting", "short", "other"])
+    expect(getSelectableTopics(ENTRIES, DEFAULT_SAVED).map((entry) => entry.id)).toEqual(["chatting", "singing", "mv", "short", "other"])
   })
 
   it("excludes a Short card once it is saved", () => {
-    expect(getSelectableTopics(ENTRIES, [...DEFAULT_SAVED, "short"]).map((entry) => entry.id)).toEqual(["singing", "mv", "chatting", "other"])
+    expect(getSelectableTopics(ENTRIES, [...DEFAULT_SAVED, "short"]).map((entry) => entry.id)).toEqual(["chatting", "singing", "mv", "other"])
   })
 
   it("offers only Short while GET /topics has not loaded (never a hardcoded topic list)", () => {

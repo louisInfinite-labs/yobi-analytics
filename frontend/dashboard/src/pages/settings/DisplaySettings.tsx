@@ -1,3 +1,4 @@
+import { LanguagePicker } from "../../shared/i18n/components/LanguagePicker"
 import { UpcomingDisplaySettings } from "../../features/live-status/components/UpcomingDisplaySettings"
 import { useLocale } from "../../shared/i18n/hooks/useLocale"
 import { useTimeFormat } from "../../shared/i18n/hooks/useTimeFormat"
@@ -50,6 +51,15 @@ export function DisplaySettings() {
               <p className="display-setting-help">{t(locale, "displaySettings.upcomingHelp")}</p>
             </div>
             <UpcomingDisplaySettings />
+          </div>
+
+          {/* Language Settings: the last Display Settings item (it used to be pinned to the Settings navbar's bottom). */}
+          <div className="display-setting-row">
+            <div className="display-setting-copy">
+              <h2 className="display-setting-label">{t(locale, "displaySettings.languageLabel")}</h2>
+              <p className="display-setting-help">{t(locale, "displaySettings.languageHelp")}</p>
+            </div>
+            <LanguagePicker />
           </div>
         </div>
       </div>

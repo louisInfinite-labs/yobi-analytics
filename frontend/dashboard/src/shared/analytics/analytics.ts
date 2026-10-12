@@ -11,20 +11,31 @@ export function isAnalyticsEnvironment(hostname: string = window.location.hostna
   return import.meta.env.PROD && ANALYTICS_HOSTNAMES.has(hostname)
 }
 
-type LogEvent = typeof import("firebase/analytics").logEvent
+/** The only routes that are measured: the root Home, the creator pages and Schedule. Every other route (Settings, About, anything unknown or
+ * development-only) is never measured. */
+export function isAnalyticsRoute(pathname: string): boolean {
+  const path = pathname.replace(/\/+$/, "") || "/"
+  return path === "/" || path === "/schedule" || path === "/creator" || path.startsWith("/creator/")
+}
+
+type SdkAnalytics = typeof import("firebase/analytics")
 interface AnalyticsHandle {
   analytics: Analytics
-  logEvent: LogEvent
+  logEvent: SdkAnalytics["logEvent"]
+  setAnalyticsCollectionEnabled: SdkAnalytics["setAnalyticsCollectionEnabled"]
 }
 
 let started: Promise<AnalyticsHandle | null> | null = null
-let lastPagePath: string | null = null
+let lastRoutePath: string | null = null
+let sdkPageViewCovered = false
+let hostnameForTests: string | null = null
 
 /** Starts Firebase Analytics once for the page's lifetime (repeat calls return the same promise; the Firebase app is also reused if one
  * already exists, so it can never be initialised twice). Only on the production site and in a browser that supports Analytics; the Firebase
- * SDK is imported on demand, so any other page never even fetches it. Analytics must never break the app, so every failure resolves to null
- * (that visit is simply not measured). */
-export function initAnalytics(hostname: string = window.location.hostname): Promise<AnalyticsHandle | null> {
+ * SDK is imported on demand, so a page that is never measured never even fetches it. It is started only by trackRoute, from the first
+ * measured route -- never at page load -- so a visit that lands on an unmeasured route sends nothing. Analytics must never break the app, so
+ * every failure resolves to null (that visit is simply not measured). */
+export function initAnalytics(hostname: string = hostnameForTests ?? window.location.hostname): Promise<AnalyticsHandle | null> {
   if (started) return started
   started = isAnalyticsEnvironment(hostname) ? start() : Promise.resolve(null)
   return started
@@ -32,29 +43,44 @@ export function initAnalytics(hostname: string = window.location.hostname): Prom
 
 async function start(): Promise<AnalyticsHandle | null> {
   try {
-    const [{ getApps, initializeApp }, { getAnalytics, isSupported, logEvent }] = await Promise.all([import("firebase/app"), import("firebase/analytics")])
-    if (!(await isSupported())) return null
-    return { analytics: getAnalytics(getApps()[0] ?? initializeApp(firebaseConfig)), logEvent }
+    const [{ getApps, initializeApp }, sdk] = await Promise.all([import("firebase/app"), import("firebase/analytics")])
+    if (!(await sdk.isSupported())) return null
+    return { analytics: sdk.getAnalytics(getApps()[0] ?? initializeApp(firebaseConfig)), logEvent: sdk.logEvent, setAnalyticsCollectionEnabled: sdk.setAnalyticsCollectionEnabled }
   } catch {
     return null
   }
 }
 
-/** Records one SPA page view. The SDK itself sends the page_view for the page the visitor LANDED on, but not for the pushState navigations
- * that follow (measured: one page_view on load, none on route changes), so the first call only remembers the landing page and every later
- * change of page logs exactly one page_view. Consecutive calls for the same path never log twice. */
-export function trackPageView(path: string, title: string): void {
-  if (path === lastPagePath) return
-  const isLanding = lastPagePath === null
-  lastPagePath = path
-  if (isLanding) return
+/** Reports the route now being shown; call it for EVERY route change (measured or not).
+ *  - A measured route (see isAnalyticsRoute): the first one starts Analytics, whose own first page_view covers it; every later change of
+ *    path switches collection on and logs exactly one page_view (the SDK sees no pushState navigation by itself).
+ *  - An unmeasured route: collection is switched OFF (so no page_view and no automatic event, such as scroll or outbound clicks, is sent while
+ *    the visitor is there) and nothing is logged. If Analytics was never started it still is not.
+ * Consecutive calls for the same path do nothing. */
+export function trackRoute(path: string, title: string): void {
+  if (path === lastRoutePath) return
+  lastRoutePath = path
+
+  if (!isAnalyticsRoute(path)) {
+    if (started) void started.then((handle) => handle?.setAnalyticsCollectionEnabled(handle.analytics, false))
+    return
+  }
+  if (!sdkPageViewCovered) {
+    sdkPageViewCovered = true
+    void initAnalytics()
+    return
+  }
   void initAnalytics().then((handle) => {
-    handle?.logEvent(handle.analytics, "page_view", { page_path: path, page_title: title, page_location: window.location.origin + path })
+    if (!handle) return
+    handle.setAnalyticsCollectionEnabled(handle.analytics, true)
+    handle.logEvent(handle.analytics, "page_view", { page_path: path, page_title: title, page_location: window.location.origin + path })
   })
 }
 
-/** Test-only: forget that Analytics was started and which page was last recorded. */
-export function resetAnalyticsForTests(): void {
+/** Test-only: forget that Analytics was started and which route was last recorded, and optionally pretend the page is served from `hostname`. */
+export function resetAnalyticsForTests(hostname: string | null = null): void {
+  hostnameForTests = hostname
   started = null
-  lastPagePath = null
+  lastRoutePath = null
+  sdkPageViewCovered = false
 }

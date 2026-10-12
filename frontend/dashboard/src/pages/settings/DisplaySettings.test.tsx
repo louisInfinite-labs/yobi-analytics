@@ -2,6 +2,8 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { DisplaySettings } from "./DisplaySettings"
+import { SettingsPage } from "./SettingsPage"
+import { MemberThemeProvider } from "../../shared/theme/MemberThemeProvider"
 import { resetAllSharedStateForTests } from "../../shared/state/sharedState"
 import { readStylesheet, rulesOf, ruleBody } from "../../test/readStylesheet"
 
@@ -135,5 +137,43 @@ describe("DisplaySettings uses Home's palette and Home's select", () => {
     }
     expect(css).not.toMatch(/--display-(accent|control|divider|text)/)
     expect(css).not.toMatch(/display-settings-select-dropdown/)
+  })
+})
+
+describe("Language Settings lives in Display Settings, as its last item", () => {
+  it("is the last row, after the existing rows (which keep their order), and is the only language picker on the page", () => {
+    const { container } = render(<DisplaySettings />)
+
+    const headings = Array.from(container.querySelectorAll(".display-setting-label")).map((heading) => heading.textContent)
+    expect(headings).toEqual(["Time format", "Upcoming streams", "Language"])
+    const rows = container.querySelectorAll(".display-setting-row")
+    expect(rows[rows.length - 1].querySelector(".language-picker")).not.toBeNull()
+    expect(container.querySelectorAll(".language-picker")).toHaveLength(1)
+  })
+
+  it("keeps its behaviour: it offers the same three languages and switching one updates the page text and the persisted locale", async () => {
+    const user = userEvent.setup()
+    render(<DisplaySettings />)
+
+    await user.click(screen.getByRole("button", { name: /English/ }))
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["🇭🇰Traditional Chinese", "🇬🇧English", "🇯🇵Japanese"])
+
+    await user.click(screen.getByRole("menuitem", { name: "Japanese" }))
+
+    expect(localStorage.getItem("yobi.locale")).toBe("ja")
+    expect(screen.getByRole("heading", { name: "言語設定" })).toBeInTheDocument()
+  })
+
+  it("is no longer in the Settings navigation (and nowhere else on the Settings page)", () => {
+    window.history.pushState({}, "", "/setting?section=oshi")
+    const { container } = render(
+      <MemberThemeProvider>
+        <SettingsPage />
+      </MemberThemeProvider>,
+    )
+
+    expect(container.querySelectorAll(".language-picker")).toHaveLength(0) // Favorites List shows none, and neither does the navbar
+    expect(container.querySelector(".settings-secondary-navbar .language-picker")).toBeNull()
+    window.history.pushState({}, "", "/setting")
   })
 })

@@ -6,7 +6,21 @@ import type { CanonicalCreator, CreatorMasterRegistryFile } from "../model/creat
  * should import that JSON file directly -- every consumer goes through the
  * functions below, so the generated file's own shape can change without
  * every importer needing to change with it. */
-const registry = creatorMasterFile as CreatorMasterRegistryFile
+const generatedRegistry = creatorMasterFile as CreatorMasterRegistryFile
+
+/** The product's canonical UI display names where they differ from the generated Creator Master's `displayName`. Display text only: the
+ * creator's id, channel, matching and every backend value are untouched. The Hololive group channel is shown in full everywhere -- never
+ * shortened -- as "hololive ホロライブ - VTuber Group". */
+const DISPLAY_NAME_OVERRIDES: Readonly<Record<string, string>> = {
+  hololive_official: "hololive ホロライブ - VTuber Group",
+}
+
+const registry: CreatorMasterRegistryFile = {
+  ...generatedRegistry,
+  creators: generatedRegistry.creators.map((creator) =>
+    creator.creatorId in DISPLAY_NAME_OVERRIDES ? { ...creator, displayName: DISPLAY_NAME_OVERRIDES[creator.creatorId] } : creator,
+  ),
+}
 
 /** Legacy frontend roster ids are "ch_" + creatorId (e.g. "ch_aizawa_ema" for
  * creatorId "aizawa_ema") -- same convention backendComparisonSource.ts and

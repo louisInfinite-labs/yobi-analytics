@@ -90,13 +90,13 @@ describe("B23: Short filter placement and labels", () => {
   it("sits immediately before Other, and every other filter keeps its order", async () => {
     await renderWithTopics("en")
 
-    expect(tagLabels()).toEqual(["ALL", "Latest Videos", "Latest Live", "VALO", "SF6", "MV", "Short", "Other"])
+    expect(tagLabels()).toEqual(["ALL", "Latest Videos", "Latest Live", "MV", "SF6", "VALO", "Short", "Other"])
   })
 
   it.each([
-    ["zh-TW", ["ALL", "最新影片", "最新直播", "VALO", "SF6", "MV", "Short", "其他"]],
-    ["en", ["ALL", "Latest Videos", "Latest Live", "VALO", "SF6", "MV", "Short", "Other"]],
-    ["ja", ["ALL", "最新動画", "最新配信", "VALO", "SF6", "MV", "ショット", "その他"]],
+    ["zh-TW", ["ALL", "最新影片", "最新直播", "MV", "SF6", "VALO", "Short", "其他"]],
+    ["en", ["ALL", "Latest Videos", "Latest Live", "MV", "SF6", "VALO", "Short", "Other"]],
+    ["ja", ["ALL", "最新動画", "最新配信", "MV", "SF6", "VALO", "ショット", "その他"]],
   ] as const)("%s labels: Short is %s's exact label directly left of Other", async (locale, expected) => {
     await renderWithTopics(locale)
 
