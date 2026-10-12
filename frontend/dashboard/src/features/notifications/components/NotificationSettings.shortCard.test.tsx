@@ -73,7 +73,7 @@ describe("the Short card in the '+ Add topic' dropdown", () => {
     await addShortCard(user)
 
     const names = [...document.querySelectorAll(".notification-topic-item__name")].map((el) => el.textContent)
-    expect(names).toEqual(["All", "SF6", "VALO", "Apex", "Minecraft", "Short"])
+    expect(names).toEqual(["All", "Apex", "Minecraft", "SF6", "VALO", "Short"])
     const detail = within(document.querySelector(".notification-detail-panel") as HTMLElement)
     expect(detail.getByRole("heading", { level: 2, name: "Short" })).toBeInTheDocument()
     expect(detail.queryByRole("radio", { name: "Live + New Video" })).not.toBeInTheDocument()

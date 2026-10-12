@@ -15,18 +15,17 @@ const TOPICS: BackendVideoTopic[] = [
 ]
 
 describe("buildVideoFilterEntries (the one filter list shared by Home and the push settings)", () => {
-  it("orders the topics as the backend does with Short immediately before Other", () => {
-    expect(buildVideoFilterEntries(TOPICS, "en").map((entry) => entry.id)).toEqual([
-      "valorant",
-      "sf6",
-      "apex",
-      "minecraft",
-      "singing",
-      "mv",
-      "chatting",
-      "short",
-      "other",
-    ])
+  it("uses the product display order -- 雑談, 歌回, MV, Apex, Minecraft, SF6, VALO, Short, その他 -- whatever order the backend returned", () => {
+    const expected = ["chatting", "singing", "mv", "apex", "minecraft", "sf6", "valorant", "short", "other"]
+    expect(buildVideoFilterEntries(TOPICS, "en").map((entry) => entry.id)).toEqual(expected)
+    expect(buildVideoFilterEntries([...TOPICS].reverse(), "en").map((entry) => entry.id)).toEqual(expected)
+  })
+
+  it("keeps every topic key unchanged (only the order differs) and places a topic the backend adds later after the known ones, before Short and Other", () => {
+    const withNew = [...TOPICS.slice(0, 7), { id: "gaming_news", labels: { en: "News" } }, TOPICS[7]]
+    const ids = buildVideoFilterEntries(withNew, "en").map((entry) => entry.id)
+    expect(ids).toEqual(["chatting", "singing", "mv", "apex", "minecraft", "sf6", "valorant", "gaming_news", "short", "other"])
+    expect([...ids].sort()).toEqual([...withNew.map((topic) => topic.id), "short"].sort())
   })
 
   it("labels Short Short / Short / ショット in zh-TW / en / ja", () => {
@@ -52,7 +51,7 @@ describe("buildVideoFilterEntries (the one filter list shared by Home and the pu
   })
 
   it("puts Short last when the backend has no Other topic, and is only Short while the topics have not loaded", () => {
-    expect(buildVideoFilterEntries(TOPICS.slice(0, 2), "en").map((entry) => entry.id)).toEqual(["valorant", "sf6", "short"])
+    expect(buildVideoFilterEntries(TOPICS.slice(0, 2), "en").map((entry) => entry.id)).toEqual(["sf6", "valorant", "short"])
     expect(buildVideoFilterEntries(null, "en").map((entry) => entry.id)).toEqual(["short"])
   })
 })

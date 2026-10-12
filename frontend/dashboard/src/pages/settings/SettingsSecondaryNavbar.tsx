@@ -1,6 +1,5 @@
 import { useLocale } from "../../shared/i18n/hooks/useLocale"
 import { t, type TranslationKey } from "../../shared/i18n/translations"
-import { LanguagePicker } from "../../shared/i18n/components/LanguagePicker"
 
 export type SettingsSection = "myOshi" | "oshi" | "notification" | "display"
 
@@ -9,9 +8,8 @@ export type SettingsSection = "myOshi" | "oshi" | "notification" | "display"
  * pre-existing Favorites List (oshi, this feature's own original "oshi"
  * section id -- kept as-is since nothing besides its own display label
  * changed) and Notification Settings. Language switching isn't a nav
- * section/page of its own -- LanguagePicker below is pinned to this
- * navbar's own bottom instead, always visible regardless of which section
- * is active. */
+ * section/page of its own: it is the last item of Display Settings
+ * (see DisplaySettings.tsx). */
 const NAV_ITEMS: { section: SettingsSection; labelKey: TranslationKey }[] = [
   { section: "myOshi", labelKey: "settingsSecondaryNavbar.myOshiSettings" },
   { section: "oshi", labelKey: "settingsSecondaryNavbar.oshiSettings" },
@@ -51,7 +49,6 @@ export function SettingsSecondaryNavbar({
           {t(locale, item.labelKey)}
         </button>
       ))}
-      <LanguagePicker />
     </nav>
   )
 }

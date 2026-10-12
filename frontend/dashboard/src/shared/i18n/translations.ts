@@ -179,6 +179,8 @@ export type TranslationKey =
   | "displaySettings.timeFormat12h"
   | "displaySettings.upcomingLabel"
   | "displaySettings.upcomingHelp"
+  | "displaySettings.languageLabel"
+  | "displaySettings.languageHelp"
   | "displaySettings.upcomingCountdownOption"
   | "notificationToggle.enable"
   | "notificationToggle.on"
@@ -258,7 +260,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveScheduleDock.resize.expand": "放大",
     "liveScheduleDock.resize.shrinkAria": "縮小面板",
     "liveScheduleDock.resize.expandAria": "展開面板至全高",
-    "oshiStatus.liveNext": "直播／接下來",
+    "oshiStatus.liveNext": "直播／接下來 24小時內",
     "oshiStatus.noScheduledStream": "尚無排定的直播",
     "oshiStatus.liveNow": "直播中",
     "oshiStatus.sinceLastVisit": "自上次造訪後",
@@ -386,6 +388,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.timeFormat12h": "12 小時制（AM/PM）",
     "displaySettings.upcomingLabel": "即將到來的直播",
     "displaySettings.upcomingHelp": "設定即將到來的直播時間的顯示格式。",
+    "displaySettings.languageLabel": "語言設定",
+    "displaySettings.languageHelp": "選擇 OshiYobi 的顯示語言。",
     "displaySettings.upcomingCountdownOption": "倒數計時",
     "notificationToggle.enable": "開啟通知",
     "notificationToggle.on": "通知已開啟",
@@ -464,7 +468,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveScheduleDock.resize.expand": "Expand",
     "liveScheduleDock.resize.shrinkAria": "Shrink panel",
     "liveScheduleDock.resize.expandAria": "Expand panel to full height",
-    "oshiStatus.liveNext": "Live / Next",
+    "oshiStatus.liveNext": "Live / Next 24 Hours",
     "oshiStatus.noScheduledStream": "No scheduled stream",
     "oshiStatus.liveNow": "LIVE NOW",
     "oshiStatus.sinceLastVisit": "Since your last visit",
@@ -592,6 +596,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.timeFormat12h": "12-hour (AM/PM)",
     "displaySettings.upcomingLabel": "Upcoming streams",
     "displaySettings.upcomingHelp": "Choose how upcoming stream times are shown.",
+    "displaySettings.languageLabel": "Language",
+    "displaySettings.languageHelp": "Choose the display language for OshiYobi.",
     "displaySettings.upcomingCountdownOption": "Countdown",
     "notificationToggle.enable": "Enable notifications",
     "notificationToggle.on": "Notifications on",
@@ -670,7 +676,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveScheduleDock.resize.expand": "拡大",
     "liveScheduleDock.resize.shrinkAria": "パネルを縮小",
     "liveScheduleDock.resize.expandAria": "パネルを全画面に拡大",
-    "oshiStatus.liveNext": "配信中／次回",
+    "oshiStatus.liveNext": "ライブ／今後24時間以内",
     "oshiStatus.noScheduledStream": "予定されている配信はありません",
     "oshiStatus.liveNow": "配信中",
     "oshiStatus.sinceLastVisit": "前回の訪問から",
@@ -798,6 +804,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "displaySettings.timeFormat12h": "12 時間制（AM/PM）",
     "displaySettings.upcomingLabel": "今後の配信",
     "displaySettings.upcomingHelp": "今後の配信時間の表示形式を設定します。",
+    "displaySettings.languageLabel": "言語設定",
+    "displaySettings.languageHelp": "OshiYobi の表示言語を選択します。",
     "displaySettings.upcomingCountdownOption": "カウントダウン",
     "notificationToggle.enable": "通知をオンにする",
     "notificationToggle.on": "通知オン",

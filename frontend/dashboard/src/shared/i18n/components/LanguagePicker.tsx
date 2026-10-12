@@ -20,9 +20,8 @@ const LANGUAGE_DATA: { locale: Locale; flag: string; labelKey: TranslationKey }[
  * wiring selection to useLocale -- Mantine's own demo has no such
  * app-wide effect, it's just local component state there.
  *
- * Rendered pinned to the bottom of SettingsSecondaryNavbar itself (not a
- * separate nav section/page) -- the dropdown opens upward (`bottom`, not
- * `top`) since the trigger sits at the very bottom of the screen. */
+ * Rendered as the last item of Display Settings (DisplaySettings.tsx); the
+ * dropdown opens downward from the control. */
 export function LanguagePicker() {
   const [locale, setLocale] = useLocale()
   const [open, setOpen] = useState(false)

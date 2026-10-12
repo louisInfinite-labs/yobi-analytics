@@ -12,7 +12,7 @@ import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
 import { getAllNotificationCreators, type NotificationCreator } from "../model/notificationCreatorGrouping"
 import { useNotificationTopicCatalog } from "../hooks/useNotificationTopicCatalog"
-import type { VideoFilterEntry } from "../../home-room/model/videoFilterCatalog"
+import { filterDisplayRank, type VideoFilterEntry } from "../../home-room/model/videoFilterCatalog"
 import { ALL_TOPICS_ID, getSelectableTopics, isPermanentTopic, isShortCard, type TopicCatalogId } from "../model/notificationTopicCatalog"
 import type { TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
@@ -292,7 +292,8 @@ export function NotificationSettings() {
   )
 
   const orderedTopicIds = useMemo(() => {
-    if (sortMode === "saved") return savedTopicIds
+    // "Default order" is the shared display order (ALL, then the same category order as Home); cards the user added keep a stable place in it.
+    if (sortMode === "saved") return [...savedTopicIds].sort((a, b) => filterDisplayRank(a) - filterDisplayRank(b))
     return [...savedTopicIds].sort((a, b) => topicLabelFor(entries, locale, a).localeCompare(topicLabelFor(entries, locale, b), locale))
   }, [savedTopicIds, sortMode, locale, entries])
 
