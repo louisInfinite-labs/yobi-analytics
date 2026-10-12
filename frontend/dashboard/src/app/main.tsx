@@ -9,6 +9,9 @@ import './navigation/styles/main-navbar.css'
 import '../pages/settings/styles/settings.css'
 import '../pages/about/styles/about.css'
 import App from './App.tsx'
+import { initAnalytics } from '../shared/analytics/analytics'
+
+void initAnalytics()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

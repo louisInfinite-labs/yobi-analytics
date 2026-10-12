@@ -7,6 +7,7 @@ import { LiveScheduleDock } from "../features/live-status/components/LiveSchedul
 import { MainNavbar } from "./navigation/MainNavbar"
 import { SettingsPage } from "../pages/settings/SettingsPage"
 import { useCurrentPage } from "./navigation/useCurrentPage"
+import { usePageViewTracking } from "./navigation/usePageViewTracking"
 import { MemberThemeProvider } from "../shared/theme/MemberThemeProvider"
 import { useNotificationLocaleSync } from "../features/notifications/hooks/useNotificationLocaleSync"
 import { useRetiredTopicResync } from "../features/notifications/hooks/useRetiredTopicResync"
@@ -33,6 +34,7 @@ function isAdminRoute(): boolean {
  * of the normal MainNavbar-driven nav. */
 function App() {
   const [page] = useCurrentPage()
+  usePageViewTracking(page, !isAdminRoute())
   useRetiredTopicResync()
   useNotificationLocaleSync()
   if (isAdminRoute()) {

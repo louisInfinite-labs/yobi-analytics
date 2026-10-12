@@ -160,6 +160,26 @@ class TestLocalBackedRealContent:
             assert "](https://policies.google.com/privacy)" in privacy
             assert "](https://www.youtube.com/t/terms)" in terms
 
+    def test_privacy_discloses_google_analytics_in_every_locale(self, local_real_content):
+        """The privacy page must say Google Analytics is used: its own non-empty section with the Google data-use link and an opt-out route,
+        and the intro (before the first section) must mention it too."""
+        payload = get_about_content()
+        headings = {
+            "zh-TW": "## 使用情況分析（Google Analytics）",
+            "ja": "## 利用状況の分析（Google アナリティクス）",
+            "en": "## Usage analytics (Google Analytics)",
+        }
+        section_break = chr(10) + "## "
+        for locale, heading in headings.items():
+            privacy = next(p for p in payload["locales"][locale]["pages"] if p["id"] == "privacy")["markdown"]
+            assert privacy.count(heading) == 1, locale
+            section = privacy.split(heading, 1)[1].split(section_break, 1)[0]
+            assert "](https://policies.google.com/technologies/partner-sites)" in section
+            assert "](https://tools.google.com/dlpage/gaoptout)" in section
+            assert len([block for block in section.split(chr(10) * 2) if block.strip()]) >= 4, locale  # real paragraphs, not an empty heading
+            intro = privacy.split(section_break, 1)[0]
+            assert "Google" in intro, locale
+
     def test_contact_section_and_placeholder_are_gone_from_every_locale(self, local_real_content):
         """The contact section is intentionally absent for now (no contact method is published): neither the heading nor the bare
         placeholder may be shipped in any language, and a placeholder, if one is ever added back, must never become a link."""
