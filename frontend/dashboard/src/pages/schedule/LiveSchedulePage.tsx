@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react"
-import { getCreatorById } from "../../entities/creator/data/creatorRegistry"
-import { mockCreators } from "../../entities/creator/data/mockCreators"
 import { useFavoriteCreators } from "../../features/favorites/hooks/useFavoriteCreators"
 import { buildCreatorFilterOptions } from "../../features/live-schedule/model/scheduleCreatorFilter"
 import { ScheduleGrid } from "../../features/live-schedule/components/ScheduleGrid"
 import { ScheduleToolbar } from "../../features/live-schedule/components/ScheduleToolbar"
 import { StreamDetailModal } from "../../features/live-schedule/components/StreamDetailModal"
 import { StreamNotificationPanel } from "../../features/live-schedule/components/StreamNotificationPanel"
+import { getScheduleCreatorName } from "../../features/live-schedule/utils/scheduleCreatorName"
 import { useWeeklySchedule } from "../../features/live-schedule/hooks/useWeeklySchedule"
 import type { ScheduledStream } from "../../features/live-schedule/model/scheduledStream"
 import { VideoPlayerModal } from "../../features/media-player/components/VideoPlayerModal"
@@ -26,10 +25,7 @@ export function LiveSchedulePage() {
   const { favorites } = useFavoriteCreators()
   const creatorOptions = useMemo(
     () =>
-      buildCreatorFilterOptions(allStreams, selectedSet, favorites, (channelId) => {
-        const mock = mockCreators.find((creator) => creator.channelId === channelId)
-        return mock?.channelName ?? getCreatorById(channelId.replace(/^ch_/, ""))?.displayName ?? channelId
-      }),
+      buildCreatorFilterOptions(allStreams, selectedSet, favorites, getScheduleCreatorName),
     [allStreams, selectedSet, favorites],
   )
   const [selectedStream, setSelectedStream] = useState<ScheduledStream | null>(null)

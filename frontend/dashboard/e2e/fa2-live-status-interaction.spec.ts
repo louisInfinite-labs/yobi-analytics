@@ -110,7 +110,7 @@ test("switching the selected creator updates Home's Oshi Status panel, and survi
   // confirmOshiSwitch defaults to true (no prior "Don't ask again") --
   // switching from the Live Status list goes through the real
   // OshiSwitchConfirmDialog exactly as a user would.
-  const confirmDialog = page.getByRole("dialog", { name: 'Switch your Oshi to "兎田ぺこら"?' })
+  const confirmDialog = page.getByRole("dialog", { name: 'Switch the screen to "兎田ぺこら"?' })
   await expect(confirmDialog).toBeVisible()
   await confirmDialog.getByRole("button", { name: "Switch" }).click()
   await expect(confirmDialog).toBeHidden()

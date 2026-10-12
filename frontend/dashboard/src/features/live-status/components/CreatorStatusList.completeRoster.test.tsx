@@ -332,7 +332,7 @@ describe("Live Status rows of group/staff/official channels stay clickable (they
     await user.click(screen.getByRole("button", { name: `Switch Oshi to ${nameOf("vspo_official")}` }))
 
     expect(onSelectCreator).not.toHaveBeenCalled()
-    expect(screen.getByText(/Switch your Oshi to/)).toBeInTheDocument()
+    expect(screen.getByText(/Switch the screen to/)).toBeInTheDocument()
   })
 
   it("selecting a live non-member's video switches the current channel first, exactly like an individual row", async () => {
@@ -365,7 +365,7 @@ describe("Live Status rows of group/staff/official channels stay clickable (they
     await user.click(row.querySelector(".live-status-member__status")!)
 
     // Same confirm-before-switch flow an individual creator gets; nothing is selected until it is confirmed.
-    expect(screen.getByText(/Switch your Oshi to/)).toBeInTheDocument()
+    expect(screen.getByText(/Switch the screen to/)).toBeInTheDocument()
     expect(onSelectCreator).not.toHaveBeenCalled()
     expect(onSelectVideo).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: /^Switch$/ }))
