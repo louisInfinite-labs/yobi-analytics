@@ -1,15 +1,13 @@
 import { useLayoutEffect, useRef } from "react"
 import { HiddenStreamsPopover } from "./HiddenStreamsPopover"
 import { getScheduleCreatorAvatarVisual } from "../utils/creatorAvatar"
-import { mockCreators } from "../../../entities/creator/data/mockCreators"
+import { getScheduleCreatorName } from "../utils/scheduleCreatorName"
 import { SLOT_COUNT, initialScrollSlotIndex, slotLabel } from "../model/scheduleGrid"
 import type { ScheduleDay } from "../hooks/useWeeklySchedule"
 import type { ScheduledStream } from "../model/scheduledStream"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { formatClockTime } from "../../../shared/i18n/model/timeFormat"
-
-const creatorsById = new Map(mockCreators.map((creator) => [creator.channelId, creator]))
 
 // Spec: up to 3 avatars shown once a slot has more than 4 streams, with a
 // "+N" pill for the rest -- 4 or fewer streams in one slot show every avatar.
@@ -32,8 +30,7 @@ function StreamAvatarGroup({ streams, locale, onSelectStream }: { streams: Sched
   return (
     <div className="stream-avatar-group">
       {visibleStreams.map((stream) => {
-        const creator = creatorsById.get(stream.channelId)
-        const visual = getScheduleCreatorAvatarVisual(stream.channelId, creator?.channelName ?? stream.channelId)
+        const visual = getScheduleCreatorAvatarVisual(stream.channelId, getScheduleCreatorName(stream.channelId))
         return (
           <div key={stream.id} className="stream-avatar-item">
             {stream.status === "live" && <span className="stream-avatar-live-badge">{t(locale, "liveSchedule.liveBadge")}</span>}

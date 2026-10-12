@@ -216,7 +216,7 @@ export type TranslationKey =
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
     "common.cancel": "取消",
-    "oshiSwitch.confirmMessage": "要將推し切換為「{{creatorName}}」嗎？",
+    "oshiSwitch.confirmMessage": "要將畫面切換到「{{creatorName}}」嗎？",
     "oshiSwitch.confirmAction": "切換",
     "oshiSwitch.dontAskAgain": "以後不再提示",
     "favorite.add": "加入收藏",
@@ -424,7 +424,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   },
   en: {
     "common.cancel": "Cancel",
-    "oshiSwitch.confirmMessage": 'Switch your Oshi to "{{creatorName}}"?',
+    "oshiSwitch.confirmMessage": 'Switch the screen to "{{creatorName}}"?',
     "oshiSwitch.confirmAction": "Switch",
     "oshiSwitch.dontAskAgain": "Don't ask again",
     "favorite.add": "Add Favorite",
@@ -632,7 +632,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   },
   ja: {
     "common.cancel": "キャンセル",
-    "oshiSwitch.confirmMessage": "「{{creatorName}}」に推しを切り替えますか？",
+    "oshiSwitch.confirmMessage": "画面を「{{creatorName}}」に切り替えますか？",
     "oshiSwitch.confirmAction": "切り替える",
     "oshiSwitch.dontAskAgain": "今後この確認を表示しない",
     "favorite.add": "お気に入りに追加",

@@ -3,15 +3,15 @@ import { t } from "./translations"
 
 describe("t", () => {
   it("substitutes {{creatorName}} in the zh-TW confirm message", () => {
-    expect(t("zh-TW", "oshiSwitch.confirmMessage", { creatorName: "藍沢エマ" })).toBe("要將推し切換為「藍沢エマ」嗎？")
+    expect(t("zh-TW", "oshiSwitch.confirmMessage", { creatorName: "藍沢エマ" })).toBe("要將畫面切換到「藍沢エマ」嗎？")
   })
 
   it("substitutes {{creatorName}} in the en confirm message", () => {
-    expect(t("en", "oshiSwitch.confirmMessage", { creatorName: "藍沢エマ" })).toBe('Switch your Oshi to "藍沢エマ"?')
+    expect(t("en", "oshiSwitch.confirmMessage", { creatorName: "藍沢エマ" })).toBe('Switch the screen to "藍沢エマ"?')
   })
 
   it("substitutes {{creatorName}} in the ja confirm message", () => {
-    expect(t("ja", "oshiSwitch.confirmMessage", { creatorName: "藍沢エマ" })).toBe("「藍沢エマ」に推しを切り替えますか？")
+    expect(t("ja", "oshiSwitch.confirmMessage", { creatorName: "藍沢エマ" })).toBe("画面を「藍沢エマ」に切り替えますか？")
   })
 
   it("returns a key with no placeholders unchanged when no params are given", () => {

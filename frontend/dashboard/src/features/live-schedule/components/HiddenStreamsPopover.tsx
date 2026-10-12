@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { useUpcomingDisplayMode } from "../../live-status/hooks/useUpcomingDisplayMode"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { t, type Locale } from "../../../shared/i18n/translations"
@@ -8,8 +7,7 @@ import { useMinuteClock } from "../../../shared/time/minuteClock"
 import { streamStartText } from "../model/streamStartText"
 import type { ScheduledStream } from "../model/scheduledStream"
 import { getScheduleCreatorAvatarVisual } from "../utils/creatorAvatar"
-
-const creatorsById = new Map(mockCreators.map((creator) => [creator.channelId, creator]))
+import { getScheduleCreatorName } from "../utils/scheduleCreatorName"
 
 /** Keeps the popover open for a moment after the pointer leaves, so crossing the small gap between the "+N" trigger and the panel never
  * closes it. */
@@ -28,8 +26,7 @@ function HiddenStreamRow({ stream, locale, now, onOpen }: { stream: ScheduledStr
   const [displayMode] = useUpcomingDisplayMode()
   const [timeFormat] = useTimeFormat()
   const [thumbFailed, setThumbFailed] = useState(false)
-  const creator = creatorsById.get(stream.channelId)
-  const name = creator?.channelName ?? stream.channelId
+  const name = getScheduleCreatorName(stream.channelId)
   const visual = getScheduleCreatorAvatarVisual(stream.channelId, name)
   const startText = streamStartText(stream, locale, now.getTime(), displayMode, timeFormat)
 

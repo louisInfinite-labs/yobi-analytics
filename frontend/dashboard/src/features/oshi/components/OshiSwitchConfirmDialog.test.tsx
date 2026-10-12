@@ -6,17 +6,17 @@ import { OshiSwitchConfirmDialog } from "./OshiSwitchConfirmDialog"
 describe("OshiSwitchConfirmDialog", () => {
   it("renders the localized confirm message with the creator name substituted", () => {
     render(<OshiSwitchConfirmDialog creatorName="藍沢エマ" locale="en" onCancel={vi.fn()} onConfirm={vi.fn()} />)
-    expect(screen.getByText('Switch your Oshi to "藍沢エマ"?')).toBeInTheDocument()
+    expect(screen.getByText('Switch the screen to "藍沢エマ"?')).toBeInTheDocument()
   })
 
   it("renders in zh-TW and ja too", () => {
     const { rerender } = render(
       <OshiSwitchConfirmDialog creatorName="藍沢エマ" locale="zh-TW" onCancel={vi.fn()} onConfirm={vi.fn()} />,
     )
-    expect(screen.getByText("要將推し切換為「藍沢エマ」嗎？")).toBeInTheDocument()
+    expect(screen.getByText("要將畫面切換到「藍沢エマ」嗎？")).toBeInTheDocument()
 
     rerender(<OshiSwitchConfirmDialog creatorName="藍沢エマ" locale="ja" onCancel={vi.fn()} onConfirm={vi.fn()} />)
-    expect(screen.getByText("「藍沢エマ」に推しを切り替えますか？")).toBeInTheDocument()
+    expect(screen.getByText("画面を「藍沢エマ」に切り替えますか？")).toBeInTheDocument()
   })
 
   it("Cancel closes without confirming, even when the checkbox was checked first", async () => {
@@ -59,7 +59,7 @@ describe("OshiSwitchConfirmDialog", () => {
     const onCancel = vi.fn()
     render(<OshiSwitchConfirmDialog creatorName="藍沢エマ" locale="en" onCancel={onCancel} onConfirm={vi.fn()} />)
     const user = userEvent.setup()
-    await user.click(screen.getByText('Switch your Oshi to "藍沢エマ"?'))
+    await user.click(screen.getByText('Switch the screen to "藍沢エマ"?'))
     expect(onCancel).not.toHaveBeenCalled()
 
     // Portalled to <body>, so it is outside render()'s own container.

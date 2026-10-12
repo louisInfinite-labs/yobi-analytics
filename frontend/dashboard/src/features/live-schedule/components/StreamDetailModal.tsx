@@ -1,14 +1,12 @@
 import { useState } from "react"
 import { Modal } from "antd"
 import { getScheduleCreatorAvatarVisual } from "../utils/creatorAvatar"
-import { mockCreators } from "../../../entities/creator/data/mockCreators"
+import { getScheduleCreatorName } from "../utils/scheduleCreatorName"
 import { shouldShowLiveBadge, type ScheduledStream } from "../model/scheduledStream"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { streamStartText } from "../model/streamStartText"
 import { useUpcomingDisplayMode } from "../../live-status/hooks/useUpcomingDisplayMode"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
-
-const creatorsById = new Map(mockCreators.map((creator) => [creator.channelId, creator]))
 
 interface StreamDetailModalProps {
   stream: ScheduledStream | null
@@ -46,8 +44,8 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream, 
   const [displayMode] = useUpcomingDisplayMode()
   const [timeFormat] = useTimeFormat()
   if (!stream) return null
-  const creator = creatorsById.get(stream.channelId)
-  const visual = getScheduleCreatorAvatarVisual(stream.channelId, creator?.channelName ?? stream.channelId)
+  const creatorName = getScheduleCreatorName(stream.channelId)
+  const visual = getScheduleCreatorAvatarVisual(stream.channelId, creatorName)
   const showLiveBadge = shouldShowLiveBadge(stream.status, stream.scheduledStartMs, now.getTime())
   const isLive = stream.status === "live"
   const started = streamStartText(stream, locale, now.getTime(), displayMode, timeFormat)
@@ -63,7 +61,7 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream, 
           </span>
 
           <div className="creator-detail-identity">
-            <div className="creator-detail-name">{creator?.channelName ?? stream.channelId}</div>
+            <div className="creator-detail-name">{creatorName}</div>
           </div>
 
           <div className="creator-live-state">

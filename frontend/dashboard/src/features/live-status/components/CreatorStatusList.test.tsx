@@ -131,7 +131,7 @@ describe("CreatorStatusList Oshi-switch confirmation", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Switch Oshi to 藍沢エマ" }))
     expect(onSelectCreator).not.toHaveBeenCalled()
-    expect(screen.getByText('Switch your Oshi to "藍沢エマ"?')).toBeInTheDocument()
+    expect(screen.getByText('Switch the screen to "藍沢エマ"?')).toBeInTheDocument()
   })
 
   it("Cancel closes the dialog without switching or saving the preference, even if the checkbox was checked", async () => {
@@ -142,7 +142,7 @@ describe("CreatorStatusList Oshi-switch confirmation", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }))
     expect(onSelectCreator).not.toHaveBeenCalled()
     expect(onConfirmOshiSwitchChange).not.toHaveBeenCalled()
-    expect(screen.queryByText('Switch your Oshi to "藍沢エマ"?')).not.toBeInTheDocument()
+    expect(screen.queryByText('Switch the screen to "藍沢エマ"?')).not.toBeInTheDocument()
   })
 
   it("Switch without checking the box switches but does not save the preference", async () => {
@@ -169,7 +169,7 @@ describe("CreatorStatusList Oshi-switch confirmation", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Switch Oshi to 藍沢エマ" }))
     expect(onSelectCreator).toHaveBeenCalledWith("ch_aizawa_ema")
-    expect(screen.queryByText('Switch your Oshi to "藍沢エマ"?')).not.toBeInTheDocument()
+    expect(screen.queryByText('Switch the screen to "藍沢エマ"?')).not.toBeInTheDocument()
   })
 })
 
@@ -188,7 +188,7 @@ describe("CreatorStatusList video selection for a different creator", () => {
     await user.click(screen.getAllByRole("button", { name: /LIVE/ })[0])
     expect(onSelectCreator).not.toHaveBeenCalled()
     expect(onSelectVideo).not.toHaveBeenCalled()
-    expect(screen.getByText('Switch your Oshi to "白上フブキ"?')).toBeInTheDocument()
+    expect(screen.getByText('Switch the screen to "白上フブキ"?')).toBeInTheDocument()
   })
 
   it("Cancel leaves both currentOshi and the selected video unchanged", async () => {
@@ -215,7 +215,7 @@ describe("CreatorStatusList video selection for a different creator", () => {
     await user.click(screen.getAllByRole("button", { name: /LIVE/ })[0])
     expect(onSelectCreator).toHaveBeenCalledWith("ch_shirakami_fubuki")
     expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "v2", title: "t2" }, "ch_shirakami_fubuki")
-    expect(screen.queryByText('Switch your Oshi to "白上フブキ"?')).not.toBeInTheDocument()
+    expect(screen.queryByText('Switch the screen to "白上フブキ"?')).not.toBeInTheDocument()
   })
 })
 
@@ -275,7 +275,7 @@ describe("CreatorStatusList swipe-to-favorite", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Switch Oshi to 藍沢エマ" }))
     expect(onSelectCreator).not.toHaveBeenCalled() // gated behind the confirm dialog, not suppressed
-    expect(screen.getByText('Switch your Oshi to "藍沢エマ"?')).toBeInTheDocument()
+    expect(screen.getByText('Switch the screen to "藍沢エマ"?')).toBeInTheDocument()
   })
 
   it("N: with movement below 8px, a LIVE status click still opens the existing YouTube flow", async () => {
