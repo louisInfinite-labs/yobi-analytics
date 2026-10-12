@@ -156,7 +156,7 @@ describe("Language Settings lives in Display Settings, as its last item", () => 
     render(<DisplaySettings />)
 
     await user.click(screen.getByRole("button", { name: /English/ }))
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["🇭🇰Traditional Chinese", "🇬🇧English", "🇯🇵Japanese"])
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["🇭🇰Traditional Chinese", "ENEnglish", "🇯🇵Japanese"])
 
     await user.click(screen.getByRole("menuitem", { name: "Japanese" }))
 

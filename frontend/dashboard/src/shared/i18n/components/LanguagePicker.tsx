@@ -5,7 +5,7 @@ import { t, type Locale, type TranslationKey } from "../translations"
 
 const LANGUAGE_DATA: { locale: Locale; flag: string; labelKey: TranslationKey }[] = [
   { locale: "zh-TW", flag: "🇭🇰", labelKey: "languageSettings.picker.zhTW" },
-  { locale: "en", flag: "🇬🇧", labelKey: "languageSettings.picker.en" },
+  { locale: "en", flag: "EN", labelKey: "languageSettings.picker.en" },
   { locale: "ja", flag: "🇯🇵", labelKey: "languageSettings.picker.ja" },
 ]
 

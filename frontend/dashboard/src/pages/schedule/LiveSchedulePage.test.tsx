@@ -22,16 +22,16 @@ describe("LiveSchedulePage", () => {
 
     expect(screen.getByText("Live Schedule")).toBeInTheDocument()
     expect(screen.getByText("Time")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Previous week" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Next week" })).toBeInTheDocument()
+    expect(container.querySelector(".week-selector__label")).toBeInTheDocument()
     expect(container.querySelectorAll(".day-column")).toHaveLength(7)
   })
 
-  it("keeps the week-navigation controls disabled (no history/beyond-7-day data to page into) while the creator filter is a live control", () => {
-    render(<LiveSchedulePage />)
+  it("shows the 7-day range as plain text with no previous/next week controls (no history/beyond-7-day data to page into) while the creator filter is a live control", () => {
+    const { container } = render(<LiveSchedulePage />)
 
-    expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "Previous week" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Next week" })).not.toBeInTheDocument()
+    expect(container.querySelector(".week-selector")?.querySelectorAll("button")).toHaveLength(0)
     expect(screen.getByRole("button", { name: "Filter by creator" })).toBeEnabled()
     expect(screen.queryByText("JST")).not.toBeInTheDocument()
   })
