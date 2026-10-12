@@ -21,7 +21,14 @@ interface RegisteredStore {
 
 const registeredStores: RegisteredStore[] = []
 
-export function createSharedState<T>(storageKey: string, read: () => T, serialize: (value: T) => string): SharedState<T> {
+/** `getStorage` picks the Web Storage the value is written through to (localStorage by default; sessionStorage for state that must end with
+ * the browser session; null for a purely in-memory value that something else persists). */
+export function createSharedState<T>(
+  storageKey: string,
+  read: () => T,
+  serialize: (value: T) => string,
+  getStorage: (() => Storage) | null = () => window.localStorage,
+): SharedState<T> {
   let value = read()
   const listeners = new Set<() => void>()
 
@@ -31,7 +38,7 @@ export function createSharedState<T>(storageKey: string, read: () => T, serializ
       if (next === value) return
       value = next
       try {
-        window.localStorage.setItem(storageKey, serialize(next))
+        getStorage?.().setItem(storageKey, serialize(next))
       } catch {
         // Best-effort persistence, matching every consumer's own
         // pre-existing reasoning — a failed write still updates every

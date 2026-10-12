@@ -3,7 +3,7 @@ import { ConfigProvider, Segmented } from "antd"
 import { Search } from "lucide-react"
 import { CreatorStatusList } from "./CreatorStatusList"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
-import { useCurrentPage } from "../../../app/navigation/useCurrentPage"
+import { selectCreator, switchCreatorForVideo, useCurrentPage } from "../../../app/navigation/useCurrentPage"
 import { useConfirmOshiSwitchPreference } from "../../oshi/hooks/useConfirmOshiSwitchPreference"
 import { useCreatorStatuses } from "../hooks/useCreatorStatuses"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
@@ -82,7 +82,7 @@ export function LiveScheduleDock() {
   const [displayMode] = useUpcomingDisplayMode()
   const { statuses, now } = useCreatorStatuses()
   const { favorites, toggleFavorite } = useFavoriteCreators()
-  const [selectedCreatorId, setSelectedCreatorId] = useSelectedCreator()
+  const [selectedCreatorId] = useSelectedCreator()
   // The one lookup into the canonical Creator Registry needed to bind this
   // dock's own theme wrapper below -- see creatorThemeStyle's own docstring
   // for why it takes the resolved themeColor instead of doing this same
@@ -259,7 +259,8 @@ export function LiveScheduleDock() {
                 favoriteOnlyIds={favoriteOnlyIds}
                 favorites={favorites}
                 onToggleFavorite={toggleFavorite}
-                onSelectCreator={setSelectedCreatorId}
+                onSelectCreator={selectCreator}
+                onSelectCreatorForVideo={switchCreatorForVideo}
                 locale={locale}
                 confirmOshiSwitch={confirmOshiSwitch}
                 onConfirmOshiSwitchChange={setConfirmOshiSwitch}

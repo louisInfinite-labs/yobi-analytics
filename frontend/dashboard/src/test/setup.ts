@@ -17,6 +17,7 @@ import { resetAboutContentFetchForTests } from "../pages/about/aboutContentFetch
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  window.sessionStorage.clear()
   // lib/sharedState's stores are module-level singletons (needed so every
   // mounted component reacts to the same change immediately, not just
   // components that happen to remount) -- clearing localStorage alone
