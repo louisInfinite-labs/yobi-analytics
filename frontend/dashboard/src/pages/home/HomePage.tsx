@@ -13,8 +13,8 @@ import { OshiStatusPanel } from "../../features/oshi-status/components/OshiStatu
 import { RecentVideosSection } from "../../features/home-room/components/RecentVideosSection"
 
 /** The real, playable YouTube embed for the selected creator -- only
- * rendered when selectLiveEmbedVideo finds something eligible (currently
- * live, or an archive that ended within the last 24h).
+ * rendered when selectLiveEmbedVideo finds something eligible (live, upcoming,
+ * else the latest completed livestream).
  *
  * Desktop autoplays muted: every major browser blocks unmuted autoplay
  * without a user gesture, and this renders on page load / creator switch,
@@ -56,7 +56,7 @@ export function HomePage() {
   // The theme color is read from the canonical Creator Registry (generated from the backend
   // creators.json) -- there is no second, frontend-owned color map to drift from it.
   const { statuses, now } = useCreatorStatuses()
-  // Only the player's auto-selected video (live now / a just-ended archive) reads this pool. The Oshi Videos
+  // Only the player's auto-selected video (live now / upcoming / the latest completed archive) reads this pool. The Oshi Videos
   // shelf and Oshi Status fetch their own backend data for the current creator.
   const streamVideos = useLiveStreamVideoPool(creatorId)
   const breakpoint = useBreakpoint()
@@ -64,7 +64,7 @@ export function HomePage() {
   const status = statuses[creatorId] ?? { kind: "offline" as const }
   // The one shared Home selected-video path -- Oshi Videos, Recent Activity
   // AND Live Status (see useHomeSelectedVideo) all call selectHomeVideo, and
-  // whichever wins overrides the auto-selected live/recent-archive video
+  // whichever wins overrides the auto-selected live/upcoming/latest-archive video
   // below in the SAME central slot, never a second player. Reading it
   // scoped to `creatorId` is what drops a stale previous-creator pick once
   // currentOshi has changed -- see useHomeSelectedVideo's own comment.

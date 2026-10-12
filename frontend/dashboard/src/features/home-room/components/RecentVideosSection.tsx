@@ -462,7 +462,7 @@ function ViewAllButton({ locale }: { locale: Locale }) {
  * (最新影片 = uploads, 最新直播 = completed livestream archives, both newest first). */
 export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSectionProps) {
   const [locale] = useLocale()
-  const [selectedTag, setSelectedTag] = useState<VideoSectionSelection>("latestVideos")
+  const [selectedTag, setSelectedTag] = useState<VideoSectionSelection>("all")
   const [sortOption, setSortOption] = useState<VideoSortOption>("newest")
   const [viewWindow, setViewWindow] = useState<VideoViewWindow>("total")
   const [contentType, setContentType] = useState<VideoContentType>("all")
