@@ -69,14 +69,15 @@ describe("StreamNotificationPanel", () => {
     ).toBeInTheDocument()
   })
 
-  it("the timing choices are the existing shared REMINDER_TIME_VALUES (those 5, in that order) followed by ONE explicit per-stream OFF", async () => {
+  it("the timing choices are exactly the existing shared REMINDER_TIME_VALUES (those 5, in that order) -- no per-stream 'no reminder' option", async () => {
     render(<StreamNotificationPanel stream={stream} onClose={() => {}} />)
     const radios = await screen.findAllByRole("radio")
-    expect(radios).toHaveLength(REMINDER_TIME_VALUES.length + 1)
+    expect(radios).toHaveLength(REMINDER_TIME_VALUES.length)
     REMINDER_TIME_VALUES.forEach((value, index) => {
       expect(radios[index]).toBe(screen.getByRole("radio", { name: LABEL_FOR[value] }))
     })
-    expect(radios[REMINDER_TIME_VALUES.length]).toBe(screen.getByRole("radio", { name: "No reminder for this stream" }))
+    expect(screen.queryByRole("radio", { name: "No reminder for this stream" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/No reminder for this stream/)).not.toBeInTheDocument()
   })
 
   describe("a stream with no reminder at all", () => {
@@ -202,32 +203,14 @@ describe("StreamNotificationPanel", () => {
   describe("per-stream OFF and removing the override", () => {
     const own = (advanceReminder: "1hour" | null, notifyAtStart = true) => ({ creatorId: "aizawa_ema", notifyAtStart, advanceReminder })
 
-    it("saving 'No reminder for this stream' stores an explicit OFF override that replaces the creator's 30min 全部 setting for this stream only", async () => {
-      mockSettings({ creatorAll: { aizawa_ema: setting("30min") } })
-      const user = userEvent.setup({ pointerEventsCheck: 0 })
-      const { rerender } = render(<StreamNotificationPanel stream={stream} onClose={() => {}} />)
-      await waitFor(() => expect(screen.getByRole("radio", { name: "30 minutes before" })).toBeChecked())
-
-      await user.click(screen.getByRole("radio", { name: "No reminder for this stream" }))
-      await user.click(screen.getByRole("button", { name: /Save/ }))
-
-      await waitFor(() =>
-        expect(liveReminderApi.saveStreamNotificationOverride).toHaveBeenCalledWith("v1", { creatorId: "aizawa_ema", notifyAtStart: false, advanceReminder: null }),
-      )
-      rerender(<StreamNotificationPanel stream={null} onClose={() => {}} />)
-      rerender(<StreamNotificationPanel stream={stream} onClose={() => {}} />)
-      await waitFor(() => expect(screen.getByRole("radio", { name: "No reminder for this stream" })).toBeChecked())
-      rerender(<StreamNotificationPanel stream={null} onClose={() => {}} />)
-      rerender(<StreamNotificationPanel stream={otherStream} onClose={() => {}} />)
-      await waitFor(() => expect(screen.getByRole("radio", { name: "30 minutes before" })).toBeChecked())
-    })
-
-    it("an already-stored OFF override opens with 'No reminder for this stream' selected, not a time", async () => {
+    it("a legacy stored OFF override opens with NO option selected and Save disabled (the OFF choice is no longer offered)", async () => {
       mockSettings({ creatorAll: { aizawa_ema: setting("30min") }, streamOverrides: { v1: own(null, false) } })
       render(<StreamNotificationPanel stream={stream} onClose={() => {}} />)
 
-      await waitFor(() => expect(screen.getByRole("radio", { name: "No reminder for this stream" })).toBeChecked())
-      expect(screen.getByRole("radio", { name: "At start" })).not.toBeChecked()
+      await screen.findAllByRole("radio")
+      for (const radio of screen.getAllByRole("radio")) expect(radio).not.toBeChecked()
+      expect(screen.getByRole("button", { name: /Save/ })).toBeDisabled()
+      expect(screen.getByRole("button", { name: "Remove (use creator settings)" })).toBeInTheDocument()
     })
 
     it("a stream with its own override shows 'Remove', which deletes only that override on the backend and falls back to the creator setting", async () => {

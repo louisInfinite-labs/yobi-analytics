@@ -19,7 +19,7 @@ const NO_SELECTION = "__none__"
  * StreamDetailModal's "Set Reminder" button): the SAME reminder-timing
  * control Settings uses for a creator + topic (same REMINDER_TIME_VALUES/
  * labels, same shared-filter-segmented skin) -- applied to exactly ONE stream
- * instead. Deliberately no "unset" option here: it only ever SETS a reminder
+ * instead. Only real reminder timings are offered (no "off" choice): it only ever SETS a reminder
  * for this one stream.
  *
  * Opening this panel never writes anything -- only Save does. The value shown
@@ -53,18 +53,17 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
 
   if (!stream) return null
 
-  const options = [
-    ...REMINDER_TIME_VALUES.map((value) => ({ value: value as StreamReminderChoice, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) })),
-    { value: STREAM_REMINDER_OFF as StreamReminderChoice, label: t(locale, "liveSchedule.streamReminderOff") },
-  ]
+  const options = REMINDER_TIME_VALUES.map((value) => ({ value: value as StreamReminderChoice, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) }))
+  // A previously stored per-stream OFF override is not an offered choice any more: it reads as "nothing selected" here (Remove still clears it).
+  const shown = draft === STREAM_REMINDER_OFF ? null : draft
   const hasOwnOverride = getOverride(stream.videoId) !== null
 
   async function handleSave() {
-    if (!stream || draft === null) return
+    if (!stream || shown === null) return
     setSaving(true)
     setSaveFailed(false)
     try {
-      await saveOverride(stream, draft)
+      await saveOverride(stream, shown)
       onClose()
     } catch {
       // Keep the drawer open (the user's pick is still in `draft`) and say so,
@@ -96,7 +95,7 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
         <p className="stream-reminder-section__description">{t(locale, "liveSchedule.streamReminderExplanationLine2")}</p>
         <Segmented
           className="stream-reminder-options shared-filter-segmented"
-          value={draft ?? NO_SELECTION}
+          value={shown ?? NO_SELECTION}
           options={options}
           onChange={(value) => {
             setDirty(true)
@@ -104,7 +103,7 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
           }}
           aria-label={t(locale, "liveSchedule.setReminderButton")}
         />
-        {draft === null ? <p className="stream-reminder-section__description">{t(locale, "liveSchedule.streamReminderUnsetHint")}</p> : null}
+        {shown === null ? <p className="stream-reminder-section__description">{t(locale, "liveSchedule.streamReminderUnsetHint")}</p> : null}
       </section>
       {saveFailed ? (
         <p role="alert" className="stream-reminder-error">
@@ -117,7 +116,7 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
             {t(locale, "liveSchedule.removeStreamReminderButton")}
           </Button>
         ) : null}
-        <Button type="primary" onClick={handleSave} disabled={saving || draft === null} loading={saving}>
+        <Button type="primary" onClick={handleSave} disabled={saving || shown === null} loading={saving}>
           {t(locale, "liveSchedule.saveReminderButton")}
         </Button>
       </div>

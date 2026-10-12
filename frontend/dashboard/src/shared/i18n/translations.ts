@@ -190,7 +190,6 @@ export type TranslationKey =
   | "liveSchedule.prevWeekAria"
   | "liveSchedule.nextWeekAria"
   | "liveSchedule.filterLabel"
-  | "liveSchedule.streamReminderOff"
   | "liveSchedule.removeStreamReminderButton"
   | "liveSchedule.filterAriaLabel"
   | "liveSchedule.filterFavoritesGroup"
@@ -398,7 +397,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.prevWeekAria": "上一週",
     "liveSchedule.nextWeekAria": "下一週",
     "liveSchedule.filterLabel": "篩選",
-    "liveSchedule.streamReminderOff": "這場不提醒",
     "liveSchedule.removeStreamReminderButton": "移除單場設定（改用創作者設定）",
     "liveSchedule.filterAriaLabel": "篩選創作者",
     "liveSchedule.filterFavoritesGroup": "收藏",
@@ -605,7 +603,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.prevWeekAria": "Previous week",
     "liveSchedule.nextWeekAria": "Next week",
     "liveSchedule.filterLabel": "Filter",
-    "liveSchedule.streamReminderOff": "No reminder for this stream",
     "liveSchedule.removeStreamReminderButton": "Remove (use creator settings)",
     "liveSchedule.filterAriaLabel": "Filter by creator",
     "liveSchedule.filterFavoritesGroup": "Favorites",
@@ -812,7 +809,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.prevWeekAria": "前の週",
     "liveSchedule.nextWeekAria": "次の週",
     "liveSchedule.filterLabel": "フィルター",
-    "liveSchedule.streamReminderOff": "この配信は通知しない",
     "liveSchedule.removeStreamReminderButton": "削除（クリエイター設定を使う）",
     "liveSchedule.filterAriaLabel": "クリエイターで絞り込み",
     "liveSchedule.filterFavoritesGroup": "お気に入り",
