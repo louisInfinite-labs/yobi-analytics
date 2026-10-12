@@ -292,23 +292,31 @@ describe("Schedule creator filter drawer", () => {
     expect(ruleBody(css, ".creator-tile__name")).toMatch(/white-space:\s*pre-line/)
   })
 
-  it("Schedule has no creator-tile layout of its own: no flex/grid/padding/size/alignment on its tile or grid, only the button reset and colors", async () => {
+  it("Schedule has no creator-tile layout of its own beyond the grid's column sizing: no flex/grid/padding/size/alignment on its tile, only the button reset and colors", async () => {
     const css = await readStylesheet("src/pages/schedule/styles/schedule.css")
     for (const selector of [".schedule-creator-item", ".schedule-creator-item:hover", '.schedule-creator-item[aria-pressed="true"]']) {
       expect(ruleBody(css, selector)).not.toMatch(/display:|flex|grid|padding|width|height|text-align|gap|margin|border-radius/)
     }
-    expect(ruleBody(css, ".schedule-creator-grid")).not.toMatch(/grid-template-columns|gap/)
+    // The ONE Schedule-specific layout rule: column sizing, so a creator name stays on one line (the shared fixed 124px tile wrapped any name wider
+    // than its 108px interior). The gap stays the shared one.
+    const grid = ruleBody(css, ".creator-tile-grid.schedule-creator-grid")
+    expect(grid).toMatch(/grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(calc\(8\.2rem \+ 2 \* var\(--space-2\) \+ 4px\),\s*1fr\)\)/)
+    expect(grid).not.toMatch(/gap/)
     expect(css).not.toMatch(/schedule-creator-item__(avatar|name)\s*\{/)
   })
 
-  it("three tiles fit a row of the 520px drawer (shared 124px tiles), and the shared grid reflows to fewer columns by itself when narrower", async () => {
+  it("three tiles still fit a row of the 520px drawer, and the grid reflows to fewer columns by itself when narrower", async () => {
     const css = await readStylesheet("src/shared/styles/creatorAvatar.css")
     const scheduleCss = await readStylesheet("src/pages/schedule/styles/schedule.css")
+    // The shared tile (收藏名單) is unchanged: a fixed 124px tile.
     expect(ruleBody(css, ".creator-tile-grid")).toMatch(/grid-template-columns:\s*repeat\(auto-fill,\s*124px\)/)
+    // Schedule's tile minimum: ten full-width characters at the name's 0.82rem (8.2rem = 131.2px at a 16px root) + 2 x 8px padding + 4px slack.
+    const scheduleTileMin = 8.2 * 16 + 2 * 8 + 4
     const drawerWidth = 520
     const gridPadding = 12 * 2 // .schedule-creator-grid padding-inline
+    const scrollbar = 15 // a classic scrollbar in the drawer list
     const gap = 12 // --space-3
-    expect(Math.floor((drawerWidth - gridPadding + gap) / (124 + gap))).toBe(3)
+    expect(Math.floor((drawerWidth - gridPadding - scrollbar + gap) / (scheduleTileMin + gap))).toBe(3)
     expect(ruleBody(scheduleCss, ".schedule-creator-drawer__list")).toMatch(/overflow-y:\s*auto/)
   })
 

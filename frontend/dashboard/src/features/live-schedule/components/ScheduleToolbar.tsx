@@ -1,7 +1,6 @@
-import { ChevronLeft, ChevronRight } from "lucide-react"
 import { ScheduleCreatorFilter } from "./ScheduleCreatorFilter"
 import type { CreatorFilterOption } from "../model/scheduleCreatorFilter"
-import { t, type Locale } from "../../../shared/i18n/translations"
+import type { Locale } from "../../../shared/i18n/translations"
 
 interface ScheduleToolbarProps {
   locale: Locale
@@ -21,8 +20,8 @@ function formatWeekRange(weekStart: Date, locale: Locale): string {
 }
 
 /** No manual timezone control -- the whole page is placed by the viewer's own browser/device timezone (see scheduleGrid.ts's use of
- * local Date getters), never a fixed JST toggle. The week-selector arrows stay disabled: this phase's data is always the backend's own
- * fixed today-through-+6-day window (GET /live-streams' 168-hour lookahead, no persisted history), so there is nothing to page into.
+ * local Date getters), never a fixed JST toggle. The week range is a plain label with no previous/next arrows: this phase's data is always
+ * the backend's own fixed today-through-+6-day window (GET /live-streams' 168-hour lookahead, no persisted history), so there is nothing to page into.
  *
  * The creator filter opens a right-side drawer (ScheduleCreatorFilter): a searchable multi-select grouped and ordered like Live Status. Nothing
  * selected = every creator's streams; otherwise exactly the selected creators' streams (see scheduleCreatorFilter.ts). */
@@ -30,13 +29,7 @@ export function ScheduleToolbar({ locale, weekStart, creatorOptions, selectedCre
   return (
     <div className="schedule-toolbar">
       <div className="week-selector schedule-control">
-        <button type="button" className="week-selector__arrow" disabled aria-label={t(locale, "liveSchedule.prevWeekAria")}>
-          <ChevronLeft size={16} />
-        </button>
         <span className="week-selector__label">{formatWeekRange(weekStart, locale)}</span>
-        <button type="button" className="week-selector__arrow" disabled aria-label={t(locale, "liveSchedule.nextWeekAria")}>
-          <ChevronRight size={16} />
-        </button>
       </div>
 
       <ScheduleCreatorFilter

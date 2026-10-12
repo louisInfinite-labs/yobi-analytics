@@ -116,29 +116,14 @@
   padding-inline: 0;
 
   display: grid;
-  grid-template-columns: 36px auto 36px;
+  grid-template-columns: auto;
 
   overflow: hidden;
-}
-
-.week-selector__arrow {
-  display: grid;
-  place-items: center;
-
-  height: 100%;
-
-  border: 0;
-  background: transparent;
-  color: #9db0c9;
-
-  cursor: pointer;
 }
 
 .week-selector__label {
   display: grid;
   place-items: center;
-
-  border-inline: 1px solid #203650;
 
   padding-inline: 13px;
   white-space: nowrap;
@@ -1139,8 +1124,13 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
 /* The creator tile itself (layout, avatar, name, heart) is the shared .creator-tile / .creator-tile-grid -- this is only the Schedule drawer's
    own button reset and its Home-token colors. The drawer is 520px wide and the tile 124px, so three tiles fit a row on desktop and the
    auto-fill grid reflows to fewer columns by itself when the viewport is narrower. */
-.schedule-creator-grid {
+.creator-tile-grid.schedule-creator-grid {
   justify-content: center;
+
+  /* Names stay on one line: the shared fixed 124px tile (108px inside its padding) wrapped any name wider than that. Here a tile is at least
+     as wide as a ten-full-width-character name at the tile's own font size (8.2rem) plus its padding and a little slack, and the columns share
+     the row (still three per row in the 520px drawer, fewer when it is narrower). A genuinely longer name still wraps inside its tile. */
+  grid-template-columns: repeat(auto-fill, minmax(calc(8.2rem + 2 * var(--space-2) + 4px), 1fr));
 
   padding: 4px 12px;
 }

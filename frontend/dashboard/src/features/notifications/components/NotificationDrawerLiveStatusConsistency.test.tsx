@@ -96,6 +96,17 @@ describe("B: the surface and the dropdown are Home's", () => {
     expect(vars).not.toMatch(/#17141d|#211d29|#292432|#393342|#f3eff7|#b9b1c5|#948b9f/)
   })
 
+  it("a creator name stays whole on one line: the row measures its own width and, below the width a ten-character name needs beside the controls, gives the name its own full-width line", () => {
+    expect(ruleBody(settingsCss, ".topic-creator-drawer__content")).toMatch(/container-type:\s*inline-size/)
+    expect(ruleBody(settingsCss, ".topic-creator-drawer__creator-name")).toMatch(/white-space:\s*nowrap/)
+    // 36 avatar + 132 name + 2 x 48 switches + 134 (the widest, English, reminder column) + 4 x 4 gaps = 414px, so the stacked layout starts below 418px.
+    expect(settingsCss).toMatch(/@container \(max-width: 418px\)/)
+    expect(ruleBody(settingsCss, ".topic-creator-drawer__row > .topic-creator-drawer__creator-name")).toMatch(/grid-column:\s*2 \/ -1/)
+    for (const [child, column] of [[3, 3], [4, 4], [5, 5]]) {
+      expect(ruleBody(settingsCss, `.topic-creator-drawer__row > :nth-child(${child})`)).toMatch(new RegExp(`grid-column:\\s*${column}`))
+    }
+  })
+
   it("the search is Home's search (.live-status-search), not an antd Input in a private colour", async () => {
     seed([])
     const { drawer } = await openDrawer()

@@ -1854,6 +1854,9 @@
 .topic-creator-drawer__content {
   display: flex;
   flex-direction: column;
+
+  /* The rows' own width (not the viewport) decides when the name needs its own line -- see the @container rule after .topic-creator-drawer__creator-name. */
+  container-type: inline-size;
 }
 
 /* The reminder column = the select's natural width in that locale (its longest timing label, measured: zh-TW 78px, ja 84px, en 120px, plus a
@@ -1998,6 +2001,37 @@
 
 .topic-creator-drawer__row:hover .topic-creator-drawer__creator-name {
   color: var(--creator-accent);
+}
+
+/* A name is shown whole on one line: the name column must stay at least as wide as a ten-full-width-character name (~132px at 13px).
+   Beside the fixed avatar / two switch / reminder columns that needs a row of roughly 414px (the widest, English, reminder column), so
+   below that the name takes its own full-width line and the controls sit underneath, still in the header's columns 3-5 (the children are
+   avatar, name, then live / new video / reminder, so each one's child number is its column in every column variant). */
+@container (max-width: 418px) {
+  .topic-creator-drawer__row {
+    grid-template-rows: auto auto;
+    row-gap: var(--space-1);
+  }
+
+  .topic-creator-drawer__row > .topic-creator-drawer__creator-name {
+    grid-column: 2 / -1;
+  }
+
+  .topic-creator-drawer__row > :nth-child(n + 3) {
+    grid-row: 2;
+  }
+
+  .topic-creator-drawer__row > :nth-child(3) {
+    grid-column: 3;
+  }
+
+  .topic-creator-drawer__row > :nth-child(4) {
+    grid-column: 4;
+  }
+
+  .topic-creator-drawer__row > :nth-child(5) {
+    grid-column: 5;
+  }
 }
 
 .topic-creator-drawer__switch-cell,
