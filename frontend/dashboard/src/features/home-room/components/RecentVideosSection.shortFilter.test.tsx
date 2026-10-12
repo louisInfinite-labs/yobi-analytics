@@ -21,6 +21,9 @@ Element.prototype.hasPointerCapture ??= () => false
 
 vi.mock("../data/oshiVideos", () => ({ fetchOshiVideos: vi.fn() }))
 vi.mock("../data/videoTopics", () => ({ fetchVideoTopics: vi.fn() }))
+// Keep this file hermetic: the real /live-streams store would let a late production response leak into a later test.
+const noLiveStreams = vi.hoisted(() => ({ streams: [], isLoading: false, error: null }))
+vi.mock("../../../shared/api/hooks/useLiveStreams", () => ({ useLiveStreams: () => noLiveStreams }))
 
 const fetchMock = vi.mocked(fetchOshiVideos)
 const fetchTopicsMock = vi.mocked(fetchVideoTopics)
