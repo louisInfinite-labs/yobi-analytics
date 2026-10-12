@@ -100,14 +100,29 @@ beforeEach(() => {
 })
 
 describe("Home Oshi Videos: quick filters are backend queries for the current creator", () => {
-  it("最新影片 (the default) = this creator + all topics + upload + archived + newest", async () => {
+  it("ALL is the default: the very first request is already this creator + all topics + all content + newest (never 最新影片 first)", async () => {
     renderSection(LEGACY_A)
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    expect(lastQuery()).toEqual({ creatorId: CREATOR_A.creatorId, topic: "all", contentType: "upload", sort: "newest", viewWindow: "total" })
+    const all = { creatorId: CREATOR_A.creatorId, topic: "all", contentType: "all", sort: "newest", viewWindow: "total", excludeShorts: true }
+    expect(fetchMock.mock.calls[0][0]).toEqual(all)
+    expect(lastQuery()).toEqual(all)
+    expect(fetchMock.mock.calls.some(([query]) => query.contentType === "upload")).toBe(false) // the 最新影片 query was never issued
     const request = lastRequest()
     expect(request.path).toContain(`/creators/${CREATOR_A.creatorId}/videos/recent?`)
     expect(request.path).toContain("liveStatus=archived")
+    expect(screen.getByRole("radio", { name: "ALL" })).toBeChecked()
+    expect(screen.getByRole("radio", { name: "Latest Videos" })).not.toBeChecked()
+  })
+
+  it("最新影片 (picked explicitly) = this creator + all topics + upload + archived + newest", async () => {
+    const user = userEvent.setup()
+    renderSection(LEGACY_A)
+
+    await pickTag(user, "Latest Videos")
+
+    expect(lastQuery()).toEqual({ creatorId: CREATOR_A.creatorId, topic: "all", contentType: "upload", sort: "newest", viewWindow: "total" })
+    expect(screen.getByRole("radio", { name: "Latest Videos" })).toBeChecked()
   })
 
   it("最新直播 = this creator + all topics + live + archived + newest, and never reads /live-streams", async () => {
@@ -138,6 +153,7 @@ describe("Home Oshi Videos: quick filters are backend queries for the current cr
     const user = userEvent.setup()
     const { switchCreator } = renderSection(LEGACY_A)
 
+    await pickTag(user, "Latest Videos")
     switchCreator(LEGACY_B)
     await waitFor(() => expect(lastQuery().creatorId).toBe(CREATOR_B.creatorId))
     expect(lastQuery()).toMatchObject({ contentType: "upload", sort: "newest" })

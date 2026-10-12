@@ -308,7 +308,7 @@ describe("Home -> real API: empty and failure states, never mock data", () => {
     api.catalogs[CREATOR_A.creatorId] = { all: [] }
     render(<HomePage />)
 
-    expect(await screen.findByText("No recent videos")).toBeInTheDocument()
+    expect(await screen.findByText("No videos")).toBeInTheDocument()
     expect(cards()).toHaveLength(0)
     expect(screen.queryByRole("alert")).toBeNull()
     expect(document.body.innerHTML).not.toMatch(/mock_|dQw4w9WgXcQ/)
@@ -321,7 +321,7 @@ describe("Home -> real API: empty and failure states, never mock data", () => {
     const alerts = await screen.findAllByRole("alert")
     expect(alerts.some((alert) => alert.textContent?.includes("(Code: 503)"))).toBe(true)
     expect(document.querySelector(".oshi-videos .oshi-error-state")).not.toBeNull()
-    expect(screen.queryByText("No recent videos")).toBeNull()
+    expect(screen.queryByText("No videos")).toBeNull()
     expect(cards()).toHaveLength(0)
     expect(document.body.innerHTML).not.toMatch(/mock_|dQw4w9WgXcQ/)
   })

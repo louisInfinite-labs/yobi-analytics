@@ -118,6 +118,7 @@ describe("B23: selecting Short", () => {
   it("queries the backend classification (contentType=short, all topics, archived) and shows only Shorts, whatever their topic", async () => {
     const user = userEvent.setup()
     await renderWithTopics()
+    await pickTag(user, "Latest Videos")
     await waitFor(() => expect(cardTitles()).toEqual(["VALO upload", "MV upload", "Other upload"])) // 最新影片: uploads only
 
     await pickTag(user, "Short")

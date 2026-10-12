@@ -153,16 +153,22 @@ describe("RecentVideosSection quick filters and controls", () => {
     expect(screen.queryByRole("button", { name: /Test video title/ })).not.toBeInTheDocument()
   })
 
-  it("the Content type, Sort and period dropdowns are hidden for the quick filters and appear once a topic tag is selected", async () => {
+  it("the Content type, Sort and period dropdowns show for the default ALL, are hidden for the two quick filters, and return for a topic tag", async () => {
     await renderSection()
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
-
-    const user = userEvent.setup()
-    await user.click(screen.getByText("ALL"))
-
+    expect(screen.getByRole("radio", { name: "ALL" })).toBeChecked() // the default selection
     expect(screen.getByRole("combobox", { name: "Sort videos" })).toBeInTheDocument()
     expect(screen.getByRole("combobox", { name: "Content type" })).toBeInTheDocument()
     expect(screen.queryByRole("combobox", { name: "Period" })).not.toBeInTheDocument() // only for most viewed
+
+    const user = userEvent.setup()
+    await user.click(screen.getByText("Latest Videos"))
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
+    await user.click(screen.getByText("Latest Live"))
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
+
+    await user.click(screen.getByText("ALL"))
+    expect(screen.getByRole("combobox", { name: "Sort videos" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Content type" })).toBeInTheDocument()
   })
 })
 

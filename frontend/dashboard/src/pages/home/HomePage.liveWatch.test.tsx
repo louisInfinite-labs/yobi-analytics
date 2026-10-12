@@ -64,6 +64,8 @@ interface FakeApi {
   /** Completed-archive rows the shelf's contentType=live request pages through, per creator. */
   archives: Record<string, ShelfRow[]>
   uploads: Record<string, ShelfRow[]>
+  /** Completed livestreams the PLAYER's own pool (liveStatus=completed) returns per creator, newest first. */
+  playerArchives: Record<string, ShelfRow[]>
   /** The Oshi Status panel's recent rows (uploads and COMPLETED streams). */
   statusRecent: unknown[]
   requests: string[]
@@ -71,7 +73,7 @@ interface FakeApi {
 let api: FakeApi
 
 function installApi() {
-  api = { streams: [], archives: {}, uploads: {}, statusRecent: [], requests: [] }
+  api = { streams: [], archives: {}, uploads: {}, playerArchives: {}, statusRecent: [], requests: [] }
   vi.stubEnv("VITE_API_BASE_URL", "https://api.test")
   vi.stubGlobal(
     "fetch",
@@ -94,7 +96,7 @@ function installApi() {
           sinceLastVisit: null,
         })
       }
-      if (url.searchParams.get("liveStatus") === "completed") return json({ videos: [], hasMore: false }) // the player's own pool
+      if (url.searchParams.get("liveStatus") === "completed") return json({ videos: api.playerArchives[creatorId] ?? [], hasMore: false }) // the player's own pool
       const topic = url.searchParams.get("topic") ?? "all"
       const type = url.searchParams.get("contentType")
       const byNewest = (list: ShelfRow[]) => [...list].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
@@ -165,6 +167,48 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
+})
+
+describe("the central player: LIVE, then UPCOMING, then the latest completed livestream, else no player at all", () => {
+  const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString()
+  const noIframe = () => expect(document.querySelectorAll(".oshi-player-frame iframe")).toHaveLength(0)
+
+  it("a live stream plays, ahead of an upcoming one and of any archive", async () => {
+    api.streams = [stream("UP-3H", "upcoming"), stream("LIVE-NOW", "live")]
+    api.playerArchives[CREATOR_A.creatorId] = [row("ARC-NEWEST", daysAgo(2))]
+    render(<HomePage />)
+
+    await waitFor(() => expect(playerSrc()).toContain("/embed/LIVE-NOW"))
+  })
+
+  it("with no live stream the upcoming one keeps playing (its own waiting room), not an archive", async () => {
+    api.streams = [stream("UP-3H", "upcoming")]
+    api.playerArchives[CREATOR_A.creatorId] = [row("ARC-NEWEST", daysAgo(2))]
+    render(<HomePage />)
+
+    await waitFor(() => expect(playerSrc()).toContain("/embed/UP-3H"))
+    expect(playerSrc()).not.toContain("ARC-NEWEST")
+  })
+
+  it("with neither, the latest completed livestream plays -- however long ago it ended", async () => {
+    api.playerArchives[CREATOR_A.creatorId] = [row("ARC-LATEST", daysAgo(45)), row("ARC-OLDER", daysAgo(90))]
+    api.uploads[CREATOR_A.creatorId] = [row("A-NORMAL-UPLOAD", daysAgo(1), "upload")]
+    render(<HomePage />)
+
+    await waitFor(() => expect(playerSrc()).toContain("/embed/ARC-LATEST"))
+    expect(playerSrc()).not.toContain("A-NORMAL-UPLOAD") // an upload is never the fallback
+    expect(document.querySelectorAll(".oshi-player-frame iframe")).toHaveLength(1)
+  })
+
+  it("with no live, no upcoming and no completed livestream there is no iframe, no error and no mock video", async () => {
+    api.uploads[CREATOR_A.creatorId] = [row("A-NORMAL-UPLOAD", daysAgo(1), "upload")]
+    render(<HomePage />)
+
+    await waitFor(() => expect(api.requests.some((path) => path.includes("liveStatus=completed"))).toBe(true))
+    await waitFor(() => expect(cards().length).toBeGreaterThan(0))
+    noIframe()
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
 })
 
 describe("B19: 最新直播 lists LIVE, then UPCOMING, then archives", () => {
