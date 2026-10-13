@@ -97,6 +97,7 @@ jobs:
           tests/collection/test_youtube_client.py
           tests/collection/test_main.py
           tests/notifications/test_new_video_creator_override.py
+          tests/notifications/test_new_video_activation.py
           tests/notifications/test_new_video_short_filter.py
           tests/notifications/test_retired_topic_scopes.py
           tests/stores/test_notification_events_store.py
@@ -196,6 +197,7 @@ jobs:
           src/features/notifications/components/NotificationSettings.saveFailure.test.tsx
           src/features/notifications/components/NotificationToggle.serviceWorker.test.tsx
           src/features/notifications/hooks/useTopicNotificationPreferences.backendFirst.test.ts
+          src/features/notifications/hooks/newVideoPersistence.test.ts
           src/features/notifications/push/pushNotifications.serviceWorkerReady.test.ts
           src/pages/about/markdown.lineEndings.test.tsx
           src/pages/schedule/LiveSchedulePage.creatorFilter.test.tsx

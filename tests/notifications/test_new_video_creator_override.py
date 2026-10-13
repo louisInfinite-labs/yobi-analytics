@@ -6,7 +6,10 @@ The Settings 新片 switches write this map through the existing PUT notificatio
   still suppress),
 - never replay: an event that came due while the creator was OFF stays suppressed when the creator is turned
   back ON (same policy as the global master switch),
-- default to enabled for any creator without an entry (existing stored preferences keep working).
+- FAIL CLOSED: only an explicit True wants a creator's new videos; False AND a missing entry are both off (a group/staff/graduated
+  channel the client never lists, or a creator it does not know yet, must never default to "notify").
+
+How a creator's explicit ON becomes a push (the activation boundary) is covered in test_new_video_activation.py.
 """
 
 from __future__ import annotations
@@ -83,12 +86,12 @@ def test_a_malformed_field_is_a_client_error(bad):
 # --- decision ----------------------------------------------------------------
 
 
-def test_only_an_explicit_false_disables_a_creators_new_video_pushes():
+def test_only_an_explicit_true_enables_a_creators_new_video_pushes():
     pref = parse_notification_preference(_raw(newVideoCreatorOverride={"aizawa_ema": False, "shirakami_fubuki": True}))
 
     assert is_new_video_creator_enabled(pref, "aizawa_ema") is False
     assert is_new_video_creator_enabled(pref, "shirakami_fubuki") is True
-    assert is_new_video_creator_enabled(pref, "someone_without_an_entry") is True
+    assert is_new_video_creator_enabled(pref, "someone_without_an_entry") is False
 
 
 def test_a_new_video_off_creator_still_passes_the_general_gate_so_live_reminders_are_unaffected():
@@ -105,7 +108,7 @@ def test_a_new_video_off_creator_still_passes_the_general_gate_so_live_reminders
 @pytest.mark.parametrize(
     ("global_enabled", "new_video_override", "expect_sent"),
     [
-        (True, None, True),  # no entry: default allowed
+        (True, None, False),  # no entry: fail-closed
         (True, True, True),
         (True, False, False),  # global ON + creator new-video OFF: suppressed
         (False, None, False),  # global OFF beats everything
@@ -127,7 +130,7 @@ def test_new_video_delivery_follows_the_global_switch_and_the_creators_new_video
 
 def test_another_creators_off_switch_does_not_suppress_this_creator(monkeypatch):
     _fake_delivery_log(monkeypatch)
-    preference = _preference_value(newVideoCreatorOverride={"shirakami_fubuki": False})
+    preference = _preference_value(newVideoCreatorOverride={"shirakami_fubuki": False, "aizawa_ema": True})
 
     sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference)
 
