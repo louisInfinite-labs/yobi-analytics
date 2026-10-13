@@ -114,7 +114,11 @@ describe("收藏名單 reads Home's tokens", () => {
     const dock = await sourceOf("src/features/live-status/components/LiveScheduleDock.tsx")
     expect(oshi).toContain("Segmented: HOME_FILTER_SEGMENTED_TOKENS")
     expect(oshi).toContain("antdTheme.defaultSeed.colorPrimary") // the focus ring is antd's own default primary, exactly like Live Status' selector
-    expect(dock).toContain("Segmented: HOME_FILTER_SEGMENTED_TOKENS") // the same object as Live Status' own selector
+    // Live Status' selector (and Schedule's organization filter) render through the shared HomeFilterSegmented, which owns the same tokens object.
+    const shared = await sourceOf("src/shared/ui/HomeFilterSegmented.tsx")
+    expect(shared).toContain("Segmented: HOME_FILTER_SEGMENTED_TOKENS")
+    expect(dock).toContain("<HomeFilterSegmented")
+    expect(dock).not.toContain("Segmented: HOME_FILTER_SEGMENTED_TOKENS") // no ConfigProvider token wiring of its own
     expect(oshi).not.toMatch(/roster-surface|theme\.primary,\s*\n\s*itemSelectedColor/)
     for (const value of Object.values(HOME_FILTER_SEGMENTED_TOKENS)) expect(String(value)).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
   })
