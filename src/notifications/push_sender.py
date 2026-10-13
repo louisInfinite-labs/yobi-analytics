@@ -33,7 +33,8 @@ from pywebpush import WebPushException, webpush
 
 # The only Web Push services a real browser subscription can ever point to
 # for this project's supported browsers (module docstring: Chrome/Edge via
-# Google FCM, Firefox via Mozilla) — a stored subscription is untrusted data
+# Google FCM, Firefox via Mozilla, Safari / iOS and iPadOS Home Screen web
+# apps via Apple's web.push.apple.com) — a stored subscription is untrusted data
 # (Roadmap 4.5's opaque store), so an endpoint outside this allowlist is
 # rejected rather than handed to pywebpush, which would otherwise POST the
 # VAPID-signed payload to whatever host the stored value names.
@@ -41,6 +42,7 @@ _ALLOWED_PUSH_ENDPOINT_HOSTS = frozenset(
     {
         "fcm.googleapis.com",  # Chrome / Edge
         "updates.push.services.mozilla.com",  # Firefox
+        "web.push.apple.com",  # Safari (macOS) and iOS / iPadOS Home Screen web apps -- without it every iPhone enable was rejected with HTTP 400
     }
 )
 

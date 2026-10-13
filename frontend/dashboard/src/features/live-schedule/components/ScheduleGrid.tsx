@@ -1,18 +1,16 @@
-import { useLayoutEffect, useRef } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import { HiddenStreamsPopover } from "./HiddenStreamsPopover"
+import { ScheduleDayNavigator } from "./ScheduleDayNavigator"
 import { getScheduleCreatorAvatarVisual } from "../utils/creatorAvatar"
 import { getScheduleCreatorName } from "../utils/scheduleCreatorName"
-import { SLOT_COUNT, initialScrollSlotIndex, slotLabel } from "../model/scheduleGrid"
+import { DEFAULT_AVATAR_SIZE_PX, visibleAvatarCount } from "../model/scheduleAvatarOverflow"
+import { SLOT_COUNT, dayKey, initialScrollSlotIndex, resolveSelectedDayIndex, slotLabel } from "../model/scheduleGrid"
 import type { ScheduleDay } from "../hooks/useWeeklySchedule"
 import type { ScheduledStream } from "../model/scheduledStream"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { formatClockTime } from "../../../shared/i18n/model/timeFormat"
-
-// Spec: up to 3 avatars shown once a slot has more than 4 streams, with a
-// "+N" pill for the rest -- 4 or fewer streams in one slot show every avatar.
-const MAX_AVATARS_BEFORE_OVERFLOW = 4
-const VISIBLE_AVATARS_WHEN_OVERFLOWING = 3
+import { useBreakpoint } from "../../../shared/hooks/useBreakpoint"
 
 interface ScheduleGridProps {
   locale: Locale
@@ -22,8 +20,26 @@ interface ScheduleGridProps {
   onSelectStream: (stream: ScheduledStream) => void
 }
 
-function StreamAvatarGroup({ streams, locale, onSelectStream }: { streams: ScheduledStream[]; locale: Locale; onSelectStream: (stream: ScheduledStream) => void }) {
-  const visibleCount = streams.length > MAX_AVATARS_BEFORE_OVERFLOW ? VISIBLE_AVATARS_WHEN_OVERFLOWING : streams.length
+interface AvatarCapacity {
+  /** The width one slot's avatar group may use, or null when it has not been measured (then only the fixed multi-day rule applies). */
+  availableWidth: number | null
+  avatarSize: number
+  /** The multi-day grid keeps its fixed "more than 4 -> 3 + +N" rule as an upper bound; the single-day phone layout is bounded by width only. */
+  boundedByFixedRule: boolean
+}
+
+function StreamAvatarGroup({
+  streams,
+  locale,
+  onSelectStream,
+  capacity,
+}: {
+  streams: ScheduledStream[]
+  locale: Locale
+  onSelectStream: (stream: ScheduledStream) => void
+  capacity: AvatarCapacity
+}) {
+  const visibleCount = visibleAvatarCount(streams.length, capacity)
   const visibleStreams = streams.slice(0, visibleCount)
   const hiddenStreams = streams.slice(visibleCount)
 
@@ -52,6 +68,35 @@ export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStre
   const hasScrolledRef = useRef(false)
   const [timeFormat] = useTimeFormat()
 
+  // Phone (below 768px): ONE day at a time, chosen from the days already loaded -- never several squeezed columns, never another request.
+  // Tablet and desktop keep the multi-day grid. The selection is the day's date (not an index), so it survives the day window rolling over.
+  const phone = useBreakpoint() === "mobile"
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const selectedIndex = resolveSelectedDayIndex(days, selectedKey)
+  const shownDays = phone && days[selectedIndex] ? [days[selectedIndex]] : days
+
+  // The width one slot really has, so the "+N" collapse follows the layout (resize, rotation, another day) instead of a fixed count.
+  // Every day column is as wide as the others, so the first one is measured.
+  const [availableWidth, setAvailableWidth] = useState<number | null>(null)
+  const [avatarSize, setAvatarSize] = useState(DEFAULT_AVATAR_SIZE_PX)
+  const measureKey = `${phone ? "phone" : "multi"}:${shownDays.length}:${shownDays[0] ? dayKey(shownDays[0].date) : ""}`
+  useLayoutEffect(() => {
+    const column = gridRef.current?.querySelector<HTMLElement>(".day-timeline")
+    if (!column) return
+    const measure = () => {
+      const width = column.clientWidth
+      setAvailableWidth(width > 0 ? width : null) // 0 = no layout (e.g. a test renderer): unknown, not "nothing fits"
+      const size = Number.parseFloat(getComputedStyle(column).getPropertyValue("--creator-avatar-size"))
+      if (Number.isFinite(size) && size > 0) setAvatarSize(size)
+    }
+    measure()
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(measure)
+    observer.observe(column)
+    return () => observer.disconnect()
+  }, [measureKey])
+  const capacity: AvatarCapacity = { availableWidth, avatarSize, boundedByFixedRule: !phone }
+
   // Once on mount only -- later `days`/`now` refreshes must never move a
   // viewport the user may already be scrolling by hand. Scrolls the
   // document (window.scrollTo), not the grid itself: the grid no longer
@@ -65,13 +110,18 @@ export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStre
     const slotIndex = initialScrollSlotIndex(days, now)
     const row = grid.querySelector(".time-body")?.children[slotIndex]
     if (!row) return
-    const headerHeight = grid.querySelector<HTMLElement>(".schedule-day-header")?.offsetHeight ?? 0
+    // What stays pinned above the rows: the multi-day grid's day-name header; on a phone the date navigator (and the app top bar above it).
+    const pinned = grid.querySelector<HTMLElement>(".schedule-day-header")?.offsetHeight ?? 0
+    const dayNav = grid.closest(".schedule-grid-shell")?.querySelector<HTMLElement>(".schedule-day-nav")
+    const topBar = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--main-topbar-height")) || 0
+    const headerHeight = pinned + (dayNav ? dayNav.offsetHeight + topBar : 0)
     const rowTop = row.getBoundingClientRect().top + window.scrollY
     window.scrollTo(0, rowTop - headerHeight)
   }, [days, now])
 
   return (
     <section className="schedule-grid-shell">
+      {phone && <ScheduleDayNavigator locale={locale} days={days} selectedIndex={selectedIndex} onSelectIndex={(index) => setSelectedKey(dayKey(days[index].date))} />}
       <div className="schedule-grid" ref={gridRef}>
         <div className="time-column">
           <div className="time-header">{t(locale, "liveSchedule.timeColumnHeader")}</div>
@@ -87,7 +137,7 @@ export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStre
           </div>
         </div>
 
-        {days.map((day) => (
+        {shownDays.map((day) => (
           <div className="day-column" key={day.date.toISOString()}>
             <div className={`schedule-day-header${day.isToday ? " is-today" : ""}`}>
               <span className="day-name">{day.date.toLocaleDateString(locale, { weekday: "short" })}</span>
@@ -99,7 +149,7 @@ export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStre
                 const hasSelectedStream = streams.some((stream) => stream.id === selectedStreamId)
                 return (
                   <div key={slotIndex} className={`schedule-slot${hasSelectedStream ? " has-selected-stream" : ""}`}>
-                    {streams.length > 0 && <StreamAvatarGroup streams={streams} locale={locale} onSelectStream={onSelectStream} />}
+                    {streams.length > 0 && <StreamAvatarGroup streams={streams} locale={locale} onSelectStream={onSelectStream} capacity={capacity} />}
                   </div>
                 )
               })}

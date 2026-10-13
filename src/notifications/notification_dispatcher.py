@@ -94,6 +94,7 @@ from api.holodex_client import HolodexAPIError
 from api.holodex_normalization import HolodexNormalizationError
 from ops.config import get_vapid_credentials, MissingHolodexApiKeyError
 from tracking.creator_master import load_creators
+from tracking.video_master import CONTENT_TYPE_SHORT
 from tracking.video_topics import OTHER_TOPIC, classify_video_topic
 
 _NOTIFICATION_PREFERENCE_KEY = "notificationPreference"
@@ -151,6 +152,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         except notification_dispatch.ClientError as exc:
             print(f"Warning: skipping client {client_id!r} with an invalid stored notification preference: {exc}")
             continue
+        # A preference stored before activation tracking existed has no newVideoActivatedAt: bound it by its own last write so the
+        # 3-day lookback is never replayed for it (see notification_dispatch.with_legacy_new_video_activation).
+        preference = notification_dispatch.with_legacy_new_video_activation(preference, stored_at=_record_updated_at(pref_record))
 
         subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
         if subscription_record is None and preference.enabled:
@@ -338,6 +342,14 @@ def _deliver_if_due(
         # back ON never replays it from the lookback window.
         notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
         return False
+    if candidate.get("contentType") != CONTENT_TYPE_SHORT and not notification_dispatch.is_new_video_after_activation(
+        preference, candidate["creatorId"], discovered_at=discovered_at
+    ):
+        # Discovered before this creator's new-video switch was (last) turned on -- or no activation is recorded at all: old news,
+        # never a first-enable / re-enable backlog. Recorded as suppressed like the other skipped-for-good cases, so it stays settled
+        # whatever the preference later becomes. (A Short has its own Short-card rules and is unchanged.)
+        notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
+        return False
     if not notification_dispatch.should_notify_now(preference, candidate["creatorId"], now=now):
         return False
 
@@ -513,6 +525,18 @@ def _send_reminder(
 
     notification_delivery_log_store.confirm_delivered(client_id, dedupe_id, now.isoformat())
     return True
+
+
+def _record_updated_at(record: dict[str, Any]) -> datetime | None:
+    """A stored remote-config record's own updatedAt as an aware datetime, or None when absent/unreadable."""
+    raw = record.get("updatedAt")
+    if not isinstance(raw, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
 
 
 def _recent_events(now: datetime) -> list[dict[str, Any]]:

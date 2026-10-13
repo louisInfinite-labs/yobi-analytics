@@ -66,7 +66,8 @@ describe("影片數據 in production", () => {
 
     expect(screen.queryByRole("button", { name: VIDEO_DATA_LABEL })).not.toBeInTheDocument()
     expect(document.body.textContent).not.toContain(VIDEO_DATA_LABEL)
-    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Home", "Schedule", "Settings", "About"])
+    // The navigation entries only (the phone hamburger and the drawer's close button are buttons too, but not entries).
+    expect(Array.from(document.querySelectorAll(".main-navbar__link")).map((button) => button.getAttribute("aria-label"))).toEqual(["Home", "Schedule", "Settings", "About"])
   })
 
   it("typing /dashboard does not load the page: it behaves like any unknown path (Home) and nothing of the page is rendered", async () => {

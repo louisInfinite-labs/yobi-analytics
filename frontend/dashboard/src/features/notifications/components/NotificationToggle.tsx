@@ -1,13 +1,8 @@
 import { useEffect, useState } from "react"
 import { Button } from "antd"
 import { Bell, BellOff } from "lucide-react"
-import { apiRequest } from "../../../shared/api/apiClient"
-import { putNotificationPreference } from "../api/notificationPreferenceApi"
-import { getEffectiveNewVideoCreatorIds, getEffectiveShortCreatorIds } from "../hooks/useTopicNotificationPreferences"
-import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
-import { getOrCreateClientId } from "../../../shared/api/clientId"
-import { getPushSubscriptionStatus, subscribeToPush, unsubscribeFromPush } from "../push/pushNotifications"
-import { VAPID_PUBLIC_KEY } from "../push/vapidPublicKey"
+import { getPushSubscriptionStatus } from "../push/pushNotifications"
+import { disablePushNotifications, enablePushNotifications } from "../push/pushEnrollment"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t } from "../../../shared/i18n/translations"
 
@@ -17,35 +12,6 @@ type Status = "checking" | "unsupported" | "subscribed" | "unsubscribed"
  * "uncertain": an enable attempt failed AND the cleanup that undoes any half-committed backend
  * write also failed, so the server may still have notifications enabled. */
 type SyncError = "failed" | "uncertain"
-
-/** Persist this browser's own push subscription under its own clientId
- * (Roadmap 4.6, self-service). `clientSecret` (PR #18 CodeRabbit
- * hardening, from clientCredential.ts) proves this call actually owns
- * `clientId` — api_handler.py's route rejects it without a matching
- * X-Client-Secret header. Returns the in-flight request so the caller
- * (handleClick) can await and coordinate it with
- * syncNotificationEnabledToBackend rather than firing both and hoping —
- * see handleClick's own comment for why that coordination matters. */
-function syncSubscriptionToBackend(
-  clientId: string,
-  clientSecret: string | null,
-  subscription: PushSubscriptionJSON | null,
-): Promise<unknown> {
-  const path = `/clients/${encodeURIComponent(clientId)}/push-subscription`
-  const headers = clientSecret ? { "X-Client-Secret": clientSecret } : undefined
-  return subscription
-    ? apiRequest(path, { method: "PUT", body: subscription, headers })
-    : apiRequest(path, { method: "DELETE", headers })
-}
-
-/** Persist this browser's own on/off notification preference under its own
- * clientId (Roadmap 4.6, self-service). See syncSubscriptionToBackend's
- * docstring — same clientSecret/coordination reasoning. */
-function syncNotificationEnabledToBackend(clientId: string, clientSecret: string | null, enabled: boolean): Promise<unknown> {
-  // The write replaces the whole stored preference, so it carries the Settings per-creator 新片 switches too
-  // (otherwise turning notifications on/off would wipe them on the backend).
-  return putNotificationPreference(clientId, clientSecret, enabled, getEffectiveNewVideoCreatorIds(), getEffectiveShortCreatorIds())
-}
 
 /**
  * Toggle to enable/disable OS-level Web Push notifications for this browser
@@ -90,101 +56,29 @@ export function NotificationToggle() {
     setIsSyncing(true)
     setSyncError(null)
     try {
-      const clientId = getOrCreateClientId()
-
       if (status === "subscribed") {
-        // Backend first. The preference write (`enabled: false`) is what
-        // actually stops notification_dispatcher.py, so it must succeed
-        // before anything local changes: if it fails, the browser
-        // subscription and the "on" status stay exactly as they were and
-        // the error is shown -- the UI never claims "off" while the backend
-        // still has notifications on. A null secret (registration failed —
-        // network, or storage) is still passed through: the call 403s and
-        // lands in this same catch, rather than needing a separate branch.
-        let clientSecret: string | null
-        try {
-          clientSecret = await getOrCreateClientSecret(clientId)
-          await syncNotificationEnabledToBackend(clientId, clientSecret, false)
-        } catch {
+        // Backend first (see disablePushNotifications): on a failed preference write the toggle keeps its "on" state and shows the
+        // error -- the UI never claims "off" while the backend still has notifications on.
+        const outcome = await disablePushNotifications()
+        if (outcome === "failed") {
           setSyncError("failed")
           return
         }
-        await unsubscribeFromPush()
         setStatus("unsubscribed")
-        try {
-          // Only cleanup remains. The preference is already disabled, and
-          // notification_dispatcher.py only delivers to a client that has
-          // both an enabled preference and a stored subscription -- so a
-          // failure here leaves a stale subscription record that can never
-          // cause an unwanted push; it is still reported so the user knows.
-          await syncSubscriptionToBackend(clientId, clientSecret, null)
-        } catch {
-          setSyncError("failed")
-        }
+        if (outcome === "disabled-cleanup-failed") setSyncError("failed")
         return
       }
 
-      let subscription: PushSubscriptionJSON | null
-      try {
-        subscription = await subscribeToPush(VAPID_PUBLIC_KEY)
-      } catch {
-        // The service worker never activated (or registration failed): nothing was written to the
-        // backend yet, so only the browser side needs undoing -- leave no half-made subscription
-        // and show the same error as any other failed enable.
-        await unsubscribeFromPush().catch(() => false)
-        setStatus("unsubscribed")
-        setSyncError("failed")
-        return
-      }
-      if (!subscription) {
-        setStatus("unsubscribed")
-        return
-      }
-      // Declared outside the try so the catch below can still use it for
-      // best-effort reconciliation (see catch's own comment) even when
-      // the failure happened partway through, after a secret was obtained.
-      let clientSecret: string | null = null
-      try {
-        // Same partial-write safety note as the disable path above.
-        clientSecret = await getOrCreateClientSecret(clientId)
-        await syncSubscriptionToBackend(clientId, clientSecret, subscription)
-        await syncNotificationEnabledToBackend(clientId, clientSecret, true)
+      const { outcome } = await enablePushNotifications()
+      if (outcome === "enabled") {
         setStatus("subscribed")
-      } catch {
-        // Neither backend write is confirmed from this call's own point of
-        // view, so undo the local browser subscription rather than
-        // showing "on" for a subscription the backend might not actually
-        // have. But "not confirmed here" isn't the same as "didn't
-        // happen": a write can commit server-side even though this call's
-        // own promise rejected (e.g. its response was lost after the
-        // server already processed it) — the AND-gate safety note above
-        // only holds if a partial failure doesn't quietly leave *both*
-        // pieces present. So clean up any such orphaned state with the same
-        // secret -- each call on its own, so one failing never stops the
-        // other. The dispatcher only delivers to a client that has BOTH an
-        // enabled preference and a stored subscription, so the server can
-        // only still push if BOTH cleanups failed; only then say so
-        // ("uncertain") instead of swallowing it. The UI correctly shows
-        // "off" for this browser either way.
-        await unsubscribeFromPush()
-        setStatus("unsubscribed")
-        setSyncError("failed")
-        if (clientSecret) {
-          let preferenceCleaned = true
-          let subscriptionCleaned = true
-          try {
-            await syncNotificationEnabledToBackend(clientId, clientSecret, false)
-          } catch {
-            preferenceCleaned = false
-          }
-          try {
-            await syncSubscriptionToBackend(clientId, clientSecret, null)
-          } catch {
-            subscriptionCleaned = false
-          }
-          if (!preferenceCleaned && !subscriptionCleaned) setSyncError("uncertain")
-        }
+        return
       }
+      // Every other outcome leaves this browser unsubscribed ("not-granted": denied/dismissed, nothing written; "failed"/"uncertain":
+      // the half-made subscription was undone). "uncertain" additionally says the server may still have notifications enabled.
+      setStatus("unsubscribed")
+      if (outcome === "failed") setSyncError("failed")
+      else if (outcome === "uncertain") setSyncError("uncertain")
     } finally {
       setIsSyncing(false)
     }

@@ -8,6 +8,14 @@ import { getCreators } from "../../../entities/creator/data/creatorRegistry"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
 
+// A device that can already deliver Web Push: the gate (pushGate.ts) lets every "turn a notification on" action through, so these
+// tests keep exercising the save behavior itself. The gate's own behavior is covered in pushGate.test.ts / pushEnableFlow.test.tsx.
+vi.mock("../push/pushGate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../push/pushGate")>()),
+  ensurePushEnabled: vi.fn(async () => "ready"),
+}))
+
+
 // B24: Push notifications > 管理成員 shows each creator's backend YouTube channel icon (registry `avatarUrl`) -- in the
 // management list AND the selected notification-member preview, through one shared avatar -- with the initial only as a
 // fallback, and no mouse-hover background on a row.

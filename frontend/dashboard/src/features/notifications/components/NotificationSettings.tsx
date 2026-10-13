@@ -9,6 +9,7 @@ import { Users } from "lucide-react"
 import { PlusIcon, SlidersHorizontalIcon, UsersThreeIcon } from "@phosphor-icons/react"
 import { CreatorAvatarImage } from "../../../entities/creator/components/CreatorAvatarImage"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
+import { PushPermissionNotice } from "./PushPermissionNotice"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
 import { getAllNotificationCreators, type NotificationCreator } from "../model/notificationCreatorGrouping"
 import { useNotificationTopicCatalog } from "../hooks/useNotificationTopicCatalog"
@@ -366,6 +367,8 @@ export function NotificationSettings() {
         <h1 className="settings-page-title">{t(locale, "notificationSettings.pageTitle")}</h1>
         <p className="settings-page-description">{t(locale, "notificationSettings.pageDescription")}</p>
       </header>
+
+      <PushPermissionNotice />
 
       <section className="notification-settings-page">
         <div className="notification-settings-content">

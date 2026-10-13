@@ -61,7 +61,9 @@ function markNotificationLocaleSynced(locale: string): void {
  * item, so every writer must send everything). `newVideoCreatorOverride` carries the Settings per-creator
  * 新片 switches: an explicit true/false for every creator the Settings roster lists, so the backend delivers
  * new-video pushes for exactly the creators the UI shows as ON. It only gates new-video pushes -- live
- * reminders are governed by the reminder settings. `newVideoShortCreatorOverride` carries the members of the Short card: Short is a
+ * reminders are governed by the reminder settings. The roster deliberately omits group channels, staff and graduated members, and they
+ * are NOT listed here: the backend reads a creator with no entry as OFF (fail-closed), so leaving them out is how they stay silent.
+ * `newVideoShortCreatorOverride` carries the members of the Short card: Short is a
  * content FORMAT with its own field (never a topic id), and a creator not enabled there is OFF, so with no Short card every
  * value is false. */
 export function buildNotificationPreference(

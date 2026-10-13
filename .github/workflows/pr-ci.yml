@@ -97,6 +97,7 @@ jobs:
           tests/collection/test_youtube_client.py
           tests/collection/test_main.py
           tests/notifications/test_new_video_creator_override.py
+          tests/notifications/test_new_video_activation.py
           tests/notifications/test_new_video_short_filter.py
           tests/notifications/test_retired_topic_scopes.py
           tests/stores/test_notification_events_store.py
@@ -179,6 +180,11 @@ jobs:
           src/pages/home/homeSelectContrast.test.tsx
           src/app/App.dashboardGate.test.tsx
           src/app/navigation/MainNavbar.test.tsx
+          src/app/navigation/responsiveNavigation.css.test.ts
+          src/app/navigation/phoneLayout.css.test.ts
+          src/app/navigation/MainNavbar.drawer.test.tsx
+          src/features/pwa/standaloneViewport.test.ts
+          src/pages/settings/SettingsPage.drawer.test.tsx
           src/pages/settings/DisplaySettings.test.tsx
           src/pages/settings/SettingsThemeConsistency.test.tsx
           src/features/notifications/api/notificationPreferenceApi.test.ts
@@ -191,12 +197,18 @@ jobs:
           src/features/notifications/components/NotificationSettings.saveFailure.test.tsx
           src/features/notifications/components/NotificationToggle.serviceWorker.test.tsx
           src/features/notifications/hooks/useTopicNotificationPreferences.backendFirst.test.ts
+          src/features/notifications/hooks/newVideoPersistence.test.ts
           src/features/notifications/push/pushNotifications.serviceWorkerReady.test.ts
           src/pages/about/markdown.lineEndings.test.tsx
           src/pages/schedule/LiveSchedulePage.creatorFilter.test.tsx
           src/pages/schedule/LiveSchedulePage.test.tsx
           src/shared/time/minuteClock.test.tsx
           src/features/live-schedule/components/ScheduleGrid.test.tsx
+          src/features/live-schedule/components/ScheduleGrid.responsive.test.tsx
+          src/features/live-schedule/model/scheduleAvatarOverflow.test.ts
+          src/features/live-schedule/model/scheduleGrid.selectedDay.test.ts
+          src/pages/schedule/scheduleResponsive.css.test.ts
+          src/features/home-room/components/RecentVideosSection.layout.test.tsx
           src/features/live-schedule/components/StreamNotificationPanel.test.tsx
           src/features/live-schedule/components/StreamDetailModal.test.tsx
           src/features/notifications/api/liveReminderApi.test.ts
@@ -215,6 +227,13 @@ jobs:
           src/features/oshi/hooks/useDefaultOshiCreator.test.ts
           src/features/home-room/data/recentArchivedLivestreams.test.ts
           src/shared/api/apiClient.test.ts
+          src/features/pwa/manifest.test.ts
+          src/features/pwa/registerServiceWorker.test.ts
+          src/features/pwa/components/InstallSetting.test.tsx
+          src/features/notifications/push/pushGate.test.tsx
+          src/features/notifications/push/pushPermissionState.test.ts
+          src/features/notifications/push/serviceWorker.notificationclick.test.ts
+          src/features/live-schedule/components/StreamNotificationPanel.pushGate.test.tsx
 
   # The stable required check. Always runs (even when a test group failed or was skipped) and decides from the results:
   # a group whose scope was detected MUST have succeeded; a group whose scope was not detected must have been skipped.

@@ -47,7 +47,7 @@ describe("buildNotificationPreference", () => {
     expect(buildNotificationPreference(false, new Set(), new Set()).notificationTimeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
   })
 
-  it("with no creator enabled every switch is an explicit false (not omitted, which would mean 'allowed')", () => {
+  it("with no creator enabled every roster switch is still an explicit false (the backend also reads an omitted creator as off)", () => {
     const { newVideoCreatorOverride } = buildNotificationPreference(true, new Set(), new Set())
 
     expect(Object.values(newVideoCreatorOverride).every((value) => value === false)).toBe(true)

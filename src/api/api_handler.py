@@ -49,6 +49,7 @@ from __future__ import annotations
 import base64
 import hmac
 import json
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from api import about_content_api
@@ -287,8 +288,18 @@ def _handle_put_notification_preference(event: dict[str, Any]) -> dict[str, Any]
     _require_client_secret(event, client_id)
     raw_preference = _json_body(event)
     notification_dispatch.parse_notification_preference(raw_preference)
+    # The per-creator new-video activation instants are the BACKEND's: derived from what this client had stored before (so an unrelated edit
+    # never moves them, and turning notifications or a creator back ON starts a fresh instant), never taken from the request body.
+    previous = remote_config_store.get_remote_config(client_id, _NOTIFICATION_PREFERENCE_KEY)
+    now = datetime.now(timezone.utc)
+    stamped_preference = notification_dispatch.stamp_new_video_activation(
+        raw_preference,
+        previous_value=previous["value"] if previous is not None else None,
+        previous_updated_at=previous.get("updatedAt") if previous is not None else None,
+        now=now,
+    )
     record = remote_config_api.write_remote_config(
-        {"clientId": client_id, "key": _NOTIFICATION_PREFERENCE_KEY, "value": raw_preference}
+        {"clientId": client_id, "key": _NOTIFICATION_PREFERENCE_KEY, "value": stamped_preference}, now=now
     )
     remote_config_store.put_remote_config(record)
     return record

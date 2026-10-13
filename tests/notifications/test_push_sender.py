@@ -61,11 +61,27 @@ def test_parse_subscription_rejects_malformed_values(bad_value):
         "http://fcm.googleapis.com/fcm/send/abc123",  # not HTTPS
         "https://evil.example.com/fcm/send/abc123",  # not an approved push service
         "https://fcm.googleapis.com.evil.example.com/fcm/send/abc123",  # lookalike host
+        "http://web.push.apple.com/abc123",  # Apple's host, but not HTTPS
+        "https://web.push.apple.com.evil.example.com/abc123",  # lookalike of Apple's host
+        "https://evil.example.com/web.push.apple.com/abc123",  # the host name only appears in the path
+        "https://push.apple.com/abc123",  # a different Apple host: only the exact web push service is approved
     ],
 )
 def test_parse_subscription_rejects_an_endpoint_outside_the_allowlist(endpoint):
     with pytest.raises(InvalidSubscriptionError):
         parse_subscription(_subscription(endpoint=endpoint))
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://fcm.googleapis.com/fcm/send/abc123",  # Chrome / Edge / Android
+        "https://updates.push.services.mozilla.com/wpush/v2/abc123",  # Firefox
+        "https://web.push.apple.com/QGZxLjk2",  # Safari / iOS and iPadOS Home Screen web apps (a real iPhone Home Screen app sends this)
+    ],
+)
+def test_parse_subscription_accepts_every_supported_push_service(endpoint):
+    assert parse_subscription(_subscription(endpoint=endpoint))["endpoint"] == endpoint
 
 
 # --- build_payload -------------------------------------------------------
