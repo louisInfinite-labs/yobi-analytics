@@ -186,6 +186,8 @@ export type TranslationKey =
   | "notificationToggle.on"
   | "notificationToggle.unavailable"
   | "notificationToggle.unsupportedTooltip"
+  | "settingsSecondaryNavbar.openMenuAriaLabel"
+  | "settingsSecondaryNavbar.closeMenuAriaLabel"
   | "push.explainTitle"
   | "push.explainBody"
   | "push.explainContinue"
@@ -421,6 +423,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationToggle.on": "通知已開啟",
     "notificationToggle.unavailable": "無法使用通知",
     "notificationToggle.unsupportedTooltip": "此瀏覽器不支援推送通知",
+    "settingsSecondaryNavbar.openMenuAriaLabel": "開啟設定選單",
+    "settingsSecondaryNavbar.closeMenuAriaLabel": "關閉設定選單",
     "push.explainTitle": "允許 OshiYobi 傳送通知",
     "push.explainBody": "直播提醒與新影片通知需要透過裝置的通知送達。按「繼續」後，系統會詢問是否允許通知，請選擇「允許」。",
     "push.explainContinue": "繼續",
@@ -655,6 +659,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationToggle.on": "Notifications on",
     "notificationToggle.unavailable": "Notifications unavailable",
     "notificationToggle.unsupportedTooltip": "This browser doesn't support push notifications",
+    "settingsSecondaryNavbar.openMenuAriaLabel": "Open settings menu",
+    "settingsSecondaryNavbar.closeMenuAriaLabel": "Close settings menu",
     "push.explainTitle": "Allow OshiYobi to send notifications",
     "push.explainBody": "Live reminders and new-video alerts are delivered as device notifications. After you tap Continue, your device will ask for permission — please choose Allow.",
     "push.explainContinue": "Continue",
@@ -889,6 +895,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationToggle.on": "通知オン",
     "notificationToggle.unavailable": "通知は利用できません",
     "notificationToggle.unsupportedTooltip": "このブラウザはプッシュ通知に対応していません",
+    "settingsSecondaryNavbar.openMenuAriaLabel": "設定メニューを開く",
+    "settingsSecondaryNavbar.closeMenuAriaLabel": "設定メニューを閉じる",
     "push.explainTitle": "OshiYobiからの通知を許可しますか",
     "push.explainBody": "配信リマインダーや新着動画のお知らせは、端末の通知として届きます。「続ける」を押すと端末が許可を求めますので、「許可」を選んでください。",
     "push.explainContinue": "続ける",

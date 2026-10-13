@@ -15,7 +15,16 @@
    confirmed with the user: this app's own primary rail uses a full-width
    rectangular row instead). */
 :root {
-  --main-navbar-width: 160px;
+  /* Below 1440px the Main Navbar is a 56px icon-only rail (labels hidden, see the media query at the end of this file); from 1440px
+     it is the full 160px sidebar with visible labels. Every consumer (the content offset below, the dashboard save toast) reads this
+     one variable, so the rail and the content offset can never disagree. There is never a bottom navigation. */
+  --main-navbar-width: 56px;
+}
+
+@media (min-width: 1440px) {
+  :root {
+    --main-navbar-width: 160px;
+  }
 }
 
 /* .app-shell__content reserves the Main Navbar's width via margin-left
@@ -116,4 +125,18 @@
 
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* ============ Icon-only rail below 1440px ============ */
+
+/* The label is dropped from the layout (not just clipped); each link keeps its accessible name through its own aria-label. */
+@media (max-width: 1439px) {
+  .main-navbar__link {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .main-navbar__label {
+    display: none;
+  }
 }

@@ -82,8 +82,10 @@
 /* The document owns scrolling, but the desktop settings navigation should
    remain viewport-bound like the fixed main navigation. This also keeps
    the absolutely positioned language picker at the visible bottom of the
-   secondary navigation instead of the bottom of the long roster. */
-@media (min-width: 901px) {
+   secondary navigation instead of the bottom of the long roster. From 1440px
+   it is the persistent second sidebar (below that it is the overlay drawer,
+   see the end of this block). */
+@media (min-width: 1440px) {
   .settings-secondary-navbar {
     position: sticky;
     top: 0;
@@ -96,6 +98,7 @@
 .settings-secondary-navbar__title {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   font-weight: 500;
   background-color: var(--mantine-dark-7);
   padding: 0 16px;
@@ -137,14 +140,109 @@
   color: #ffffff;
 }
 
-@media (max-width: 900px) {
-  .settings-page {
-    flex-direction: column;
+/* ---- Settings navigation below 1440px: a full-height LEFT overlay drawer ----
+   The 56px main rail stays visible; this drawer slides over the rail and the content (position: fixed, so it never pushes or reflows
+   the page) and is opened from the menu button above the content. Closed, it is visibility: hidden, so none of it is focusable or
+   readable by assistive technology. From 1440px none of these rules apply and the persistent sidebar above is unchanged. */
+.settings-secondary-navbar__close,
+.settings-drawer-backdrop,
+.settings-page__menu-bar {
+  display: none;
+}
+
+@media (max-width: 1439px) {
+  .settings-secondary-navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 950;
+    width: min(var(--settings-secondary-navbar-width), 85vw);
+    height: 100vh;
+    height: 100dvh;
+    overflow-x: hidden; /* the desktop links keep a 16px right margin that would otherwise add a horizontal scrollbar */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.2s ease,
+      visibility 0s linear 0.2s;
+    box-shadow: var(--shadow-md);
   }
 
-  .settings-secondary-navbar {
-    width: auto;
-    flex: 0 0 auto;
+  .settings-secondary-navbar--open {
+    transform: none;
+    visibility: visible;
+    transition:
+      transform 0.2s ease,
+      visibility 0s;
+  }
+
+  .settings-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 940;
+    background: rgba(20, 18, 24, 0.6);
+  }
+
+  .settings-secondary-navbar__close {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-right: -12px;
+    border: none;
+    background: transparent;
+    color: var(--mantine-dark-0);
+    cursor: pointer;
+  }
+
+  .settings-secondary-navbar__close:hover {
+    color: #ffffff;
+  }
+
+  /* Page-wide pieces that only exist for the drawer: the menu button row above every section. */
+  .settings-page__menu-bar {
+    display: block;
+    margin: 0 0 var(--space-4);
+  }
+
+  .settings-page__menu-button {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 44px;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--oshi-border);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+    color: var(--oshi-text-1);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .settings-page__menu-button:hover {
+    border-color: var(--oshi-text-3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-secondary-navbar,
+  .settings-secondary-navbar--open {
+    transition: none;
+  }
+}
+
+/* Phones: the content column loses the rail's 56px, so its own side padding shrinks to keep every Settings page inside the screen. */
+@media (max-width: 640px) {
+  .settings-page__content {
+    padding: var(--space-4);
   }
 }
 
