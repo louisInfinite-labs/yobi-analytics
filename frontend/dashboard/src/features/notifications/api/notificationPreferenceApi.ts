@@ -63,8 +63,9 @@ function markNotificationLocaleSynced(locale: string): void {
  * new-video pushes for exactly the creators the UI shows as ON. It only gates new-video pushes -- live
  * reminders are governed by the reminder settings. `newVideoShortCreatorOverride` carries the members of the Short card: Short is a
  * content FORMAT with its own field (never a topic id), and a creator not enabled there is OFF, so with no Short card every
- * value is false. `deliveryWindows` are the half-hour slots (in notificationTimeZone) new-video pushes are delivered at; every writer
- * sends the user's stored slots unless it is writing a PROPOSED selection that is not stored yet. */
+ * value is false. `deliveryWindows` are the fixed Japan Standard Time (Asia/Tokyo) half-hour slots new-video pushes are delivered
+ * at -- always JST, never `notificationTimeZone` (which only governs quiet hours and reminders); every writer sends the user's
+ * stored slots unless it is writing a PROPOSED selection that is not stored yet. */
 export function buildNotificationPreference(
   enabled: boolean,
   newVideoEnabledCreatorIds: ReadonlySet<string>,
