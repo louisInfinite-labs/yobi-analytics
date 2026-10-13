@@ -156,7 +156,10 @@ describe("Language Settings lives in Display Settings, as its last item", () => 
     render(<DisplaySettings />)
 
     await user.click(screen.getByRole("button", { name: /English/ }))
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["🇭🇰Traditional Chinese", "ENEnglish", "🇯🇵Japanese"])
+    // Flags are SVG images now (no emoji, no "EN" text): the row text is just the language name, and each row carries its own flag.
+    const items = screen.getAllByRole("menuitem")
+    expect(items.map((item) => item.textContent)).toEqual(["Traditional Chinese", "English", "Japanese"])
+    expect(items.map((item) => item.querySelector("img")?.getAttribute("data-flag"))).toEqual(["hk", "gb", "jp"])
 
     await user.click(screen.getByRole("menuitem", { name: "Japanese" }))
 
