@@ -73,7 +73,7 @@ describe("the Short card in the '+ Add topic' dropdown", () => {
     await addShortCard(user)
 
     const names = [...document.querySelectorAll(".notification-topic-item__name")].map((el) => el.textContent)
-    expect(names).toEqual(["All", "Apex", "Minecraft", "SF6", "VALO", "Short"])
+    expect(names).toEqual(["All", "Chatting", "Singing", "MV", "Apex", "Short"])
     const detail = within(document.querySelector(".notification-detail-panel") as HTMLElement)
     expect(detail.getByRole("heading", { level: 2, name: "Short" })).toBeInTheDocument()
     expect(detail.queryByRole("radio", { name: "Live + New Video" })).not.toBeInTheDocument()
@@ -177,7 +177,7 @@ describe("the Short card in the '+ Add topic' dropdown", () => {
   it("an ordinary topic card's member never enables Shorts", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderSettings()
-    await user.click(await screen.findByRole("button", { name: /^SF6/ }))
+    await user.click(await screen.findByRole("button", { name: /^Apex/ }))
     await user.click(within(document.querySelector(".notification-detail-panel") as HTMLElement).getAllByRole("button", { name: /Manage Members/ })[0])
     await screen.findAllByRole("switch", { name: /new video notifications/ })
 
@@ -226,9 +226,9 @@ describe("the Short card in the '+ Add topic' dropdown", () => {
   it("the permanent default cards have no Remove action", async () => {
     renderSettings()
 
-    expect(screen.queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument()
-    await userEvent.setup({ pointerEventsCheck: 0 }).click(await screen.findByRole("button", { name: /^SF6/ }))
-    expect(screen.queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^Remove "/ })).not.toBeInTheDocument()
+    await userEvent.setup({ pointerEventsCheck: 0 }).click(await screen.findByRole("button", { name: /^Apex/ }))
+    expect(screen.queryByRole("button", { name: /^Remove "/ })).not.toBeInTheDocument()
   })
 
   it("drops the retired notification-only cards (GTA, 7 Days to Die, Mahjong Soul, Endfield) from a stored list", () => {

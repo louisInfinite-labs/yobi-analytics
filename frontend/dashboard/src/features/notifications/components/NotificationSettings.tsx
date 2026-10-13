@@ -28,11 +28,11 @@ type SortMode = "saved" | "alphabetical"
 
 /** Only until GET /topics answers: the 4 permanent default cards show their usual name instead of flashing a raw id. Once the list has
  * loaded every label comes from it (Home's list), whatever it says. */
-const DEFAULT_CARD_LOADING_LABEL_KEYS: Readonly<Record<string, "recentVideos.tag.sf6" | "recentVideos.tag.valo" | "recentVideos.tag.apex" | "recentVideos.tag.minecraft">> = {
-  sf6: "recentVideos.tag.sf6",
-  valorant: "recentVideos.tag.valo",
+const DEFAULT_CARD_LOADING_LABEL_KEYS: Readonly<Record<string, "recentVideos.tag.chatting" | "recentVideos.tag.singing" | "recentVideos.tag.mv" | "recentVideos.tag.apex">> = {
+  chatting: "recentVideos.tag.chatting",
+  singing: "recentVideos.tag.singing",
+  mv: "recentVideos.tag.mv",
   apex: "recentVideos.tag.apex",
-  minecraft: "recentVideos.tag.minecraft",
 }
 
 /** The card's label: 全部 for the creator-level scope, otherwise the shared Home list's label (the raw id until GET /topics has loaded). */

@@ -23,7 +23,7 @@ import {
 } from "../model/notificationTopics"
 
 // Bumped to v2 -- a browser that already used the dynamic-topics feature
-// before the 5 permanent defaults (全部/SF6/VALO/APEX/Minecraft) were
+// before the 5 permanent defaults (全部/雜談/歌回/MV/Apex) were
 // restored would otherwise have a real, valid-shaped topicOrder already
 // persisted under the old key (e.g. just ["valo", "seven_days_to_die"]
 // from earlier testing), which readState's own validation accepts as-is
@@ -46,7 +46,7 @@ interface TopicPreferenceState {
 }
 
 /** The 5 permanent default cards the page starts with, in this exact order
- * (confirmed with the user: 全部/SF6/VALO/APEX/Minecraft, never reordered or
+ * (confirmed with the user: 全部/雜談/歌回/MV/Apex, never reordered or
  * removed) -- everything else is added by the user via "+", appended after
  * these. */
 const INITIAL_SAVED_TOPIC_IDS: readonly TopicCatalogId[] = PERMANENT_TOPIC_IDS

@@ -64,16 +64,16 @@ function getDetailPanel(): HTMLElement {
   return document.querySelector(".notification-detail-panel")!
 }
 
-async function pickSinging(user: ReturnType<typeof userEvent.setup>) {
+async function pickMinecraft(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("combobox", { name: "Select notification topic" }))
-  await user.click(await screen.findByTitle("Singing"))
+  await user.click(await screen.findByTitle("Minecraft"))
 }
 
 describe("NotificationSettings master-detail layout", () => {
-  it("lists the 5 permanent default topics in the shared display order (the same as Home), plus an Add topic tile -- 全部/SF6/VALO/APEX/Minecraft are never removed", () => {
+  it("lists the 5 permanent default topics in the shared display order (the same as Home), plus an Add topic tile -- 全部/雜談/歌回/MV/Apex are never removed", () => {
     renderNotificationSettings()
     const names = [...document.querySelectorAll(".notification-topic-item__name")].map((el) => el.textContent)
-    expect(names).toEqual(["All", "Apex", "Minecraft", "SF6", "VALO"])
+    expect(names).toEqual(["All", "Chatting", "Singing", "MV", "Apex"])
     expect(screen.getByRole("heading", { level: 1, name: "Push Notifications" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add topic" })).toBeInTheDocument()
   })
@@ -89,10 +89,10 @@ describe("NotificationSettings master-detail layout", () => {
     const user = userEvent.setup()
     renderNotificationSettings()
 
-    await user.click(screen.getByRole("button", { name: /^VALO/ }))
+    await user.click(screen.getByRole("button", { name: /^Apex/ }))
 
-    expect(within(getDetailPanel()).getByRole("heading", { level: 2, name: "VALO" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /^VALO/ })).toHaveAttribute("aria-current", "true")
+    expect(within(getDetailPanel()).getByRole("heading", { level: 2, name: "Apex" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Apex/ })).toHaveAttribute("aria-current", "true")
     expect(screen.getByRole("button", { name: /^All/ })).not.toHaveAttribute("aria-current")
   })
 
@@ -133,7 +133,7 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickSinging(user)
+    await pickMinecraft(user)
 
     const detail = within(getDetailPanel())
     expect(detail.getByRole("button", { name: "Save" })).toBeEnabled()
@@ -146,7 +146,7 @@ describe("NotificationSettings master-detail layout", () => {
     // No topic-level "forced time" control exists any more: reminders are set per creator.
     expect(detail.queryByRole("radiogroup", { name: /Live reminder time/ })).not.toBeInTheDocument()
     // The topic still isn't a saved card -- picking it must not persist it.
-    expect(screen.queryByRole("button", { name: /^Singing/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^Minecraft/ })).not.toBeInTheDocument()
   })
 
   it("does not show the removed per-member-overrides section, only the single Manage Members entry point under Notified members", async () => {
@@ -171,17 +171,17 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickSinging(user)
+    await pickMinecraft(user)
 
     const detail = within(getDetailPanel())
     expect(detail.getByRole("radio", { name: "Live + New Video" })).toBeChecked()
 
     await user.click(detail.getByRole("radio", { name: "Live" }))
 
-    expect(storedState().topics?.singing).toBeUndefined()
+    expect(storedState().topics?.minecraft).toBeUndefined()
 
     await user.click(detail.getByRole("button", { name: "Save" }))
-    expect(storedState().topics.singing.notificationType).toBe("live")
+    expect(storedState().topics.minecraft.notificationType).toBe("live")
   })
 
   it("has no topic-level reminder time control: each creator's reminder is set in Manage Members", async () => {
@@ -197,13 +197,13 @@ describe("NotificationSettings master-detail layout", () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     const first = renderNotificationSettings()
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickSinging(user)
+    await pickMinecraft(user)
     await user.click(within(getDetailPanel()).getByRole("radio", { name: "Live" }))
     first.unmount()
 
     renderNotificationSettings()
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickSinging(user)
+    await pickMinecraft(user)
     expect(within(getDetailPanel()).getByRole("radio", { name: "Live + New Video" })).toBeChecked()
   })
 
@@ -212,15 +212,15 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickSinging(user)
+    await pickMinecraft(user)
     await user.click(within(getDetailPanel()).getByRole("radio", { name: "Live" }))
 
-    await user.click(screen.getByRole("button", { name: /^VALO/ }))
+    await user.click(screen.getByRole("button", { name: /^Apex/ }))
 
-    expect(within(getDetailPanel()).getByRole("heading", { level: 2, name: "VALO" })).toBeInTheDocument()
+    expect(within(getDetailPanel()).getByRole("heading", { level: 2, name: "Apex" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add topic" })).toBeInTheDocument()
 
-    expect(storedState().topics?.singing).toBeUndefined()
+    expect(storedState().topics?.minecraft).toBeUndefined()
   })
 
   it("opens the member-management drawer for the still-unsaved draft topic when Manage Members is clicked", async () => {
@@ -228,10 +228,10 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickSinging(user)
+    await pickMinecraft(user)
     await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
 
-    expect(await screen.findByText("Singing — Notified Members")).toBeInTheDocument()
+    expect(await screen.findByText("Minecraft — Notified Members")).toBeInTheDocument()
   })
 
   it("saving a picked topic turns the draft into a normal list item, selects it, and re-enables Add topic", async () => {
@@ -239,14 +239,14 @@ describe("NotificationSettings master-detail layout", () => {
     renderNotificationSettings()
 
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickSinging(user)
+    await pickMinecraft(user)
     await user.click(within(getDetailPanel()).getByRole("button", { name: "Save" }))
 
-    expect(screen.getByRole("button", { name: /^Singing/ })).toHaveAttribute("aria-current", "true")
+    expect(screen.getByRole("button", { name: /^Minecraft/ })).toHaveAttribute("aria-current", "true")
     expect(screen.getByRole("button", { name: "Add topic" })).toBeInTheDocument()
-    // The saved Singing topic is a normal topic now -- Remove instead of Save, and there is no Reset action at all.
+    // The saved Minecraft topic is a normal topic now -- Remove instead of Save, and there is no Reset action at all.
     const detail = within(getDetailPanel())
-    expect(detail.getByRole("heading", { level: 2, name: "Singing" })).toBeInTheDocument()
+    expect(detail.getByRole("heading", { level: 2, name: "Minecraft" })).toBeInTheDocument()
     expect(detail.getByRole("button", { name: /^Remove/ })).toBeInTheDocument()
     expect(detail.queryByRole("button", { name: /Reset/ })).not.toBeInTheDocument()
     expect(detail.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
@@ -259,13 +259,13 @@ describe("NotificationSettings master-detail layout", () => {
     await user.click(screen.getByRole("button", { name: "Add topic" }))
     await user.click(screen.getByRole("combobox", { name: "Select notification topic" }))
 
-    for (const alreadySaved of ["SF6", "VALO", "APEX", "Minecraft"]) {
+    for (const alreadySaved of ["Chatting", "Singing", "MV", "Apex"]) {
       expect(screen.queryByTitle(alreadySaved)).not.toBeInTheDocument()
     }
-    // Home's list in Home's display order: Chatting, Singing, MV, Short (immediately before Other), Other.
-    await screen.findByTitle("Singing")
+    // Home's list in Home's display order, minus the permanent defaults: Minecraft, SF6, VALO, Short (immediately before Other), Other.
+    await screen.findByTitle("Minecraft")
     const options = [...document.querySelectorAll(".ant-select-item-option")]
-    expect(options.map((option) => option.getAttribute("title"))).toEqual(["Chatting", "Singing", "MV", "Short", "Other"])
+    expect(options.map((option) => option.getAttribute("title"))).toEqual(["Minecraft", "SF6", "VALO", "Short", "Other"])
     // The old notification-only hard-coded categories are gone.
     for (const retired of ["GTA", "7 DAYS TO DIE", "雀魂", "Endfield"]) expect(screen.queryByTitle(retired)).not.toBeInTheDocument()
   })
@@ -320,7 +320,7 @@ describe("NotificationSettings master-detail layout", () => {
     expect(document.querySelector(".notification-reset-button")).toBeNull()
     expect(document.querySelector(".notification-detail-actions")).toBeNull() // a permanent topic has no actions, so no empty footer row remains
     await user.click(screen.getByRole("button", { name: "Add topic" }))
-    await pickSinging(user)
+    await pickMinecraft(user)
     await user.click(within(getDetailPanel()).getByRole("button", { name: "Save" }))
     expect(within(getDetailPanel()).queryByRole("button", { name: /Reset|重設/ })).not.toBeInTheDocument()
     expect(within(getDetailPanel()).getByRole("button", { name: /^Remove/ })).toBeInTheDocument()
@@ -622,7 +622,7 @@ describe("NotificationSettings localization", () => {
     const { unmount } = renderNotificationSettings()
     await user.click(screen.getByRole("button", { name: "トピックを追加" }))
     await user.click(screen.getByRole("combobox", { name: "通知トピックを選択" }))
-    await user.click(await screen.findByTitle("Singing"))
+    await user.click(await screen.findByTitle("Minecraft"))
     expect(screen.getByRole("button", { name: /^保\s?存$/ })).toBeInTheDocument()
     expect(screen.queryByText("セーフ")).not.toBeInTheDocument()
     unmount()
@@ -632,7 +632,7 @@ describe("NotificationSettings localization", () => {
     renderNotificationSettings()
     await user.click(screen.getByRole("button", { name: "新增主題" }))
     await user.click(screen.getByRole("combobox", { name: "選擇通知主題" }))
-    await user.click(await screen.findByTitle("Singing"))
+    await user.click(await screen.findByTitle("Minecraft"))
     expect(screen.getByRole("button", { name: /^儲\s?存$/ })).toBeInTheDocument()
   })
 })
