@@ -8,6 +8,7 @@ import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
 import { clearNotificationSaveFailed, useNotificationSaveFailed } from "../hooks/notificationSaveStatus"
 import { useReminderTopicSupport } from "../hooks/useReminderTopicSupport"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
+import { ensurePushEnabled } from "../push/pushGate"
 import { isFavoriteCreatorId } from "../../favorites/utils/creatorFavoriteBridge"
 import {
   getAllNotificationCreators,
@@ -120,6 +121,14 @@ function ColumnHeader({ locale, notificationType }: { locale: Locale; notificati
   )
 }
 
+/** Turning a notification ON (a creator's Live or New Video switch, a reminder time) goes through the push gate first: the change is only
+ * applied once this device can really deliver Web Push -- after the explanation + browser prompt on first use, or straight away when
+ * permission and the subscription already exist. A cancelled/denied/unavailable outcome leaves the control exactly as it was. Turning
+ * a notification OFF never needs permission and bypasses the gate. */
+async function applyWhenPushReady(apply: () => void): Promise<void> {
+  if ((await ensurePushEnabled()) === "ready") apply()
+}
+
 /** What the closed select shows while this creator has no reminder time yet. It is a placeholder, NOT an option: the open list holds only the
  * real timings (whether notifications are on at all is the switch's job). */
 const UNSET_REMINDER_PLACEHOLDER = "—"
@@ -170,7 +179,10 @@ function ReminderCell({
         className="oshi-videos__sort topic-creator-drawer__reminder-select"
         disabled={!reminderSupported}
         value={memberReminder ?? ""}
-        onChange={(event) => setMemberReminder(topicId, creator.creatorId, event.target.value as ReminderTimeValue)}
+        onChange={(event) => {
+          const value = event.target.value as ReminderTimeValue
+          void applyWhenPushReady(() => setMemberReminder(topicId, creator.creatorId, value))
+        }}
         aria-label={t(locale, "notificationSettings.reminderSelectAriaLabel", { name: creator.displayName })}
       >
         {memberReminder === null && (
@@ -220,7 +232,7 @@ function CreatorRow({
         <span className="topic-creator-drawer__switch-cell">
           <Switch
             checked={isLiveEnabled(topicId, creator.creatorId)}
-            onChange={(checked) => setLiveEnabled(topicId, creator.creatorId, checked)}
+            onChange={(checked) => (checked ? void applyWhenPushReady(() => setLiveEnabled(topicId, creator.creatorId, true)) : setLiveEnabled(topicId, creator.creatorId, false))}
             aria-label={t(locale, "notificationSettings.liveSwitchAriaLabel", { name: creator.displayName })}
           />
         </span>
@@ -229,7 +241,7 @@ function CreatorRow({
         <span className="topic-creator-drawer__switch-cell">
           <Switch
             checked={isNewVideoEnabled(topicId, creator.creatorId)}
-            onChange={(checked) => setNewVideoEnabled(topicId, creator.creatorId, checked)}
+            onChange={(checked) => (checked ? void applyWhenPushReady(() => setNewVideoEnabled(topicId, creator.creatorId, true)) : setNewVideoEnabled(topicId, creator.creatorId, false))}
             aria-label={t(locale, "notificationSettings.newVideoSwitchAriaLabel", { name: creator.displayName })}
           />
         </span>

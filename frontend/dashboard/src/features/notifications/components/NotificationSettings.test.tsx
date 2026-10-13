@@ -3,9 +3,18 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NotificationSettings } from "./NotificationSettings"
 import * as liveReminderApi from "../api/liveReminderApi"
+import { ensurePushEnabled } from "../push/pushGate"
 import { fetchVideoTopics } from "../../home-room/data/videoTopics"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
+
+// A device that can already deliver Web Push: the gate (pushGate.ts) lets every "turn a notification on" action through, so these
+// tests keep exercising the save behavior itself. The gate's own behavior is covered in pushGate.test.ts / pushEnableFlow.test.tsx.
+vi.mock("../push/pushGate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../push/pushGate")>()),
+  ensurePushEnabled: vi.fn(async () => "ready"),
+}))
+
 
 vi.mock("../../home-room/data/videoTopics", () => ({ fetchVideoTopics: vi.fn() }))
 vi.mock("../api/liveReminderApi", async (importOriginal) => ({
@@ -635,4 +644,89 @@ describe("NotificationSettings localization", () => {
     await user.click(await screen.findByTitle("Singing"))
     expect(screen.getByRole("button", { name: /^儲\s?存$/ })).toBeInTheDocument()
   })
+})
+
+// Turning a notification ON in the member drawer (Live, New Video, a reminder time) is only applied once the push gate says this
+// device can really deliver Web Push; turning it OFF never needs permission. (The gate itself is covered in pushGate.test.ts.)
+/** These tests render the whole ~120-creator member drawer (like the other drawer tests here), which can take longer than Vitest's 5 s default
+ * on a loaded machine -- see vite.config.ts's note on the default timeout. */
+const DRAWER_TEST_TIMEOUT_MS = 20_000
+
+describe("member drawer notification switches go through the push gate", () => {
+  beforeEach(() => {
+    vi.mocked(ensurePushEnabled).mockClear()
+  })
+
+  async function openAllDrawer(user: ReturnType<typeof userEvent.setup>) {
+    renderNotificationSettings()
+    await user.click(within(getDetailPanel()).getAllByRole("button", { name: /Manage Members/ })[0])
+  }
+
+  it("a creator's Live switch stays OFF and nothing is stored when the gate says the device cannot deliver (e.g. permission denied)", async () => {
+    vi.mocked(ensurePushEnabled).mockResolvedValueOnce("denied")
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    await openAllDrawer(user)
+
+    const liveSwitch = screen.getAllByRole("switch", { name: /live notifications/ })[0]
+    expect(liveSwitch).toHaveAttribute("aria-checked", "false")
+    await user.click(liveSwitch)
+
+    expect(ensurePushEnabled).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getAllByRole("switch", { name: /live notifications/ })[0]).toHaveAttribute("aria-checked", "false"))
+    expect(storedState().topics?.all?.live ?? []).toEqual([])
+  }, DRAWER_TEST_TIMEOUT_MS)
+
+  it("a creator's Live switch turns ON once the gate says ready", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    await openAllDrawer(user)
+
+    await user.click(screen.getAllByRole("switch", { name: /live notifications/ })[0])
+
+    expect(ensurePushEnabled).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getAllByRole("switch", { name: /live notifications/ })[0]).toHaveAttribute("aria-checked", "true"))
+  }, DRAWER_TEST_TIMEOUT_MS)
+
+  it("a creator's New Video switch stays OFF when the gate refuses", async () => {
+    vi.mocked(ensurePushEnabled).mockResolvedValueOnce("unavailable")
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    await openAllDrawer(user)
+
+    await user.click(screen.getAllByRole("switch", { name: /new video notifications/ })[0])
+
+    expect(ensurePushEnabled).toHaveBeenCalledTimes(1)
+    expect(screen.getAllByRole("switch", { name: /new video notifications/ })[0]).toHaveAttribute("aria-checked", "false")
+  }, DRAWER_TEST_TIMEOUT_MS)
+
+  it("a creator's New Video switch turns ON once the gate says ready", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    await openAllDrawer(user)
+
+    await user.click(screen.getAllByRole("switch", { name: /new video notifications/ })[0])
+
+    expect(ensurePushEnabled).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getAllByRole("switch", { name: /new video notifications/ })[0]).toHaveAttribute("aria-checked", "true"))
+  }, DRAWER_TEST_TIMEOUT_MS)
+
+  it("choosing a reminder time stores nothing while the gate refuses", async () => {
+    seedState({ topicOrder: DEFAULT_ORDER, topics: { all: { live: ["aizawa_ema"], newVideo: [], reminderOverrides: {}, notificationType: "both" } } })
+    vi.mocked(ensurePushEnabled).mockResolvedValueOnce("denied")
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    await openAllDrawer(user)
+
+    await user.selectOptions(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0], "1 hour before")
+
+    expect(ensurePushEnabled).toHaveBeenCalledTimes(1)
+    expect(liveReminderApi.saveCreatorReminder).not.toHaveBeenCalled()
+    expect(storedState().topics.all.reminderOverrides).toEqual({})
+  }, DRAWER_TEST_TIMEOUT_MS)
+
+  it("turning a switch OFF never goes through the gate", async () => {
+    seedState({ topicOrder: DEFAULT_ORDER, topics: { all: { live: ["aizawa_ema"], newVideo: [], reminderOverrides: {}, notificationType: "both" } } })
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    await openAllDrawer(user)
+
+    await user.click(screen.getAllByRole("switch", { name: /live notifications/ }).find((el) => el.getAttribute("aria-checked") === "true")!)
+
+    expect(ensurePushEnabled).not.toHaveBeenCalled()
+  }, DRAWER_TEST_TIMEOUT_MS)
 })

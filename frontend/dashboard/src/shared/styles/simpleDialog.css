@@ -1,0 +1,110 @@
+/* ============ Simple modal dialog (SimpleDialog) ============ */
+
+/* Above antd's Drawer (z-index 1000): the notification gate opens from inside the Settings member drawer and the Schedule
+   reminder drawer, and its dialog must sit on top of them. */
+.simple-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(20, 18, 24, 0.72);
+  overflow-y: auto;
+}
+
+/* A fixed maximum width, so the panel stays a normal dialog on 2K/4K screens, and a viewport-bound maximum height with its own
+   scroll, so a short viewport (phone landscape, 1280x720 with a long help text) never clips it. */
+.simple-dialog__panel {
+  width: min(440px, 100%);
+  max-height: calc(100dvh - 2 * var(--space-4));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--oshi-surface-2);
+  box-shadow: var(--shadow-md);
+  color: var(--oshi-text-1);
+}
+
+.simple-dialog__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.simple-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--oshi-text-2);
+  overflow-wrap: anywhere;
+}
+
+.simple-dialog__body p,
+.simple-dialog__body ol {
+  margin: 0;
+}
+
+.simple-dialog__body ol {
+  padding-left: 1.25em;
+}
+
+.simple-dialog__note {
+  padding: var(--space-3);
+  border: 1px solid var(--oshi-border);
+  border-radius: var(--radius-md);
+}
+
+.simple-dialog__note-title {
+  margin: 0 0 var(--space-1);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--oshi-text-1);
+}
+
+.simple-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* Same ghost-button look as the Oshi switch confirm dialog's actions, at a 44px touch target. */
+.simple-dialog__button {
+  appearance: none;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--oshi-border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--oshi-text-3);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.simple-dialog__button:hover {
+  color: var(--oshi-text-1);
+  border-color: var(--oshi-text-3);
+}
+
+.simple-dialog__button:focus-visible {
+  outline: 1px solid var(--creator-main, var(--oshi-text-1));
+  outline-offset: 2px;
+}
+
+.simple-dialog__button--primary {
+  color: var(--oshi-text-1);
+  border-color: var(--oshi-text-3);
+}
+
+.simple-dialog__button--primary:hover {
+  border-color: var(--oshi-text-1);
+}

@@ -9,6 +9,7 @@ import { SettingsPage } from "../pages/settings/SettingsPage"
 import { useCurrentPage, useCurrentPath } from "./navigation/useCurrentPage"
 import { usePageViewTracking } from "./navigation/usePageViewTracking"
 import { MemberThemeProvider } from "../shared/theme/MemberThemeProvider"
+import { PushPermissionHost } from "../features/notifications/components/PushPermissionHost"
 import { useNotificationLocaleSync } from "../features/notifications/hooks/useNotificationLocaleSync"
 import { useRetiredTopicResync } from "../features/notifications/hooks/useRetiredTopicResync"
 
@@ -67,6 +68,7 @@ function App() {
         </div>
       </div>
       <LiveScheduleDock />
+      <PushPermissionHost />
     </MemberThemeProvider>
   )
 }

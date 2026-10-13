@@ -7,6 +7,14 @@ import { getCreatorById, toLegacyRosterId } from "../../../entities/creator/data
 import { REMINDER_TIME_VALUES } from "../../notifications/model/notificationTopics"
 import type { ScheduledStream } from "../model/scheduledStream"
 
+// A device that can already deliver Web Push: the gate (pushGate.ts) lets every "turn a notification on" action through, so these
+// tests keep exercising the save behavior itself. The gate's own behavior is covered in pushGate.test.ts / pushEnableFlow.test.tsx.
+vi.mock("../../notifications/push/pushGate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../notifications/push/pushGate")>()),
+  ensurePushEnabled: vi.fn(async () => "ready"),
+}))
+
+
 vi.mock("../../notifications/api/liveReminderApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../notifications/api/liveReminderApi")>()),
   fetchReminderSettings: vi.fn(),

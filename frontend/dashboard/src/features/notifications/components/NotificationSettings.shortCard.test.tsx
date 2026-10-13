@@ -11,6 +11,14 @@ import { fetchVideoTopics } from "../../home-room/data/videoTopics"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
 
+// A device that can already deliver Web Push: the gate (pushGate.ts) lets every "turn a notification on" action through, so these
+// tests keep exercising the save behavior itself. The gate's own behavior is covered in pushGate.test.ts / pushEnableFlow.test.tsx.
+vi.mock("../push/pushGate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../push/pushGate")>()),
+  ensurePushEnabled: vi.fn(async () => "ready"),
+}))
+
+
 vi.mock("../../home-room/data/videoTopics", () => ({ fetchVideoTopics: vi.fn() }))
 vi.mock("../api/liveReminderApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/liveReminderApi")>()),
@@ -21,7 +29,10 @@ vi.mock("../api/notificationPreferenceApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/notificationPreferenceApi")>()),
   saveNotificationPreference: vi.fn(),
 }))
-vi.mock("../push/pushNotifications", () => ({ getPushSubscriptionStatus: vi.fn() }))
+vi.mock("../push/pushNotifications", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../push/pushNotifications")>()),
+  getPushSubscriptionStatus: vi.fn(),
+}))
 
 // Opening the member drawer renders the whole creator roster, so a multi-step interaction here is slow in jsdom.
 vi.setConfig({ testTimeout: 30000 })
