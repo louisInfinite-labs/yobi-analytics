@@ -7,15 +7,18 @@ export interface FakePushDeviceOptions {
   promptAnswer?: NotificationPermission
   /** Start with a PushSubscription already on the registration. */
   subscribed?: boolean
+  /** The push service the subscription points to (default: Chrome / FCM). iOS and iPadOS Home Screen apps use https://web.push.apple.com/... */
+  endpoint?: string
 }
 
-const SUBSCRIPTION_JSON = { endpoint: "https://fcm.example.com/device-1", keys: { p256dh: "p", auth: "a" } }
+const DEFAULT_ENDPOINT = "https://fcm.example.com/device-1"
 
 /** A browser that supports Web Push, with every moving part observable: Notification (permission + prompt), PushManager, and a service
  * worker container whose one registration holds the subscription. Installs itself on the jsdom globals; call restore() (or
  * vi.unstubAllGlobals) in afterEach. `device.permission` / `device.subscription` can be changed mid-test to simulate the user changing
  * the device's settings while the app is in the background. */
 export function installFakePushDevice(options: FakePushDeviceOptions = {}) {
+  const SUBSCRIPTION_JSON = { endpoint: options.endpoint ?? DEFAULT_ENDPOINT, keys: { p256dh: "p", auth: "a" } }
   const device = {
     permission: options.permission ?? "default",
     subscription: options.subscribed ? { toJSON: () => SUBSCRIPTION_JSON, unsubscribe: vi.fn(async () => true) } : (null as null | { toJSON: () => unknown; unsubscribe: () => Promise<boolean> }),

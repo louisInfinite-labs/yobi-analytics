@@ -205,6 +205,7 @@ export type TranslationKey =
   | "push.unsupportedIosBody"
   | "push.failedTitle"
   | "push.failedBody"
+  | "push.failedDiagnosticLabel"
   | "push.close"
   | "pwa.installLabel"
   | "pwa.installHelp"
@@ -444,6 +445,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.unsupportedIosBody": "在 iPhone／iPad 上，請先用 Safari 將 OshiYobi 加入主畫面，再從主畫面開啟 OshiYobi 並設定通知。",
     "push.failedTitle": "無法開啟通知",
     "push.failedBody": "請稍後再試。這次的變更未套用。",
+    "push.failedDiagnosticLabel": "診斷碼",
     "push.close": "關閉",
     "pwa.installLabel": "安裝 OshiYobi",
     "pwa.installHelp": "將 OshiYobi 加入裝置主畫面，之後可像 App 一樣開啟。安裝是選用的，不安裝也能正常使用。",
@@ -682,6 +684,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.unsupportedIosBody": "On iPhone / iPad, add OshiYobi to your Home Screen from Safari first, then open it from the Home Screen to set up notifications.",
     "push.failedTitle": "Couldn't turn on notifications",
     "push.failedBody": "Please try again later. This change wasn't applied.",
+    "push.failedDiagnosticLabel": "Diagnostic code",
     "push.close": "Close",
     "pwa.installLabel": "Install OshiYobi",
     "pwa.installHelp": "Add OshiYobi to your device's home screen to open it like an app. Installing is optional — everything works without it.",
@@ -920,6 +923,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.unsupportedIosBody": "iPhone／iPadでは、まずSafariでOshiYobiをホーム画面に追加し、ホーム画面から開いて通知を設定してください。",
     "push.failedTitle": "通知をオンにできませんでした",
     "push.failedBody": "しばらくしてからもう一度お試しください。今回の変更は適用されていません。",
+    "push.failedDiagnosticLabel": "診断コード",
     "push.close": "閉じる",
     "pwa.installLabel": "OshiYobiをインストール",
     "pwa.installHelp": "OshiYobiを端末のホーム画面に追加して、アプリのように開けます。インストールは任意で、しなくても通常どおり使えます。",

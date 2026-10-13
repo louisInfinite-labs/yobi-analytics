@@ -69,7 +69,7 @@ export function NotificationToggle() {
         return
       }
 
-      const outcome = await enablePushNotifications()
+      const { outcome } = await enablePushNotifications()
       if (outcome === "enabled") {
         setStatus("subscribed")
         return

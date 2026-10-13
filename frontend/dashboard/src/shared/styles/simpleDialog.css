@@ -108,3 +108,10 @@
 .simple-dialog__button--primary:hover {
   border-color: var(--oshi-text-1);
 }
+
+/* A failure's diagnostic code (a step name and maybe an HTTP status) -- small and muted, selectable so it can be read out. */
+.simple-dialog__diagnostic {
+  font-size: 0.78rem;
+  color: var(--oshi-text-3);
+  user-select: text;
+}

@@ -231,6 +231,82 @@ describe("ensurePushEnabled: permission already decided", () => {
     expect(await screen.findByRole("dialog", { name: "無法開啟通知" })).toBeInTheDocument()
   })
 
+  /** A rejected backend call, as apiClient throws it: an Error carrying the HTTP status (and a server message that must never reach the user). */
+  const rejection = (status: number) => Object.assign(new Error("server said: subscription.endpoint must be an HTTPS URL from an approved Web Push service"), { name: "ApiError", status })
+
+  it("a backend rejection of the push subscription is reported with its step and HTTP status -- and nothing sensitive (the iPhone failure)", async () => {
+    // An iPhone Home Screen app subscribes against Apple's push service; the backend refused it (HTTP 400) before the allowlist knew it.
+    const push = device({ permission: "granted", subscribed: false, endpoint: "https://web.push.apple.com/QGZxLjk2-private-token" })
+    vi.mocked(apiClient.apiRequest).mockImplementation(async (path, init) => {
+      if (String(path).endsWith("/credential")) return { clientId: "c", clientSecret: "issued-secret" } // the credential was issued, as on the real phone
+      if (String(path).endsWith("/push-subscription") && (init as { method?: string }).method === "PUT") throw rejection(400)
+      return undefined
+    })
+    render(<PushPermissionHost />)
+
+    await expect(ensurePushEnabled()).resolves.toBe("failed")
+
+    const dialog = await screen.findByRole("dialog", { name: "無法開啟通知" })
+    expect(dialog).toHaveTextContent("診斷碼: register-subscription / 400")
+    expect(dialog.textContent).not.toMatch(/apple|private-token|endpoint|approved Web Push|server said/i) // no endpoint, token or server message
+    expect(push.device.subscription).toBeNull()
+    // the half-write is cleaned up: preference off, stale subscription record removed
+    expect(backendWrites()).toEqual(expect.arrayContaining(["PUT /clients/:id/notification-preference", "DELETE /clients/:id/push-subscription"]))
+  })
+
+  it("a rejected preference save is reported as save-preference with its status", async () => {
+    device({ permission: "granted", subscribed: false })
+    let preferenceWrites = 0
+    vi.mocked(apiClient.apiRequest).mockImplementation(async (path, init) => {
+      if (String(path).endsWith("/notification-preference") && (init as { method?: string }).method === "PUT" && preferenceWrites++ === 0) throw rejection(500)
+      return undefined
+    })
+    render(<PushPermissionHost />)
+
+    await expect(ensurePushEnabled()).resolves.toBe("failed")
+
+    expect(await screen.findByRole("dialog", { name: "無法開啟通知" })).toHaveTextContent("診斷碼: save-preference / 500")
+  })
+
+  it("a failure on the browser side (the subscription could not be created) is reported as subscribe, with no HTTP status and no backend write", async () => {
+    const push = device({ permission: "granted", subscribed: false })
+    push.subscribe.mockRejectedValueOnce(new Error("AbortError: Registration failed - push service error"))
+    render(<PushPermissionHost />)
+
+    await expect(ensurePushEnabled()).resolves.toBe("failed")
+
+    const dialog = await screen.findByRole("dialog", { name: "無法開啟通知" })
+    expect(dialog).toHaveTextContent("診斷碼: subscribe")
+    expect(dialog.textContent).not.toMatch(/\/ \d{3}/)
+    expect(dialog.textContent).not.toMatch(/AbortError|push service error/)
+    expect(apiClient.apiRequest).not.toHaveBeenCalled()
+  })
+
+  it("an iOS-style subscription (web.push.apple.com) is sent to the backend exactly as the browser made it", async () => {
+    device({ permission: "granted", subscribed: false, endpoint: "https://web.push.apple.com/QGZxLjk2" })
+    render(<PushPermissionHost />)
+
+    await expect(ensurePushEnabled()).resolves.toBe("ready")
+
+    const put = vi.mocked(apiClient.apiRequest).mock.calls.find(([path, init]) => String(path).endsWith("/push-subscription") && (init as { method?: string }).method === "PUT")
+    expect(put).toBeDefined()
+    expect((put![1] as { body: { endpoint: string } }).body.endpoint).toBe("https://web.push.apple.com/QGZxLjk2")
+  })
+
+  it("the diagnostic follows the language (en)", async () => {
+    window.localStorage.setItem("yobi.locale", "en")
+    resetAllSharedStateForTests()
+    device({ permission: "granted", subscribed: false })
+    vi.mocked(apiClient.apiRequest).mockImplementation(async (path, init) => {
+      if (String(path).endsWith("/push-subscription") && (init as { method?: string }).method === "PUT") throw rejection(400)
+      return undefined
+    })
+    render(<PushPermissionHost />)
+    await ensurePushEnabled()
+
+    expect(await screen.findByRole("dialog", { name: "Couldn't turn on notifications" })).toHaveTextContent("Diagnostic code: register-subscription / 400")
+  })
+
   it("concurrent calls share one attempt: a single explanation, a single prompt", async () => {
     const push = device({ permission: "default" })
     const user = userEvent.setup()

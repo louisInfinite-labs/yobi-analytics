@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react"
 import { isNotificationDisabledByUser } from "../api/notificationPreferenceApi"
-import { enablePushNotifications } from "./pushEnrollment"
+import { enablePushNotifications, type EnablePushFailure } from "./pushEnrollment"
 import { getNotificationPermission } from "./pushNotifications"
 import { refreshPushState } from "./pushState"
 
@@ -14,6 +14,8 @@ export type PushGateResult = "ready" | "cancelled" | "denied" | "unavailable" | 
 export type PushDialogKind = "explain" | "denied" | "unsupported" | "failed"
 
 let dialog: PushDialogKind | null = null
+/** What the "failed" dialog shows as its diagnostic code (non-sensitive: a step name and maybe an HTTP status). */
+let lastFailure: EnablePushFailure | null = null
 let pendingExplain: { resolve: (proceed: boolean) => void } | null = null
 let inFlight: Promise<PushGateResult> | null = null
 const listeners = new Set<() => void>()
@@ -31,6 +33,17 @@ export function usePushDialog(): PushDialogKind | null {
       return () => listeners.delete(listener)
     },
     () => dialog,
+  )
+}
+
+/** The diagnostic for the failure dialog currently (or last) shown, or null. */
+export function usePushFailure(): EnablePushFailure | null {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    () => lastFailure,
   )
 }
 
@@ -54,7 +67,7 @@ function askToContinue(): Promise<boolean> {
 }
 
 async function enableAndReport(): Promise<PushGateResult> {
-  const outcome = await enablePushNotifications()
+  const { outcome, failure } = await enablePushNotifications()
   await refreshPushState()
   if (outcome === "enabled") return "ready"
   if (outcome === "not-granted") {
@@ -65,6 +78,7 @@ async function enableAndReport(): Promise<PushGateResult> {
     }
     return "cancelled"
   }
+  lastFailure = failure ?? null
   setDialog("failed")
   return "failed"
 }
@@ -108,6 +122,7 @@ export function resetPushGateForTests(): void {
   pendingExplain = null
   inFlight = null
   dialog = null
+  lastFailure = null
   listeners.forEach((listener) => listener())
 }
 

@@ -4,7 +4,7 @@ import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t, type Locale, type TranslationKey } from "../../../shared/i18n/translations"
 import { HomeScreenGuide } from "../../pwa/components/HomeScreenGuide"
 import { isManualHomeScreenInstallPlatform, isStandaloneDisplay } from "../../pwa/installState"
-import { answerPushExplanation, closePushDialog, usePushDialog } from "../push/pushGate"
+import { answerPushExplanation, closePushDialog, usePushDialog, usePushFailure } from "../push/pushGate"
 import { usePushState } from "../push/pushState"
 
 /** Which device-settings instructions fit this device, from capabilities (not user-agent strings): a Home Screen web app on iOS/iPadOS
@@ -49,6 +49,7 @@ export function PushPermissionHost() {
   const [locale] = useLocale()
   const dialog = usePushDialog()
   const { permission } = usePushState()
+  const failure = usePushFailure()
 
   // Coming back from the device/browser settings with notifications now allowed: the help is obsolete -- close it without a reload.
   useEffect(() => {
@@ -98,6 +99,13 @@ export function PushPermissionHost() {
     return (
       <SimpleDialog title={t(locale, "push.failedTitle")} onClose={closePushDialog} actions={closeButton}>
         <p>{t(locale, "push.failedBody")}</p>
+        {failure && (
+          // A step name and (for a backend rejection) the HTTP status -- nothing else: never an endpoint, key, secret or server message.
+          <p className="simple-dialog__diagnostic">
+            {t(locale, "push.failedDiagnosticLabel")}: {failure.step}
+            {failure.status ? ` / ${failure.status}` : ""}
+          </p>
+        )}
       </SimpleDialog>
     )
   }

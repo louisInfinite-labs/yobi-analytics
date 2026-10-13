@@ -28,37 +28,66 @@ function syncNotificationEnabledToBackend(clientId: string, clientSecret: string
 /** How an enable attempt ended.
  * - "enabled": permission granted, subscription created/reused, and both backend writes confirmed.
  * - "not-granted": the browser is unsupported, or permission was denied/dismissed. Nothing was written anywhere.
- * - "failed": the service worker never activated, or a backend write was rejected; every local/remote half-write was undone.
+ * - "failed": the service worker never activated, the subscription could not be created, or a backend step was rejected; every
+ *   local/remote half-write was undone.
  * - "uncertain": like "failed", but the cleanup that undoes the backend writes ALSO failed, so the server may still have
  *   notifications enabled. */
 export type EnablePushOutcome = "enabled" | "not-granted" | "failed" | "uncertain"
 
+/** Which step of an enable attempt failed -- a short, non-sensitive code the failure dialog can show (and a user can read out) so a
+ * failure on a real device is diagnosable. Never carries an endpoint, key, secret or server message.
+ * - "subscribe": the service worker never became active, or PushManager.subscribe() threw (the browser/OS side);
+ * - "register-subscription": PUT /clients/{id}/push-subscription was rejected (a missing client credential also lands here, as a 403);
+ * - "save-preference": PUT /clients/{id}/notification-preference was rejected. */
+export type EnablePushFailureStep = "subscribe" | "register-subscription" | "save-preference"
+
+export interface EnablePushFailure {
+  step: EnablePushFailureStep
+  /** The HTTP status when a backend step answered with an error; absent for browser-side failures and lost responses. */
+  status?: number
+}
+
+export interface EnablePushResult {
+  outcome: EnablePushOutcome
+  /** Set exactly when outcome is "failed" or "uncertain". */
+  failure?: EnablePushFailure
+}
+
+/** The HTTP status of a rejected backend call (ApiError carries it), read structurally so a non-API error simply has none. */
+function failureOf(step: EnablePushFailureStep, error: unknown): EnablePushFailure {
+  const status = typeof error === "object" && error !== null ? (error as { status?: unknown }).status : undefined
+  return typeof status === "number" ? { step, status } : { step }
+}
+
 /** Subscribes this browser to Web Push (asking for permission first only if it is still undecided) and records the subscription and
  * the on/off preference on the backend. The one implementation behind every enable path (the Settings/Schedule gate in pushGate.ts
  * and the dev-only NotificationToggle). Must only run as the result of an explicit user action -- it can raise the permission prompt. */
-export async function enablePushNotifications(): Promise<EnablePushOutcome> {
+export async function enablePushNotifications(): Promise<EnablePushResult> {
   const clientId = getOrCreateClientId()
 
   let subscription: PushSubscriptionJSON | null
   try {
     subscription = await subscribeToPush(VAPID_PUBLIC_KEY)
-  } catch {
-    // The service worker never activated (or registration failed): nothing was written to the backend yet, so only the browser side
-    // needs undoing -- leave no half-made subscription.
+  } catch (error) {
+    // The service worker never activated (or registration / subscribe failed): nothing was written to the backend yet, so only the
+    // browser side needs undoing -- leave no half-made subscription.
     await unsubscribeFromPush().catch(() => false)
-    return "failed"
+    return { outcome: "failed", failure: failureOf("subscribe", error) }
   }
-  if (!subscription) return "not-granted"
+  if (!subscription) return { outcome: "not-granted" }
 
   // Declared outside the try so the catch below can still use it for best-effort reconciliation (see catch's own comment) even when
   // the failure happened partway through, after a secret was obtained.
   let clientSecret: string | null = null
+  let step: EnablePushFailureStep = "register-subscription"
   try {
     clientSecret = await getOrCreateClientSecret(clientId)
     await syncSubscriptionToBackend(clientId, clientSecret, subscription)
+    step = "save-preference"
     await syncNotificationEnabledToBackend(clientId, clientSecret, true)
-    return "enabled"
-  } catch {
+    return { outcome: "enabled" }
+  } catch (error) {
+    const failure = failureOf(step, error)
     // Neither backend write is confirmed from this call's own point of view, so undo the local browser subscription rather than
     // showing "on" for a subscription the backend might not actually have. But "not confirmed here" isn't the same as "didn't
     // happen": a write can commit server-side even though this call's own promise rejected (e.g. its response was lost after the
@@ -80,9 +109,9 @@ export async function enablePushNotifications(): Promise<EnablePushOutcome> {
       } catch {
         subscriptionCleaned = false
       }
-      if (!preferenceCleaned && !subscriptionCleaned) return "uncertain"
+      if (!preferenceCleaned && !subscriptionCleaned) return { outcome: "uncertain", failure }
     }
-    return "failed"
+    return { outcome: "failed", failure }
   }
 }
 
