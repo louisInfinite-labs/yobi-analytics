@@ -84,16 +84,16 @@ describe("reminders are saved backend-first (B5)", () => {
   it("a failed UNSET keeps the existing reminder", async () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
     await act(async () => {
-      await result.current.setMemberReminder("sf6", "aizawa_ema", "10min")
+      await result.current.setMemberReminder("apex", "aizawa_ema", "10min")
     })
     vi.mocked(liveReminderApi.deleteCreatorReminder).mockRejectedValueOnce(httpError(500))
 
     await act(async () => {
-      await result.current.setMemberReminder("sf6", "aizawa_ema", null)
+      await result.current.setMemberReminder("apex", "aizawa_ema", null)
     })
 
-    expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBe("10min")
-    expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "10min" })
+    expect(result.current.getMemberReminder("apex", "aizawa_ema")).toBe("10min")
+    expect(storedState().topics.apex.reminderOverrides).toEqual({ aizawa_ema: "10min" })
   })
 
   it("commits locally only after the backend write resolved", async () => {
@@ -103,17 +103,17 @@ describe("reminders are saved backend-first (B5)", () => {
 
     let pending!: Promise<boolean>
     act(() => {
-      pending = result.current.setMemberReminder("sf6", "aizawa_ema", "10min")
+      pending = result.current.setMemberReminder("apex", "aizawa_ema", "10min")
     })
-    expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBeNull()
-    expect(storedState().topics?.sf6).toBeUndefined()
+    expect(result.current.getMemberReminder("apex", "aizawa_ema")).toBeNull()
+    expect(storedState().topics?.apex).toBeUndefined()
 
     await act(async () => {
       release()
       await pending
     })
-    expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBe("10min")
-    expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "10min" })
+    expect(result.current.getMemberReminder("apex", "aizawa_ema")).toBe("10min")
+    expect(storedState().topics.apex.reminderOverrides).toEqual({ aizawa_ema: "10min" })
   })
 
   it("turning Live OFF deletes the reminder on the backend first; if that fails Live and the reminder both stay", async () => {
@@ -276,27 +276,27 @@ describe("per-creator new-video switches write the backend preference (B17)", ()
   it("switching a topic to Live-only removes its new-video creators from the backend set (and a failure keeps the type)", async () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
     await act(async () => {
-      await result.current.setNewVideoEnabled("sf6", "aizawa_ema", true)
+      await result.current.setNewVideoEnabled("apex", "aizawa_ema", true)
     })
 
     await act(async () => {
-      await result.current.setNotificationType("sf6", "live")
+      await result.current.setNotificationType("apex", "live")
     })
     expect([...vi.mocked(notificationPreferenceApi.saveNotificationPreference).mock.calls.at(-1)![1]]).toEqual([])
-    expect(result.current.getNotificationType("sf6")).toBe("live")
+    expect(result.current.getNotificationType("apex")).toBe("live")
 
     vi.mocked(notificationPreferenceApi.saveNotificationPreference).mockRejectedValueOnce(httpError(500))
     await act(async () => {
-      await result.current.setNotificationType("sf6", "both")
+      await result.current.setNotificationType("apex", "both")
     })
-    expect(result.current.getNotificationType("sf6")).toBe("live")
+    expect(result.current.getNotificationType("apex")).toBe("live")
   })
 
   it("an unsaved draft topic never contributes to the backend set", async () => {
     const { result } = renderHook(() => useTopicNotificationPreferences())
 
     await act(async () => {
-      await result.current.setNewVideoEnabled("singing", "aizawa_ema", true)
+      await result.current.setNewVideoEnabled("minecraft", "aizawa_ema", true)
     })
 
     expect(notificationPreferenceApi.saveNotificationPreference).not.toHaveBeenCalled()

@@ -3,6 +3,8 @@
 
 :root {
   --settings-secondary-navbar-width: 240px;
+  /* The Settings content column's left AND right gutter (one value, so the two sides can never differ). */
+  --settings-page-gutter: var(--space-6);
 }
 
 /* Settings uses the document's scrollbar. Keep the page at least as tall
@@ -19,7 +21,7 @@
   flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-5) var(--settings-page-gutter);
 
   /* Every Settings tab paints Home's own page surface (--oshi-bg); a tab that needs its own look sets only its own content, never a page palette. */
   background: var(--oshi-bg);
@@ -82,8 +84,10 @@
 /* The document owns scrolling, but the desktop settings navigation should
    remain viewport-bound like the fixed main navigation. This also keeps
    the absolutely positioned language picker at the visible bottom of the
-   secondary navigation instead of the bottom of the long roster. */
-@media (min-width: 901px) {
+   secondary navigation instead of the bottom of the long roster. From 1440px
+   it is the persistent second sidebar (below that it is the overlay drawer,
+   see the end of this block). */
+@media (min-width: 1440px) {
   .settings-secondary-navbar {
     position: sticky;
     top: 0;
@@ -96,6 +100,7 @@
 .settings-secondary-navbar__title {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   font-weight: 500;
   background-color: var(--mantine-dark-7);
   padding: 0 16px;
@@ -137,14 +142,110 @@
   color: #ffffff;
 }
 
-@media (max-width: 900px) {
-  .settings-page {
-    flex-direction: column;
+/* ---- Settings navigation below 1440px: a full-height LEFT overlay drawer ----
+   The 56px main rail stays visible; this drawer slides over the rail and the content (position: fixed, so it never pushes or reflows
+   the page) and is opened from the menu button above the content. Closed, it is visibility: hidden, so none of it is focusable or
+   readable by assistive technology. From 1440px none of these rules apply and the persistent sidebar above is unchanged. */
+.settings-secondary-navbar__close,
+.settings-drawer-backdrop,
+.settings-page__menu-bar {
+  display: none;
+}
+
+@media (max-width: 1439px) {
+  .settings-secondary-navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 950;
+    width: min(var(--settings-secondary-navbar-width), 85vw);
+    height: 100vh;
+    height: 100dvh;
+    overflow-x: hidden; /* the desktop links keep a 16px right margin that would otherwise add a horizontal scrollbar */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.2s ease,
+      visibility 0s linear 0.2s;
+    box-shadow: var(--shadow-md);
   }
 
-  .settings-secondary-navbar {
-    width: auto;
-    flex: 0 0 auto;
+  .settings-secondary-navbar--open {
+    transform: none;
+    visibility: visible;
+    transition:
+      transform 0.2s ease,
+      visibility 0s;
+  }
+
+  .settings-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 940;
+    background: rgba(20, 18, 24, 0.6);
+  }
+
+  .settings-secondary-navbar__close {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-right: -12px;
+    border: none;
+    background: transparent;
+    color: var(--mantine-dark-0);
+    cursor: pointer;
+  }
+
+  .settings-secondary-navbar__close:hover {
+    color: #ffffff;
+  }
+
+  /* Page-wide pieces that only exist for the drawer: the menu button row above every section. */
+  .settings-page__menu-bar {
+    display: block;
+    margin: 0 0 var(--space-4);
+  }
+
+  .settings-page__menu-button {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 44px;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--oshi-border);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+    color: var(--oshi-text-1);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .settings-page__menu-button:hover {
+    border-color: var(--oshi-text-3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-secondary-navbar,
+  .settings-secondary-navbar--open {
+    transition: none;
+  }
+}
+
+/* Phones: the content column loses the rail's 56px, so the shared gutter steps down one spacing token -- on BOTH sides at once -- to keep
+   every Settings page inside the screen. */
+@media (max-width: 640px) {
+  :root {
+    --settings-page-gutter: var(--space-5);
   }
 }
 
@@ -2497,18 +2598,25 @@
   color: var(--roster-text-primary);
 }
 
-@media (max-width: 640px) {
+/* Below 1440px (rail layout) the toolbar wraps instead of stretching: the filter bar keeps its natural width, and the search takes the
+   remaining row (a line of its own when it does not fit) up to a comfortable maximum -- never flush against the page gutter on wide
+   tablets, and exactly the content width on phones. The same wrapping rule serves every width, so there is no phone-only override. */
+@media (max-width: 1439px) {
   .favorites-roster__controls {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .favorites-roster__segmented.ant-segmented {
-    width: 100%;
+    justify-content: flex-start;
   }
 
   .favorites-roster__search {
-    width: 100%;
+    flex: 1 1 200px;
+    width: auto;
+    min-width: 0;
+    max-width: 320px;
+  }
+
+  /* Member tiles share the row evenly (each at least the usual 160px) so the leftover width is spread across the tiles instead of
+     piling up as an empty strip on the right of the list. From 1440px the fixed 160px columns are unchanged. */
+  .favorites-roster__grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
 }
 /* Display Settings reads Home's palette directly: the page surface, text, divider and control all come from the --oshi-* tokens and
@@ -2565,6 +2673,25 @@
   width: 360px;
 }
 
+/* The optional "Install OshiYobi" action (a button, not a select): the same control column and width as the selects above, with a
+   40px touch target and Home's dark control surface. */
+.pwa-install-button {
+  width: 360px;
+  height: 40px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--oshi-border);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--oshi-text-1);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pwa-install-button:hover {
+  border-color: var(--oshi-text-3);
+}
+
 @media (max-width: 900px) {
   .display-setting-row {
     grid-template-columns: 1fr;
@@ -2574,7 +2701,56 @@
   }
 
   .display-setting-select,
+  .pwa-install-button,
   .language-picker {
     width: 100%;
   }
+}
+
+/* ============ Push permission notice (Notification Settings) ============ */
+
+/* Shown only while the device's notification permission is denied. */
+.push-permission-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  max-width: 760px;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--oshi-border);
+  border-radius: var(--radius-md);
+  background: var(--oshi-surface-2);
+  color: var(--oshi-text-2);
+}
+
+.push-permission-notice__title {
+  margin: 0;
+  color: var(--oshi-text-1);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.push-permission-notice__description {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.push-permission-notice__action {
+  appearance: none;
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--oshi-text-3);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--oshi-text-1);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.push-permission-notice__action:hover {
+  border-color: var(--oshi-text-1);
 }

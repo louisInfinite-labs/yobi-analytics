@@ -17,7 +17,7 @@ itself, and doesn't know or care what key it's stored under.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -53,9 +53,14 @@ class NotificationPreference:
     time_zone: str
     delivery_windows: tuple[time, ...]
     quiet_hours: tuple[time, time] | None
-    # creatorId -> False disables ONLY that creator's new-video pushes (live reminders are governed by
-    # creator_overrides / the reminder settings and are unaffected). Absent creators default to enabled.
+    # creatorId -> True enables that creator's ordinary new-video pushes (live reminders are governed by creator_overrides / the
+    # reminder settings and are unaffected). FAIL-CLOSED: a creator that is False OR absent is OFF, so a group/staff/graduated channel
+    # the client never lists, a creator the client does not know yet, or an incomplete map can never receive a new-video push.
     new_video_creator_overrides: dict[str, bool] = field(default_factory=dict)
+    # creatorId -> the instant (UTC) that creator's new-video switch was turned ON, stamped by the BACKEND when the preference is written
+    # (stamp_new_video_activation), never taken from the client. Only an ordinary video discovered at or after this instant may be pushed:
+    # turning notifications ON (first time, or again after OFF) or one creator ON (again) never replays the 3-day lookback.
+    new_video_activated_at: dict[str, datetime] = field(default_factory=dict)
     # creatorId -> True enables that creator's SHORTS (the members of the Settings "Short" card). Short is a content FORMAT,
     # not a topic, so it has its own map and its own default: an absent creator is OFF, so a preference stored before this
     # field existed (or one with no Short card) never receives a Short. Ordinary videos never read this map.
@@ -96,6 +101,31 @@ def _parse_creator_boolean_map(raw_map: Any, *, field_name: str) -> dict[str, bo
             raise ClientError(f"{field_name}[{key!r}] must be a boolean, got {value!r}")
         parsed[key] = value
     return parsed
+
+
+def _parse_creator_instant_map(raw_map: Any, *, field_name: str) -> dict[str, datetime]:
+    """Validate an optional {creatorId: ISO 8601 timestamp with a UTC offset} object (newVideoActivatedAt) into aware datetimes."""
+    if not isinstance(raw_map, dict):
+        raise ClientError(f"{field_name} must be an object mapping creatorId to an ISO 8601 timestamp")
+    parsed: dict[str, datetime] = {}
+    for key, value in raw_map.items():
+        if not isinstance(key, str) or not key:
+            raise ClientError(f"{field_name} keys must be non-empty creatorId strings, got {key!r}")
+        parsed[key] = _parse_aware_instant(value, field_name=f"{field_name}[{key!r}]")
+    return parsed
+
+
+def _parse_aware_instant(value: Any, *, field_name: str) -> datetime:
+    """Validate value is an ISO 8601 timestamp string that carries a UTC offset."""
+    if not isinstance(value, str) or not value:
+        raise ClientError(f"{field_name} must be an ISO 8601 timestamp string with a UTC offset, got {value!r}")
+    try:
+        instant = datetime.fromisoformat(value)
+    except ValueError:
+        raise ClientError(f"{field_name} is not a valid ISO 8601 timestamp: {value!r}") from None
+    if instant.tzinfo is None:
+        raise ClientError(f"{field_name} must include a UTC offset: {value!r}")
+    return instant
 
 
 def parse_notification_preference(raw: Any, *, strict_delivery_slots: bool = False) -> NotificationPreference:
@@ -140,6 +170,7 @@ def parse_notification_preference(raw: Any, *, strict_delivery_slots: bool = Fal
     new_video_short_creator_overrides = _parse_creator_boolean_map(
         raw.get("newVideoShortCreatorOverride", {}), field_name="newVideoShortCreatorOverride"
     )
+    new_video_activated_at = _parse_creator_instant_map(raw.get("newVideoActivatedAt", {}), field_name="newVideoActivatedAt")
 
     time_zone = raw.get("notificationTimeZone")
     if not isinstance(time_zone, str) or not time_zone:
@@ -181,6 +212,7 @@ def parse_notification_preference(raw: Any, *, strict_delivery_slots: bool = Fal
         quiet_hours=quiet_hours,
         new_video_creator_overrides=new_video_creator_overrides,
         new_video_short_creator_overrides=new_video_short_creator_overrides,
+        new_video_activated_at=new_video_activated_at,
         locale=normalize_locale(raw.get("notificationLocale")),
     )
 
@@ -203,11 +235,12 @@ def is_creator_enabled(preference: NotificationPreference, creator_id: str) -> b
 def is_new_video_creator_enabled(preference: NotificationPreference, creator_id: str) -> bool:
     """Whether this client wants NEW-VIDEO pushes for creator_id (the Settings per-creator 新片 switch).
 
-    Only a creator explicitly set to False is excluded; no entry means enabled. It is checked in addition to
-    is_creator_enabled (the master switch and the general per-creator override still win) and never affects
-    live reminders.
+    Fail-closed: only a creator explicitly set to True is wanted; False and NO ENTRY both mean off. The client lists only the
+    creators its Settings roster shows, so a group/staff/graduated channel, a creator it does not know yet, or an incomplete map
+    must never default to "notify". It is checked in addition to is_creator_enabled (the master switch and the general
+    per-creator override still win) and never affects live reminders.
     """
-    return preference.new_video_creator_overrides.get(creator_id, True)
+    return preference.new_video_creator_overrides.get(creator_id, False) is True
 
 
 def is_new_video_wanted(preference: NotificationPreference, creator_id: str, *, content_type: str | None) -> bool:
@@ -221,6 +254,83 @@ def is_new_video_wanted(preference: NotificationPreference, creator_id: str, *, 
     if content_type == CONTENT_TYPE_SHORT:
         return preference.new_video_short_creator_overrides.get(creator_id, False)
     return is_new_video_creator_enabled(preference, creator_id)
+
+
+def is_new_video_after_activation(preference: NotificationPreference, creator_id: str, *, discovered_at: datetime) -> bool:
+    """Whether an ordinary video discovered at `discovered_at` came AFTER this creator's new-video switch was turned on.
+
+    A video discovered before the activation instant is old news to this client -- it must not become a "first enable" backlog from
+    the dispatcher's 3-day lookback -- and so is a creator with no recorded activation (fail-closed). The instant is per creator and
+    only ever moves forward (stamp_new_video_activation), so turning one creator on later never replays that creator's old events.
+    """
+    activated_at = preference.new_video_activated_at.get(creator_id)
+    return activated_at is not None and discovered_at >= activated_at
+
+
+def with_legacy_new_video_activation(preference: NotificationPreference, *, stored_at: datetime | None) -> NotificationPreference:
+    """Fill the activation instant of a preference stored BEFORE activation tracking existed.
+
+    Such a preference has creators switched ON but no newVideoActivatedAt. Their activation is unknown, so the safest bound is the
+    instant the preference was last written (`stored_at`, the record's own updatedAt): nothing the client had not yet been told about
+    before that write is replayed, and anything discovered after it still flows. Without a usable `stored_at` nothing is filled and
+    those creators stay fail-closed. A preference that already carries an instant for a creator is left exactly as it is.
+    """
+    if stored_at is None:
+        return preference
+    missing = {
+        creator_id: stored_at
+        for creator_id, enabled in preference.new_video_creator_overrides.items()
+        if enabled is True and creator_id not in preference.new_video_activated_at
+    }
+    if not missing:
+        return preference
+    return replace(preference, new_video_activated_at={**preference.new_video_activated_at, **missing})
+
+
+def stamp_new_video_activation(
+    raw_preference: dict[str, Any],
+    *,
+    previous_value: Any,
+    previous_updated_at: Any,
+    now: datetime,
+) -> dict[str, Any]:
+    """Return the preference to STORE for an incoming write, with newVideoActivatedAt maintained by the backend.
+
+    The incoming newVideoActivatedAt (if any) is ignored: the instant is the server's, never the client's clock or claim. For every
+    creator the incoming preference turns ON:
+    - it keeps the instant it already had when it was ALREADY on under a still-enabled previous preference (an unrelated edit --
+      language, time zone, another creator, Shorts -- never moves it);
+    - otherwise (first ever, the global switch was OFF in between, or this creator was off/absent) it becomes `now`.
+    A preference stored before activation tracking existed contributes its own last-write instant (previous_updated_at) for a creator
+    that was already on, matching with_legacy_new_video_activation. A global OFF write stores no instants at all, so a later ON starts
+    every creator from a fresh `now`.
+    """
+    incoming = parse_notification_preference(raw_preference)
+
+    carried: dict[str, datetime] = {}
+    try:
+        previous = parse_notification_preference(previous_value) if previous_value is not None else None
+    except ClientError:
+        previous = None  # an unreadable stored value is treated as "nothing was on"
+    if previous is not None and previous.enabled:
+        fallback = None
+        if isinstance(previous_updated_at, str):
+            try:
+                fallback = _parse_aware_instant(previous_updated_at, field_name="updatedAt")
+            except ClientError:
+                fallback = None
+        for creator_id, was_on in previous.new_video_creator_overrides.items():
+            if was_on is True:
+                instant = previous.new_video_activated_at.get(creator_id, fallback)
+                if instant is not None:
+                    carried[creator_id] = instant
+
+    activated: dict[str, str] = {}
+    if incoming.enabled:
+        for creator_id, is_on in incoming.new_video_creator_overrides.items():
+            if is_on is True:
+                activated[creator_id] = carried.get(creator_id, now).astimezone(timezone.utc).isoformat()
+    return {**{key: value for key, value in raw_preference.items() if key != "newVideoActivatedAt"}, "newVideoActivatedAt": activated}
 
 
 def is_temporarily_muted(preference: NotificationPreference, *, now: datetime) -> bool:

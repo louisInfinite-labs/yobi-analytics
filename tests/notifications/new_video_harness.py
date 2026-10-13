@@ -59,7 +59,13 @@ def due_event(**overrides) -> dict:
     return event_item(**fields)
 
 
+# When the default client below switched aizawa_ema's new-video notification ON: before every event these tests discover.
+NEW_VIDEO_ACTIVATED_AT = "2026-01-01T00:00:00+00:00"
+
+
 def preference_value(**overrides) -> dict:
+    """A stored preference. The default client has ONE creator switched on for new videos -- aizawa_ema, explicitly (a creator with no
+    entry is OFF) and since long before any event these tests discover (an event is only pushed if discovered after the activation)."""
     fields = {
         "enabled": True,
         "notificationLevel": "all",
@@ -68,6 +74,8 @@ def preference_value(**overrides) -> dict:
         "notificationTimeZone": "Asia/Tokyo",
         "deliveryWindows": ["08:00", "18:00"],
         "quietHours": None,
+        "newVideoCreatorOverride": {"aizawa_ema": True},
+        "newVideoActivatedAt": {"aizawa_ema": NEW_VIDEO_ACTIVATED_AT},
     }
     fields.update(overrides)
     return fields

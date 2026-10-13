@@ -11,6 +11,14 @@ import { fetchVideoTopics } from "../../home-room/data/videoTopics"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
 
+// A device that can already deliver Web Push: the gate (pushGate.ts) lets every "turn a notification on" action through, so these
+// tests keep exercising the save behavior itself. The gate's own behavior is covered in pushGate.test.ts / pushEnableFlow.test.tsx.
+vi.mock("../push/pushGate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../push/pushGate")>()),
+  ensurePushEnabled: vi.fn(async () => "ready"),
+}))
+
+
 vi.mock("../../home-room/data/videoTopics", () => ({ fetchVideoTopics: vi.fn() }))
 vi.mock("../api/liveReminderApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/liveReminderApi")>()),
@@ -21,7 +29,10 @@ vi.mock("../api/notificationPreferenceApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/notificationPreferenceApi")>()),
   saveNotificationPreference: vi.fn(),
 }))
-vi.mock("../push/pushNotifications", () => ({ getPushSubscriptionStatus: vi.fn() }))
+vi.mock("../push/pushNotifications", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../push/pushNotifications")>()),
+  getPushSubscriptionStatus: vi.fn(),
+}))
 
 // Opening the member drawer renders the whole creator roster, so a multi-step interaction here is slow in jsdom.
 vi.setConfig({ testTimeout: 30000 })
@@ -73,7 +84,7 @@ describe("the Short card in the '+ Add topic' dropdown", () => {
     await addShortCard(user)
 
     const names = [...document.querySelectorAll(".notification-topic-item__name")].map((el) => el.textContent)
-    expect(names).toEqual(["All", "Apex", "Minecraft", "SF6", "VALO", "Short"])
+    expect(names).toEqual(["All", "Chatting", "Singing", "MV", "Apex", "Short"])
     const detail = within(document.querySelector(".notification-detail-panel") as HTMLElement)
     expect(detail.getByRole("heading", { level: 2, name: "Short" })).toBeInTheDocument()
     expect(detail.queryByRole("radio", { name: "Live + New Video" })).not.toBeInTheDocument()
@@ -177,7 +188,7 @@ describe("the Short card in the '+ Add topic' dropdown", () => {
   it("an ordinary topic card's member never enables Shorts", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     renderSettings()
-    await user.click(await screen.findByRole("button", { name: /^SF6/ }))
+    await user.click(await screen.findByRole("button", { name: /^Apex/ }))
     await user.click(within(document.querySelector(".notification-detail-panel") as HTMLElement).getAllByRole("button", { name: /Manage Members/ })[0])
     await screen.findAllByRole("switch", { name: /new video notifications/ })
 
@@ -227,7 +238,7 @@ describe("the Short card in the '+ Add topic' dropdown", () => {
     renderSettings()
 
     expect(screen.queryByRole("button", { name: /^Remove "/ })).not.toBeInTheDocument()
-    await userEvent.setup({ pointerEventsCheck: 0 }).click(await screen.findByRole("button", { name: /^SF6/ }))
+    await userEvent.setup({ pointerEventsCheck: 0 }).click(await screen.findByRole("button", { name: /^Apex/ }))
     expect(screen.queryByRole("button", { name: /^Remove "/ })).not.toBeInTheDocument()
   })
 

@@ -434,15 +434,32 @@ def test_no_new_scheduler_or_state_machine_resource_was_introduced():
     assert state_machines == {"daily_history"}
     # R7 (AWS Cost Recovery) removed trending_precompute_batches entirely
     # (it was already Terraform-disabled, and its own module was deleted). The single discovery_only schedule became the
-    # for_each discovery_window schedules, and scheduled new-video delivery added new_video_dispatch.
-    assert schedules == {"daily_collection", "discovery_window", "notification_dispatch", "new_video_dispatch"}
+    # for_each discovery_window schedules, scheduled new-video delivery added new_video_dispatch, and the livestream completion
+    # lifecycle (tracking/livestream_lifecycle.py) added its own independent 5-minute refresh, livestream_lifecycle_refresh.
+    assert schedules == {
+        "daily_collection",
+        "discovery_window",
+        "notification_dispatch",
+        "new_video_dispatch",
+        "livestream_lifecycle_refresh",
+    }
 
 
 def test_no_new_lambda_function_resource_was_introduced():
     lambda_tf = open("terraform/lambda.tf").read()
     functions = set(re.findall(r'resource\s+"aws_lambda_function"\s+"(\w+)"', lambda_tf))
 
-    assert functions == {"collector", "history_worker", "ranking_reducer", "api", "notification_dispatcher", "emergency_stop"}
+    # livestream_lifecycle (tracking/livestream_lifecycle.py) is a genuinely new, independent Lambda -- see the
+    # schedule assertion's own comment above.
+    assert functions == {
+        "collector",
+        "history_worker",
+        "ranking_reducer",
+        "api",
+        "notification_dispatcher",
+        "emergency_stop",
+        "livestream_lifecycle",
+    }
 
 
 # --- 13. No R2 leaderboard persistence happens yet ---------------------------

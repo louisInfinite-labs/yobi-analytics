@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Button, Drawer, Segmented } from "antd"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t } from "../../../shared/i18n/translations"
+import { ensurePushEnabled } from "../../notifications/push/pushGate"
 import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES } from "../../notifications/model/notificationTopics"
 import { STREAM_REMINDER_OFF, useStreamNotificationOverride, type StreamReminderChoice } from "../hooks/useStreamNotificationOverride"
 import type { ScheduledStream } from "../model/scheduledStream"
@@ -63,6 +64,10 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
     setSaving(true)
     setSaveFailed(false)
     try {
+      // A one-time reminder is a notification being turned ON: it is only saved once this device can really deliver Web Push (the
+      // explanation + browser prompt on first use). Cancelled / denied / unavailable: nothing is saved, and the drawer stays open
+      // with the user's pick intact (the gate already showed why).
+      if ((await ensurePushEnabled()) !== "ready") return
       await saveOverride(stream, shown)
       onClose()
     } catch {

@@ -46,7 +46,7 @@ describe("service worker push handler", () => {
   it("only falls back to the app name when the title is entirely missing, and never touches the body", () => {
     const { showNotification } = push({ title: "", body: "直播" })
 
-    expect(showNotification).toHaveBeenCalledWith("Yobi Analytics", expect.objectContaining({ body: "直播" }))
+    expect(showNotification).toHaveBeenCalledWith("OshiYobi", expect.objectContaining({ body: "直播" }))
   })
 
   it("shows a non-JSON payload as the body of a generic notification instead of crashing", () => {
@@ -57,6 +57,6 @@ describe("service worker push handler", () => {
       text: () => "plain text",
     })
 
-    expect(showNotification).toHaveBeenCalledWith("Yobi Analytics", expect.objectContaining({ body: "plain text" }))
+    expect(showNotification).toHaveBeenCalledWith("OshiYobi", expect.objectContaining({ body: "plain text" }))
   })
 })

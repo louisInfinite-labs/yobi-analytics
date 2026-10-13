@@ -11,6 +11,14 @@ import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
 import { readStylesheet, rulesOf, ruleBody } from "../../../test/readStylesheet"
 
+// A device that can already deliver Web Push: the gate (pushGate.ts) lets every "turn a notification on" action through, so these
+// tests keep exercising the save behavior itself. The gate's own behavior is covered in pushGate.test.ts / pushEnableFlow.test.tsx.
+vi.mock("../push/pushGate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../push/pushGate")>()),
+  ensurePushEnabled: vi.fn(async () => "ready"),
+}))
+
+
 // Task B: the notification-member drawer is Live Status' roster in Home's visual system -- the same grouping, "VSPO! // JP" headings and
 // member order, the Live Status avatar with no glow, Home's surface tokens and Home's own dropdown.
 

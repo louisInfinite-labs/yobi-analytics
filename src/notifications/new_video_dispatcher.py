@@ -42,6 +42,7 @@ from stores import notification_events_store
 from stores import notification_slot_store
 from stores import remote_config_store
 from tracking.creator_master import load_creators
+from tracking.video_master import CONTENT_TYPE_SHORT
 
 MODE = "new_video_slots"
 
@@ -146,6 +147,18 @@ def pending_events(tick: datetime) -> list[dict[str, Any]]:
     return sorted(earliest_by_video.values(), key=lambda item: (datetime.fromisoformat(item["discoveredAt"]), item["videoId"]))
 
 
+def _record_updated_at(record: dict[str, Any]) -> datetime | None:
+    """A stored remote-config record's own updatedAt as an aware datetime, or None when absent/unreadable."""
+    raw = record.get("updatedAt")
+    if not isinstance(raw, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
 def _near_deadline(context: Any) -> bool:
     remaining = getattr(context, "get_remaining_time_in_millis", None)
     return remaining is not None and remaining() < _DEADLINE_MARGIN_MS
@@ -184,6 +197,9 @@ def _serve_recipient(
     except notification_dispatch.ClientError as exc:
         print(f"Warning: skipping client {client_id!r} with an invalid stored notification preference: {exc}")
         return 0
+    # A preference stored before activation tracking existed has no newVideoActivatedAt: bound it by its own last write so the
+    # 3-day lookback is never replayed for it (see notification_dispatch.with_legacy_new_video_activation).
+    preference = notification_dispatch.with_legacy_new_video_activation(preference, stored_at=_record_updated_at(record))
     # The index only says who to look at. The stored preference decides: a client that has since turned OFF or dropped this slot
     # (an index write that outran a failed preference write, or one not yet cleaned up) is skipped.
     if not preference.enabled or slot not in preference.delivery_slots:
@@ -257,6 +273,15 @@ def deliver_new_video_if_due(
     if not notification_dispatch.is_new_video_wanted(preference, candidate["creatorId"], content_type=candidate.get("contentType")):
         # The client turned this creator's 新片 switch OFF -- or, for a Short, did not enable this creator in the Short card
         # (the default): an event that comes due while it is OFF is skipped for good.
+        notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
+        return False
+    if candidate.get("contentType") != CONTENT_TYPE_SHORT and not notification_dispatch.is_new_video_after_activation(
+        preference, candidate["creatorId"], discovered_at=discovered_at
+    ):
+        # Discovered before this creator's new-video switch was (last) turned on -- or no activation is recorded at all: old news,
+        # never a first-enable / re-enable backlog. Recorded as suppressed like the other skipped-for-good cases, so it stays settled
+        # whatever the preference later becomes. (A Short has its own Short-card rules and is unchanged.) This is the per-creator
+        # boundary; the client-level `activeSince` filter in _serve_recipient is a separate, coarser one and both must hold.
         notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
         return False
     if not notification_dispatch.should_notify_now(preference, candidate["creatorId"], now=now):

@@ -78,11 +78,14 @@ def test_short_is_not_stored_as_a_topic():
         # a Short ignores the ordinary 新片 switch, in both directions
         ({"newVideoShortCreatorOverride": {"aizawa_ema": True}, "newVideoCreatorOverride": {"aizawa_ema": False}}, "short", True),
         ({"newVideoShortCreatorOverride": {}, "newVideoCreatorOverride": {"aizawa_ema": True}}, "short", False),
-        # an ordinary video ignores the Short map
-        ({}, None, True),
-        ({}, "upload", True),
+        # an ordinary video ignores the Short map, and (fail-closed) needs its OWN explicit ON: no entry is OFF
+        ({}, None, False),
+        ({}, "upload", False),
+        ({"newVideoCreatorOverride": {"aizawa_ema": True}}, None, True),
+        ({"newVideoCreatorOverride": {"aizawa_ema": True}}, "upload", True),
         ({"newVideoShortCreatorOverride": {"aizawa_ema": True}, "newVideoCreatorOverride": {"aizawa_ema": False}}, "upload", False),
-        ({"newVideoShortCreatorOverride": {"aizawa_ema": False}}, "upload", True),
+        ({"newVideoShortCreatorOverride": {"aizawa_ema": True}}, "upload", False),
+        ({"newVideoShortCreatorOverride": {"aizawa_ema": False}, "newVideoCreatorOverride": {"aizawa_ema": True}}, "upload", True),
     ],
 )
 def test_wanted_decision(raw, content_type, expected):

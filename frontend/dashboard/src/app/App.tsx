@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, useEffect } from "react"
 import { AboutPage } from "../pages/about/AboutPage"
 import { AdminPanel } from "../pages/admin/AdminPanel"
 import { HomePage } from "../pages/home/HomePage"
@@ -9,6 +9,7 @@ import { SettingsPage } from "../pages/settings/SettingsPage"
 import { useCurrentPage, useCurrentPath } from "./navigation/useCurrentPage"
 import { usePageViewTracking } from "./navigation/usePageViewTracking"
 import { MemberThemeProvider } from "../shared/theme/MemberThemeProvider"
+import { PushPermissionHost } from "../features/notifications/components/PushPermissionHost"
 import { useNotificationLocaleSync } from "../features/notifications/hooks/useNotificationLocaleSync"
 import { useRetiredTopicResync } from "../features/notifications/hooks/useRetiredTopicResync"
 
@@ -37,6 +38,11 @@ function App() {
   usePageViewTracking(page, useCurrentPath(), !isAdminRoute())
   useRetiredTopicResync()
   useNotificationLocaleSync()
+  // Moving to another page starts at its top. Home no longer fits one viewport on a phone (it scrolls with the page), so without this
+  // the page the user came from -- scrolled halfway down Settings, say -- would leave Home opened midway, below its player.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [page])
   if (isAdminRoute()) {
     return (
       <MemberThemeProvider>
@@ -67,6 +73,7 @@ function App() {
         </div>
       </div>
       <LiveScheduleDock />
+      <PushPermissionHost />
     </MemberThemeProvider>
   )
 }

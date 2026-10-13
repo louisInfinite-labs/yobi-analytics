@@ -1,21 +1,13 @@
+import { useRef, type Ref } from "react"
+import { X } from "lucide-react"
 import { useLocale } from "../../shared/i18n/hooks/useLocale"
-import { t, type TranslationKey } from "../../shared/i18n/translations"
+import { t } from "../../shared/i18n/translations"
+import { NAV_ITEMS, type SettingsSection } from "./settingsSections"
 
-export type SettingsSection = "myOshi" | "oshi" | "notification" | "display"
+export type { SettingsSection }
 
-/** Fixed order -- confirmed with the user: 我推設定 (myOshi, a new blank
- * placeholder section -- see MyOshiSettings.tsx) now leads, followed by the
- * pre-existing Favorites List (oshi, this feature's own original "oshi"
- * section id -- kept as-is since nothing besides its own display label
- * changed) and Notification Settings. Language switching isn't a nav
- * section/page of its own: it is the last item of Display Settings
- * (see DisplaySettings.tsx). */
-const NAV_ITEMS: { section: SettingsSection; labelKey: TranslationKey }[] = [
-  { section: "myOshi", labelKey: "settingsSecondaryNavbar.myOshiSettings" },
-  { section: "oshi", labelKey: "settingsSecondaryNavbar.oshiSettings" },
-  { section: "notification", labelKey: "settingsSecondaryNavbar.notificationSettings" },
-  { section: "display", labelKey: "settingsSecondaryNavbar.displaySettings" },
-]
+/** How far left (px) a touch must travel inside the open drawer to count as a close swipe. */
+const SWIPE_CLOSE_DISTANCE_PX = 50
 
 /** Settings' own secondary nav, to MainNavbar's right -- Mantine's
  * "Secondary Navbar" naming (ui.mantine.dev/category/navbars), styled as
@@ -27,15 +19,50 @@ const NAV_ITEMS: { section: SettingsSection; labelKey: TranslationKey }[] = [
 export function SettingsSecondaryNavbar({
   activeSection,
   onSelect,
+  open,
+  onClose,
+  ref,
 }: {
   activeSection: SettingsSection
   onSelect: (section: SettingsSection) => void
+  /** Below 1440px this navigation is a left overlay drawer and `open` is whether it is showing; from 1440px it is the persistent
+   * second sidebar and both props are ignored by the layout (CSS decides -- see settings.css). */
+  open: boolean
+  onClose: () => void
+  /** The drawer element, for the page's modal-focus handling. */
+  ref?: Ref<HTMLElement>
 }) {
   const [locale] = useLocale()
+  // Swipe-left inside the open drawer closes it. Deliberately NO swipe-right-from-the-edge opener: that gesture belongs to the
+  // browser's own back navigation on iOS.
+  const swipeStart = useRef<{ x: number; y: number } | null>(null)
 
   return (
-    <nav className="settings-secondary-navbar" aria-label={t(locale, "settingsSecondaryNavbar.navAriaLabel")}>
-      <div className="settings-secondary-navbar__title">{t(locale, "settingsSecondaryNavbar.title")}</div>
+    <nav
+      ref={ref}
+      className={`settings-secondary-navbar${open ? " settings-secondary-navbar--open" : ""}`}
+      aria-label={t(locale, "settingsSecondaryNavbar.navAriaLabel")}
+      id="settings-secondary-navbar"
+      onTouchStart={(event) => {
+        const touch = event.touches[0]
+        swipeStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null
+      }}
+      onTouchEnd={(event) => {
+        const start = swipeStart.current
+        swipeStart.current = null
+        const touch = event.changedTouches[0]
+        if (!open || !start || !touch) return
+        const dx = touch.clientX - start.x
+        const dy = touch.clientY - start.y
+        if (dx <= -SWIPE_CLOSE_DISTANCE_PX && Math.abs(dx) > Math.abs(dy) * 1.5) onClose()
+      }}
+    >
+      <div className="settings-secondary-navbar__title">
+        <span>{t(locale, "settingsSecondaryNavbar.title")}</span>
+        <button type="button" className="settings-secondary-navbar__close" onClick={onClose} aria-label={t(locale, "settingsSecondaryNavbar.closeMenuAriaLabel")}>
+          <X size={20} aria-hidden="true" />
+        </button>
+      </div>
       {NAV_ITEMS.map((item) => (
         <button
           key={item.section}

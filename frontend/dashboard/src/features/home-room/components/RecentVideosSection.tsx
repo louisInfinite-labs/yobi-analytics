@@ -288,39 +288,43 @@ function VideoSectionTagBar({
 }) {
   return (
     <div className="oshi-videos__filters">
-      <ConfigProvider
-        theme={{
-          components: {
-            Segmented: {
-              trackBg: "var(--oshi-surface-1)",
-              trackPadding: 2,
-              itemColor: "var(--oshi-text-3)",
-              itemHoverColor: "var(--oshi-text-1)",
-              itemHoverBg: "rgba(255, 255, 255, 0.05)",
-              // Fixed neutral, never creator-tinted (confirmed with the
-              // user: the selected tag's own color must not shift with
-              // currentOshi) -- --oshi-surface-3, no --creator-main mix.
-              itemSelectedBg: "var(--oshi-surface-3)",
-              itemSelectedColor: "var(--oshi-text-1)",
-              borderRadius: 4,
-              borderRadiusSM: 4,
+      {/* The tag strip is its OWN scroll container, apart from the controls: a strip that cannot fit scrolls sideways inside this box
+          instead of painting over the dropdowns that follow it (and, on a phone, the controls take their own row below it). */}
+      <div className="oshi-videos__tags">
+        <ConfigProvider
+          theme={{
+            components: {
+              Segmented: {
+                trackBg: "var(--oshi-surface-1)",
+                trackPadding: 2,
+                itemColor: "var(--oshi-text-3)",
+                itemHoverColor: "var(--oshi-text-1)",
+                itemHoverBg: "rgba(255, 255, 255, 0.05)",
+                // Fixed neutral, never creator-tinted (confirmed with the
+                // user: the selected tag's own color must not shift with
+                // currentOshi) -- --oshi-surface-3, no --creator-main mix.
+                itemSelectedBg: "var(--oshi-surface-3)",
+                itemSelectedColor: "var(--oshi-text-1)",
+                borderRadius: 4,
+                borderRadiusSM: 4,
+              },
             },
-          },
-        }}
-      >
-        <Segmented<VideoSectionSelection>
-          size="small"
-          classNames={{
-            root: "oshi-videos__segmented",
-            item: "oshi-videos__segment-item",
-            label: "oshi-videos__segment-label",
           }}
-          value={selected}
-          onChange={onSelect}
-          options={options}
-        />
-      </ConfigProvider>
-      {trailing}
+        >
+          <Segmented<VideoSectionSelection>
+            size="small"
+            classNames={{
+              root: "oshi-videos__segmented",
+              item: "oshi-videos__segment-item",
+              label: "oshi-videos__segment-label",
+            }}
+            value={selected}
+            onChange={onSelect}
+            options={options}
+          />
+        </ConfigProvider>
+      </div>
+      <div className="oshi-videos__controls">{trailing}</div>
     </div>
   )
 }

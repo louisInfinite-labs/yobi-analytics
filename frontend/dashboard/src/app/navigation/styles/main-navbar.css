@@ -15,7 +15,16 @@
    confirmed with the user: this app's own primary rail uses a full-width
    rectangular row instead). */
 :root {
-  --main-navbar-width: 160px;
+  /* Below 1440px the Main Navbar is a 56px icon-only rail (labels hidden, see the media query at the end of this file); from 1440px
+     it is the full 160px sidebar with visible labels. Every consumer (the content offset below, the dashboard save toast) reads this
+     one variable, so the rail and the content offset can never disagree. There is never a bottom navigation. */
+  --main-navbar-width: 56px;
+}
+
+@media (min-width: 1440px) {
+  :root {
+    --main-navbar-width: 160px;
+  }
 }
 
 /* .app-shell__content reserves the Main Navbar's width via margin-left
@@ -116,4 +125,144 @@
 
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* ---- Phone pieces exist only below 768px (see the phone block at the end of this file) ---- */
+.main-topbar,
+.main-navbar-backdrop,
+.main-navbar__close {
+  display: none;
+}
+
+/* ============ Icon-only rail below 1440px ============ */
+
+/* The label is dropped from the layout (not just clipped); each link keeps its accessible name through its own aria-label. */
+@media (max-width: 1439px) {
+  .main-navbar__link {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .main-navbar__label {
+    display: none;
+  }
+}
+
+/* ============ Phone (below 768px): top bar + hamburger drawer, NO persistent rail ============ */
+
+/* 768px is the app's own "mobile" breakpoint (shared/hooks/useBreakpoint.ts). Here nothing is reserved on the left: the content offset
+   is 0, the first row of every page is a full-width top bar with the hamburger at the left, and the navigation itself is a left overlay
+   drawer (position: fixed, so opening it never pushes or reflows the page). Closed, it is visibility: hidden: none of it is focusable or
+   read out. The drawer shows the icons AND the labels again. Never a bottom navigation. */
+@media (max-width: 767px) {
+  :root {
+    --main-navbar-width: 0px;
+    --main-topbar-height: 48px;
+  }
+
+  /* In the normal flow, before the page's content, so it is literally the first row; sticky so the hamburger stays reachable. */
+  .main-topbar {
+    display: flex;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--main-topbar-height);
+    padding-inline: 4px;
+    background-color: var(--mantine-dark-7, #242424);
+    border-bottom: 1px solid #3b3b3b;
+  }
+
+  .main-topbar__menu {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #c9c9c9;
+    cursor: pointer;
+  }
+
+  .main-topbar__menu:hover {
+    background-color: #3b3b3b;
+  }
+
+  .main-topbar__menu:focus-visible,
+  .main-navbar__close:focus-visible {
+    outline: 2px solid #e7f5ff;
+    outline-offset: -2px;
+  }
+
+  .main-navbar {
+    z-index: 960;
+    width: min(240px, 85vw);
+    align-items: stretch;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.2s ease,
+      visibility 0s linear 0.2s;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+
+  .main-navbar--open {
+    transform: none;
+    visibility: visible;
+    transition:
+      transform 0.2s ease,
+      visibility 0s;
+  }
+
+  .main-navbar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 955;
+    background: rgba(20, 18, 24, 0.6);
+  }
+
+  .main-navbar__logo {
+    justify-content: space-between;
+    padding-inline: 16px 4px;
+    padding-top: 0;
+    height: var(--main-topbar-height);
+  }
+
+  .main-navbar__close {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: none;
+    background: transparent;
+    color: var(--mantine-dark-0);
+    cursor: pointer;
+  }
+
+  .main-navbar__link {
+    justify-content: flex-start;
+    padding-inline: 16px;
+  }
+
+  .main-navbar__label {
+    display: block;
+  }
+}
+
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .main-navbar,
+  .main-navbar--open {
+    transition: none;
+  }
 }

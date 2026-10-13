@@ -27,6 +27,9 @@ export type TranslationKey =
   | "recentVideos.tag.valo"
   | "recentVideos.tag.minecraft"
   | "recentVideos.tag.apex"
+  | "recentVideos.tag.chatting"
+  | "recentVideos.tag.singing"
+  | "recentVideos.tag.mv"
   | "recentVideos.sort.newest"
   | "recentVideos.sort.oldest"
   | "recentVideos.sort.mostViews"
@@ -80,6 +83,8 @@ export type TranslationKey =
   | "mainNavbar.settings"
   | "mainNavbar.schedule"
   | "mainNavbar.about"
+  | "mainNavbar.openNavAriaLabel"
+  | "mainNavbar.closeNavAriaLabel"
   | "settingsSecondaryNavbar.title"
   | "settingsSecondaryNavbar.navAriaLabel"
   | "settingsSecondaryNavbar.myOshiSettings"
@@ -194,6 +199,35 @@ export type TranslationKey =
   | "notificationToggle.on"
   | "notificationToggle.unavailable"
   | "notificationToggle.unsupportedTooltip"
+  | "settingsSecondaryNavbar.openMenuAriaLabel"
+  | "settingsSecondaryNavbar.closeMenuAriaLabel"
+  | "push.explainTitle"
+  | "push.explainBody"
+  | "push.explainContinue"
+  | "push.deniedTitle"
+  | "push.deniedDescription"
+  | "push.deniedAction"
+  | "push.deniedHelpIos"
+  | "push.deniedHelpInstalled"
+  | "push.deniedHelpBrowser"
+  | "push.deniedReturnHint"
+  | "push.unsupportedTitle"
+  | "push.unsupportedBody"
+  | "push.unsupportedIosBody"
+  | "push.failedTitle"
+  | "push.failedBody"
+  | "push.failedDiagnosticLabel"
+  | "push.close"
+  | "pwa.installLabel"
+  | "pwa.installHelp"
+  | "pwa.installButton"
+  | "pwa.howButton"
+  | "pwa.iosTitle"
+  | "pwa.iosStep1"
+  | "pwa.iosStep2"
+  | "pwa.iosStep3"
+  | "pwa.dataWarningTitle"
+  | "pwa.dataWarningBody"
   | "liveSchedule.pageTitle"
   | "liveSchedule.pageSubtitle"
   | "liveSchedule.timeColumnHeader"
@@ -215,6 +249,9 @@ export type TranslationKey =
   | "liveSchedule.liveBadge"
   | "liveSchedule.noThumbnail"
   | "liveSchedule.moreStreamsAria"
+  | "liveSchedule.dayNavAria"
+  | "liveSchedule.previousDayAria"
+  | "liveSchedule.nextDayAria"
   | "liveSchedule.closeAria"
   | "liveSchedule.setReminderButton"
   | "liveSchedule.openStreamButton"
@@ -248,6 +285,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.tag.valo": "VALO",
     "recentVideos.tag.minecraft": "Minecraft",
     "recentVideos.tag.apex": "Apex",
+    "recentVideos.tag.chatting": "雜談",
+    "recentVideos.tag.singing": "歌回",
+    "recentVideos.tag.mv": "MV",
     "recentVideos.sort.newest": "最新上架",
     "recentVideos.sort.oldest": "最舊上架",
     "recentVideos.sort.mostViews": "最多觀看次數",
@@ -301,6 +341,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "設定",
     "mainNavbar.schedule": "時間表",
     "mainNavbar.about": "關於",
+    "mainNavbar.openNavAriaLabel": "開啟導覽",
+    "mainNavbar.closeNavAriaLabel": "關閉導覽",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
     "settingsSecondaryNavbar.myOshiSettings": "我推設定",
@@ -415,6 +457,35 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationToggle.on": "通知已開啟",
     "notificationToggle.unavailable": "無法使用通知",
     "notificationToggle.unsupportedTooltip": "此瀏覽器不支援推送通知",
+    "settingsSecondaryNavbar.openMenuAriaLabel": "開啟設定選單",
+    "settingsSecondaryNavbar.closeMenuAriaLabel": "關閉設定選單",
+    "push.explainTitle": "允許 OshiYobi 傳送通知",
+    "push.explainBody": "直播提醒與新影片通知需要透過裝置的通知送達。按「繼續」後，系統會詢問是否允許通知，請選擇「允許」。",
+    "push.explainContinue": "繼續",
+    "push.deniedTitle": "尚未開啟通知權限",
+    "push.deniedDescription": "請前往裝置設定，允許 OshiYobi 傳送通知。",
+    "push.deniedAction": "查看設定方法",
+    "push.deniedHelpIos": "iPhone／iPad：開啟「設定」→「通知」→「OshiYobi」，並開啟「允許通知」。",
+    "push.deniedHelpInstalled": "開啟裝置的「設定」→「應用程式」→「OshiYobi」→「通知」，並允許通知。",
+    "push.deniedHelpBrowser": "點選網址列旁的網站設定圖示（鎖頭或調整圖示）→「通知」→ 選擇「允許」，然後回到此頁面。",
+    "push.deniedReturnHint": "設定完成後回到 OshiYobi，畫面會自動更新，不需要重新整理。",
+    "push.unsupportedTitle": "此裝置目前無法接收通知",
+    "push.unsupportedBody": "這個瀏覽器不支援網頁推播通知。",
+    "push.unsupportedIosBody": "在 iPhone／iPad 上，請先用 Safari 將 OshiYobi 加入主畫面，再從主畫面開啟 OshiYobi 並設定通知。",
+    "push.failedTitle": "無法開啟通知",
+    "push.failedBody": "請稍後再試。這次的變更未套用。",
+    "push.failedDiagnosticLabel": "診斷碼",
+    "push.close": "關閉",
+    "pwa.installLabel": "安裝 OshiYobi",
+    "pwa.installHelp": "將 OshiYobi 加入裝置主畫面，之後可像 App 一樣開啟。安裝是選用的，不安裝也能正常使用。",
+    "pwa.installButton": "安裝",
+    "pwa.howButton": "查看安裝方法",
+    "pwa.iosTitle": "加入主畫面",
+    "pwa.iosStep1": "在 Safari 點選「分享」按鈕。",
+    "pwa.iosStep2": "選擇「加入主畫面」。",
+    "pwa.iosStep3": "點選「新增」，之後從主畫面開啟 OshiYobi。",
+    "pwa.dataWarningTitle": "本機資料可能不會自動帶入",
+    "pwa.dataWarningBody": "加入主畫面後的 OshiYobi 可能不會自動使用你在 Safari 中的本機資料，例如 My Oshi、收藏、顯示設定及其他僅存在此裝置的偏好設定。原本 Safari 裡的資料不會被刪除，但也不保證會自動轉移，你可能需要在主畫面版本重新設定。",
     "liveSchedule.pageTitle": "直播時間表",
     "liveSchedule.pageSubtitle": "你所選創作者的即將到來與直播中節目。",
     "liveSchedule.timeColumnHeader": "時間",
@@ -436,6 +507,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.noThumbnail": "沒有縮圖",
     "liveSchedule.moreStreamsAria": "還有 {{count}} 個直播",
+    "liveSchedule.dayNavAria": "日期切換",
+    "liveSchedule.previousDayAria": "前一天",
+    "liveSchedule.nextDayAria": "後一天",
     "liveSchedule.closeAria": "關閉",
     "liveSchedule.setReminderButton": "設定提醒",
     "liveSchedule.openStreamButton": "開啟直播",
@@ -468,6 +542,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.tag.valo": "VALO",
     "recentVideos.tag.minecraft": "Minecraft",
     "recentVideos.tag.apex": "Apex",
+    "recentVideos.tag.chatting": "Chatting",
+    "recentVideos.tag.singing": "Singing",
+    "recentVideos.tag.mv": "MV",
     "recentVideos.sort.newest": "Newest",
     "recentVideos.sort.oldest": "Oldest",
     "recentVideos.sort.mostViews": "Most Views",
@@ -521,6 +598,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "Settings",
     "mainNavbar.schedule": "Schedule",
     "mainNavbar.about": "About",
+    "mainNavbar.openNavAriaLabel": "Open navigation",
+    "mainNavbar.closeNavAriaLabel": "Close navigation",
     "settingsSecondaryNavbar.title": "Settings",
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
     "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
@@ -635,6 +714,35 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationToggle.on": "Notifications on",
     "notificationToggle.unavailable": "Notifications unavailable",
     "notificationToggle.unsupportedTooltip": "This browser doesn't support push notifications",
+    "settingsSecondaryNavbar.openMenuAriaLabel": "Open settings menu",
+    "settingsSecondaryNavbar.closeMenuAriaLabel": "Close settings menu",
+    "push.explainTitle": "Allow OshiYobi to send notifications",
+    "push.explainBody": "Live reminders and new-video alerts are delivered as device notifications. After you tap Continue, your device will ask for permission — please choose Allow.",
+    "push.explainContinue": "Continue",
+    "push.deniedTitle": "Notification permission is off",
+    "push.deniedDescription": "Go to your device settings and allow OshiYobi to send notifications.",
+    "push.deniedAction": "See how",
+    "push.deniedHelpIos": "iPhone / iPad: open Settings → Notifications → OshiYobi, then turn on Allow Notifications.",
+    "push.deniedHelpInstalled": "Open your device's Settings → Apps → OshiYobi → Notifications, then allow notifications.",
+    "push.deniedHelpBrowser": "Open the site settings icon next to the address bar (lock or tune icon) → Notifications → Allow, then come back to this page.",
+    "push.deniedReturnHint": "When you come back to OshiYobi this updates automatically — no reload needed.",
+    "push.unsupportedTitle": "Notifications aren't available here",
+    "push.unsupportedBody": "This browser doesn't support web push notifications.",
+    "push.unsupportedIosBody": "On iPhone / iPad, add OshiYobi to your Home Screen from Safari first, then open it from the Home Screen to set up notifications.",
+    "push.failedTitle": "Couldn't turn on notifications",
+    "push.failedBody": "Please try again later. This change wasn't applied.",
+    "push.failedDiagnosticLabel": "Diagnostic code",
+    "push.close": "Close",
+    "pwa.installLabel": "Install OshiYobi",
+    "pwa.installHelp": "Add OshiYobi to your device's home screen to open it like an app. Installing is optional — everything works without it.",
+    "pwa.installButton": "Install",
+    "pwa.howButton": "How to install",
+    "pwa.iosTitle": "Add to Home Screen",
+    "pwa.iosStep1": "In Safari, tap the Share button.",
+    "pwa.iosStep2": "Choose Add to Home Screen.",
+    "pwa.iosStep3": "Tap Add, then open OshiYobi from your Home Screen.",
+    "pwa.dataWarningTitle": "Local data may not carry over",
+    "pwa.dataWarningBody": "The Home Screen version of OshiYobi may not automatically use the local data you had in Safari, such as My Oshi, Favorites, display settings and other preferences stored only on this device. Your Safari data is not deleted, but it is not guaranteed to transfer — you may need to set things up again in the Home Screen version.",
     "liveSchedule.pageTitle": "Live Schedule",
     "liveSchedule.pageSubtitle": "Upcoming and live streams across your selected creators.",
     "liveSchedule.timeColumnHeader": "Time",
@@ -656,6 +764,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.noThumbnail": "No thumbnail",
     "liveSchedule.moreStreamsAria": "{{count}} more streams",
+    "liveSchedule.dayNavAria": "Day navigation",
+    "liveSchedule.previousDayAria": "Previous day",
+    "liveSchedule.nextDayAria": "Next day",
     "liveSchedule.closeAria": "Close",
     "liveSchedule.setReminderButton": "Set Reminder",
     "liveSchedule.openStreamButton": "Open Stream",
@@ -688,6 +799,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.tag.valo": "VALO",
     "recentVideos.tag.minecraft": "Minecraft",
     "recentVideos.tag.apex": "Apex",
+    "recentVideos.tag.chatting": "雑談",
+    "recentVideos.tag.singing": "歌枠",
+    "recentVideos.tag.mv": "MV",
     "recentVideos.sort.newest": "新着順",
     "recentVideos.sort.oldest": "古い順",
     "recentVideos.sort.mostViews": "総再生数順",
@@ -741,6 +855,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "設定",
     "mainNavbar.schedule": "スケジュール",
     "mainNavbar.about": "概要",
+    "mainNavbar.openNavAriaLabel": "ナビゲーションを開く",
+    "mainNavbar.closeNavAriaLabel": "ナビゲーションを閉じる",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
     "settingsSecondaryNavbar.myOshiSettings": "推し設定",
@@ -855,6 +971,35 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationToggle.on": "通知オン",
     "notificationToggle.unavailable": "通知は利用できません",
     "notificationToggle.unsupportedTooltip": "このブラウザはプッシュ通知に対応していません",
+    "settingsSecondaryNavbar.openMenuAriaLabel": "設定メニューを開く",
+    "settingsSecondaryNavbar.closeMenuAriaLabel": "設定メニューを閉じる",
+    "push.explainTitle": "OshiYobiからの通知を許可しますか",
+    "push.explainBody": "配信リマインダーや新着動画のお知らせは、端末の通知として届きます。「続ける」を押すと端末が許可を求めますので、「許可」を選んでください。",
+    "push.explainContinue": "続ける",
+    "push.deniedTitle": "通知の許可がオフです",
+    "push.deniedDescription": "端末の設定で、OshiYobiからの通知を許可してください。",
+    "push.deniedAction": "設定方法を見る",
+    "push.deniedHelpIos": "iPhone／iPad：「設定」→「通知」→「OshiYobi」を開き、「通知を許可」をオンにします。",
+    "push.deniedHelpInstalled": "端末の「設定」→「アプリ」→「OshiYobi」→「通知」を開き、通知を許可します。",
+    "push.deniedHelpBrowser": "アドレスバー横のサイト設定アイコン（鍵または調整アイコン）→「通知」→「許可」を選び、このページに戻ってください。",
+    "push.deniedReturnHint": "設定後にOshiYobiへ戻ると自動で更新されます。再読み込みは不要です。",
+    "push.unsupportedTitle": "この端末では通知を利用できません",
+    "push.unsupportedBody": "このブラウザはウェブプッシュ通知に対応していません。",
+    "push.unsupportedIosBody": "iPhone／iPadでは、まずSafariでOshiYobiをホーム画面に追加し、ホーム画面から開いて通知を設定してください。",
+    "push.failedTitle": "通知をオンにできませんでした",
+    "push.failedBody": "しばらくしてからもう一度お試しください。今回の変更は適用されていません。",
+    "push.failedDiagnosticLabel": "診断コード",
+    "push.close": "閉じる",
+    "pwa.installLabel": "OshiYobiをインストール",
+    "pwa.installHelp": "OshiYobiを端末のホーム画面に追加して、アプリのように開けます。インストールは任意で、しなくても通常どおり使えます。",
+    "pwa.installButton": "インストール",
+    "pwa.howButton": "インストール方法を見る",
+    "pwa.iosTitle": "ホーム画面に追加",
+    "pwa.iosStep1": "Safariで「共有」ボタンをタップします。",
+    "pwa.iosStep2": "「ホーム画面に追加」を選びます。",
+    "pwa.iosStep3": "「追加」をタップし、ホーム画面からOshiYobiを開きます。",
+    "pwa.dataWarningTitle": "ローカルデータは引き継がれない場合があります",
+    "pwa.dataWarningBody": "ホーム画面版のOshiYobiは、Safariで使っていたローカルデータ（My Oshi、お気に入り、表示設定など、この端末内にのみ保存されている設定）を自動では引き継がない場合があります。Safari側のデータは削除されませんが、自動で移行される保証はなく、ホーム画面版で再設定が必要になることがあります。",
     "liveSchedule.pageTitle": "配信スケジュール",
     "liveSchedule.pageSubtitle": "選択したクリエイターの今後の配信と配信中の番組。",
     "liveSchedule.timeColumnHeader": "時間",
@@ -876,6 +1021,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.noThumbnail": "サムネイルなし",
     "liveSchedule.moreStreamsAria": "他に{{count}}件の配信",
+    "liveSchedule.dayNavAria": "日付の切り替え",
+    "liveSchedule.previousDayAria": "前の日",
+    "liveSchedule.nextDayAria": "次の日",
     "liveSchedule.closeAria": "閉じる",
     "liveSchedule.setReminderButton": "リマインダーを設定",
     "liveSchedule.openStreamButton": "配信を開く",

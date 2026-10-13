@@ -28,6 +28,25 @@ export function getWeekDays(weekStart: Date): Date[] {
   })
 }
 
+/** The local calendar date as "YYYY-MM-DD" -- the identity of a schedule day (it stays the same across the minute clock's re-renders, and
+ * a day the window has rolled past simply stops matching). */
+export function dayKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+/** Which of the loaded days the single-day (phone) layout shows: the one the user navigated to, else today, else the first loaded day.
+ * `selectedKey` that is no longer inside the loaded range (the window rolled over midnight) falls back the same way. */
+export function resolveSelectedDayIndex(days: { date: Date; isToday: boolean }[], selectedKey: string | null): number {
+  if (selectedKey !== null) {
+    const chosen = days.findIndex((day) => dayKey(day.date) === selectedKey)
+    if (chosen >= 0) return chosen
+  }
+  const today = days.findIndex((day) => day.isToday)
+  return today >= 0 ? today : 0
+}
+
 export function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }

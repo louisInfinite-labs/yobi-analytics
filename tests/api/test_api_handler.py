@@ -630,6 +630,8 @@ def slot_index(monkeypatch):
         lambda client_id, *, slots, now_iso: calls["sync"].append((client_id, tuple(slots), now_iso)),
     )
     monkeypatch.setattr(notification_slot_store, "remove_client", lambda client_id: calls["remove"].append(client_id))
+    # A preference write also reads what the client had stored before (to stamp the per-creator new-video activation): nothing, by default.
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
     return calls
 
 
@@ -710,6 +712,7 @@ def test_the_index_is_written_before_the_preference_so_a_failed_index_write_stor
 
 def test_put_notification_preference_persists_it_with_a_valid_client_secret(monkeypatch, client_secret):
     stored = {}
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)  # nothing stored before
     monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: stored.update(record))
 
     response = lambda_handler(
@@ -730,6 +733,7 @@ def test_put_notification_preference_persists_it_with_a_valid_client_secret(monk
 
 def test_put_notification_preference_persists_the_short_card_members_unchanged(monkeypatch, client_secret):
     stored = {}
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)  # nothing stored before
     monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: stored.update(record))
     body = {**_preference_body(), "newVideoShortCreatorOverride": {"aizawa_ema": True, "shirakami_fubuki": False}}
 
@@ -746,6 +750,98 @@ def test_put_notification_preference_persists_the_short_card_members_unchanged(m
     assert response["statusCode"] == 200
     assert stored["value"]["newVideoShortCreatorOverride"] == {"aizawa_ema": True, "shirakami_fubuki": False}
     assert "newVideoTopicOverride" not in stored["value"] and "newVideoShortEnabled" not in stored["value"]
+
+
+# --- the backend owns the per-creator new-video activation instant ----------------
+
+
+def _in_memory_remote_config(monkeypatch) -> dict:
+    """An in-memory remote-config store ({(clientId, key): record}) behind the handler -- no AWS."""
+    stored: dict = {}
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: stored.get((client_id, key)))
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: stored.__setitem__((record["clientId"], record["key"]), record))
+    return stored
+
+
+def _frozen_clock(monkeypatch, instant):
+    """Make the handler's datetime.now() return `instant` (subclass, so every other datetime classmethod keeps working)."""
+
+    class _Frozen(api_handler.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant.astimezone(tz) if tz else instant
+
+    monkeypatch.setattr(api_handler, "datetime", _Frozen)
+
+
+def _put_stamped_preference(client_secret, **fields):
+    body = {**_preference_body(), **fields}
+    response = lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/notification-preference",
+            path={"clientId": "c1"},
+            body=json.dumps(body),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+    assert response["statusCode"] == 200
+    return _body(response)["value"]
+
+
+def test_put_stamps_the_activation_of_each_enabled_creator_with_the_server_clock_and_ignores_a_forged_one(monkeypatch, client_secret):
+    from datetime import datetime, timezone
+
+    _in_memory_remote_config(monkeypatch)
+    _frozen_clock(monkeypatch, datetime(2026, 9, 10, 3, 0, tzinfo=timezone.utc))
+
+    value = _put_stamped_preference(
+        client_secret,
+        newVideoCreatorOverride={"aizawa_ema": True, "shirakami_fubuki": False},
+        newVideoActivatedAt={"aizawa_ema": "2020-01-01T00:00:00+00:00", "shirakami_fubuki": "2020-01-01T00:00:00+00:00"},
+    )
+
+    assert value["newVideoActivatedAt"] == {"aizawa_ema": "2026-09-10T03:00:00+00:00"}
+
+
+def test_put_keeps_the_boundary_through_unrelated_edits_and_restarts_it_after_off_and_on(monkeypatch, client_secret):
+    from datetime import datetime, timezone
+
+    stored = _in_memory_remote_config(monkeypatch)
+    on = {"newVideoCreatorOverride": {"aizawa_ema": True}}
+
+    _frozen_clock(monkeypatch, datetime(2026, 9, 10, 3, 0, tzinfo=timezone.utc))
+    _put_stamped_preference(client_secret, **on)
+
+    _frozen_clock(monkeypatch, datetime(2026, 9, 11, 3, 0, tzinfo=timezone.utc))
+    edited = _put_stamped_preference(client_secret, notificationLocale="ja", **on)  # an unrelated edit
+    assert edited["newVideoActivatedAt"] == {"aizawa_ema": "2026-09-10T03:00:00+00:00"}
+
+    _frozen_clock(monkeypatch, datetime(2026, 9, 12, 3, 0, tzinfo=timezone.utc))
+    disabled = _put_stamped_preference(client_secret, enabled=False, **on)
+    assert disabled["newVideoActivatedAt"] == {}
+
+    _frozen_clock(monkeypatch, datetime(2026, 9, 13, 3, 0, tzinfo=timezone.utc))
+    again = _put_stamped_preference(client_secret, **on)
+    assert again["newVideoActivatedAt"] == {"aizawa_ema": "2026-09-13T03:00:00+00:00"}
+    assert stored[("c1", "notificationPreference")]["value"]["newVideoActivatedAt"] == again["newVideoActivatedAt"]
+
+
+def test_put_carries_a_legacy_stored_preference_by_its_last_write_time(monkeypatch, client_secret):
+    from datetime import datetime, timezone
+
+    stored = _in_memory_remote_config(monkeypatch)
+    stored[("c1", "notificationPreference")] = {
+        "clientId": "c1",
+        "key": "notificationPreference",
+        "value": {**_preference_body(), "newVideoCreatorOverride": {"aizawa_ema": True}},  # stored before activation tracking existed
+        "updatedAt": "2026-09-09T00:00:00+00:00",
+    }
+    _frozen_clock(monkeypatch, datetime(2026, 9, 12, 3, 0, tzinfo=timezone.utc))
+
+    value = _put_stamped_preference(client_secret, newVideoCreatorOverride={"aizawa_ema": True, "kosuzume_toto": True})
+
+    assert value["newVideoActivatedAt"] == {"aizawa_ema": "2026-09-09T00:00:00+00:00", "kosuzume_toto": "2026-09-12T03:00:00+00:00"}
 
 
 def test_put_notification_preference_rejects_a_non_boolean_short_member(monkeypatch, client_secret):
