@@ -67,6 +67,7 @@ from notifications import live_reminder
 from notifications import push_sender
 from api import read_api
 from api import remote_config_api
+from stores import notification_slot_store
 from stores import remote_config_store
 
 # Roadmap 4.5: only a route that authors config for an arbitrary clientId
@@ -283,11 +284,19 @@ def _handle_delete_push_subscription(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_put_notification_preference(event: dict[str, Any]) -> dict[str, Any]:
-    """Self-service: a client sets its own notification preference (Roadmap 4.6), keyed by its own clientId path parameter."""
+    """Self-service: a client sets its own notification preference (Roadmap 4.6), keyed by its own clientId path parameter.
+
+    Validated strictly (1-4 half-hour delivery slots, always read as JST). The slot-recipient index is updated BEFORE the preference is stored: if the
+    second write fails the index may hold slots the stored preference does not list, which the dispatcher ignores (it re-checks
+    the stored preference), and a retry of this same PUT repairs it. The reverse order could store a preference nobody delivers to.
+    Turning notifications OFF removes the client from the index first for the same reason, in the safe direction: if the preference
+    write then fails the client receives nothing until a retry, never a push after it asked to stop.
+    """
     client_id = heartbeat_api.parse_client_id(_merged_params(event).get("clientId"))
     _require_client_secret(event, client_id)
     raw_preference = _json_body(event)
-    notification_dispatch.parse_notification_preference(raw_preference)
+    # Strict first (1-4 half-hour JST slots): a malformed body is a 400 before anything is read or written.
+    preference = notification_dispatch.parse_notification_preference(raw_preference, strict_delivery_slots=True)
     # The per-creator new-video activation instants are the BACKEND's: derived from what this client had stored before (so an unrelated edit
     # never moves them, and turning notifications or a creator back ON starts a fresh instant), never taken from the request body.
     previous = remote_config_store.get_remote_config(client_id, _NOTIFICATION_PREFERENCE_KEY)
@@ -301,6 +310,10 @@ def _handle_put_notification_preference(event: dict[str, Any]) -> dict[str, Any]
     record = remote_config_api.write_remote_config(
         {"clientId": client_id, "key": _NOTIFICATION_PREFERENCE_KEY, "value": stamped_preference}, now=now
     )
+    if preference.enabled:
+        notification_slot_store.sync_client_slots(client_id, slots=preference.delivery_slots, now_iso=record["updatedAt"])
+    else:
+        notification_slot_store.remove_client(client_id)
     remote_config_store.put_remote_config(record)
     return record
 

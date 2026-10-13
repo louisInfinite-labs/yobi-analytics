@@ -25,18 +25,12 @@ from notifications.notification_dispatch import (
     should_notify_now,
 )
 
-from tests.notifications.test_notification_dispatcher import (
-    _DAY1_EVENING,
-    _DAY2_EVENING,
-    _fake_delivery_log,
-    _preference_value,
-    _run_new_video_pass,
-    # The dispatcher module's autouse fixtures (no real VAPID / Holodex / remote-config access); importing them
-    # by name makes pytest apply them to this module too.
-    stub_creators,  # noqa: F401
-    stub_live_streams,  # noqa: F401
-    stub_reminder_items,  # noqa: F401
-    stub_vapid,  # noqa: F401
+from tests.notifications.new_video_harness import (
+    DAY1_EVENING,
+    DAY2_EVENING,
+    fake_delivery_log,
+    preference_value,
+    run_slot_pass,
 )
 
 
@@ -119,55 +113,55 @@ def test_a_new_video_off_creator_still_passes_the_general_gate_so_live_reminders
 def test_new_video_delivery_follows_the_global_switch_and_the_creators_new_video_switch(
     monkeypatch, global_enabled, new_video_override, expect_sent
 ):
-    _fake_delivery_log(monkeypatch)
+    fake_delivery_log(monkeypatch)
     overrides = {} if new_video_override is None else {"aizawa_ema": new_video_override}
-    preference = _preference_value(enabled=global_enabled, newVideoCreatorOverride=overrides)
+    preference = preference_value(enabled=global_enabled, newVideoCreatorOverride=overrides)
 
-    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference)
+    sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference)
 
     assert (sent == [{"videoId": "v1"}]) is expect_sent
 
 
 def test_another_creators_off_switch_does_not_suppress_this_creator(monkeypatch):
-    _fake_delivery_log(monkeypatch)
-    preference = _preference_value(newVideoCreatorOverride={"shirakami_fubuki": False, "aizawa_ema": True})
+    fake_delivery_log(monkeypatch)
+    preference = preference_value(newVideoCreatorOverride={"shirakami_fubuki": False, "aizawa_ema": True})
 
-    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference)
+    sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference)
 
     assert sent == [{"videoId": "v1"}]
 
 
 def test_the_general_creator_override_still_applies_alongside_the_new_video_map(monkeypatch):
-    _fake_delivery_log(monkeypatch)
-    preference = _preference_value(creatorOverride={"aizawa_ema": False}, newVideoCreatorOverride={"aizawa_ema": True})
+    fake_delivery_log(monkeypatch)
+    preference = preference_value(creatorOverride={"aizawa_ema": False}, newVideoCreatorOverride={"aizawa_ema": True})
 
-    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference)
+    sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference)
 
     assert sent == []
 
 
 def test_an_event_that_came_due_while_the_creator_was_off_is_not_replayed_when_turned_back_on(monkeypatch):
-    rows = _fake_delivery_log(monkeypatch)
+    rows = fake_delivery_log(monkeypatch)
 
-    off = _run_new_video_pass(
-        monkeypatch, now=_DAY1_EVENING, preference=_preference_value(newVideoCreatorOverride={"aizawa_ema": False})
+    off = run_slot_pass(
+        monkeypatch, now=DAY1_EVENING, preference=preference_value(newVideoCreatorOverride={"aizawa_ema": False})
     )
     assert off == []
     assert rows == {("c1", "v1"): "suppressed"}
 
-    on = _run_new_video_pass(
-        monkeypatch, now=_DAY2_EVENING, preference=_preference_value(newVideoCreatorOverride={"aizawa_ema": True})
+    on = run_slot_pass(
+        monkeypatch, now=DAY2_EVENING, preference=preference_value(newVideoCreatorOverride={"aizawa_ema": True})
     )
     assert on == []
 
 
 def test_mute_still_suppresses_a_new_video_enabled_creator_without_recording_it(monkeypatch):
-    rows = _fake_delivery_log(monkeypatch)
-    preference = _preference_value(
+    rows = fake_delivery_log(monkeypatch)
+    preference = preference_value(
         newVideoCreatorOverride={"aizawa_ema": True}, temporaryMute="2026-09-03T10:00:00+00:00"
     )
 
-    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference)
+    sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference)
 
     assert sent == []
     assert rows == {}  # mute is not a permanent skip: delivered later once it ends

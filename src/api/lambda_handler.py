@@ -4,10 +4,12 @@ Also dispatches a further, separately-scheduled trigger (2026-09-05),
 invoking this same function/Lambda with a distinguishing `mode` in the
 event rather than deploying a separate function:
 
-- `{"mode": "discovery_only"}` -> main.run_discovery(): finds and persists
-  new videos only, no statistics collection. Intended for a JST 00:00
-  EventBridge rule, so a new video's notification can fire hours earlier
-  than waiting for the heavier 18:00 run to also handle discovery.
+- `{"mode": "discovery_only", "window": "<id>"}` -> main.run_discovery(window): finds and
+  persists new videos only, no statistics collection. One EventBridge schedule per centralized
+  discovery window (tracking.discovery_windows, five JST windows a day, terraform/eventbridge.tf)
+  invokes it with that window's id, so new videos reach the scheduled new-video delivery far
+  sooner than waiting for the 18:00 run. `window` is optional (a manual run); an unknown value
+  fails the invocation.
 
 R7 (AWS Cost Recovery): `{"mode": "precompute_trending"}` and its
 `trending_precompute.run()` were removed here -- both its own EventBridge
@@ -47,6 +49,7 @@ if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
     os.environ.setdefault("YOBI_DATA_DIR", "/tmp")
 
 from collection.main import main, run_discovery
+from tracking.discovery_windows import validate_window
 
 # The only explicit `mode` value this Lambda still recognizes. `mode` absent
 # entirely (None) is handled separately below (falls through to the default
@@ -66,8 +69,8 @@ class UnsupportedModeError(ValueError):
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Dispatch on `event["mode"]`: the daily collection job (default, when
-    `mode` is omitted), or a discovery-only run (`mode: discovery_only`,
-    JST 00:00). Any other explicit `mode` raises UnsupportedModeError before
+    `mode` is omitted), or a discovery-only run (`mode: discovery_only`, one
+    of the scheduled discovery windows). Any other explicit `mode` raises UnsupportedModeError before
     either job ever runs -- see this module's own docstring.
 
     Raises on failure in every mode so AWS Lambda's own invocation-error
@@ -81,7 +84,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         raise UnsupportedModeError(f"Unsupported mode {mode!r}; expected one of {sorted(_VALID_MODES)} or omitted")
 
     if mode == "discovery_only":
-        exit_code = run_discovery()
+        window = (event or {}).get("window")
+        if window is not None:
+            validate_window(window)
+        exit_code = run_discovery(window)
         if exit_code != 0:
             raise RuntimeError(f"Discovery-only job failed (exit code {exit_code}); see the log above for details.")
         return {"statusCode": 200}

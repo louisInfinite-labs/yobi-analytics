@@ -117,6 +117,48 @@ resource "aws_dynamodb_table" "notification_delivery_log" {
   deletion_protection_enabled = true
 }
 
+# Slot-recipient index for scheduled new-video delivery (src/stores/notification_slot_store.py): one item per
+# (fixed JST half-hour slot, client) the client chose, so the 30-minute dispatcher asks "who is due at this slot?" with a bounded
+# Query instead of reading every stored notification preference. slotKey is the plain "00".."47" JST slot (notifications.delivery_slots.
+# slot_key) -- there is no per-time-zone key or zone registry; every delivery slot is Asia/Tokyo wall-clock (see delivery_slots.py).
+# The remote-config table's configKey-index cannot answer this: it can only list EVERY client that stored a notificationPreference,
+# and a client has up to four slots.
+# clientId-index lists one client's own items so a changed or cancelled selection removes exactly its stale ones. The other item
+# attributes (slot, activeSince) are ordinary schemaless attributes, so only the key attributes are declared.
+resource "aws_dynamodb_table" "notification_delivery_slots" {
+  name         = "YobiNotificationDeliverySlots"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "slotKey"
+  range_key    = "clientId"
+
+  attribute {
+    name = "slotKey"
+    type = "S"
+  }
+
+  attribute {
+    name = "clientId"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "clientId-index"
+    hash_key        = "clientId"
+    projection_type = "ALL"
+  }
+
+  on_demand_throughput {
+    max_read_request_units  = 200
+    max_write_request_units = 100
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  deletion_protection_enabled = true
+}
+
 resource "aws_dynamodb_table" "notification_events" {
   name         = "YobiNotificationEvents"
   billing_mode = "PAY_PER_REQUEST"

@@ -15,28 +15,22 @@ import pytest
 
 from notifications.notification_dispatch import ClientError, is_new_video_wanted, parse_notification_preference
 
-from tests.notifications.test_notification_dispatcher import (
-    _DAY1_EVENING,
-    _DAY2_EVENING,
-    _event_item,
-    _fake_delivery_log,
-    _preference_value,
-    _run_new_video_pass,
-    # The dispatcher module's autouse fixtures (no real VAPID / Holodex / remote-config access); importing them
-    # by name makes pytest apply them to this module too.
-    stub_creators,  # noqa: F401
-    stub_live_streams,  # noqa: F401
-    stub_reminder_items,  # noqa: F401
-    stub_vapid,  # noqa: F401
+from tests.notifications.new_video_harness import (
+    DAY1_EVENING,
+    DAY2_EVENING,
+    due_event,
+    fake_delivery_log,
+    preference_value,
+    run_slot_pass,
 )
 
 
 def _event(**overrides) -> dict:
-    """One stored new-video event from the previous evening (its next delivery window has passed at _DAY1_EVENING)."""
-    return _event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00", **overrides)
+    """One stored new-video event from the previous evening (its next delivery window has passed at DAY1_EVENING)."""
+    return due_event(**overrides)
 
 
-SHORT_EVENT = {"contentType": "short"}  # creator aizawa_ema (the _event_item default)
+SHORT_EVENT = {"contentType": "short"}  # creator aizawa_ema (the harness event default)
 
 
 def _raw(**overrides) -> dict:
@@ -104,102 +98,102 @@ def test_wanted_decision(raw, content_type, expected):
 
 
 def test_a_short_event_is_not_delivered_when_no_short_card_exists(monkeypatch):
-    rows = _fake_delivery_log(monkeypatch)
+    rows = fake_delivery_log(monkeypatch)
 
-    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(), event=_event(**SHORT_EVENT))
+    sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference_value(), event=_event(**SHORT_EVENT))
 
     assert sent == []
     assert rows == {("c1", "v1"): "suppressed"}
 
 
 def test_a_short_event_is_delivered_for_a_member_of_the_short_card(monkeypatch):
-    _fake_delivery_log(monkeypatch)
-    preference = _preference_value(newVideoShortCreatorOverride={"aizawa_ema": True})
+    fake_delivery_log(monkeypatch)
+    preference = preference_value(newVideoShortCreatorOverride={"aizawa_ema": True})
 
-    assert _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT)) == [{"videoId": "v1"}]
+    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT)) == [{"videoId": "v1"}]
 
 
 def test_members_a_and_c_get_their_shorts_but_b_does_not(monkeypatch):
-    preference = _preference_value(newVideoShortCreatorOverride={"aizawa_ema": True, "shirakami_fubuki": False, "hakos_baelz": True})
+    preference = preference_value(newVideoShortCreatorOverride={"aizawa_ema": True, "shirakami_fubuki": False, "hakos_baelz": True})
 
     for creator_id, expected in (("aizawa_ema", [{"videoId": "v1"}]), ("shirakami_fubuki", []), ("hakos_baelz", [{"videoId": "v1"}])):
-        _fake_delivery_log(monkeypatch)
-        sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference, event=_event(creatorId=creator_id, **SHORT_EVENT))
+        fake_delivery_log(monkeypatch)
+        sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event(creatorId=creator_id, **SHORT_EVENT))
         assert sent == expected, creator_id
 
 
 def test_an_mv_short_follows_the_short_card_not_the_mv_topic(monkeypatch):
     # Even an event that carries a topic is judged by its format only: this client never enabled this creator's Shorts.
-    _fake_delivery_log(monkeypatch)
+    fake_delivery_log(monkeypatch)
 
-    sent = _run_new_video_pass(
-        monkeypatch, now=_DAY1_EVENING, preference=_preference_value(), event=_event(topic="mv", **SHORT_EVENT)
+    sent = run_slot_pass(
+        monkeypatch, now=DAY1_EVENING, preference=preference_value(), event=_event(topic="mv", **SHORT_EVENT)
     )
 
     assert sent == []
 
 
 def test_an_ordinary_video_is_unaffected_by_the_short_card(monkeypatch):
-    _fake_delivery_log(monkeypatch)
-    preference = _preference_value(newVideoShortCreatorOverride={"aizawa_ema": True})
+    fake_delivery_log(monkeypatch)
+    preference = preference_value(newVideoShortCreatorOverride={"aizawa_ema": True})
 
-    assert _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference, event=_event()) == [{"videoId": "v1"}]
+    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event()) == [{"videoId": "v1"}]
 
 
 def test_a_legacy_event_without_a_content_type_is_an_ordinary_video(monkeypatch):
-    _fake_delivery_log(monkeypatch)
+    fake_delivery_log(monkeypatch)
 
-    assert _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(), event=_event()) == [{"videoId": "v1"}]
+    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference_value(), event=_event()) == [{"videoId": "v1"}]
 
 
 def test_the_global_master_switch_beats_the_short_card(monkeypatch):
-    rows = _fake_delivery_log(monkeypatch)
-    preference = _preference_value(enabled=False, newVideoShortCreatorOverride={"aizawa_ema": True})
+    rows = fake_delivery_log(monkeypatch)
+    preference = preference_value(enabled=False, newVideoShortCreatorOverride={"aizawa_ema": True})
 
-    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT))
+    sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT))
 
     assert sent == []
-    assert rows == {("c1", "v1"): "suppressed"}
+    assert rows == {}  # a client with the master switch OFF is not in the slot index at all, so nothing is even looked at
 
 
 def test_the_general_creator_override_still_beats_the_short_card(monkeypatch):
-    _fake_delivery_log(monkeypatch)
-    preference = _preference_value(creatorOverride={"aizawa_ema": False}, newVideoShortCreatorOverride={"aizawa_ema": True})
+    fake_delivery_log(monkeypatch)
+    preference = preference_value(creatorOverride={"aizawa_ema": False}, newVideoShortCreatorOverride={"aizawa_ema": True})
 
-    assert _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT)) == []
+    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT)) == []
 
 
 def test_mute_still_suppresses_a_short_without_recording_it(monkeypatch):
-    rows = _fake_delivery_log(monkeypatch)
-    preference = _preference_value(newVideoShortCreatorOverride={"aizawa_ema": True}, temporaryMute="2026-09-03T10:00:00+00:00")
+    rows = fake_delivery_log(monkeypatch)
+    preference = preference_value(newVideoShortCreatorOverride={"aizawa_ema": True}, temporaryMute="2026-09-03T10:00:00+00:00")
 
-    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT))
+    sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT))
 
     assert sent == []
     assert rows == {}  # mute is temporary: delivered once it ends
 
 
 def test_quiet_hours_still_suppress_a_short_without_recording_it(monkeypatch):
-    rows = _fake_delivery_log(monkeypatch)
-    preference = _preference_value(newVideoShortCreatorOverride={"aizawa_ema": True}, quietHours=["17:00", "20:00"])  # 18:05 JST
+    rows = fake_delivery_log(monkeypatch)
+    preference = preference_value(newVideoShortCreatorOverride={"aizawa_ema": True}, quietHours=["17:00", "20:00"])  # 18:05 JST
 
-    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT))
+    sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT))
 
     assert sent == []
     assert rows == {}
 
 
 def test_a_short_skipped_while_the_creator_was_off_is_not_replayed_when_the_creator_is_enabled(monkeypatch):
-    rows = _fake_delivery_log(monkeypatch)
+    rows = fake_delivery_log(monkeypatch)
 
-    off = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(), event=_event(**SHORT_EVENT))
+    off = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference_value(), event=_event(**SHORT_EVENT))
     assert off == []
     assert rows == {("c1", "v1"): "suppressed"}
 
-    on = _run_new_video_pass(
+    on = run_slot_pass(
         monkeypatch,
-        now=_DAY2_EVENING,
-        preference=_preference_value(newVideoShortCreatorOverride={"aizawa_ema": True}),
+        now=DAY2_EVENING,
+        preference=preference_value(newVideoShortCreatorOverride={"aizawa_ema": True}),
         event=_event(**SHORT_EVENT),
     )
     assert on == []

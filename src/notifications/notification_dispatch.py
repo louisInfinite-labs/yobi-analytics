@@ -23,6 +23,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from analytics.view_growth_analytics import InvalidTimeZoneError, validate_time_zone
+from notifications.delivery_slots import InvalidDeliverySlotsError, normalize_stored_slots, parse_strict_slots
 from notifications.notification_text import DEFAULT_LOCALE, normalize_locale
 from tracking.video_master import CONTENT_TYPE_SHORT
 
@@ -67,6 +68,15 @@ class NotificationPreference:
     # The language of this client's push notifications (zh-TW / ja / en), set from the dashboard language. A preference stored before this
     # field existed, or one with a missing / unsupported value, is en.
     locale: str = DEFAULT_LOCALE
+
+    @property
+    def delivery_slots(self) -> tuple[int, ...]:
+        """The half-hour delivery slots (0-47 of the client's local day) this preference delivers new videos at.
+
+        A preference stored before the 4-slot/half-hour rule is normalized (floored to its half hour, at most four kept), so the
+        slot-recipient index and the dispatcher always read it the same way.
+        """
+        return normalize_stored_slots(self.delivery_windows)
 
 
 def _parse_hhmm(raw: Any, *, field_name: str) -> time:
@@ -118,13 +128,17 @@ def _parse_aware_instant(value: Any, *, field_name: str) -> datetime:
     return instant
 
 
-def parse_notification_preference(raw: Any) -> NotificationPreference:
+def parse_notification_preference(raw: Any, *, strict_delivery_slots: bool = False) -> NotificationPreference:
     """Validate a stored/incoming notification preference dict into a NotificationPreference.
 
     Every field is untrusted input (Roadmap 4.5's opaque value, or a
     Dashboard request body) — validated up front the same way read_api.py
     validates a query, so a malformed value is a clean ClientError rather
     than an exception surfacing from deep inside dispatch logic later.
+
+    `strict_delivery_slots` is for a NEW write (the PUT route): deliveryWindows must then be 1 to 4 distinct half-hour
+    slots (HH:00 or HH:30). A STORED preference is parsed leniently (any 'HH:MM' list) so a value written before that rule
+    still loads; its slots are normalized by NotificationPreference.delivery_slots.
     """
     if not isinstance(raw, dict):
         raise ClientError("notification preference must be an object")
@@ -169,6 +183,11 @@ def parse_notification_preference(raw: Any) -> NotificationPreference:
     raw_windows = raw.get("deliveryWindows")
     if not isinstance(raw_windows, list) or not raw_windows:
         raise ClientError("deliveryWindows is required and must be a non-empty list of 'HH:MM' strings")
+    if strict_delivery_slots:
+        try:
+            parse_strict_slots(raw_windows)
+        except InvalidDeliverySlotsError as exc:
+            raise ClientError(str(exc)) from None
     delivery_windows = tuple(
         sorted({_parse_hhmm(w, field_name="deliveryWindows entry") for w in raw_windows})
     )

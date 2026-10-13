@@ -136,9 +136,11 @@ resource "aws_lambda_function" "notification_dispatcher" {
   role          = local.lambda_role_arn
   handler       = "notifications.notification_dispatcher.lambda_handler"
   runtime       = "python3.12"
-  timeout       = 60
-  memory_size   = 512
-  filename      = local.lambda_placeholder_zip
+  # The 1-minute reminder run needs well under a minute; the 30-minute new_video_slots run serves every client due at a slot one after
+  # another and stops starting new clients ~20s before this limit (new_video_dispatcher._DEADLINE_MARGIN_MS).
+  timeout     = 300
+  memory_size = 512
+  filename    = local.lambda_placeholder_zip
 
   environment {
     variables = {

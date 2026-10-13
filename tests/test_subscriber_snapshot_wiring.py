@@ -433,10 +433,16 @@ def test_no_new_scheduler_or_state_machine_resource_was_introduced():
 
     assert state_machines == {"daily_history"}
     # R7 (AWS Cost Recovery) removed trending_precompute_batches entirely
-    # (it was already Terraform-disabled, and its own module was deleted).
-    # livestream_lifecycle_refresh (tracking/livestream_lifecycle.py) is a genuinely new, independent schedule --
-    # the completion-lifecycle feature's own 5-minute Holodex refresh, unrelated to this file's own R3/R4 scope.
-    assert schedules == {"daily_collection", "discovery_only", "notification_dispatch", "livestream_lifecycle_refresh"}
+    # (it was already Terraform-disabled, and its own module was deleted). The single discovery_only schedule became the
+    # for_each discovery_window schedules, scheduled new-video delivery added new_video_dispatch, and the livestream completion
+    # lifecycle (tracking/livestream_lifecycle.py) added its own independent 5-minute refresh, livestream_lifecycle_refresh.
+    assert schedules == {
+        "daily_collection",
+        "discovery_window",
+        "notification_dispatch",
+        "new_video_dispatch",
+        "livestream_lifecycle_refresh",
+    }
 
 
 def test_no_new_lambda_function_resource_was_introduced():

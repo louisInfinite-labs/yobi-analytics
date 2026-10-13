@@ -113,6 +113,13 @@ jobs:
           tests/notifications/test_localized_push_dispatch.py
           tests/ops/test_config.py
           tests/api/test_api_handler.py
+          tests/tracking/test_discovery_windows.py
+          tests/test_discovery_windows_schedule.py
+          tests/test_new_video_dispatch_schedule.py
+          tests/notifications/test_delivery_slots.py
+          tests/notifications/test_new_video_dispatcher.py
+          tests/stores/test_notification_slot_store.py
+          tests/scripts/migration/test_backfill_notification_slots.py
           tests/tracking/test_livestream_lifecycle.py
           tests/stores/test_dynamodb_video_live_status.py
           tests/test_subscriber_snapshot_wiring.py
@@ -191,6 +198,9 @@ jobs:
           src/pages/settings/DisplaySettings.test.tsx
           src/pages/settings/SettingsThemeConsistency.test.tsx
           src/features/notifications/api/notificationPreferenceApi.test.ts
+          src/features/notifications/model/deliverySlots.test.ts
+          src/features/notifications/hooks/useDeliverySlots.test.ts
+          src/features/notifications/components/NewVideoDeliveryTimes.test.tsx
           src/features/notifications/components/NotificationSettings.shortCard.test.tsx
           src/features/notifications/model/notificationTopicCatalog.test.ts
           src/features/notifications/hooks/useTopicNotificationPreferences.retiredAndRemove.test.ts

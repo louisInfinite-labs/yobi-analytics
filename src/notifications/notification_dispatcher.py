@@ -1,43 +1,17 @@
-"""Scheduled Lambda entry point for the Phase 4.6 notification dispatcher.
+"""Scheduled Lambda entry point for the notification dispatcher: live reminders every minute, plus the `new_video_slots` mode.
 
-Runs on a fixed EventBridge schedule (mirrors Roadmap 2.4's daily-collection
-trigger pattern) rather than firing per-event, since Roadmap 4.6 explicitly
-allows holding a near-real-time event until a client's next selected
-delivery window — a poller that re-checks "is it time yet" each run is a
-correct way to implement that; a one-shot per-event trigger would need its
-own precise hold-and-refire scheduling machinery instead. Each run:
+One Lambda, two schedules (terraform/eventbridge.tf):
 
-1. Loads every notification event from the last _EVENT_LOOKBACK_DAYS
-   calendar days (notification_events_store.py) — a video becomes a
-   candidate once, at discovery, and stays one until every subscribed
-   client has either been notified or the lookback window ages it out.
-2. Loads every client that has a stored NotificationPreference (Roadmap
-   4.6's opaque value, under remote_config_store.py's generic store).
-3. For each (client, event) pair not already recorded in
-   notification_delivery_log_store.py: skips it — without marking anything
-   delivered, so a later run naturally retries — if the event's own next
-   eligible delivery window (notification_dispatch.next_delivery_window_utc)
-   hasn't arrived yet, or if notification_dispatch.should_notify_now says
-   this client is currently suppressed (disabled/overridden creator,
-   temporary mute, quiet hours). The one exception to "without marking
-   anything": an event that comes due while the client's global
-   notifications switch is OFF is recorded as suppressed, so turning the
-   switch back ON never replays it. Otherwise atomically claims the pair via
-   notification_delivery_log_store.mark_delivered's conditional write
-   *before* sending — closing the race where two overlapping runs could
-   both see "not yet delivered" and both push — then sends via
-   push_sender.py: a successful send calls confirm_delivered() to make the
-   record permanent, while a send that didn't actually succeed calls
-   release_claim() so a later run can retry immediately. A claim that gets
-   neither call (the invocation that made it terminated first — Lambda
-   timeout, crash) expires on its own after
-   notification_delivery_log_store._CLAIM_EXPIRY and becomes reclaimable,
-   rather than looking permanently delivered with nothing ever actually
-   sent.
+- no `mode` (rate(1 minute)): the live reminders below. This path no longer delivers new-video pushes.
+- `{"mode": "new_video_slots"}` (every 30 minutes, UTC :00/:30): scheduled new-video delivery, implemented in
+  new_video_dispatcher.py. It is routed there before any reminder work, so the two never share a run.
 
-A client with a stored preference but no stored push subscription is
-skipped entirely (nothing to deliver to), not treated as an error — Roadmap
-4.5/4.6 don't require subscribing to push before holding a preference.
+Each reminder run:
+
+1. Loads every client that has a stored NotificationPreference (Roadmap 4.6's opaque value, under remote_config_store.py's
+   generic store).
+2. A client with a stored preference but no stored push subscription is skipped entirely (nothing to deliver to), not
+   treated as an error -- Roadmap 4.5/4.6 don't require subscribing to push before holding a preference.
 
 Same run, same per-client loop: also resolves, for every stream in the
 system-wide "streamSchedule" snapshot, which single reminder setting (if any)
@@ -79,12 +53,11 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from stores import notification_delivery_log_store
 from notifications import notification_dispatch
-from stores import notification_events_store
 from notifications import live_reminder
+from notifications import new_video_dispatcher
 from notifications import notification_text
 from notifications import push_sender
 from stores import remote_config_store
@@ -94,7 +67,6 @@ from api.holodex_client import HolodexAPIError
 from api.holodex_normalization import HolodexNormalizationError
 from ops.config import get_vapid_credentials, MissingHolodexApiKeyError
 from tracking.creator_master import load_creators
-from tracking.video_master import CONTENT_TYPE_SHORT
 from tracking.video_topics import OTHER_TOPIC, classify_video_topic
 
 _NOTIFICATION_PREFERENCE_KEY = "notificationPreference"
@@ -121,22 +93,21 @@ _REMINDER_WINDOW = timedelta(minutes=1)
 # number.
 _SCHEDULE_REFRESH_INTERVAL = timedelta(minutes=15)
 
-# Must match main.py's COLLECTION_TIMEZONE: Video.discovered_at is always
-# stamped in this zone, and notification_events_store.py partitions its
-# eventDate by that same timestamp's own calendar date.
-_EVENT_TIMEZONE = ZoneInfo("Asia/Tokyo")
 
-# How many past calendar days' notification events remain delivery
-# candidates — bounds this run's DynamoDB reads. A video not delivered to a
-# given client within this window is treated as stale (e.g. that client
-# stayed muted/offline for a long stretch) rather than queued forever.
-_EVENT_LOOKBACK_DAYS = 3
+class UnsupportedModeError(ValueError):
+    """An event's explicit `mode` this Lambda does not know -- a stale or mistyped schedule target must fail loudly, never
+    silently run the reminder job instead."""
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Check every pending (client, notification event) pair and deliver the ones that are due."""
+    """Run the new-video slot delivery (`mode: new_video_slots`), or else deliver every due live reminder."""
+    mode = (event or {}).get("mode")
+    if mode == new_video_dispatcher.MODE:
+        return new_video_dispatcher.run(event, context)
+    if mode is not None:
+        raise UnsupportedModeError(f"Unsupported mode {mode!r}; expected {new_video_dispatcher.MODE!r} or omitted")
+
     now = datetime.now(timezone.utc)
-    candidate_events = _recent_events(now)
     stream_schedule = _refresh_and_load_stream_schedule(now=now)
 
     creators_by_id = {creator.creator_id: creator for creator in load_creators()}
@@ -152,42 +123,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         except notification_dispatch.ClientError as exc:
             print(f"Warning: skipping client {client_id!r} with an invalid stored notification preference: {exc}")
             continue
-        # A preference stored before activation tracking existed has no newVideoActivatedAt: bound it by its own last write so the
-        # 3-day lookback is never replayed for it (see notification_dispatch.with_legacy_new_video_activation).
-        preference = notification_dispatch.with_legacy_new_video_activation(preference, stored_at=_record_updated_at(pref_record))
 
         subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
-        if subscription_record is None and preference.enabled:
-            continue
-        # A client whose global switch is OFF has normally no push subscription any more
-        # (the dashboard toggle deletes it while turning notifications OFF). Such a client
-        # still goes through _deliver_if_due below so events that come due while it is OFF
-        # are recorded as suppressed -- otherwise turning notifications back ON (which
-        # subscribes again) would replay them from the lookback window.
-        subscription = subscription_record["value"] if subscription_record is not None else None
-
-        # One bulk read of this client's delivery-log rows for the whole candidate window, instead of one GetItem per
-        # (client, event): that per-event read made a run's duration and DynamoDB reads grow with clients x events.
-        already_handled = notification_delivery_log_store.delivered_video_ids(
-            client_id, [candidate["videoId"] for candidate in candidate_events], now=now
-        )
-        for candidate in candidate_events:
-            checked += 1
-            if _deliver_if_due(
-                candidate,
-                already_handled=already_handled,
-                client_id=client_id,
-                preference=preference,
-                subscription=subscription,
-                creators_by_id=creators_by_id,
-                now=now,
-                vapid_private_key=vapid_private_key,
-                vapid_claims=vapid_claims,
-            ):
-                delivered += 1
-
-        if subscription is None:
-            continue  # global OFF and nothing subscribed: there is no reminder to evaluate or send
+        if subscription_record is None:
+            continue  # nothing to send a reminder to (a client whose global switch is OFF has its subscription removed)
+        subscription = subscription_record["value"]
 
         for video_id, resolved_reminder in _resolve_reminders_for_client(client_id, stream_schedule).items():
             checked += 1
@@ -302,90 +242,6 @@ def _resolve_reminders_for_client(
             stream_title=schedule_entry.title,
         )
     return resolved
-
-
-def _deliver_if_due(
-    candidate: dict[str, Any],
-    *,
-    already_handled: set[str],
-    client_id: str,
-    preference: notification_dispatch.NotificationPreference,
-    subscription: Any,
-    creators_by_id: dict[str, Any],
-    now: datetime,
-    vapid_private_key: str,
-    vapid_claims: dict[str, str],
-) -> bool:
-    """Send one candidate event to one client if it's due, and record it. Returns whether it was sent.
-
-    The global `enabled` switch is a master OFF: an event that comes due while it
-    is OFF is recorded as suppressed (mark_suppressed) and skipped for good, so
-    turning notifications back ON later never replays it from the lookback
-    window. A creator whose per-creator new-video switch is OFF is treated the
-    same way (suppressed, never replayed), while live reminders are untouched. An event whose delivery window has not arrived yet is left alone, so
-    it is still sent normally if the switch is back ON by then.
-    """
-    video_id = candidate["videoId"]
-    if video_id in already_handled:
-        return False
-
-    discovered_at = datetime.fromisoformat(candidate["discoveredAt"])
-    eligible_at = notification_dispatch.next_delivery_window_utc(preference, after=discovered_at)
-    if now < eligible_at:
-        return False
-    if not preference.enabled:
-        notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
-        return False
-    if not notification_dispatch.is_new_video_wanted(preference, candidate["creatorId"], content_type=candidate.get("contentType")):
-        # The client turned this creator's 新片 switch OFF -- or, for a Short, did not enable this creator in the Short card
-        # (the default): like the master switch, an event that comes due while it is OFF is skipped for good, so turning it
-        # back ON never replays it from the lookback window.
-        notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
-        return False
-    if candidate.get("contentType") != CONTENT_TYPE_SHORT and not notification_dispatch.is_new_video_after_activation(
-        preference, candidate["creatorId"], discovered_at=discovered_at
-    ):
-        # Discovered before this creator's new-video switch was (last) turned on -- or no activation is recorded at all: old news,
-        # never a first-enable / re-enable backlog. Recorded as suppressed like the other skipped-for-good cases, so it stays settled
-        # whatever the preference later becomes. (A Short has its own Short-card rules and is unchanged.)
-        notification_delivery_log_store.mark_suppressed(client_id, video_id, now.isoformat())
-        return False
-    if not notification_dispatch.should_notify_now(preference, candidate["creatorId"], now=now):
-        return False
-
-    # Claimed *before* sending (not just recorded after a successful send):
-    # this is the atomic gate that stops two overlapping dispatcher runs
-    # from both passing the already_delivered() check above and both
-    # sending. A lost claim means a concurrent run already owns this
-    # (client, video) pair, so this run must not send.
-    if not notification_delivery_log_store.mark_delivered(client_id, video_id, now.isoformat()):
-        return False
-
-    creator = creators_by_id.get(candidate["creatorId"])
-    text = notification_text.new_video_notification(
-        locale=preference.locale,
-        creator_name=creator.display_name if creator else None,
-        video_title=candidate.get("title"),
-    )
-    result = push_sender.send_push_notification(
-        subscription,
-        title=text.title,
-        body=text.body,
-        data={"videoId": video_id},
-        vapid_private_key=vapid_private_key,
-        vapid_claims=vapid_claims,
-    )
-    if result.subscription_expired:
-        print(f"Push subscription expired for client {client_id!r}; leaving cleanup to a future pass")
-        notification_delivery_log_store.release_claim(client_id, video_id)
-        return False
-    if not result.sent:
-        print(f"Warning: push send failed for client {client_id!r}, video {video_id!r}: {result.error}")
-        notification_delivery_log_store.release_claim(client_id, video_id)
-        return False
-
-    notification_delivery_log_store.confirm_delivered(client_id, video_id, now.isoformat())
-    return True
 
 
 def _deliver_reminders_if_due(
@@ -525,25 +381,3 @@ def _send_reminder(
 
     notification_delivery_log_store.confirm_delivered(client_id, dedupe_id, now.isoformat())
     return True
-
-
-def _record_updated_at(record: dict[str, Any]) -> datetime | None:
-    """A stored remote-config record's own updatedAt as an aware datetime, or None when absent/unreadable."""
-    raw = record.get("updatedAt")
-    if not isinstance(raw, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo is not None else None
-
-
-def _recent_events(now: datetime) -> list[dict[str, Any]]:
-    """Every notification event from the last _EVENT_LOOKBACK_DAYS calendar days, in _EVENT_TIMEZONE."""
-    local_today = now.astimezone(_EVENT_TIMEZONE).date()
-    events: list[dict[str, Any]] = []
-    for day_offset in range(_EVENT_LOOKBACK_DAYS):
-        event_date = (local_today - timedelta(days=day_offset)).isoformat()
-        events.extend(notification_events_store.list_events_for_date(event_date))
-    return events

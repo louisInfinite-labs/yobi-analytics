@@ -111,6 +111,14 @@ export type TranslationKey =
   | "oshiSettings.viewFilter.favoritesOnly"
   | "notificationSettings.pageTitle"
   | "notificationSettings.pageDescription"
+  | "notificationSettings.deliveryTimes.title"
+  | "notificationSettings.deliveryTimes.description"
+  | "notificationSettings.deliveryTimes.selectedCount"
+  | "notificationSettings.deliveryTimes.selectedTimesLabel"
+  | "notificationSettings.deliveryTimes.removeAriaLabel"
+  | "notificationSettings.deliveryTimes.gridAriaLabel"
+  | "notificationSettings.deliveryTimes.maxReachedHint"
+  | "notificationSettings.deliveryTimes.minRequiredHint"
   | "notificationSettings.liveColumnHeader"
   | "notificationSettings.newVideoColumnHeader"
   | "notificationSettings.liveSwitchAriaLabel"
@@ -352,6 +360,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.pageTitle": "我的收藏",
     "notificationSettings.pageTitle": "推送通知",
     "notificationSettings.pageDescription": "設定直播與新影片的通知方式、提醒時間及通知對象。",
+    "notificationSettings.deliveryTimes.title": "新影片通知時段",
+    "notificationSettings.deliveryTimes.description": "每天最多可選 4 個半小時時段，新影片通知只會在這些時間送出。時間一律為日本時間（JST，Asia/Tokyo）。",
+    "notificationSettings.deliveryTimes.selectedCount": "已選 {{count}} / {{max}}",
+    "notificationSettings.deliveryTimes.selectedTimesLabel": "已選擇的通知時段",
+    "notificationSettings.deliveryTimes.removeAriaLabel": "移除 {{time}}",
+    "notificationSettings.deliveryTimes.gridAriaLabel": "通知時段（每 30 分鐘）",
+    "notificationSettings.deliveryTimes.maxReachedHint": "最多選 4 個時段，請先移除一個再選其他時段。",
+    "notificationSettings.deliveryTimes.minRequiredHint": "至少需保留 1 個時段。",
     "oshiSettings.pageDescription": "管理你收藏的成員，並用於直播狀態、通知設定等功能。",
     "oshiSettings.selectedCountLabel": "已選 {{count}} 人",
     "oshiSettings.viewFilter.favoritesOnly": "收藏",
@@ -601,6 +617,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.pageTitle": "My Favorites",
     "notificationSettings.pageTitle": "Push Notifications",
     "notificationSettings.pageDescription": "Configure notifications for live streams and new videos, including reminder timing and recipients.",
+    "notificationSettings.deliveryTimes.title": "New video delivery times",
+    "notificationSettings.deliveryTimes.description": "Choose up to 4 half-hour times per day when new-video notifications are delivered. Times are always Japan Standard Time (JST, Asia/Tokyo).",
+    "notificationSettings.deliveryTimes.selectedCount": "{{count}} / {{max}} selected",
+    "notificationSettings.deliveryTimes.selectedTimesLabel": "Selected delivery times",
+    "notificationSettings.deliveryTimes.removeAriaLabel": "Remove {{time}}",
+    "notificationSettings.deliveryTimes.gridAriaLabel": "Delivery time slots (every 30 minutes)",
+    "notificationSettings.deliveryTimes.maxReachedHint": "You can choose up to 4 times. Remove one first to pick another.",
+    "notificationSettings.deliveryTimes.minRequiredHint": "At least one time is required.",
     "oshiSettings.pageDescription": "Manage your favorite members for Live Status, notification settings, and other features.",
     "oshiSettings.selectedCountLabel": "{{count}} selected",
     "oshiSettings.viewFilter.favoritesOnly": "Favorites",
@@ -850,6 +874,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.pageTitle": "マイお気に入り",
     "notificationSettings.pageTitle": "プッシュ通知",
     "notificationSettings.pageDescription": "配信や新着動画の通知方法、通知タイミング、対象メンバーを設定します。",
+    "notificationSettings.deliveryTimes.title": "新着動画の通知時刻",
+    "notificationSettings.deliveryTimes.description": "新着動画の通知を受け取る時刻を、1日あたり最大4つまで30分単位で選べます。時刻は常に日本時間（JST、Asia/Tokyo）です。",
+    "notificationSettings.deliveryTimes.selectedCount": "{{count}} / {{max}} 件選択中",
+    "notificationSettings.deliveryTimes.selectedTimesLabel": "選択中の通知時刻",
+    "notificationSettings.deliveryTimes.removeAriaLabel": "{{time}} を削除",
+    "notificationSettings.deliveryTimes.gridAriaLabel": "通知時刻（30分ごと）",
+    "notificationSettings.deliveryTimes.maxReachedHint": "選べるのは最大4つです。別の時刻を選ぶには、先にどれか1つを削除してください。",
+    "notificationSettings.deliveryTimes.minRequiredHint": "時刻は最低1つ必要です。",
     "oshiSettings.pageDescription": "お気に入りのメンバーを管理します。ライブ状況や通知設定などで確認できます。",
     "oshiSettings.selectedCountLabel": "{{count}} 人選択中",
     "oshiSettings.viewFilter.favoritesOnly": "お気に入り",

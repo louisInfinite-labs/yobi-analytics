@@ -8,7 +8,9 @@ Two production defects (Android client, 2026-10-13 22:48 JST) are pinned here:
    `newVideoActivatedAt[creatorId]` whenever a creator's switch goes ON (first enable, global OFF -> ON, creator OFF -> ON), and only a video
    discovered at or after that instant may be pushed; everything older is recorded as suppressed and never replays.
 
-No test here touches AWS: the stores, push sender and clock are all stubbed.
+The dispatcher flows run through the 30-minute slot dispatcher (notifications/new_video_dispatcher.py), where both this per-creator
+boundary and the slot dispatcher's own client-level `activeSince` hold. No test here touches AWS: the stores, push sender and clock
+are all stubbed.
 """
 
 from __future__ import annotations
@@ -19,8 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from notifications import notification_dispatcher
-from notifications import push_sender
+from notifications import new_video_dispatcher
 from notifications.notification_dispatch import (
     ClientError,
     is_new_video_after_activation,
@@ -30,22 +31,10 @@ from notifications.notification_dispatch import (
     stamp_new_video_activation,
     with_legacy_new_video_activation,
 )
-from notifications.notification_dispatcher import lambda_handler
-from notifications.push_sender import PushResult
-from stores import notification_events_store
 from stores import remote_config_store
 
-from tests.notifications.test_notification_dispatcher import (
-    _fake_delivery_log,
-    _frozen_datetime,
-    _subscription_value,
-    # The dispatcher module's autouse fixtures (no real VAPID / Holodex / remote-config access); importing them by name makes pytest
-    # apply them to this module too.
-    stub_creators,  # noqa: F401
-    stub_live_streams,  # noqa: F401
-    stub_reminder_items,  # noqa: F401
-    stub_vapid,  # noqa: F401
-)
+from tests.notifications.new_video_harness import fake_delivery_log as _fake_delivery_log
+from tests.notifications.new_video_harness import install_world
 
 JST = timezone(timedelta(hours=9))
 CREATORS_JSON = Path(__file__).resolve().parents[2] / "src" / "creators.json"
@@ -240,29 +229,28 @@ def _event(video_id: str, creator_id: str, discovered_at: datetime, *, content_t
     return item
 
 
-NOW = _utc(12, 9, 5)  # 18:05 JST on 09-12: every 08:00 / 18:00 window of 09-10 and 09-11 has passed; 09-10..09-12 are the 3-day lookback
+NOW = _utc(12, 9, 5)  # 18:05 JST on 09-12: the 18:00 JST tick; every 08:00 / 18:00 window of 09-10 and 09-11 has passed; 09-10..09-12 are the 3-day lookback
 
 
 def _run(monkeypatch, *, preference: dict, events: list[dict], updated_at: str | None = None, now: datetime = NOW) -> list[str]:
-    """One dispatcher pass at `now`; returns the videoIds pushed. Shares the delivery log `_fake_delivery_log` installed for this test."""
-    by_date: dict[str, list[dict]] = {}
-    for event in events:
-        by_date.setdefault(event["eventDate"], []).append(event)
-    record = {"clientId": "c1", "value": preference}
-    if updated_at is not None:
-        record["updatedAt"] = updated_at
-    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: by_date.get(event_date, []))
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [record])
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
-    sent: list[str] = []
-    monkeypatch.setattr(
-        push_sender,
-        "send_push_notification",
-        lambda *a, **kw: (sent.append(kw["data"]["videoId"]), PushResult(sent=True, subscription_expired=False))[1],
-    )
-    lambda_handler({}, None)
-    return sent
+    """One slot-dispatcher pass at `now`; returns the videoIds pushed. Shares the delivery log `_fake_delivery_log` installed for this test.
+
+    The client is indexed under the JST slots of its preference (its 08:00 / 18:00 here) with an `activeSince` long before every event, so
+    only the per-creator rules under test decide.
+    """
+    sent_payloads = install_world(monkeypatch, events=events, preferences={"c1": preference})
+    if updated_at is not None:  # a stored record carries its own updatedAt, which bounds a preference that predates activation tracking
+        stored = remote_config_store.get_remote_config
+
+        def with_updated_at(client_id, key):
+            record = stored(client_id, key)
+            if record is not None and key == "notificationPreference":
+                return {**record, "updatedAt": updated_at}
+            return record
+
+        monkeypatch.setattr(remote_config_store, "get_remote_config", with_updated_at)
+    new_video_dispatcher.run({}, None, now=now)
+    return [payload["videoId"] for payload in sent_payloads]
 
 
 def test_an_event_discovered_before_the_first_enable_is_not_delivered_and_one_after_it_is(monkeypatch):
@@ -350,7 +338,7 @@ def test_an_event_whose_window_has_not_arrived_is_still_held_not_dropped(monkeyp
     stored = _store(_raw(on=("aizawa_ema",)), previous=None, now=_utc(12, 0))
     discovered = _utc(12, 8, 30)  # 17:30 JST: the next window is 18:00 JST
 
-    held = _run(monkeypatch, preference=stored, events=[_event("later", "aizawa_ema", discovered)], now=_utc(12, 8, 45))
+    held = _run(monkeypatch, preference=stored, events=[_event("later", "aizawa_ema", discovered)], now=_utc(12, 8, 35))  # the 17:30 JST tick: not this client's slot
     rows_while_held = dict(rows)
     due = _run(monkeypatch, preference=stored, events=[_event("later", "aizawa_ema", discovered)], now=_utc(12, 9, 5))
 

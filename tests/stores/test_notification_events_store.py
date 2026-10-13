@@ -7,8 +7,10 @@ from stores.notification_events_store import (
     NOTIFICATION_EVENTS_TABLE,
     NotificationEventsStoreError,
     list_events_for_date,
+    new_video_event_id,
     record_new_video_events,
 )
+from tracking.discovery_windows import LEGACY_SOURCE, discovery_source
 from tracking.video_master import Video
 
 AWS_REGION = "ap-northeast-1"
@@ -112,10 +114,57 @@ def test_a_botocore_error_is_also_converted_to_the_store_error(notification_even
     from stores import notification_events_store
 
     class _FakeTable:
-        def batch_writer(self):
+        def put_item(self, **_kwargs):
             raise EndpointConnectionError(endpoint_url="https://dynamodb.example.invalid")
 
     monkeypatch.setattr(notification_events_store, "_resource", lambda: type("R", (), {"Table": lambda self, name: _FakeTable()})())
 
     with pytest.raises(NotificationEventsStoreError):
         record_new_video_events([_video()])
+
+
+def test_an_event_carries_the_durable_fields_the_scheduled_delivery_path_needs(notification_events_table):
+    record_new_video_events([_video()], discovery_source=discovery_source("1300"))
+
+    event = list_events_for_date("2026-09-03")[0]
+
+    assert event["eventId"] == "new_video:v1" == new_video_event_id("v1")
+    assert event["publishedAt"] == "2026-08-20T00:00:00Z"
+    assert event["discoverySource"] == "discovery_window:1300"
+    assert event["notificationEligible"] is True
+
+
+def test_the_default_source_marks_an_event_not_written_by_a_discovery_window(notification_events_table):
+    record_new_video_events([_video()])
+
+    assert list_events_for_date("2026-09-03")[0]["discoverySource"] == LEGACY_SOURCE
+
+
+def test_recording_the_same_discovery_again_keeps_the_first_write_and_reports_nothing_new(notification_events_table):
+    first = record_new_video_events([_video(title="first title")], discovery_source=discovery_source("0900"))
+    again = record_new_video_events([_video(title="second title")], discovery_source=discovery_source("1300"))
+
+    events = list_events_for_date("2026-09-03")
+    assert (first, again) == (1, 0)
+    assert len(events) == 1
+    assert events[0]["title"] == "first title"
+    assert events[0]["discoverySource"] == "discovery_window:0900"
+
+
+def test_a_mixed_batch_records_only_the_events_that_do_not_exist_yet(notification_events_table):
+    record_new_video_events([_video(video_id="v1")])
+
+    recorded = record_new_video_events([_video(video_id="v1"), _video(video_id="v2")])
+
+    assert recorded == 1
+    assert {event["videoId"] for event in list_events_for_date("2026-09-03")} == {"v1", "v2"}
+
+
+def test_a_rediscovery_on_a_later_date_is_a_second_row_that_consumers_dedupe_by_video_id(notification_events_table):
+    record_new_video_events([_video(discovered_at="2026-09-03T23:00:00+09:00")])
+    record_new_video_events([_video(discovered_at="2026-09-04T00:00:00+09:00")])
+
+    first = list_events_for_date("2026-09-03")
+    second = list_events_for_date("2026-09-04")
+    assert [e["videoId"] for e in first] == [e["videoId"] for e in second] == ["v1"]
+    assert first[0]["eventId"] == second[0]["eventId"]  # the logical identity a consumer dedupes on

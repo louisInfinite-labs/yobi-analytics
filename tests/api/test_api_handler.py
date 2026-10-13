@@ -15,6 +15,7 @@ from notifications import push_sender
 from ops.config import MissingHolodexApiKeyError
 from api import read_api
 from api import remote_config_api
+from stores import notification_slot_store
 from stores import remote_config_store
 from api.api_handler import lambda_handler
 
@@ -619,6 +620,96 @@ def _preference_body():
     }
 
 
+@pytest.fixture(autouse=True)
+def slot_index(monkeypatch):
+    """The slot-recipient index calls a preference write makes, recorded instead of reaching DynamoDB."""
+    calls = {"sync": [], "remove": []}
+    monkeypatch.setattr(
+        notification_slot_store,
+        "sync_client_slots",
+        lambda client_id, *, slots, now_iso: calls["sync"].append((client_id, tuple(slots), now_iso)),
+    )
+    monkeypatch.setattr(notification_slot_store, "remove_client", lambda client_id: calls["remove"].append(client_id))
+    # A preference write also reads what the client had stored before (to stamp the per-creator new-video activation): nothing, by default.
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
+    return calls
+
+
+def _put_preference(body, client_secret):
+    return lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/notification-preference",
+            path={"clientId": "c1"},
+            body=json.dumps(body),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+
+
+def test_an_enabled_preference_indexes_the_client_under_its_jst_slots(monkeypatch, client_secret, slot_index):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
+
+    response = _put_preference({**_preference_body(), "deliveryWindows": ["18:00", "08:30", "08:30"]}, client_secret)
+
+    assert response["statusCode"] == 200
+    [(client_id, slots, now_iso)] = slot_index["sync"]
+    assert (client_id, slots) == ("c1", (17, 36))  # 08:30 -> 17, 18:00 -> 36, deduplicated and sorted
+    assert now_iso == json.loads(response["body"])["updatedAt"]
+    assert slot_index["remove"] == []
+
+
+def test_a_disabled_preference_removes_the_client_from_the_index(monkeypatch, client_secret, slot_index):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
+
+    response = _put_preference({**_preference_body(), "enabled": False}, client_secret)
+
+    assert response["statusCode"] == 200
+    assert slot_index["remove"] == ["c1"]
+    assert slot_index["sync"] == []
+
+
+@pytest.mark.parametrize(
+    "windows",
+    [
+        ["08:10"],  # not on a half-hour boundary
+        ["06:00", "07:00", "08:00", "09:00", "10:00"],  # more than 4
+        [],  # none
+        ["25:00"],
+        [800],
+    ],
+)
+def test_a_new_preference_with_invalid_delivery_slots_is_rejected_before_anything_is_written(monkeypatch, client_secret, slot_index, windows):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = _put_preference({**_preference_body(), "deliveryWindows": windows}, client_secret)
+
+    assert response["statusCode"] == 400
+    assert slot_index == {"sync": [], "remove": []}
+
+
+def test_four_distinct_half_hour_slots_are_accepted(monkeypatch, client_secret, slot_index):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
+
+    response = _put_preference({**_preference_body(), "deliveryWindows": ["00:00", "07:30", "12:00", "23:30"]}, client_secret)
+
+    assert response["statusCode"] == 200
+    assert slot_index["sync"][0][1] == (0, 15, 24, 47)
+
+
+def test_the_index_is_written_before_the_preference_so_a_failed_index_write_stores_nothing(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    def _failing_sync(client_id, *, slots, now_iso):
+        raise notification_slot_store.NotificationSlotStoreError("table unreachable")
+
+    monkeypatch.setattr(notification_slot_store, "sync_client_slots", _failing_sync)
+
+    response = _put_preference(_preference_body(), client_secret)
+
+    assert response["statusCode"] == 500
+
+
 def test_put_notification_preference_persists_it_with_a_valid_client_secret(monkeypatch, client_secret):
     stored = {}
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)  # nothing stored before
@@ -683,7 +774,7 @@ def _frozen_clock(monkeypatch, instant):
     monkeypatch.setattr(api_handler, "datetime", _Frozen)
 
 
-def _put_preference(client_secret, **fields):
+def _put_stamped_preference(client_secret, **fields):
     body = {**_preference_body(), **fields}
     response = lambda_handler(
         _event(
@@ -704,7 +795,7 @@ def test_put_stamps_the_activation_of_each_enabled_creator_with_the_server_clock
     _in_memory_remote_config(monkeypatch)
     _frozen_clock(monkeypatch, datetime(2026, 9, 10, 3, 0, tzinfo=timezone.utc))
 
-    value = _put_preference(
+    value = _put_stamped_preference(
         client_secret,
         newVideoCreatorOverride={"aizawa_ema": True, "shirakami_fubuki": False},
         newVideoActivatedAt={"aizawa_ema": "2020-01-01T00:00:00+00:00", "shirakami_fubuki": "2020-01-01T00:00:00+00:00"},
@@ -720,18 +811,18 @@ def test_put_keeps_the_boundary_through_unrelated_edits_and_restarts_it_after_of
     on = {"newVideoCreatorOverride": {"aizawa_ema": True}}
 
     _frozen_clock(monkeypatch, datetime(2026, 9, 10, 3, 0, tzinfo=timezone.utc))
-    _put_preference(client_secret, **on)
+    _put_stamped_preference(client_secret, **on)
 
     _frozen_clock(monkeypatch, datetime(2026, 9, 11, 3, 0, tzinfo=timezone.utc))
-    edited = _put_preference(client_secret, notificationLocale="ja", **on)  # an unrelated edit
+    edited = _put_stamped_preference(client_secret, notificationLocale="ja", **on)  # an unrelated edit
     assert edited["newVideoActivatedAt"] == {"aizawa_ema": "2026-09-10T03:00:00+00:00"}
 
     _frozen_clock(monkeypatch, datetime(2026, 9, 12, 3, 0, tzinfo=timezone.utc))
-    disabled = _put_preference(client_secret, enabled=False, **on)
+    disabled = _put_stamped_preference(client_secret, enabled=False, **on)
     assert disabled["newVideoActivatedAt"] == {}
 
     _frozen_clock(monkeypatch, datetime(2026, 9, 13, 3, 0, tzinfo=timezone.utc))
-    again = _put_preference(client_secret, **on)
+    again = _put_stamped_preference(client_secret, **on)
     assert again["newVideoActivatedAt"] == {"aizawa_ema": "2026-09-13T03:00:00+00:00"}
     assert stored[("c1", "notificationPreference")]["value"]["newVideoActivatedAt"] == again["newVideoActivatedAt"]
 
@@ -748,7 +839,7 @@ def test_put_carries_a_legacy_stored_preference_by_its_last_write_time(monkeypat
     }
     _frozen_clock(monkeypatch, datetime(2026, 9, 12, 3, 0, tzinfo=timezone.utc))
 
-    value = _put_preference(client_secret, newVideoCreatorOverride={"aizawa_ema": True, "kosuzume_toto": True})
+    value = _put_stamped_preference(client_secret, newVideoCreatorOverride={"aizawa_ema": True, "kosuzume_toto": True})
 
     assert value["newVideoActivatedAt"] == {"aizawa_ema": "2026-09-09T00:00:00+00:00", "kosuzume_toto": "2026-09-12T03:00:00+00:00"}
 

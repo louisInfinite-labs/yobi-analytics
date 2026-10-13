@@ -15,13 +15,9 @@ import pytest
 from notifications import live_reminder, notification_dispatcher
 from notifications.notification_dispatch import parse_notification_preference
 
+from tests.notifications.new_video_harness import DAY1_EVENING, due_event, fake_delivery_log, preference_value, run_slot_pass
 from tests.notifications.test_notification_dispatcher import (
-    _DAY1_EVENING,
     _STORED_REMINDER_ITEMS,
-    _event_item,
-    _fake_delivery_log,
-    _preference_value,
-    _run_new_video_pass,
     # The dispatcher module's autouse fixtures (no real VAPID / Holodex / remote-config access).
     stub_creators,  # noqa: F401
     stub_live_streams,  # noqa: F401
@@ -116,11 +112,11 @@ def test_the_short_preference_is_unaffected_by_retired_scopes():
 def test_new_video_eligibility_ignores_retired_scopes_and_follows_the_creator_switch_as_before(monkeypatch):
     # A preference document with leftovers of the retired categories under keys the backend does not know about, and a stale retired reminder.
     _STORED_REMINDER_ITEMS[_key("aizawa_ema", "gta")] = SETTING
-    stale = _preference_value(newVideoTopicOverride={"gta": True, "endfield": False}, newVideoCreatorOverride={"aizawa_ema": True})
-    _fake_delivery_log(monkeypatch)
+    stale = preference_value(newVideoTopicOverride={"gta": True, "endfield": False}, newVideoCreatorOverride={"aizawa_ema": True})
+    fake_delivery_log(monkeypatch)
 
-    assert _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=stale, event=_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")) == [{"videoId": "v1"}]
+    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=stale, event=due_event()) == [{"videoId": "v1"}]
 
-    _fake_delivery_log(monkeypatch)
-    off = _preference_value(newVideoTopicOverride={"gta": True}, newVideoCreatorOverride={"aizawa_ema": False})
-    assert _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=off, event=_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")) == []
+    fake_delivery_log(monkeypatch)
+    off = preference_value(newVideoTopicOverride={"gta": True}, newVideoCreatorOverride={"aizawa_ema": False})
+    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=off, event=due_event()) == []

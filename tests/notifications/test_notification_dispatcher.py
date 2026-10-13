@@ -187,143 +187,6 @@ def test_no_recent_events_and_no_reminder_data_reports_nothing_checked_or_delive
     assert response == {"statusCode": 200, "checked": 0, "delivered": 0}
 
 
-def test_delivers_a_due_event_to_a_subscribed_eligible_client(monkeypatch):
-    # Discovered at yesterday's 18:00 JST run; now is today 18:05 JST, so
-    # today's 08:00/18:00 windows have both already passed the event's own
-    # next-eligible-window instant (tomorrow-relative-to-discovery 08:00).
-    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)  # 18:05 JST
-    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(
-        notification_events_store,
-        "list_events_for_date",
-        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
-        if event_date == "2026-09-02"
-        else [],
-    )
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
-    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
-    confirmed = {}
-    monkeypatch.setattr(
-        notification_delivery_log_store,
-        "confirm_delivered",
-        lambda client_id, video_id, delivered_at: confirmed.update(client_id=client_id, video_id=video_id),
-    )
-    monkeypatch.setattr(push_sender, "send_push_notification", lambda *a, **kw: PushResult(sent=True, subscription_expired=False))
-
-    response = lambda_handler({}, None)
-
-    assert response == {"statusCode": 200, "checked": 1, "delivered": 1}
-    assert confirmed == {"client_id": "c1", "video_id": "v1"}
-
-
-def test_does_not_redeliver_an_already_delivered_event(monkeypatch):
-    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
-    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(
-        notification_events_store,
-        "list_events_for_date",
-        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
-        if event_date == "2026-09-02"
-        else [],
-    )
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: True)
-
-    def _boom(*a, **kw):
-        raise AssertionError("should never send a push for an already-delivered event")
-
-    monkeypatch.setattr(push_sender, "send_push_notification", _boom)
-
-    response = lambda_handler({}, None)
-
-    assert response == {"statusCode": 200, "checked": 1, "delivered": 0}
-
-
-def test_a_lost_delivery_claim_race_does_not_send_a_push(monkeypatch):
-    """Two overlapping dispatcher runs can both pass already_delivered()'s
-    cheap pre-check before either has written anything — mark_delivered's
-    atomic conditional write is the actual race gate. Simulates the loser:
-    the claim call itself returns False, so this run must not send."""
-    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
-    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(
-        notification_events_store,
-        "list_events_for_date",
-        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
-        if event_date == "2026-09-02"
-        else [],
-    )
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
-    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: False)
-
-    def _boom(*a, **kw):
-        raise AssertionError("should never send a push after losing the atomic delivery claim")
-
-    monkeypatch.setattr(push_sender, "send_push_notification", _boom)
-
-    response = lambda_handler({}, None)
-
-    assert response == {"statusCode": 200, "checked": 1, "delivered": 0}
-
-
-def test_holds_an_event_until_its_next_delivery_window(monkeypatch):
-    """Discovered at 18:00:05 JST with windows [08:00, 18:00] — the next
-    eligible window is tomorrow 08:00, so a run at 20:00 JST the same day
-    must not deliver it yet."""
-    now = datetime(2026, 9, 3, 11, 0, tzinfo=timezone.utc)  # 20:00 JST
-    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(
-        notification_events_store,
-        "list_events_for_date",
-        lambda event_date: [_event_item(discoveredAt="2026-09-03T18:00:05+09:00")] if event_date == "2026-09-03" else [],
-    )
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
-
-    def _boom(*a, **kw):
-        raise AssertionError("should not send before the next eligible delivery window")
-
-    monkeypatch.setattr(push_sender, "send_push_notification", _boom)
-
-    response = lambda_handler({}, None)
-
-    assert response == {"statusCode": 200, "checked": 1, "delivered": 0}
-
-
-def test_suppressed_client_is_skipped_without_sending(monkeypatch):
-    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
-    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(
-        notification_events_store,
-        "list_events_for_date",
-        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
-        if event_date == "2026-09-02"
-        else [],
-    )
-    monkeypatch.setattr(
-        remote_config_store,
-        "list_by_key",
-        lambda key: [{"clientId": "c1", "value": _preference_value(creatorOverride={"aizawa_ema": False})}],
-    )
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
-
-    def _boom(*a, **kw):
-        raise AssertionError("should not send to a client whose creator override disables this creator")
-
-    monkeypatch.setattr(push_sender, "send_push_notification", _boom)
-
-    response = lambda_handler({}, None)
-
-    assert response == {"statusCode": 200, "checked": 1, "delivered": 0}
-
-
 def test_client_with_no_push_subscription_is_skipped(monkeypatch):
     now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
@@ -366,76 +229,8 @@ def test_client_with_an_invalid_stored_preference_is_skipped(monkeypatch):
     assert response == {"statusCode": 200, "checked": 0, "delivered": 0}
 
 
-def test_expired_subscription_releases_its_delivery_claim(monkeypatch):
-    """A claim is taken before sending (the atomicity fix); an expired
-    subscription means the send didn't actually happen, so the claim must
-    be released rather than left standing as a phantom delivered record."""
-    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
-    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(
-        notification_events_store,
-        "list_events_for_date",
-        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
-        if event_date == "2026-09-02"
-        else [],
-    )
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
-    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
-    released = {}
-    monkeypatch.setattr(
-        notification_delivery_log_store,
-        "release_claim",
-        lambda client_id, video_id: released.update(client_id=client_id, video_id=video_id),
-    )
-    monkeypatch.setattr(push_sender, "send_push_notification", lambda *a, **kw: PushResult(sent=False, subscription_expired=True))
-
-    response = lambda_handler({}, None)
-
-    assert response == {"statusCode": 200, "checked": 1, "delivered": 0}
-    assert released == {"client_id": "c1", "video_id": "v1"}
-
-
-def test_a_failed_send_releases_its_delivery_claim(monkeypatch):
-    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
-    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(
-        notification_events_store,
-        "list_events_for_date",
-        lambda event_date: [_event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")]
-        if event_date == "2026-09-02"
-        else [],
-    )
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
-    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
-    released = {}
-    monkeypatch.setattr(
-        notification_delivery_log_store,
-        "release_claim",
-        lambda client_id, video_id: released.update(client_id=client_id, video_id=video_id),
-    )
-    monkeypatch.setattr(
-        push_sender, "send_push_notification", lambda *a, **kw: PushResult(sent=False, subscription_expired=False, error="network")
-    )
-
-    response = lambda_handler({}, None)
-
-    assert response == {"statusCode": 200, "checked": 1, "delivered": 0}
-    assert released == {"client_id": "c1", "video_id": "v1"}
-
-
 # --- single-stream live-reminder dispatch (creatorLiveReminders /
 # streamNotificationOverrides, live_reminder.py) -------------------------
-
-
-def _harmless_discovery_event():
-    """One unrelated discovery event for the discovery loop to evaluate --
-    these reminder tests are only interested in the stream-override loop
-    below it, not this one."""
-    return _event_item(videoId="unrelated_v0")
 
 
 def test_sends_a_due_start_and_advance_reminder_independently_in_the_same_run(monkeypatch):
@@ -447,7 +242,6 @@ def test_sends_a_due_start_and_advance_reminder_independently_in_the_same_run(mo
     advance_fire_at_ms = scheduled_start_ms - 30 * 60_000
     now = datetime.fromtimestamp(scheduled_start_ms / 1000, tz=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [_harmless_discovery_event()])
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
     monkeypatch.setattr(
         remote_config_store,
@@ -507,7 +301,6 @@ def test_creator_disabled_override_still_prevents_reminder_delivery(monkeypatch)
     scheduled_start_ms = 1_000_000_000_000
     now = datetime.fromtimestamp(scheduled_start_ms / 1000, tz=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [_harmless_discovery_event()])
     monkeypatch.setattr(
         remote_config_store,
         "list_by_key",
@@ -540,7 +333,6 @@ def test_reminder_dedupe_prevents_resending_the_same_reminder_kind(monkeypatch):
     scheduled_start_ms = 1_000_000_000_000
     now = datetime.fromtimestamp(scheduled_start_ms / 1000, tz=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [_harmless_discovery_event()])
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
     monkeypatch.setattr(
         remote_config_store,
@@ -616,7 +408,6 @@ def test_rescheduling_a_stream_after_its_override_was_saved_moves_the_reminder_w
     new_start_ms = old_start_ms + 2 * 60 * 60_000  # +2h, e.g. 18:00 -> 20:00
     new_advance_fire_at_ms = new_start_ms - 60 * 60_000  # 19:00
 
-    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [_harmless_discovery_event()])
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
     monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: video_id == "unrelated_v0")
 
@@ -689,7 +480,6 @@ def test_a_normal_stream_with_no_override_gets_both_reminders_from_the_system_wi
     scheduled_start_ms = 1_000_000_000_000
     advance_fire_at_ms = scheduled_start_ms - 30 * 60_000
     monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": [_holodex_stream()]})
-    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [_harmless_discovery_event()])
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
     monkeypatch.setattr(
         remote_config_store,
@@ -722,7 +512,6 @@ def test_stream_a_override_suppresses_the_creators_30min_reminder_for_that_strea
     advance_30min_fire_at_ms = scheduled_start_ms - 30 * 60_000
     monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": [_holodex_stream(videoId="v1")]})
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(datetime.fromtimestamp(advance_30min_fire_at_ms / 1000, tz=timezone.utc)))
-    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [_harmless_discovery_event()])
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
     monkeypatch.setattr(
         remote_config_store,
@@ -754,7 +543,6 @@ def test_stream_b_with_no_override_still_resolves_the_creators_recurring_setting
         read_api, "get_live_streams", lambda *_a, **_kw: {"streams": [_holodex_stream(videoId="v3", scheduledStart="2033-05-18T03:33:20+00:00")]}
     )
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(datetime.fromtimestamp(advance_fire_at_ms / 1000, tz=timezone.utc)))
-    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [_harmless_discovery_event()])
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
     monkeypatch.setattr(
         remote_config_store,
@@ -917,7 +705,6 @@ def test_reminder_dedupe_prevents_duplicate_send_for_a_normal_stream_with_no_ove
     scheduled_start_ms = 1_000_000_000_000
     monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": [_holodex_stream()]})
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(datetime.fromtimestamp(scheduled_start_ms / 1000, tz=timezone.utc)))
-    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [_harmless_discovery_event()])
     monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
     monkeypatch.setattr(
         remote_config_store,
@@ -1178,142 +965,6 @@ def _frozen_datetime(fixed_now: datetime) -> type[datetime]:
 # switch is restored keeps working normally.
 
 
-def _fake_delivery_log(monkeypatch) -> dict:
-    """Stateful in-memory stand-in for notification_delivery_log_store: {(client, video): status}."""
-    rows: dict = {}
-
-    def mark_suppressed(client_id, video_id, at):
-        if (client_id, video_id) in rows:
-            return False
-        rows[(client_id, video_id)] = "suppressed"
-        return True
-
-    def mark_delivered(client_id, video_id, at):
-        if (client_id, video_id) in rows:
-            return False
-        rows[(client_id, video_id)] = "claimed"
-        return True
-
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: (client_id, video_id) in rows)
-    monkeypatch.setattr(notification_delivery_log_store, "mark_suppressed", mark_suppressed)
-    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", mark_delivered)
-    monkeypatch.setattr(
-        notification_delivery_log_store, "confirm_delivered", lambda client_id, video_id, at: rows.__setitem__((client_id, video_id), "delivered")
-    )
-    return rows
-
-
-def _run_new_video_pass(monkeypatch, *, now, preference, event=None, with_subscription=True) -> list:
-    """One dispatcher pass at `now` over one stored new-video event; returns the push payloads sent."""
-    event = event or _event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00")
-    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(
-        notification_events_store, "list_events_for_date", lambda event_date: [event] if event_date == event["eventDate"] else []
-    )
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": preference}])
-    monkeypatch.setattr(
-        remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()} if with_subscription else None
-    )
-    sent: list = []
-    monkeypatch.setattr(
-        push_sender,
-        "send_push_notification",
-        lambda *a, **kw: (sent.append(kw["data"]), PushResult(sent=True, subscription_expired=False))[1],
-    )
-    lambda_handler({}, None)
-    return sent
-
-
-_DAY1_EVENING = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)  # 18:05 JST: the event's next window (09-03 08:00 JST) has passed
-_DAY2_EVENING = datetime(2026, 9, 4, 9, 5, tzinfo=timezone.utc)  # a day later; the event is still inside the 3-day lookback
-
-
-@pytest.mark.parametrize(
-    ("global_enabled", "override", "expect_sent"),
-    [
-        (True, None, True),
-        (True, True, True),
-        (True, False, False),
-        (False, None, False),
-        (False, True, False),
-        (False, False, False),
-    ],
-)
-def test_a_new_video_notification_follows_the_global_master_switch_and_creator_override(
-    monkeypatch, global_enabled, override, expect_sent
-):
-    _fake_delivery_log(monkeypatch)
-    overrides = {} if override is None else {"aizawa_ema": override}
-    preference = _preference_value(enabled=global_enabled, creatorOverride=overrides)
-
-    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference)
-
-    assert (sent == [{"videoId": "v1"}]) is expect_sent
-
-
-def test_a_new_video_that_came_due_while_global_was_off_is_not_replayed_when_global_is_turned_back_on(monkeypatch):
-    rows = _fake_delivery_log(monkeypatch)
-
-    off_sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(enabled=False))
-    assert off_sent == []
-    assert rows == {("c1", "v1"): "suppressed"}
-
-    on_sent = _run_new_video_pass(monkeypatch, now=_DAY2_EVENING, preference=_preference_value(enabled=True))
-    assert on_sent == []
-
-
-def test_a_new_video_due_while_global_is_off_is_suppressed_even_when_the_client_has_no_push_subscription(monkeypatch):
-    """The dashboard toggle deletes the push subscription while turning notifications OFF, so
-    OFF -> unsubscribed -> ON must not replay what came due in between."""
-    rows = _fake_delivery_log(monkeypatch)
-
-    off_sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(enabled=False), with_subscription=False)
-    assert off_sent == []
-    assert rows == {("c1", "v1"): "suppressed"}
-
-    on_sent = _run_new_video_pass(monkeypatch, now=_DAY2_EVENING, preference=_preference_value(enabled=True), with_subscription=True)
-    assert on_sent == []
-
-
-def test_a_client_that_is_on_but_has_no_push_subscription_is_still_skipped_without_recording_anything(monkeypatch):
-    rows = _fake_delivery_log(monkeypatch)
-
-    sent = _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=_preference_value(enabled=True), with_subscription=False)
-
-    assert sent == []
-    assert rows == {}
-
-
-def test_a_new_video_whose_window_has_not_arrived_is_still_sent_if_global_is_back_on_by_then(monkeypatch):
-    """Global OFF while the event is still waiting for its delivery window is not a miss:
-    nothing is recorded, so turning the switch back ON before the window still delivers it."""
-    rows = _fake_delivery_log(monkeypatch)
-    event = _event_item(eventDate="2026-09-03", discoveredAt="2026-09-03T18:00:05+09:00")  # next window: 09-04 08:00 JST
-
-    still_waiting = _run_new_video_pass(
-        monkeypatch, now=datetime(2026, 9, 3, 11, 0, tzinfo=timezone.utc), preference=_preference_value(enabled=False), event=event
-    )
-    assert still_waiting == []
-    assert rows == {}
-
-    at_window = _run_new_video_pass(
-        monkeypatch, now=datetime(2026, 9, 3, 23, 5, tzinfo=timezone.utc), preference=_preference_value(enabled=True), event=event
-    )
-    assert at_window == [{"videoId": "v1"}]
-
-
-@pytest.mark.parametrize(
-    "suppression",
-    [
-        {"temporaryMute": "2026-09-03T10:00:00+00:00"},  # muted until 19:00 JST
-        {"quietHours": ["18:00", "19:00"]},
-    ],
-)
-def test_mute_and_quiet_hours_still_block_a_new_video_when_global_and_creator_are_on(monkeypatch, suppression):
-    _fake_delivery_log(monkeypatch)
-    preference = _preference_value(enabled=True, creatorOverride={"aizawa_ema": True}, **suppression)
-
-    assert _run_new_video_pass(monkeypatch, now=_DAY1_EVENING, preference=preference) == []
 
 
 def test_global_off_beats_a_creator_override_on_and_every_reminder_setting(monkeypatch):
@@ -1430,46 +1081,3 @@ def _setup_bulk_lookup_run(monkeypatch, *, client_ids):
         raise AssertionError("the dispatcher must not read the delivery log once per (client, event) any more")
 
     monkeypatch.setattr(notification_delivery_log_store, "already_delivered", _no_per_event_read)
-
-
-def test_the_delivery_log_is_read_once_per_client_for_the_whole_candidate_window(monkeypatch):
-    calls = []
-
-    def _bulk(client_id, video_ids, *, now=None):
-        calls.append((client_id, sorted(video_ids)))
-        return set()
-
-    _setup_bulk_lookup_run(monkeypatch, client_ids=["c1", "c2", "c3", "c4"])
-    monkeypatch.setattr(notification_delivery_log_store, "delivered_video_ids", _bulk)
-
-    response = lambda_handler({}, None)
-
-    assert response == {"statusCode": 200, "checked": 12, "delivered": 12}
-    assert calls == [(client_id, ["v0", "v1", "v2"]) for client_id in ["c1", "c2", "c3", "c4"]]  # 4 reads, not 4 x 3
-
-
-def test_events_the_bulk_read_reports_as_handled_are_skipped_without_a_push(monkeypatch):
-    sent = []
-    _setup_bulk_lookup_run(monkeypatch, client_ids=["c1"])
-    monkeypatch.setattr(notification_delivery_log_store, "delivered_video_ids", lambda client_id, video_ids, *, now=None: {"v0", "v2"})
-    monkeypatch.setattr(
-        push_sender, "send_push_notification", lambda *a, **kw: sent.append(kw["data"]["videoId"]) or PushResult(sent=True, subscription_expired=False)
-    )
-
-    response = lambda_handler({}, None)
-
-    assert sent == ["v1"]
-    assert response == {"statusCode": 200, "checked": 3, "delivered": 1}
-
-
-def test_a_client_without_a_subscription_never_triggers_a_delivery_log_read(monkeypatch):
-    """A client that is enabled but has no push subscription is skipped before its events are looked at -- and so before any read."""
-    _setup_bulk_lookup_run(monkeypatch, client_ids=["c1"])
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
-
-    def _boom(*a, **kw):
-        raise AssertionError("no delivery-log read is needed for a client that cannot receive anything")
-
-    monkeypatch.setattr(notification_delivery_log_store, "delivered_video_ids", _boom)
-
-    assert lambda_handler({}, None) == {"statusCode": 200, "checked": 0, "delivered": 0}
