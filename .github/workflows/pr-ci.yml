@@ -198,7 +198,6 @@ jobs:
           src/features/notifications/components/NotificationToggle.serviceWorker.test.tsx
           src/features/notifications/hooks/useTopicNotificationPreferences.backendFirst.test.ts
           src/features/notifications/hooks/newVideoPersistence.test.ts
-          src/features/notifications/components/NotificationSettings.channelCounts.test.tsx
           src/features/notifications/push/pushNotifications.serviceWorkerReady.test.ts
           src/pages/about/markdown.lineEndings.test.tsx
           src/pages/schedule/LiveSchedulePage.creatorFilter.test.tsx

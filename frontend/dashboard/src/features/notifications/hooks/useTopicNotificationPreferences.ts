@@ -494,20 +494,6 @@ export function useTopicNotificationPreferences() {
     return new Set([...live, ...newVideo])
   }, [topicState, isLiveChannelAllowed, isNewVideoChannelAllowed])
 
-  /** Who has each channel ON in this topic, kept apart: the Live and 新片 switches are independent, so the Settings summary shows two counts
-   * instead of one merged "selected" number that hid which channel a member actually had. A channel the topic's own notificationType
-   * excludes is null (not in effect, so not shown) -- the same gating getEnabledCreatorIds applies. */
-  const getChannelCreatorIds = useCallback(
-    (topicId: TopicCatalogId): { live: Set<string> | null; newVideo: Set<string> | null } => {
-      const topic = topicState(topicId)
-      return {
-        live: isLiveChannelAllowed(topicId) ? new Set(topic.live) : null,
-        newVideo: isNewVideoChannelAllowed(topicId) ? new Set(topic.newVideo) : null,
-      }
-    },
-    [topicState, isLiveChannelAllowed, isNewVideoChannelAllowed],
-  )
-
   const getNotificationType = useCallback((topicId: TopicCatalogId) => topicState(topicId).notificationType, [topicState])
 
   /** Changing a topic's notification type can switch its new-video half on/off, so it goes through the same
@@ -556,7 +542,6 @@ export function useTopicNotificationPreferences() {
     setMemberReminder,
     isReminderShadowedByAll,
     getEnabledCreatorIds,
-    getChannelCreatorIds,
     getNotificationType,
     setNotificationType,
     getOverrideCount,

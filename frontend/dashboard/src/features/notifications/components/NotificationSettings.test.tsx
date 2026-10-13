@@ -426,9 +426,7 @@ describe("member drawer respects the topic's own notificationType", () => {
     })
     renderNotificationSettings()
 
-    // Live is not in effect for a 新片-only topic, so only the New Video count is shown (0: the stale Live member is not counted)
-    expect(within(getDetailPanel()).getByText("New Video 0")).toBeInTheDocument()
-    expect(within(getDetailPanel()).queryByText(/^Live \d/)).toBeNull()
+    expect(within(getDetailPanel()).getByText("0 selected")).toBeInTheDocument()
   })
 })
 
