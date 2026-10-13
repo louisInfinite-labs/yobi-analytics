@@ -198,7 +198,7 @@ def test_a_stream_missing_from_the_new_fetch_becomes_a_completion_candidate(dyna
     livestream_lifecycle.refresh_snapshot()  # v1 is live
 
     monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [])  # v1 dropped out of Holodex's response
-    monkeypatch.setattr(livestream_lifecycle, "_verify_and_mark_completed", lambda candidates: [])
+    monkeypatch.setattr(livestream_lifecycle, "_verify_and_mark_completed", lambda pending: ([], {}))
 
     summary = livestream_lifecycle.refresh_snapshot()
 
@@ -294,3 +294,124 @@ def test_a_missing_youtube_api_key_skips_verification_without_crashing(dynamo, m
     summary = livestream_lifecycle.refresh_snapshot()
 
     assert summary["confirmedCompleted"] == []
+
+
+# ============ durable pending candidates: retryable across cycles, bounded, reappearance clears it ============
+# A candidate not confirmed in the cycle it first disappears must stay retryable in later cycles -- the bug this
+# section guards is a candidate getting exactly one verification attempt and then silently never being
+# reconsidered again, since a plain cycle-over-cycle diff (previous snapshot's ids vs this one's) only ever
+# "remembers" a video for the one cycle it actually vanishes in.
+
+
+def _not_yet_confirmed(video_id="v1"):
+    return {"videoId": video_id, "contentType": "live", "liveStatus": "live"}  # YouTube: not finalized yet
+
+
+def test_a_candidate_not_confirmed_stays_pending_and_is_retried_next_cycle(dynamo, monkeypatch):
+    upsert_dynamo_videos([_video("v1", content_type="live", live_status="live")])
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_holodex_item(video_id="v1", status="live")])
+    livestream_lifecycle.refresh_snapshot()  # cycle 0: v1 live
+
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [])  # v1 gone from Holodex from here on
+    monkeypatch.setattr("collection.youtube_client.build_youtube_client", lambda api_key: object())
+    monkeypatch.setattr("ops.config.get_api_key", lambda: "fake-key")
+    monkeypatch.setattr("collection.youtube_client.get_video_statistics", lambda youtube, video_ids: ([_not_yet_confirmed("v1")], {}))
+
+    cycle_1 = livestream_lifecycle.refresh_snapshot()  # first verification attempt: still not finalized
+    assert cycle_1["completionCandidates"] == ["v1"]
+    assert cycle_1["confirmedCompleted"] == []
+
+    # Without durable pending state, v1 would have vanished from consideration after cycle 1 (it's no longer in
+    # either snapshot's active set) -- it must still be a candidate in cycle 2.
+    cycle_2 = livestream_lifecycle.refresh_snapshot()
+    assert cycle_2["completionCandidates"] == ["v1"]
+    assert cycle_2["confirmedCompleted"] == []
+
+    # Now YouTube finally confirms it -- still retryable means it eventually gets marked completed.
+    monkeypatch.setattr(
+        "collection.youtube_client.get_video_statistics",
+        lambda youtube, video_ids: ([{"videoId": "v1", "contentType": "live", "liveStatus": "completed"}], {}),
+    )
+    cycle_3 = livestream_lifecycle.refresh_snapshot()
+    assert cycle_3["confirmedCompleted"] == ["v1"]
+    [video] = [v for v in load_videos() if v.video_id == "v1"]
+    assert video.live_status == "completed"
+    # Resolved -- no longer pending in a later cycle.
+    cycle_4 = livestream_lifecycle.refresh_snapshot()
+    assert cycle_4["completionCandidates"] == []
+
+
+def test_a_temporary_youtube_failure_leaves_the_candidate_pending_not_dropped(dynamo, monkeypatch):
+    """A transient YouTube error (not quota exhaustion, not a missing key -- e.g. get_video_statistics itself
+    raising) must not be treated as a confirmation, must not crash the whole cycle (the Holodex snapshot this cycle
+    already fetched must still be persisted), and must not count against the candidate's attempt budget (nothing
+    about ANY candidate was actually learned this cycle)."""
+    upsert_dynamo_videos([_video("v1", content_type="live", live_status="live")])
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_holodex_item(video_id="v1", status="live")])
+    livestream_lifecycle.refresh_snapshot()
+
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [])
+    monkeypatch.setattr("collection.youtube_client.build_youtube_client", lambda api_key: object())
+    monkeypatch.setattr("ops.config.get_api_key", lambda: "fake-key")
+
+    def _transient_failure(youtube, video_ids):
+        raise RuntimeError("network blip")
+
+    monkeypatch.setattr("collection.youtube_client.get_video_statistics", _transient_failure)
+
+    summary = livestream_lifecycle.refresh_snapshot()  # must not raise -- the snapshot fetch itself already succeeded
+
+    assert summary["refreshed"] is True
+    assert summary["completionCandidates"] == ["v1"]
+    assert summary["confirmedCompleted"] == []
+    value = livestream_lifecycle._read_snapshot_record()
+    assert value["pendingCandidates"]["v1"]["attempts"] == 0  # not bumped -- this attempt never actually ran
+
+    # Still retryable next cycle once YouTube recovers.
+    monkeypatch.setattr("collection.youtube_client.get_video_statistics", lambda youtube, video_ids: ([_not_yet_confirmed("v1")], {}))
+    next_summary = livestream_lifecycle.refresh_snapshot()
+    assert next_summary["completionCandidates"] == ["v1"]
+
+
+def test_a_candidate_reappearing_in_holodex_is_dropped_from_pending(dynamo, monkeypatch):
+    """Holodex reporting a candidate live/upcoming again is unambiguous: it did not complete. It must be removed
+    from the pending set immediately, not left to expire via attempts."""
+    upsert_dynamo_videos([_video("v1", content_type="live", live_status="live")])
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_holodex_item(video_id="v1", status="live")])
+    livestream_lifecycle.refresh_snapshot()
+
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [])
+    livestream_lifecycle.refresh_snapshot()  # v1 becomes pending
+
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_holodex_item(video_id="v1", status="live")])
+    summary = livestream_lifecycle.refresh_snapshot()  # v1 is back -- false alarm
+
+    assert summary["completionCandidates"] == []
+    value = livestream_lifecycle._read_snapshot_record()
+    assert value["pendingCandidates"] == {}
+
+
+def test_a_candidate_is_dropped_after_the_bounded_max_attempts_never_force_completed(dynamo, monkeypatch):
+    upsert_dynamo_videos([_video("v1", content_type="live", live_status="live")])
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_holodex_item(video_id="v1", status="live")])
+    livestream_lifecycle.refresh_snapshot()
+
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [])
+    monkeypatch.setattr("collection.youtube_client.build_youtube_client", lambda api_key: object())
+    monkeypatch.setattr("ops.config.get_api_key", lambda: "fake-key")
+    monkeypatch.setattr("collection.youtube_client.get_video_statistics", lambda youtube, video_ids: ([_not_yet_confirmed("v1")], {}))
+
+    summary = None
+    for _ in range(livestream_lifecycle._MAX_PENDING_ATTEMPTS):
+        summary = livestream_lifecycle.refresh_snapshot()
+        assert summary["confirmedCompleted"] == []
+
+    # After _MAX_PENDING_ATTEMPTS unresolved attempts, the candidate is dropped -- never force-completed.
+    final = livestream_lifecycle.refresh_snapshot()
+    assert final["completionCandidates"] == []
+    [video] = [v for v in load_videos() if v.video_id == "v1"]
+    assert video.live_status == "live"  # last known state, untouched -- never force-marked completed

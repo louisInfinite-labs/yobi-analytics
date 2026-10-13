@@ -1159,11 +1159,14 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     endpoint's latency/availability stop depending on a synchronous Holodex round-trip per request, and so a
     completion-candidate diff has a well-defined "previous" snapshot to compare against. _read_shared_live_snapshot
     returns None -- and this function falls back to fetch_live_streams_from_holodex below, the original direct-fetch
-    behavior, completely unchanged -- whenever the snapshot should not be trusted: a non-DynamoDB environment
-    (local dev, every existing test), a fresh deploy before the periodic job's first run, or a snapshot-read
-    failure. Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError on a direct-fetch failure
-    rather than returning a fabricated empty result -- api_handler.py's dispatch maps these to 503, the same
-    "external dependency temporarily unavailable" treatment as TrendingNotReadyError.
+    behavior, completely unchanged -- only when the snapshot has genuinely never been persisted yet: a non-DynamoDB
+    environment (local dev, every existing test) or a fresh deploy before the periodic job's first run. A snapshot-
+    READ FAILURE (the store itself erroring) is deliberately NOT folded into that same None/fallback path -- see
+    _read_shared_live_snapshot's own docstring for why -- so it propagates out of this function instead, caught by
+    api_handler.py's generic catch-all (500) the same as any other unexpected error. Raises
+    HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError on a direct-fetch failure rather than
+    returning a fabricated empty result -- api_handler.py's dispatch maps these to 503, the same "external
+    dependency temporarily unavailable" treatment as TrendingNotReadyError.
     """
     streams = _read_shared_live_snapshot()
     if streams is None:
@@ -1172,9 +1175,18 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def _read_shared_live_snapshot() -> list[dict[str, Any]] | None:
-    """tracking.livestream_lifecycle's persisted snapshot, or None when it must not be used: a non-DynamoDB
-    backend, nothing persisted yet, or a read failure. Every None case means the caller falls back to
-    fetch_live_streams_from_holodex, so this function never itself talks to Holodex.
+    """tracking.livestream_lifecycle's persisted snapshot, or None only when nothing has been persisted yet (a
+    non-DynamoDB backend, or a fresh deploy before the periodic job's first run) -- the caller then falls back to
+    fetch_live_streams_from_holodex, bounded to this one request, no worse than this endpoint's behavior before
+    this feature existed.
+
+    A genuine read FAILURE (stores.remote_config_store.RemoteConfigStoreError) is NOT caught here and NOT treated
+    as None: folding it into the same fallback would mean every concurrent frontend request -- up to this Lambda's
+    own reserved concurrency -- independently calls Holodex the moment the shared store has a problem, an
+    amplification this feature must not introduce. It propagates instead, so api_handler.py's existing exception
+    handling (its generic catch-all, since this isn't one of the small set of errors it maps individually) turns it
+    into one bounded error response per request, exactly as a direct Holodex failure already would have before this
+    feature existed -- never a fan-out of fresh Holodex calls.
 
     tracking.livestream_lifecycle is imported locally, not at module load, since that module calls back into
     fetch_live_streams_from_holodex below -- a local import on (at least) one side of that pair avoids turning it
@@ -1184,11 +1196,7 @@ def _read_shared_live_snapshot() -> list[dict[str, Any]] | None:
         return None
     from tracking.livestream_lifecycle import read_snapshot
 
-    try:
-        return read_snapshot()
-    except Exception as exc:  # noqa: BLE001 -- a snapshot-read failure must not take /live-streams down
-        print(f"Warning: shared live snapshot read failed ({type(exc).__name__}): {exc}; falling back to a direct Holodex fetch")
-        return None
+    return read_snapshot()
 
 
 def fetch_live_streams_from_holodex() -> list[dict[str, Any]]:

@@ -138,12 +138,14 @@ resource "aws_scheduler_schedule" "notification_dispatch" {
   }
 }
 
-# Livestream completion lifecycle (SOURCE IMPLEMENTATION CHECKPOINT -- AWS verification pending, see
+# Livestream completion lifecycle (SOURCE IMPLEMENTATION CHECKPOINT -- not yet applied, see
 # tracking/livestream_lifecycle.py): every 5 minutes is this feature's own refresh cadence, independent of
 # notification_dispatch's 1-minute/15-minute cadence above, which serves a different concern (reminder timing) and
-# is not touched by this schedule. The scheduler role additionally needs lambda:InvokeFunction on the new
-# function's ARN below -- out of this Terraform project's scope (manual IAM console grant, same precedent as the
-# DLQ grant's own comment above) -- pending verification on the AWS-credentialed machine before this is applied.
+# is not touched by this schedule. AWS-aware verification (2026-10-13) confirmed no schedule of this name exists
+# yet (`aws scheduler list-schedules --group-name default`) -- no collision, no duplicate poller introduced. The
+# scheduler role additionally needs lambda:InvokeFunction on the new function's ARN below -- out of this Terraform
+# project's scope (manual IAM console grant, same precedent as the DLQ grant's own comment above) -- this genuinely
+# cannot be granted or verified until this is applied, since the function doesn't exist yet to name in that grant.
 resource "aws_scheduler_schedule" "livestream_lifecycle_refresh" {
   name                         = "yobi-analytics-livestream-lifecycle-refresh"
   group_name                   = "default"

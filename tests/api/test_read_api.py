@@ -694,7 +694,11 @@ def test_read_shared_live_snapshot_reads_through_to_livestream_lifecycle(monkeyp
     assert read_api._read_shared_live_snapshot() is streams
 
 
-def test_read_shared_live_snapshot_falls_back_to_none_on_a_read_failure(monkeypatch):
+def test_read_shared_live_snapshot_propagates_a_read_failure_rather_than_falling_back(monkeypatch):
+    """A genuine store failure must not fold into the same "no snapshot yet" fallback: that would mean every
+    concurrent frontend request independently calls Holodex the moment the shared store has a problem. It
+    propagates instead, for api_handler.py's existing exception handling to turn into one bounded error response
+    per request -- never a fan-out of fresh Holodex calls."""
     from tracking import livestream_lifecycle
 
     monkeypatch.setenv("YOBI_STORAGE_BACKEND", "dynamodb")
@@ -704,7 +708,8 @@ def test_read_shared_live_snapshot_falls_back_to_none_on_a_read_failure(monkeypa
 
     monkeypatch.setattr(livestream_lifecycle, "read_snapshot", _boom)
 
-    assert read_api._read_shared_live_snapshot() is None
+    with pytest.raises(RuntimeError):
+        read_api._read_shared_live_snapshot()
 
 
 def test_get_live_streams_reuses_the_shared_snapshot_without_calling_holodex(monkeypatch):
