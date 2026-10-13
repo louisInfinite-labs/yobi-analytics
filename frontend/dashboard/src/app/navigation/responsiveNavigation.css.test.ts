@@ -116,3 +116,39 @@ describe("Settings navigation breakpoints (settings.css)", () => {
     expect(css).not.toMatch(/@media \(max-width: 900px\)\s*\{\s*\.settings-page\s*\{\s*flex-direction:\s*column/)
   })
 })
+
+describe("Favorites page gutters and toolbar (settings.css)", () => {
+  let css = ""
+  beforeAll(async () => {
+    css = await readStylesheet("src/pages/settings/styles/settings.css")
+  })
+
+  it("the Settings content column takes its left AND right padding from ONE gutter token, so the two sides can never differ", () => {
+    const padding = ruleBody(outsideMedia(css), ".settings-page__content").match(/padding:\s*([^;]+);/)?.[1]
+    expect(padding).toBe("var(--space-5) var(--settings-page-gutter)") // one value for both horizontal sides
+    expect(ruleBody(outsideMedia(css), ":root")).toMatch(/--settings-page-gutter:\s*var\(--space-6\)/)
+  })
+
+  it("phones step the shared gutter down one spacing token (both sides at once) instead of overriding one side or the page padding", () => {
+    expect(ruleBody(mediaBlocks(css, "(max-width: 640px)"), ":root")).toMatch(/--settings-page-gutter:\s*var\(--space-5\)/)
+    expect(mediaBlocks(css, "(max-width: 640px)")).not.toMatch(/\.settings-page__content\s*\{[^}]*padding/)
+  })
+
+  it("below 1440px the toolbar wraps instead of stretching: the search is capped and shares the row with the filter bar", () => {
+    const below = mediaBlocks(css, "(max-width: 1439px)")
+    const search = ruleBody(below, ".favorites-roster__search")
+    expect(search).toMatch(/flex:\s*1 1 200px/)
+    expect(search).toMatch(/max-width:\s*320px/)
+    expect(ruleBody(below, ".favorites-roster__controls")).toMatch(/justify-content:\s*flex-start/)
+    // the old phone-only rules that forced both controls to 100% width are gone
+    expect(mediaBlocks(css, "(max-width: 640px)")).not.toMatch(/favorites-roster__(segmented|search|controls)/)
+  })
+
+  it("below 1440px the member tiles share the row evenly (no empty strip on the right); from 1440px the fixed 160px columns are unchanged", () => {
+    expect(ruleBody(mediaBlocks(css, "(max-width: 1439px)"), ".favorites-roster__grid")).toMatch(/repeat\(auto-fill,\s*minmax\(160px,\s*1fr\)\)/)
+    const desktop = outsideMedia(css)
+    expect(ruleBody(desktop, ".favorites-roster__grid")).toMatch(/repeat\(auto-fill,\s*160px\)/)
+    expect(ruleBody(desktop, ".favorites-roster__search")).toMatch(/width:\s*240px/)
+    expect(ruleBody(desktop, ".favorites-roster__controls")).toMatch(/justify-content:\s*space-between/)
+  })
+})

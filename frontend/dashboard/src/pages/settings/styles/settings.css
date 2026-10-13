@@ -3,6 +3,8 @@
 
 :root {
   --settings-secondary-navbar-width: 240px;
+  /* The Settings content column's left AND right gutter (one value, so the two sides can never differ). */
+  --settings-page-gutter: var(--space-6);
 }
 
 /* Settings uses the document's scrollbar. Keep the page at least as tall
@@ -19,7 +21,7 @@
   flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-5) var(--settings-page-gutter);
 
   /* Every Settings tab paints Home's own page surface (--oshi-bg); a tab that needs its own look sets only its own content, never a page palette. */
   background: var(--oshi-bg);
@@ -239,10 +241,11 @@
   }
 }
 
-/* Phones: the content column loses the rail's 56px, so its own side padding shrinks to keep every Settings page inside the screen. */
+/* Phones: the content column loses the rail's 56px, so the shared gutter steps down one spacing token -- on BOTH sides at once -- to keep
+   every Settings page inside the screen. */
 @media (max-width: 640px) {
-  .settings-page__content {
-    padding: var(--space-4);
+  :root {
+    --settings-page-gutter: var(--space-5);
   }
 }
 
@@ -2409,18 +2412,25 @@
   color: var(--roster-text-primary);
 }
 
-@media (max-width: 640px) {
+/* Below 1440px (rail layout) the toolbar wraps instead of stretching: the filter bar keeps its natural width, and the search takes the
+   remaining row (a line of its own when it does not fit) up to a comfortable maximum -- never flush against the page gutter on wide
+   tablets, and exactly the content width on phones. The same wrapping rule serves every width, so there is no phone-only override. */
+@media (max-width: 1439px) {
   .favorites-roster__controls {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .favorites-roster__segmented.ant-segmented {
-    width: 100%;
+    justify-content: flex-start;
   }
 
   .favorites-roster__search {
-    width: 100%;
+    flex: 1 1 200px;
+    width: auto;
+    min-width: 0;
+    max-width: 320px;
+  }
+
+  /* Member tiles share the row evenly (each at least the usual 160px) so the leftover width is spread across the tiles instead of
+     piling up as an empty strip on the right of the list. From 1440px the fixed 160px columns are unchanged. */
+  .favorites-roster__grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
 }
 /* Display Settings reads Home's palette directly: the page surface, text, divider and control all come from the --oshi-* tokens and
