@@ -137,3 +137,29 @@ resource "aws_scheduler_schedule" "notification_dispatch" {
     }
   }
 }
+
+# Livestream completion lifecycle (SOURCE IMPLEMENTATION CHECKPOINT -- AWS verification pending, see
+# tracking/livestream_lifecycle.py): every 5 minutes is this feature's own refresh cadence, independent of
+# notification_dispatch's 1-minute/15-minute cadence above, which serves a different concern (reminder timing) and
+# is not touched by this schedule. The scheduler role additionally needs lambda:InvokeFunction on the new
+# function's ARN below -- out of this Terraform project's scope (manual IAM console grant, same precedent as the
+# DLQ grant's own comment above) -- pending verification on the AWS-credentialed machine before this is applied.
+resource "aws_scheduler_schedule" "livestream_lifecycle_refresh" {
+  name                         = "yobi-analytics-livestream-lifecycle-refresh"
+  group_name                   = "default"
+  schedule_expression          = "rate(5 minutes)"
+  schedule_expression_timezone = "UTC"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.livestream_lifecycle.arn
+    role_arn = local.scheduler_role_arn
+
+    dead_letter_config {
+      arn = aws_sqs_queue.scheduler_dlq.arn
+    }
+  }
+}

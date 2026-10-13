@@ -434,14 +434,26 @@ def test_no_new_scheduler_or_state_machine_resource_was_introduced():
     assert state_machines == {"daily_history"}
     # R7 (AWS Cost Recovery) removed trending_precompute_batches entirely
     # (it was already Terraform-disabled, and its own module was deleted).
-    assert schedules == {"daily_collection", "discovery_only", "notification_dispatch"}
+    # livestream_lifecycle_refresh (tracking/livestream_lifecycle.py) is a genuinely new, independent schedule --
+    # the completion-lifecycle feature's own 5-minute Holodex refresh, unrelated to this file's own R3/R4 scope.
+    assert schedules == {"daily_collection", "discovery_only", "notification_dispatch", "livestream_lifecycle_refresh"}
 
 
 def test_no_new_lambda_function_resource_was_introduced():
     lambda_tf = open("terraform/lambda.tf").read()
     functions = set(re.findall(r'resource\s+"aws_lambda_function"\s+"(\w+)"', lambda_tf))
 
-    assert functions == {"collector", "history_worker", "ranking_reducer", "api", "notification_dispatcher", "emergency_stop"}
+    # livestream_lifecycle (tracking/livestream_lifecycle.py) is a genuinely new, independent Lambda -- see the
+    # schedule assertion's own comment above.
+    assert functions == {
+        "collector",
+        "history_worker",
+        "ranking_reducer",
+        "api",
+        "notification_dispatcher",
+        "emergency_stop",
+        "livestream_lifecycle",
+    }
 
 
 # --- 13. No R2 leaderboard persistence happens yet ---------------------------

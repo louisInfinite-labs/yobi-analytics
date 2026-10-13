@@ -671,6 +671,78 @@ def test_get_live_streams_uses_the_documented_users_live_endpoint_with_channels_
     assert "max_upcoming_hours" not in captured["params"]
 
 
+# ============ get_live_streams snapshot-first behavior (tracking.livestream_lifecycle) ============
+# Every test above runs with YOBI_STORAGE_BACKEND unset (the suite's default: the local JSON backend), so
+# _read_shared_live_snapshot short-circuits to None before ever touching tracking.livestream_lifecycle, and
+# get_live_streams falls back to fetch_live_streams_from_holodex unchanged -- which is exactly what every test
+# above already verifies, so this section only needs to cover the new branch itself.
+
+
+def test_read_shared_live_snapshot_is_none_outside_the_dynamodb_backend(monkeypatch):
+    monkeypatch.delenv("YOBI_STORAGE_BACKEND", raising=False)
+
+    assert read_api._read_shared_live_snapshot() is None
+
+
+def test_read_shared_live_snapshot_reads_through_to_livestream_lifecycle(monkeypatch):
+    from tracking import livestream_lifecycle
+
+    monkeypatch.setenv("YOBI_STORAGE_BACKEND", "dynamodb")
+    streams = [{"videoId": "v1", "status": "live"}]
+    monkeypatch.setattr(livestream_lifecycle, "read_snapshot", lambda: streams)
+
+    assert read_api._read_shared_live_snapshot() is streams
+
+
+def test_read_shared_live_snapshot_falls_back_to_none_on_a_read_failure(monkeypatch):
+    from tracking import livestream_lifecycle
+
+    monkeypatch.setenv("YOBI_STORAGE_BACKEND", "dynamodb")
+
+    def _boom():
+        raise RuntimeError("DynamoDB unreachable")
+
+    monkeypatch.setattr(livestream_lifecycle, "read_snapshot", _boom)
+
+    assert read_api._read_shared_live_snapshot() is None
+
+
+def test_get_live_streams_reuses_the_shared_snapshot_without_calling_holodex(monkeypatch):
+    """The whole point of the snapshot (tracking.livestream_lifecycle): GET /live-streams must not call Holodex
+    itself when a snapshot is available."""
+    snapshot_streams = [
+        {
+            "videoId": "v1",
+            "creatorId": "aizawa_ema",
+            "channelName": "藍沢エマ",
+            "title": "Test Stream",
+            "status": "live",
+            "scheduledStart": None,
+            "actualStart": "2026-09-01T10:00:00+00:00",
+            "thumbnailUrl": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+            "topic": None,
+        }
+    ]
+    monkeypatch.setattr(read_api, "_read_shared_live_snapshot", lambda: snapshot_streams)
+
+    def _boom(path, params=None):
+        raise AssertionError("get_live_streams must not call Holodex directly when a snapshot is available")
+
+    monkeypatch.setattr(read_api, "holodex_get", _boom)
+
+    assert get_live_streams() == {"streams": snapshot_streams}
+
+
+def test_get_live_streams_falls_back_to_holodex_when_there_is_no_snapshot(monkeypatch):
+    monkeypatch.setattr(read_api, "_read_shared_live_snapshot", lambda: None)
+    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator(youtube_channel_id="UC_test")])
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: [_holodex_item(status="live")])
+
+    result = get_live_streams()
+
+    assert result["streams"][0]["videoId"] == "v1"
+
+
 # ============ get_recent_streams (GET /recent-streams -- ended archives only) ============
 # Only holodex_get is ever mocked below -- real normalize_holodex_archived_streams_response
 # runs, same convention as the get_live_streams tests above.

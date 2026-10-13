@@ -159,6 +159,38 @@ resource "aws_lambda_function" "notification_dispatcher" {
   }
 }
 
+# Livestream completion lifecycle (SOURCE IMPLEMENTATION CHECKPOINT -- AWS verification pending, see
+# tracking/livestream_lifecycle.py): reuses yobi-analytics-lambda-role, the same shared role as collector/api/
+# notification_dispatcher above. That role already grants ssm:GetParameter on both locators below and DynamoDB
+# access to YobiVideoMaster/YobiRemoteConfig (notification_dispatcher and api already use all three), so this
+# Lambda is expected to need no new execution-role grant -- to be confirmed once this is checked against the
+# actually-deployed role.
+resource "aws_lambda_function" "livestream_lifecycle" {
+  function_name = "yobi-analytics-livestream-lifecycle"
+  role          = local.lambda_role_arn
+  handler       = "tracking.livestream_lifecycle.lambda_handler"
+  runtime       = "python3.12"
+  timeout       = 60
+  memory_size   = 512
+  filename      = local.lambda_placeholder_zip
+
+  environment {
+    variables = {
+      # Same three locators/switch as notification_dispatcher above -- this job calls
+      # api.read_api.fetch_live_streams_from_holodex (Holodex + the Video Master classification join + the
+      # unclassified-upcoming YouTube lookup) and additionally writes completion status back to Video Master via
+      # stores.dynamodb_store.set_video_live_status.
+      YOBI_STORAGE_BACKEND          = "dynamodb"
+      HOLODEX_SSM_PARAMETER         = local.ssm_parameter_names.holodex_api_key
+      YOUTUBE_API_KEY_SSM_PARAMETER = local.ssm_parameter_names.youtube_api_key
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+
 resource "aws_lambda_function" "emergency_stop" {
   function_name = "yobi-analytics-emergency-stop"
   role          = local.emergency_stop_role_arn

@@ -1154,6 +1154,49 @@ def _without_known_non_livestreams(streams: list[dict[str, Any]]) -> list[dict[s
 def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     """`GET /live-streams`: current live/upcoming streams for Yobi's supported creators, sourced from Holodex.
 
+    Snapshot-first (DynamoDB backend only): tracking.livestream_lifecycle runs a centralized Holodex refresh every
+    5 minutes and persists its result as a shared snapshot (stores.remote_config_store) specifically so this
+    endpoint's latency/availability stop depending on a synchronous Holodex round-trip per request, and so a
+    completion-candidate diff has a well-defined "previous" snapshot to compare against. _read_shared_live_snapshot
+    returns None -- and this function falls back to fetch_live_streams_from_holodex below, the original direct-fetch
+    behavior, completely unchanged -- whenever the snapshot should not be trusted: a non-DynamoDB environment
+    (local dev, every existing test), a fresh deploy before the periodic job's first run, or a snapshot-read
+    failure. Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError on a direct-fetch failure
+    rather than returning a fabricated empty result -- api_handler.py's dispatch maps these to 503, the same
+    "external dependency temporarily unavailable" treatment as TrendingNotReadyError.
+    """
+    streams = _read_shared_live_snapshot()
+    if streams is None:
+        streams = fetch_live_streams_from_holodex()
+    return {"streams": _without_known_non_livestreams(streams)}
+
+
+def _read_shared_live_snapshot() -> list[dict[str, Any]] | None:
+    """tracking.livestream_lifecycle's persisted snapshot, or None when it must not be used: a non-DynamoDB
+    backend, nothing persisted yet, or a read failure. Every None case means the caller falls back to
+    fetch_live_streams_from_holodex, so this function never itself talks to Holodex.
+
+    tracking.livestream_lifecycle is imported locally, not at module load, since that module calls back into
+    fetch_live_streams_from_holodex below -- a local import on (at least) one side of that pair avoids turning it
+    into a circular import.
+    """
+    if os.environ.get("YOBI_STORAGE_BACKEND") != "dynamodb":
+        return None
+    from tracking.livestream_lifecycle import read_snapshot
+
+    try:
+        return read_snapshot()
+    except Exception as exc:  # noqa: BLE001 -- a snapshot-read failure must not take /live-streams down
+        print(f"Warning: shared live snapshot read failed ({type(exc).__name__}): {exc}; falling back to a direct Holodex fetch")
+        return None
+
+
+def fetch_live_streams_from_holodex() -> list[dict[str, Any]]:
+    """The live/upcoming streams Holodex reports right now for every live-roster-eligible creator -- get_live_streams'
+    own fallback path above, and also tracking.livestream_lifecycle's periodic refresh job, which persists this same
+    result as the shared snapshot that fallback exists for. The single source of truth for "what does Holodex say is
+    live/upcoming right now", so neither caller duplicates this logic.
+
     One aggregate Holodex `/users/live` request for every live-roster-eligible
     creator's channel at once (`channels=<comma-separated ids>`) — never one
     request per creator. `/users/live`, not `/live`: Holodex only documents
@@ -1170,11 +1213,7 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     recover an eligible stream that never made it into `/live`'s response in
     the first place if its (undocumented, platform-wide) result was ever
     truncated. `/users/live` is genuinely channel-scoped instead, so no such
-    risk applies. Holodex is queried directly here rather than through any
-    persisted store (DynamoDB/S3/cache): this is read-path integration only,
-    matching TrendingNotReadyError's "no live fallback" precedent in reverse
-    -- here Holodex itself *is* the live source, with no persistence layer in
-    front of it yet.
+    risk applies.
 
     Which channels are asked about is Creator Master's own
     is_live_status_polling_eligible (tracking/creator_master.py): displayed,
@@ -1193,15 +1232,13 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     locally rather than requested from Holodex. A "live" stream is always
     kept regardless of scheduled_start; it's already happening.
 
-    Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError
-    on any Holodex failure rather than returning a fabricated empty result --
-    api_handler.py's dispatch maps these to 503, the same "external
-    dependency temporarily unavailable" treatment as TrendingNotReadyError.
+    Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError on any Holodex failure rather than
+    returning a fabricated empty result -- the caller decides what that means for its own availability.
     """
     eligible_creators = [creator for creator in load_creators() if is_live_status_polling_eligible(creator)]
     channel_index = {creator.youtube_channel_id: creator for creator in eligible_creators}
     if not channel_index:
-        return {"streams": []}
+        return []
 
     raw_payload = holodex_get("/users/live", {"channels": ",".join(channel_index)})
     normalized_streams = normalize_holodex_live_response(raw_payload)
@@ -1227,7 +1264,7 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
                 "topic": _live_stream_topic(stream.title),
             }
         )
-    return {"streams": _without_known_non_livestreams(streams)}
+    return streams
 
 
 # GET /recent-streams' own limit -- deliberately its own constant, not

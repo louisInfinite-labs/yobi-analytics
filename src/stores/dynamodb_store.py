@@ -427,6 +427,33 @@ def set_video_classification(video_id: str, content_type: str, live_status: str 
     return True
 
 
+def set_video_live_status(video_id: str, live_status: str) -> bool:
+    """Set only `liveStatus` on an existing content_type="live" video, leaving every other field untouched.
+
+    The livestream-completion-lifecycle job's targeted write for a status transition that happens AFTER initial
+    classification (upcoming -> live -> completed), unlike set_video_classification above which only ever fills a
+    still-unclassified record. Unconditional on the previous liveStatus value, so writing the same status twice is
+    a safe no-op rather than an error -- the idempotency a periodic job re-observing the same completion needs.
+    Returns False when the video doesn't exist or isn't classified as a livestream (contentType != "live").
+    """
+    if live_status not in VALID_LIVE_STATUSES:
+        raise ValueError(f"Unknown live status: {live_status!r}")
+    table = _resource().Table(VIDEO_MASTER_TABLE)
+    try:
+        table.update_item(
+            Key={"videoId": video_id},
+            UpdateExpression="SET #liveStatus = :liveStatus",
+            ConditionExpression="attribute_exists(#videoId) AND #contentType = :live",
+            ExpressionAttributeNames={"#videoId": "videoId", "#contentType": "contentType", "#liveStatus": "liveStatus"},
+            ExpressionAttributeValues={":live": "live", ":liveStatus": live_status},
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise VideoMasterError(f"Failed to set live status in {VIDEO_MASTER_TABLE}: {exc}") from exc
+    return True
+
+
 def set_video_short(video_id: str) -> bool:
     """Mark an existing video as a YouTube Short (`contentType = "short"`, `liveStatus` removed); nothing else is touched.
 
