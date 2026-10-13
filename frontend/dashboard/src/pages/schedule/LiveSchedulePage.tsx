@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useFavoriteCreators } from "../../features/favorites/hooks/useFavoriteCreators"
-import { buildCreatorFilterOptions } from "../../features/live-schedule/model/scheduleCreatorFilter"
+import { buildCreatorFilterOptions, type ScheduleOrganizationFilter } from "../../features/live-schedule/model/scheduleCreatorFilter"
 import { ScheduleGrid } from "../../features/live-schedule/components/ScheduleGrid"
 import { ScheduleToolbar } from "../../features/live-schedule/components/ScheduleToolbar"
 import { StreamDetailModal } from "../../features/live-schedule/components/StreamDetailModal"
@@ -21,7 +21,8 @@ export function LiveSchedulePage() {
   const [locale] = useLocale()
   const [selectedCreators, setSelectedCreators] = useState<string[]>([])
   const selectedSet = useMemo(() => new Set(selectedCreators), [selectedCreators])
-  const { weekStart, days, now, allStreams } = useWeeklySchedule(selectedSet)
+  const [organization, setOrganization] = useState<ScheduleOrganizationFilter>("all")
+  const { weekStart, days, now, allStreams } = useWeeklySchedule(selectedSet, organization)
   const { favorites } = useFavoriteCreators()
   const creatorOptions = useMemo(
     () =>
@@ -56,6 +57,8 @@ export function LiveSchedulePage() {
           creatorOptions={creatorOptions}
           selectedCreators={selectedCreators}
           onSelectedCreatorsChange={setSelectedCreators}
+          organization={organization}
+          onOrganizationChange={setOrganization}
         />
       </header>
 

@@ -1,5 +1,5 @@
 import { ScheduleCreatorFilter } from "./ScheduleCreatorFilter"
-import type { CreatorFilterOption } from "../model/scheduleCreatorFilter"
+import type { CreatorFilterOption, ScheduleOrganizationFilter } from "../model/scheduleCreatorFilter"
 import type { Locale } from "../../../shared/i18n/translations"
 
 interface ScheduleToolbarProps {
@@ -10,6 +10,8 @@ interface ScheduleToolbarProps {
   /** The selected creators' channel ids; empty = no filter. */
   selectedCreators: string[]
   onSelectedCreatorsChange: (channelIds: string[]) => void
+  organization: ScheduleOrganizationFilter
+  onOrganizationChange: (organization: ScheduleOrganizationFilter) => void
 }
 
 function formatWeekRange(weekStart: Date, locale: Locale): string {
@@ -25,7 +27,15 @@ function formatWeekRange(weekStart: Date, locale: Locale): string {
  *
  * The creator filter opens a right-side drawer (ScheduleCreatorFilter): a searchable multi-select grouped and ordered like Live Status. Nothing
  * selected = every creator's streams; otherwise exactly the selected creators' streams (see scheduleCreatorFilter.ts). */
-export function ScheduleToolbar({ locale, weekStart, creatorOptions, selectedCreators, onSelectedCreatorsChange }: ScheduleToolbarProps) {
+export function ScheduleToolbar({
+  locale,
+  weekStart,
+  creatorOptions,
+  selectedCreators,
+  onSelectedCreatorsChange,
+  organization,
+  onOrganizationChange,
+}: ScheduleToolbarProps) {
   return (
     <div className="schedule-toolbar">
       <div className="week-selector schedule-control">
@@ -37,6 +47,8 @@ export function ScheduleToolbar({ locale, weekStart, creatorOptions, selectedCre
         creatorOptions={creatorOptions}
         selectedCreators={selectedCreators}
         onSelectedCreatorsChange={onSelectedCreatorsChange}
+        organization={organization}
+        onOrganizationChange={onOrganizationChange}
       />
     </div>
   )

@@ -12,7 +12,7 @@ const creatorOptions: CreatorFilterOption[] = [
 
 async function openDrawer() {
   const user = userEvent.setup()
-  render(<ScheduleCreatorFilter locale="en" creatorOptions={creatorOptions} selectedCreators={[]} onSelectedCreatorsChange={vi.fn()} />)
+  render(<ScheduleCreatorFilter locale="en" creatorOptions={creatorOptions} selectedCreators={[]} onSelectedCreatorsChange={vi.fn()} organization="all" onOrganizationChange={vi.fn()} />)
   await user.click(screen.getByRole("button", { name: "Filter by creator" }))
   return { user, search: await screen.findByPlaceholderText("Search creators") }
 }

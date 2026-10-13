@@ -5,7 +5,7 @@ import { useLiveStreams } from "../../../shared/api/hooks/useLiveStreams"
 import type { LiveStreamDto } from "../../../shared/api/liveStreams"
 import { SLOT_COUNT, getWeekDays, isSameDay, slotIndexForMs } from "../model/scheduleGrid"
 import type { ScheduledStream } from "../model/scheduledStream"
-import { filterStreamsByCreators } from "../model/scheduleCreatorFilter"
+import { filterStreamsByCreators, filterStreamsByOrganization, type ScheduleOrganizationFilter } from "../model/scheduleCreatorFilter"
 
 const NO_CREATOR_FILTER: ReadonlySet<string> = new Set()
 
@@ -55,7 +55,7 @@ export interface ScheduleDay {
  * range is always today through the next 6 days with no page-back/forward
  * navigation (there is no historical or further-out data to page into in
  * this phase). */
-export function useWeeklySchedule(selectedChannelIds: ReadonlySet<string> = NO_CREATOR_FILTER) {
+export function useWeeklySchedule(selectedChannelIds: ReadonlySet<string> = NO_CREATOR_FILTER, organization: ScheduleOrganizationFilter = "all") {
   // The one shared minute clock (also used by Home): the same stream reads the same countdown on both pages.
   const now = useMinuteClock()
   const { streams } = useLiveStreams()
@@ -73,9 +73,12 @@ export function useWeeklySchedule(selectedChannelIds: ReadonlySet<string> = NO_C
     [streams],
   )
 
-  // The creator filter applies to what is PLACED on the grid; `allStreams` stays unfiltered so the filter's own options never shrink
-  // to the current selection.
-  const visibleStreams = useMemo(() => filterStreamsByCreators(rawStreams, selectedChannelIds), [rawStreams, selectedChannelIds])
+  // The creator and organization filters both apply to what is PLACED on the grid (AND-ed, client-side on the already-loaded streams, so
+  // changing either never refetches); `allStreams` stays unfiltered so the filter's own options never shrink to the current selection.
+  const visibleStreams = useMemo(
+    () => filterStreamsByOrganization(filterStreamsByCreators(rawStreams, selectedChannelIds), organization),
+    [rawStreams, selectedChannelIds, organization],
+  )
 
   const days = useMemo<ScheduleDay[]>(() => {
     return getWeekDays(weekStart).map((date) => {

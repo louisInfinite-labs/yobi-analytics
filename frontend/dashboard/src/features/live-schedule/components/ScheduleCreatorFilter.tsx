@@ -6,7 +6,8 @@ import { toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry
 import { LiveStatusGroups } from "../../live-status/components/LiveStatusGroups"
 import { groupEligibleCreatorsForLiveStatus } from "../../live-status/utils/liveStatusCanonicalRoster"
 import { t, type Locale } from "../../../shared/i18n/translations"
-import type { CreatorFilterOption } from "../model/scheduleCreatorFilter"
+import { HomeFilterSegmented } from "../../../shared/ui/HomeFilterSegmented"
+import type { CreatorFilterOption, ScheduleOrganizationFilter } from "../model/scheduleCreatorFilter"
 
 interface ScheduleCreatorFilterProps {
   locale: Locale
@@ -15,6 +16,9 @@ interface ScheduleCreatorFilterProps {
   /** The selected creators' legacy channel ids; empty = no filter. */
   selectedCreators: string[]
   onSelectedCreatorsChange: (channelIds: string[]) => void
+  /** The organization filter, shown first in the drawer: "all" = no organization restriction. */
+  organization: ScheduleOrganizationFilter
+  onOrganizationChange: (organization: ScheduleOrganizationFilter) => void
 }
 
 /** The Schedule page's creator filter: a trigger button that opens a RIGHT-SIDE drawer. An EMPTY selection means "no filter" (every
@@ -26,7 +30,14 @@ interface ScheduleCreatorFilterProps {
  * hover/selected tones are Home's (--oshi-* tokens and the same .live-status-search / .live-status-group__* classes); each creator is the
  * shared creator tile (the corrected 收藏名單 tile: the Live Status avatar on top with no ring or glow, the name centered directly below it,
  * the Live Status favorite heart on the avatar), three to a row in the drawer. Schedule has no tile CSS of its own beyond its colors. */
-export function ScheduleCreatorFilter({ locale, creatorOptions, selectedCreators, onSelectedCreatorsChange }: ScheduleCreatorFilterProps) {
+export function ScheduleCreatorFilter({
+  locale,
+  creatorOptions,
+  selectedCreators,
+  onSelectedCreatorsChange,
+  organization,
+  onOrganizationChange,
+}: ScheduleCreatorFilterProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const selectedSet = useMemo(() => new Set(selectedCreators), [selectedCreators])
@@ -81,6 +92,21 @@ export function ScheduleCreatorFilter({ locale, creatorOptions, selectedCreators
         rootClassName="schedule-creator-drawer"
         destroyOnHidden
       >
+        <div className="schedule-creator-drawer__organization">
+          <HomeFilterSegmented<ScheduleOrganizationFilter>
+            rootClassName="schedule-organization-segmented"
+            labelClassName="schedule-organization-segment-label"
+            aria-label={t(locale, "liveSchedule.organizationFilterAriaLabel")}
+            value={organization}
+            onChange={onOrganizationChange}
+            options={[
+              { value: "all", label: t(locale, "liveSchedule.organizationAll") },
+              { value: "vspo", label: t(locale, "liveSchedule.organizationVspo") },
+              { value: "hololive", label: t(locale, "liveSchedule.organizationHololive") },
+            ]}
+          />
+        </div>
+
         <div className="schedule-creator-drawer__controls">
           <label className="live-status-search">
             <Search size={14} aria-hidden="true" />
