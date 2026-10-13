@@ -104,6 +104,32 @@ function MemberAvatarPreview({ creators, locale }: { creators: NotificationCreat
   )
 }
 
+const ROSTER_IDS: ReadonlySet<string> = new Set(getAllNotificationCreators().map((creator) => creator.creatorId))
+
+/** "Live 2 · New Video 1": how many members have each channel on in this topic. The two switches are independent (a member can have Live
+ * without 新片 and the reverse), so each channel gets its own count -- one merged "selected" number hid which channel was on. Only members
+ * the Settings roster lists are counted, and a channel the topic's notification type excludes is not shown at all. */
+function ChannelCounts({ topicId }: { topicId: TopicCatalogId }) {
+  const [locale] = useLocale()
+  const { getChannelCreatorIds } = useTopicNotificationPreferences()
+  const { live, newVideo } = getChannelCreatorIds(topicId)
+  const countOf = (ids: ReadonlySet<string>) => Array.from(ids).filter((id) => ROSTER_IDS.has(id)).length
+  const channels = [
+    { channel: "live", ids: live, label: t(locale, "notificationSettings.liveColumnHeader") },
+    { channel: "newVideo", ids: newVideo, label: t(locale, "notificationSettings.newVideoColumnHeader") },
+  ].filter((entry): entry is { channel: string; ids: Set<string>; label: string } => entry.ids !== null)
+
+  return (
+    <span className="notification-channel-counts">
+      {channels.map((entry) => (
+        <span key={entry.channel} className="notification-channel-count" data-channel={entry.channel}>
+          {`${entry.label} ${countOf(entry.ids)}`}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 /** The Notification Members section -- summary count, an avatar preview,
  * and the "管理成員" entry point into TopicCreatorManagementDrawer (the
  * same drawer as before this redesign; only this row's own presentation
@@ -120,7 +146,7 @@ function MembersSection({ topicId, topicLabel, onManage }: { topicId: TopicCatal
         <div>
           <h3 className="notification-detail-section__title">{t(locale, "notificationSettings.notifiedMembersLabel")}</h3>
           <p className="notification-detail-section__description">
-            {t(locale, "notificationSettings.selectedCountLabel", { count: String(enabledCreators.length) })}
+            <ChannelCounts topicId={topicId} />
           </p>
         </div>
         <Button
@@ -154,9 +180,8 @@ function TopicListItem({
   onSelect: () => void
 }) {
   const [locale] = useLocale()
-  const { getEnabledCreatorIds, getOverrideCount } = useTopicNotificationPreferences()
+  const { getOverrideCount } = useTopicNotificationPreferences()
   const topicLabel = topicLabelFor(entries, locale, topicId)
-  const memberCount = getEnabledCreatorIds(topicId).size
   const overrideCount = getOverrideCount(topicId)
 
   return (
@@ -171,7 +196,7 @@ function TopicListItem({
         <span className="notification-topic-item__meta">
           <span className="notification-topic-item__meta-label notification-topic-item__members">
             <UsersThreeIcon size={14} weight="regular" aria-hidden="true" />
-            {t(locale, "notificationSettings.selectedCountLabel", { count: String(memberCount) })}
+            <ChannelCounts topicId={topicId} />
           </span>
           <span className={`notification-topic-item__override${overrideCount > 0 ? " is-active" : ""}`}>
             <SlidersHorizontalIcon size={14} weight="regular" aria-hidden="true" />

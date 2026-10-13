@@ -1486,6 +1486,19 @@
   font-size: 13px;
 }
 
+/* The two per-channel member counts ("Live 2" / "New Video 1"): side by side, wrapping to a second line rather than overflowing a narrow list. */
+.notification-channel-counts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 10px;
+  min-width: 0;
+}
+
+.notification-channel-count {
+  white-space: nowrap;
+}
+
 .notification-topic-item__override {
   display: inline-flex;
   align-items: center;
