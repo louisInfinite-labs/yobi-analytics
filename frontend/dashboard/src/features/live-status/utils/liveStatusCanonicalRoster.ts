@@ -1,22 +1,13 @@
 import { getCreators, isLiveStatusDisplayEligible } from "../../../entities/creator/data/creatorRegistry"
 import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 import type { BranchKey } from "../../../entities/creator/model/domain"
+import { creatorMatchesNameQuery } from "../../../entities/creator/utils/creatorNameSearch"
 import { DOCK_BRANCH_ORDER } from "../../../entities/creator/utils/dockCreatorOrder"
 import { subgroupsForBranch, type Subgroup } from "../../../entities/creator/utils/hololiveSubgrouping"
 
 export interface LiveStatusBranchGroup {
   branch: BranchKey
   subgroups: Subgroup<CanonicalCreator>[]
-}
-
-/** Case-insensitive match against the creator's canonical display name --
- * the canonical-registry counterpart of dockCreatorOrder.ts's own
- * creatorMatchesSearch (kept separate rather than generalizing that one:
- * it's still shared with Dashboard Comparison, out of this migration's
- * scope, and is keyed on MockCreator.channelName, not displayName). */
-export function creatorMatchesSearch(creator: CanonicalCreator, query: string): boolean {
-  if (query.trim() === "") return true
-  return creator.displayName.toLowerCase().includes(query.trim().toLowerCase())
 }
 
 /** The placeholder groupKey the canonical master gives a channel that belongs to no
@@ -101,7 +92,7 @@ export function groupEligibleCreatorsForLiveStatus(
   const filtered = getCreators()
     .filter(
       (creator) =>
-        isLiveStatusDisplayEligible(creator) && creatorMatchesSearch(creator, query) && (!filterCreator || filterCreator(creator)),
+        isLiveStatusDisplayEligible(creator) && creatorMatchesNameQuery(creator, query) && (!filterCreator || filterCreator(creator)),
     )
     .slice()
     .sort((a, b) => a.displayOrder - b.displayOrder)

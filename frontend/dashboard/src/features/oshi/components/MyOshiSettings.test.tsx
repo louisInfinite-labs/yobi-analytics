@@ -152,6 +152,26 @@ describe("MyOshiSettings (default Oshi picker)", () => {
     expect(screen.queryByRole("radio")).not.toBeInTheDocument()
   })
 
+  it("finds a creator by canonical romanized name in either order, any case and separator -- and not by a typo", async () => {
+    const user = userEvent.setup()
+    renderMyOshiSettings()
+    const search = screen.getByPlaceholderText("Search creators")
+
+    for (const query of ["aizawaema", "AizawaEma", "EMA AIZaWa", "ema aizawa", "aizawa_ema", "ema-aizawa"]) {
+      await user.clear(search)
+      await user.type(search, query)
+      expect(screen.getByRole("radio", { name: /藍沢エマ/ })).toBeInTheDocument()
+      expect(screen.getAllByRole("radio")).toHaveLength(1)
+    }
+
+    for (const typo of ["aizamaema", "aizazwaema"]) {
+      await user.clear(search)
+      await user.type(search, typo)
+      expect(screen.getByText("No creators found")).toBeInTheDocument()
+      expect(screen.queryByRole("radio")).not.toBeInTheDocument()
+    }
+  })
+
   it("Airani Iofifteen: an exceptional legacy alias -- persists as the pre-existing ch_iofi, not the naive ch_airani_iofifteen", async () => {
     const user = userEvent.setup()
     const { unmount } = renderMyOshiSettings()

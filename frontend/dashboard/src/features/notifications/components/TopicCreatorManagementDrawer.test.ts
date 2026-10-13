@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { excludeFavorites, filterBranchGroups, filterCreatorList, matchesSearch } from "./TopicCreatorManagementDrawer"
+import { excludeFavorites, filterBranchGroups, filterCreatorList } from "./TopicCreatorManagementDrawer"
+import { creatorMatchesNameQuery } from "../../../entities/creator/utils/creatorNameSearch"
 import { getAllNotificationCreators, groupCreatorsForNotificationSettings, sortCreatorsLikeLiveStatus, type NotificationBranchGroup } from "../model/notificationCreatorGrouping"
 import { formatBranchHeading } from "../../live-status/components/LiveStatusGroups"
 import { groupEligibleCreatorsForLiveStatus } from "../../live-status/utils/liveStatusCanonicalRoster"
@@ -14,7 +15,7 @@ import { getCreatorById, isCurrentMemberEligible } from "../../../entities/creat
 // between agencies) would surface here too. No antd/React rendering
 // involved: these are the same plain functions TopicCreatorManagementDrawer
 // itself calls, just exported for direct testing (see that file's own
-// comment on matchesSearch).
+// comment on filterCreatorList).
 describe("TopicCreatorManagementDrawer filtering/grouping logic", () => {
   const allCreators = getAllNotificationCreators()
   const baseGroups = groupCreatorsForNotificationSettings()
@@ -41,17 +42,31 @@ describe("TopicCreatorManagementDrawer filtering/grouping logic", () => {
     expect(flattenCreatorIds(filtered).length).toBe(flattenCreatorIds(baseGroups).length)
   })
 
-  it("matchesSearch matches a real creator's display name case-insensitively as a substring, and an empty/whitespace query matches everyone", () => {
+  it("the shared matcher matches a real creator's display name case-insensitively as a substring, and an empty/whitespace query matches everyone", () => {
     const aizawa = findCreator("aizawa_ema")
-    expect(matchesSearch(aizawa, "エマ")).toBe(true)
-    expect(matchesSearch(aizawa, "valo")).toBe(false)
-    expect(matchesSearch(aizawa, "")).toBe(true)
-    expect(matchesSearch(aizawa, "   ")).toBe(true)
+    expect(creatorMatchesNameQuery(aizawa, "エマ")).toBe(true)
+    expect(creatorMatchesNameQuery(aizawa, "valo")).toBe(false)
+    expect(creatorMatchesNameQuery(aizawa, "")).toBe(true)
+    expect(creatorMatchesNameQuery(aizawa, "   ")).toBe(true)
+  })
+
+  it("filterCreatorList finds a member by canonical romanized name in either order, and not by a typo", () => {
+    expect(filterCreatorList(allCreators, "Ema Aizawa").map((c) => c.creatorId)).toEqual(["aizawa_ema"])
+    expect(filterCreatorList(allCreators, "aizawa_ema").map((c) => c.creatorId)).toEqual(["aizawa_ema"])
+    expect(filterCreatorList(allCreators, "aizamaema")).toEqual([])
   })
 
   it("filterCreatorList narrows the real roster down to the one creator whose name actually matches", () => {
     const matches = filterCreatorList(allCreators, "エマ")
     expect(matches.map((creator) => creator.creatorId)).toEqual(["aizawa_ema"])
+  })
+
+  it("filterBranchGroups keeps only the romanized match's own branch/subgroup, in either name order, and nothing for a typo", () => {
+    for (const query of ["aizawa ema", "EMA AIZaWa", "aizawa-ema"]) {
+      expect(flattenCreatorIds(filterBranchGroups(baseGroups, query))).toEqual(["aizawa_ema"])
+    }
+    expect(filterBranchGroups(baseGroups, "aizamaema")).toEqual([])
+    expect(filterBranchGroups(baseGroups, "aizazwaema")).toEqual([])
   })
 
   it("filterBranchGroups drops every subgroup/branch with zero matches (spec section 10: never a bare empty heading)", () => {

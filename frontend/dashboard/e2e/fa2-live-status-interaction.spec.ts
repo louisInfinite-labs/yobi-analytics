@@ -92,6 +92,25 @@ test("search narrows the roster to matching creators and shows an empty state fo
   await expect(drawer.getByText("No matching creator.")).toBeVisible()
 })
 
+test("search finds a creator by canonical romanized name in either order, any case and separator, and never by a typo", async ({ page }) => {
+  await page.goto("/")
+  await page.locator(".live-status-trigger").click()
+  const drawer = page.getByRole("dialog", { name: "Live schedule search" })
+  const search = drawer.locator(".live-status-search input")
+  const names = drawer.locator(".live-status-member__name")
+
+  for (const query of ["aizawaema", "AizawaEma", "EMA AIZaWa", "ema aizawa", "aizawa_ema", "ema-aizawa"]) {
+    await search.fill(query)
+    await expect(names).toHaveText(["藍沢エマ"])
+  }
+
+  for (const typo of ["aizamaema", "aizazwaema"]) {
+    await search.fill(typo)
+    await expect(names).toHaveCount(0)
+    await expect(drawer.getByText("No matching creator.")).toBeVisible()
+  }
+})
+
 test("switching the selected creator updates Home's Oshi Status panel, and survives closing and reopening the drawer without resetting to the default Oshi", async ({
   page,
 }) => {

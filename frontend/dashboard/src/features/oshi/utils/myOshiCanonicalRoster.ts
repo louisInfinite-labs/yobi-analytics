@@ -1,6 +1,7 @@
 import { getCreators, isMyOshiEligible } from "../../../entities/creator/data/creatorRegistry"
 import type { CanonicalCreator } from "../../../entities/creator/model/creatorMaster"
 import type { BranchKey } from "../../../entities/creator/model/domain"
+import { creatorMatchesNameQuery } from "../../../entities/creator/utils/creatorNameSearch"
 import { DOCK_BRANCH_ORDER } from "../../../entities/creator/utils/dockCreatorOrder"
 import { GAMERS_GROUP_LABEL_KEY, OTHER_GROUP_LABEL_KEY, subgroupsForBranch, type Subgroup } from "../../../entities/creator/utils/hololiveSubgrouping"
 
@@ -31,11 +32,6 @@ function agencyLabelForBranch(branch: BranchKey): string {
   return branch.startsWith("vspo_") ? "VSPO" : "Hololive"
 }
 
-function matchesSearch(creator: CanonicalCreator, query: string): boolean {
-  if (query.trim() === "") return true
-  return creator.displayName.toLowerCase().includes(query.trim().toLowerCase())
-}
-
 /** My Oshi's own canonical-registry roster grouping (C8A) -- deliberately a
  * separate function from oshiSettingsGrouping.ts's groupCreatorsForOshiSettings,
  * which stays untouched and still backs the Favorites page (OshiSettings.tsx,
@@ -55,7 +51,7 @@ function matchesSearch(creator: CanonicalCreator, query: string): boolean {
  * separate "Graduated" group). */
 export function groupSelectableCreatorsForMyOshi(query: string): MyOshiAgencyGroup[] {
   const filtered = getCreators()
-    .filter((creator) => isMyOshiEligible(creator) && matchesSearch(creator, query))
+    .filter((creator) => isMyOshiEligible(creator) && creatorMatchesNameQuery(creator, query))
     .slice()
     .sort((a, b) => a.displayOrder - b.displayOrder)
 
