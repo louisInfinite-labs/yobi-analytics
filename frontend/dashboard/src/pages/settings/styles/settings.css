@@ -194,14 +194,24 @@
   gap: 10px;
 }
 
+/* One fixed 20x15 box for every language's flag image (LanguageFlagIcon, 4:3 artwork), so the selected row and each dropdown row line up identically. */
 .language-picker__flag {
-  width: 18px;
-  height: 18px;
-  font-size: 18px;
-  line-height: 1;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 15px;
+  line-height: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.language-picker__flag .language-flag-icon {
+  display: block;
+  width: 20px;
+  height: 15px;
+  object-fit: contain;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
 .language-picker__label {

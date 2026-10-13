@@ -2,11 +2,12 @@ import { ChevronDown } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useLocale } from "../hooks/useLocale"
 import { t, type Locale, type TranslationKey } from "../translations"
+import { LanguageFlagIcon } from "./LanguageFlagIcon"
 
-const LANGUAGE_DATA: { locale: Locale; flag: string; labelKey: TranslationKey }[] = [
-  { locale: "zh-TW", flag: "🇭🇰", labelKey: "languageSettings.picker.zhTW" },
-  { locale: "en", flag: "EN", labelKey: "languageSettings.picker.en" },
-  { locale: "ja", flag: "🇯🇵", labelKey: "languageSettings.picker.ja" },
+const LANGUAGE_DATA: { locale: Locale; labelKey: TranslationKey }[] = [
+  { locale: "zh-TW", labelKey: "languageSettings.picker.zhTW" },
+  { locale: "en", labelKey: "languageSettings.picker.en" },
+  { locale: "ja", labelKey: "languageSettings.picker.ja" },
 ]
 
 /** The app's language switcher -- ported pixel-for-pixel from Mantine UI's
@@ -104,7 +105,7 @@ export function LanguagePicker() {
       >
         <span className="language-picker__control-content">
           <span className="language-picker__flag" aria-hidden="true">
-            {selected.flag}
+            <LanguageFlagIcon locale={selected.locale} />
           </span>
           <span className="language-picker__label">{t(locale, selected.labelKey)}</span>
         </span>
@@ -128,7 +129,7 @@ export function LanguagePicker() {
               onKeyDown={(event) => handleItemKeyDown(event, index)}
             >
               <span className="language-picker__flag" aria-hidden="true">
-                {item.flag}
+                <LanguageFlagIcon locale={item.locale} />
               </span>
               <span>{t(locale, item.labelKey)}</span>
             </button>
