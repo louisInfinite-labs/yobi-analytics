@@ -118,12 +118,13 @@ resource "aws_dynamodb_table" "notification_delivery_log" {
 }
 
 # Slot-recipient index for scheduled new-video delivery (src/stores/notification_slot_store.py): one item per
-# (time zone + half-hour slot, client) the client chose, so the 30-minute dispatcher asks "who is due at this slot?" with a bounded
-# Query instead of reading every stored notification preference. slotKey is "<IANA zone>#<slot 00-47>"; the same table also holds the
-# registry of zones that have clients (slotKey "#zones"). The remote-config table's configKey-index cannot answer this: it can only list
-# EVERY client that stored a notificationPreference, and a client has up to four slots.
+# (fixed JST half-hour slot, client) the client chose, so the 30-minute dispatcher asks "who is due at this slot?" with a bounded
+# Query instead of reading every stored notification preference. slotKey is the plain "00".."47" JST slot (notifications.delivery_slots.
+# slot_key) -- there is no per-time-zone key or zone registry; every delivery slot is Asia/Tokyo wall-clock (see delivery_slots.py).
+# The remote-config table's configKey-index cannot answer this: it can only list EVERY client that stored a notificationPreference,
+# and a client has up to four slots.
 # clientId-index lists one client's own items so a changed or cancelled selection removes exactly its stale ones. The other item
-# attributes (timeZone, slot, activeSince) are ordinary schemaless attributes, so only the key attributes are declared.
+# attributes (slot, activeSince) are ordinary schemaless attributes, so only the key attributes are declared.
 resource "aws_dynamodb_table" "notification_delivery_slots" {
   name         = "YobiNotificationDeliverySlots"
   billing_mode = "PAY_PER_REQUEST"

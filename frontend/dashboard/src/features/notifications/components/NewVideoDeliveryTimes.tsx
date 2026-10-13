@@ -6,7 +6,7 @@ import { useNotificationSaveFailed } from "../hooks/notificationSaveStatus"
 import { useDeliverySlots } from "../hooks/useDeliverySlots"
 import { ALL_DELIVERY_SLOTS, MAX_DELIVERY_SLOTS, MIN_DELIVERY_SLOTS } from "../model/deliverySlots"
 
-/** Picks the (at most 4) half-hour times of the user's own day at which new-video pushes are delivered. */
+/** Picks the (at most 4) fixed Japan Standard Time (Asia/Tokyo) half-hour times at which new-video pushes are delivered. */
 export function NewVideoDeliveryTimes() {
   const [locale] = useLocale()
   const { slots, toggleSlot } = useDeliverySlots()
