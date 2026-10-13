@@ -80,6 +80,8 @@ export type TranslationKey =
   | "mainNavbar.settings"
   | "mainNavbar.schedule"
   | "mainNavbar.about"
+  | "mainNavbar.openNavAriaLabel"
+  | "mainNavbar.closeNavAriaLabel"
   | "settingsSecondaryNavbar.title"
   | "settingsSecondaryNavbar.navAriaLabel"
   | "settingsSecondaryNavbar.myOshiSettings"
@@ -317,6 +319,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "設定",
     "mainNavbar.schedule": "時間表",
     "mainNavbar.about": "關於",
+    "mainNavbar.openNavAriaLabel": "開啟導覽",
+    "mainNavbar.closeNavAriaLabel": "關閉導覽",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
     "settingsSecondaryNavbar.myOshiSettings": "我推設定",
@@ -553,6 +557,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "Settings",
     "mainNavbar.schedule": "Schedule",
     "mainNavbar.about": "About",
+    "mainNavbar.openNavAriaLabel": "Open navigation",
+    "mainNavbar.closeNavAriaLabel": "Close navigation",
     "settingsSecondaryNavbar.title": "Settings",
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
     "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
@@ -789,6 +795,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.settings": "設定",
     "mainNavbar.schedule": "スケジュール",
     "mainNavbar.about": "概要",
+    "mainNavbar.openNavAriaLabel": "ナビゲーションを開く",
+    "mainNavbar.closeNavAriaLabel": "ナビゲーションを閉じる",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
     "settingsSecondaryNavbar.myOshiSettings": "推し設定",

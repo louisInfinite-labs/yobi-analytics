@@ -180,6 +180,9 @@ jobs:
           src/app/App.dashboardGate.test.tsx
           src/app/navigation/MainNavbar.test.tsx
           src/app/navigation/responsiveNavigation.css.test.ts
+          src/app/navigation/phoneLayout.css.test.ts
+          src/app/navigation/MainNavbar.drawer.test.tsx
+          src/features/pwa/standaloneViewport.test.ts
           src/pages/settings/SettingsPage.drawer.test.tsx
           src/pages/settings/DisplaySettings.test.tsx
           src/pages/settings/SettingsThemeConsistency.test.tsx

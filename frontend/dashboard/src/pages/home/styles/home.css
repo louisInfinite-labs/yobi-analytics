@@ -2171,3 +2171,75 @@
     --live-status-width: 100vw;
   }
 }
+
+/* ============ Narrow screens (below 1024px): one scrolling column ============ */
+
+/* The desktop contract above (one viewport-high 2x2 grid, no page scrolling, a fixed-width status column) cannot hold on a phone -- it
+   clipped the shelf and Oshi Status off the right edge -- and squeezes the player to ~300px on a portrait tablet. Below 1024px -- the
+   app's own desktop threshold (useBreakpoint) -- Home is a single column that scrolls with the page, in this order (on a phone, under
+   the full-width top bar from main-navbar.css; on a tablet, beside the 56px rail):
+     1. the YouTube player, edge to edge, always a 16:9 box (the box exists even while the iframe is loading or there is no embed);
+     2. Oshi Status (creator, now playing, live / next 24 hours, since last visit, this week, recent activity);
+     3. the Oshi Videos shelf.
+   The player-selection logic is untouched; this is layout only. */
+@media (max-width: 1023px) {
+  .oshi-home {
+    height: auto;
+    min-height: calc(100dvh - var(--main-topbar-height, 0px));
+    overflow: visible;
+  }
+
+  .oshi-home__canvas {
+    display: flex;
+    flex-direction: column;
+    gap: var(--home-gap);
+    height: auto;
+    padding: 0 0 var(--home-gap);
+    overflow: visible;
+  }
+
+  .oshi-stream {
+    order: 1;
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+
+  .oshi-player-frame {
+    height: auto;
+    padding: 0;
+    border-width: 1px 0;
+    border-radius: 0;
+  }
+
+  .oshi-player-frame__stage {
+    display: block;
+    height: auto;
+    container-type: normal;
+  }
+
+  .oshi-player-frame__ratio {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+  }
+
+  .oshi-status {
+    order: 2;
+    width: auto;
+    height: auto;
+    margin-inline: var(--home-gap);
+    overflow: visible;
+  }
+
+  .oshi-status__body {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  .oshi-videos {
+    order: 3;
+    width: auto;
+    height: var(--oshi-videos-height);
+    margin-inline: var(--home-gap);
+  }
+}

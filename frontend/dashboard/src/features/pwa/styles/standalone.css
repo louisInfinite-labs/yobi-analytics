@@ -1,0 +1,28 @@
+/* ============ Installed app (standalone) only ============ */
+
+/* Everything here hangs on <html data-display-mode="standalone"> (standaloneViewport.ts), so none of it can apply in a Safari / Chrome tab:
+   normal pinch zoom and accessibility scaling stay exactly as they were there. */
+
+/* No pinch or double-tap zoom; one-finger scrolling (vertical and horizontal, e.g. the Oshi Videos shelf) is untouched. */
+html[data-display-mode="standalone"] {
+  touch-action: pan-x pan-y;
+}
+
+html[data-display-mode="standalone"] a,
+html[data-display-mode="standalone"] button,
+html[data-display-mode="standalone"] label,
+html[data-display-mode="standalone"] summary,
+html[data-display-mode="standalone"] [role="button"],
+html[data-display-mode="standalone"] [role="switch"] {
+  touch-action: manipulation;
+}
+
+/* iOS zooms the page when a text field with a font size below 16px takes focus. Touch devices only (a desktop-installed app has no such
+   zoom, and its compact controls keep their size). Only form controls are touched -- no other typography changes. */
+@media (pointer: coarse) {
+  html[data-display-mode="standalone"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="color"]):not([type="file"]),
+  html[data-display-mode="standalone"] select,
+  html[data-display-mode="standalone"] textarea {
+    font-size: 16px;
+  }
+}
