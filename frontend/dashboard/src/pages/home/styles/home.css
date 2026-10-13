@@ -893,6 +893,9 @@
   border-bottom: 1px solid var(--oshi-border);
 }
 
+/* The tag strip + the dropdowns. One row wherever the width allows (desktop is unchanged); below 768px they stack (see the phone block at
+   the end of this section). Either way the TAG STRIP owns its own horizontal scroll (.oshi-videos__tags) so its labels can never be drawn
+   under a neighbouring control. */
 .oshi-videos__filters {
   min-width: 0;
 
@@ -900,6 +903,16 @@
   align-items: center;
 
   gap: 5px;
+}
+
+/* Shrinks only when the row is too narrow for every tag, then scrolls sideways inside its own box. Its Segmented is sized to its content
+   (never squeezed to the box), which is what used to leave 11 tags painted past a 128px box, over the dropdowns. */
+.oshi-videos__tags {
+  flex: 0 1 auto;
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
 
   overflow-x: auto;
   overflow-y: hidden;
@@ -907,8 +920,17 @@
   scrollbar-width: none;
 }
 
-.oshi-videos__filters::-webkit-scrollbar {
+.oshi-videos__tags::-webkit-scrollbar {
   display: none;
+}
+
+.oshi-videos__controls {
+  flex: 0 0 auto;
+
+  display: flex;
+  align-items: center;
+
+  gap: 5px;
 }
 
 /* The Ant Design Segmented control replacing the former ten independent
@@ -920,8 +942,9 @@
    scrolls within .oshi-videos__filters's own existing overflow-x rather
    than wrapping to a second row or forcing page-level horizontal scroll. */
 .oshi-videos__segmented.ant-segmented {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
 
   font-size: 10px;
 }
@@ -1035,6 +1058,57 @@
    hover exactly like a working control. */
 .oshi-videos__view-all:hover:not(:disabled) {
   color: var(--creator-main);
+}
+
+/* ============ Oshi Videos: phone (below 768px) ============
+   Two rows inside the header: the tag strip on its own row (scrolls sideways when the tags do not fit; text keeps its size), then the
+   dropdowns on a row of their own that shares the full width. Nothing wraps over the video cards and nothing can overflow the page. The
+   shelf grows by exactly the second row (the height rule is at the end of this file, after the single-column block that sets the
+   shelf's height) so the thumbnail track keeps its height. The dropdowns are 32px tall because the installed app
+   sets form controls to 16px text on touch devices (features/pwa/styles/standalone.css), which 22px would clip. */
+@media (max-width: 767px) {
+  .oshi-videos {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .oshi-videos__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .oshi-videos__filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .oshi-videos__tags {
+    flex: 0 0 auto;
+    height: 34px;
+  }
+
+  .oshi-videos__segment-label {
+    font-size: 12px;
+  }
+
+  .oshi-videos__controls {
+    gap: 6px;
+    padding-bottom: 6px;
+  }
+
+  .oshi-videos__controls .oshi-videos__sort {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 32px;
+
+    font-size: 12px;
+  }
+
+  /* Dev-only and inert (no destination yet): not worth a row of its own on a phone. */
+  .oshi-videos__view-all {
+    display: none;
+  }
 }
 
 /* Non-scrolling wrapper so the scroll arrows can sit over the track without
@@ -2241,5 +2315,13 @@
     width: auto;
     height: var(--oshi-videos-height);
     margin-inline: var(--home-gap);
+  }
+}
+
+/* Phone: the shelf is one row (38px) taller to hold the stacked dropdown row -- declared AFTER the single-column block above, whose
+   equal-specificity `.oshi-videos { height }` would otherwise win and squeeze the thumbnail track. */
+@media (max-width: 767px) {
+  .oshi-videos {
+    height: calc(var(--oshi-videos-height) + 38px);
   }
 }

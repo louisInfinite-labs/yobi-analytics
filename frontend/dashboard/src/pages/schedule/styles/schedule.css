@@ -342,6 +342,8 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
    time row share one baseline and the LIVE badge above any of them (10px +
    2px gap) still lands inside the same row: badge 1-11px, avatar 13-40px of
    the 44px row, leaving 5px between one row's avatar and the next row's badge. */
+/* `gap` here and `.more-streams`' width below are mirrored by AVATAR_GAP_PX / MORE_CHIP_MIN_WIDTH_PX in model/scheduleAvatarOverflow.ts, which
+   decides how many avatars fit before "+N" (scheduleOverflow.css.test.ts keeps them equal). */
 .stream-avatar-group {
   position: absolute;
   top: calc(50% + 7px);
@@ -1162,4 +1164,105 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
 .schedule-creator-item:focus-visible {
   outline: 1px solid var(--creator-main, var(--oshi-text-1));
   outline-offset: -1px;
+}
+
+/* ============ Phone: one day per page ============
+   Below 768px the schedule shows ONE day at a time (ScheduleGrid.tsx), picked with the date header; tablet and desktop keep the multi-day
+   grid untouched. The date header is pinned under the app's phone top bar (--main-topbar-height, main-navbar.css; 0 where there is none). */
+.schedule-day-nav {
+  position: sticky;
+  top: var(--main-topbar-height, 0px);
+  z-index: 7;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  height: 48px;
+  padding: 0 4px;
+
+  background: var(--schedule-bg-page);
+  border-bottom: 1px solid #263a54;
+}
+
+.schedule-day-nav__arrow {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+
+  display: grid;
+  place-items: center;
+
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #e8eef7;
+
+  cursor: pointer;
+}
+
+.schedule-day-nav__arrow:disabled {
+  color: var(--schedule-text-muted);
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.schedule-day-nav__arrow:focus-visible {
+  outline: 2px solid #79c8ff;
+  outline-offset: -2px;
+}
+
+.schedule-day-nav__label {
+  flex: 1 1 auto;
+  min-width: 0;
+
+  text-align: center;
+  font-size: 16px;
+  font-weight: 650;
+  color: #f0f4fa;
+}
+
+.schedule-day-nav__label.is-today {
+  color: #79c8ff;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --schedule-time-column-width: 52px;
+  }
+
+  .schedule-page {
+    padding: 12px 12px 16px;
+  }
+
+  .schedule-header {
+    padding-left: 0;
+  }
+
+  .schedule-title {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .schedule-subtitle {
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  /* The time labels and the one day column. The two header cells go: the date header above names the day, and dropping BOTH keeps the
+     time rows and the day's rows aligned. */
+  .schedule-grid {
+    grid-template-columns: var(--schedule-time-column-width) minmax(0, 1fr);
+  }
+
+  .time-header,
+  .schedule-day-header {
+    display: none;
+  }
+
+  .time-label {
+    padding-left: 8px;
+    font-size: 11px;
+  }
 }

@@ -204,6 +204,11 @@ jobs:
           src/pages/schedule/LiveSchedulePage.test.tsx
           src/shared/time/minuteClock.test.tsx
           src/features/live-schedule/components/ScheduleGrid.test.tsx
+          src/features/live-schedule/components/ScheduleGrid.responsive.test.tsx
+          src/features/live-schedule/model/scheduleAvatarOverflow.test.ts
+          src/features/live-schedule/model/scheduleGrid.selectedDay.test.ts
+          src/pages/schedule/scheduleResponsive.css.test.ts
+          src/features/home-room/components/RecentVideosSection.layout.test.tsx
           src/features/live-schedule/components/StreamNotificationPanel.test.tsx
           src/features/live-schedule/components/StreamDetailModal.test.tsx
           src/features/notifications/api/liveReminderApi.test.ts

@@ -234,6 +234,9 @@ export type TranslationKey =
   | "liveSchedule.liveBadge"
   | "liveSchedule.noThumbnail"
   | "liveSchedule.moreStreamsAria"
+  | "liveSchedule.dayNavAria"
+  | "liveSchedule.previousDayAria"
+  | "liveSchedule.nextDayAria"
   | "liveSchedule.closeAria"
   | "liveSchedule.setReminderButton"
   | "liveSchedule.openStreamButton"
@@ -474,6 +477,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.noThumbnail": "沒有縮圖",
     "liveSchedule.moreStreamsAria": "還有 {{count}} 個直播",
+    "liveSchedule.dayNavAria": "日期切換",
+    "liveSchedule.previousDayAria": "前一天",
+    "liveSchedule.nextDayAria": "後一天",
     "liveSchedule.closeAria": "關閉",
     "liveSchedule.setReminderButton": "設定提醒",
     "liveSchedule.openStreamButton": "開啟直播",
@@ -713,6 +719,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.noThumbnail": "No thumbnail",
     "liveSchedule.moreStreamsAria": "{{count}} more streams",
+    "liveSchedule.dayNavAria": "Day navigation",
+    "liveSchedule.previousDayAria": "Previous day",
+    "liveSchedule.nextDayAria": "Next day",
     "liveSchedule.closeAria": "Close",
     "liveSchedule.setReminderButton": "Set Reminder",
     "liveSchedule.openStreamButton": "Open Stream",
@@ -952,6 +961,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.liveBadge": "LIVE",
     "liveSchedule.noThumbnail": "サムネイルなし",
     "liveSchedule.moreStreamsAria": "他に{{count}}件の配信",
+    "liveSchedule.dayNavAria": "日付の切り替え",
+    "liveSchedule.previousDayAria": "前の日",
+    "liveSchedule.nextDayAria": "次の日",
     "liveSchedule.closeAria": "閉じる",
     "liveSchedule.setReminderButton": "リマインダーを設定",
     "liveSchedule.openStreamButton": "配信を開く",
