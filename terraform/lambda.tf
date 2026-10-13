@@ -159,6 +159,50 @@ resource "aws_lambda_function" "notification_dispatcher" {
   }
 }
 
+# Livestream completion lifecycle (SOURCE IMPLEMENTATION CHECKPOINT -- not yet applied, see
+# tracking/livestream_lifecycle.py): reuses yobi-analytics-lambda-role, the same shared role as collector/api/
+# notification_dispatcher above. AWS-aware verification (2026-10-13, read-only, account 189461315571): the deployed
+# yobi-analytics-cli operator has no iam:Get*/List* access (confirmed by denial, matching this project's own
+# documented IAM-is-manual-console-only constraint), so the role's policy document itself could not be read
+# directly. Indirect functional evidence instead: yobi-analytics-notification-dispatcher (same role, same
+# ssm:GetParameter on both locators below, same DynamoDB read of YobiVideoMaster + read/write of YobiRemoteConfig
+# this job needs) ran 1440 times over the preceding 24h with zero Errors; yobi-analytics-history-worker (same role,
+# writing YobiVideoMaster via the same update_item pattern stores.dynamodb_store.set_video_live_status uses) ran 18
+# times with zero Errors, and a live DynamoDB scan confirmed real items already carry exactly
+# contentType="live"/liveStatus="completed". This role is expected to need no new execution-role grant for this
+# Lambda. The scheduler role's own lambda:InvokeFunction grant for this new function's ARN cannot be verified or
+# created until this is actually applied (manual IAM console step, same precedent as the DLQ grant's own comment in
+# eventbridge.tf) -- genuinely pending, unlike the execution role above.
+resource "aws_lambda_function" "livestream_lifecycle" {
+  function_name = "yobi-analytics-livestream-lifecycle"
+  role          = local.lambda_role_arn
+  handler       = "tracking.livestream_lifecycle.lambda_handler"
+  runtime       = "python3.12"
+  timeout       = 60
+  memory_size   = 512
+  filename      = local.lambda_placeholder_zip
+  # tracking/livestream_lifecycle.py's own read-modify-write of the persisted pending-candidates set is correct
+  # only if two cycles never overlap (no optimistic-concurrency/version check on that write) -- capped at 1 so a
+  # retried/duplicate EventBridge invocation or a slow run can never execute concurrently with the next one.
+  reserved_concurrent_executions = 1
+
+  environment {
+    variables = {
+      # Same three locators/switch as notification_dispatcher above -- this job calls
+      # api.read_api.fetch_live_streams_from_holodex (Holodex + the Video Master classification join + the
+      # unclassified-upcoming YouTube lookup) and additionally writes completion status back to Video Master via
+      # stores.dynamodb_store.set_video_live_status.
+      YOBI_STORAGE_BACKEND          = "dynamodb"
+      HOLODEX_SSM_PARAMETER         = local.ssm_parameter_names.holodex_api_key
+      YOUTUBE_API_KEY_SSM_PARAMETER = local.ssm_parameter_names.youtube_api_key
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+
 resource "aws_lambda_function" "emergency_stop" {
   function_name = "yobi-analytics-emergency-stop"
   role          = local.emergency_stop_role_arn

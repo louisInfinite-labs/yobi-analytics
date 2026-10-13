@@ -113,6 +113,9 @@ jobs:
           tests/notifications/test_localized_push_dispatch.py
           tests/ops/test_config.py
           tests/api/test_api_handler.py
+          tests/tracking/test_livestream_lifecycle.py
+          tests/stores/test_dynamodb_video_live_status.py
+          tests/test_subscriber_snapshot_wiring.py
 
   frontend-focused-tests:
     needs: detect-scope

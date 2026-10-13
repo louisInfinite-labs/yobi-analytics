@@ -464,7 +464,15 @@ def test_new_route_uses_the_existing_api_lambda_integration_only():
     # including the new one -- no second aws_apigatewayv2_integration block.
     assert len(re.findall(r'resource\s+"aws_apigatewayv2_integration"', api_gateway_tf)) == 1
     functions = set(re.findall(r'resource\s+"aws_lambda_function"\s+"(\w+)"', lambda_tf))
-    assert functions == {"collector", "history_worker", "ranking_reducer", "api", "notification_dispatcher", "emergency_stop"}
+    assert functions == {
+        "collector",
+        "history_worker",
+        "ranking_reducer",
+        "api",
+        "notification_dispatcher",
+        "emergency_stop",
+        "livestream_lifecycle",
+    }
 
 
 # --- routing wiring (api_handler.py) -----------------------------------------
