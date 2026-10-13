@@ -1059,6 +1059,33 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   overflow: hidden;
 }
 
+/* The organization selector at the very top of the drawer. Its look (tokens, chip radius, label weight) is the shared Home filter skin
+   (HomeFilterSegmented / .home-filter-segmented); only the layout is here: a full-width, equal-split row, as Live Status' own selector. */
+.schedule-creator-drawer__organization {
+  flex: 0 0 auto;
+
+  padding: 12px 16px 0;
+}
+
+.schedule-organization-segmented.ant-segmented {
+  width: 100%;
+}
+
+.schedule-creator-drawer__organization .ant-segmented-group {
+  display: flex;
+
+  width: 100%;
+}
+
+.schedule-creator-drawer__organization .ant-segmented-item {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.schedule-organization-segment-label {
+  width: 100%;
+}
+
 .schedule-creator-drawer__controls {
   flex: 0 0 auto;
 

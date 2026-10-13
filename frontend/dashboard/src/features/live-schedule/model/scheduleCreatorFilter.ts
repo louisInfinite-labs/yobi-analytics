@@ -1,3 +1,5 @@
+import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
+import type { OrganizationKey } from "../../../entities/creator/model/domain"
 import type { ScheduledStream } from "./scheduledStream"
 
 /** The Schedule page's creator filter: an EMPTY selection means "no filter" (every creator's streams are shown); a non-empty
@@ -5,6 +7,15 @@ import type { ScheduledStream } from "./scheduledStream"
  * (ScheduledStream.channelId), the same id space Favorites and the main Oshi use. */
 export function filterStreamsByCreators(streams: readonly ScheduledStream[], selected: ReadonlySet<string>): ScheduledStream[] {
   return selected.size === 0 ? [...streams] : streams.filter((stream) => selected.has(stream.channelId))
+}
+
+/** The Schedule organization filter: "all" applies no organization restriction at all; otherwise only that organization's streams. */
+export type ScheduleOrganizationFilter = "all" | OrganizationKey
+
+/** Organization comes from the canonical creator registry (CanonicalCreator.organization, resolved from the stream's creator id) -- never
+ * from a creator name or a hand-kept membership list. */
+export function filterStreamsByOrganization(streams: readonly ScheduledStream[], organization: ScheduleOrganizationFilter): ScheduledStream[] {
+  return organization === "all" ? [...streams] : streams.filter((stream) => resolveCreatorKey(stream.channelId)?.organization === organization)
 }
 
 export interface CreatorFilterOption {

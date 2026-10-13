@@ -194,6 +194,10 @@ export type TranslationKey =
   | "liveSchedule.filterLabel"
   | "liveSchedule.removeStreamReminderButton"
   | "liveSchedule.filterAriaLabel"
+  | "liveSchedule.organizationFilterAriaLabel"
+  | "liveSchedule.organizationAll"
+  | "liveSchedule.organizationVspo"
+  | "liveSchedule.organizationHololive"
   | "liveSchedule.filterFavoritesGroup"
   | "liveSchedule.filterAllGroup"
   | "liveSchedule.filterAddFavorites"
@@ -403,6 +407,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.filterLabel": "篩選",
     "liveSchedule.removeStreamReminderButton": "移除單場設定（改用創作者設定）",
     "liveSchedule.filterAriaLabel": "篩選創作者",
+    "liveSchedule.organizationFilterAriaLabel": "組織",
+    "liveSchedule.organizationAll": "全部",
+    "liveSchedule.organizationVspo": "VSPO",
+    "liveSchedule.organizationHololive": "Hololive",
     "liveSchedule.filterFavoritesGroup": "收藏",
     "liveSchedule.filterAllGroup": "全部創作者",
     "liveSchedule.filterAddFavorites": "加入全部收藏",
@@ -611,6 +619,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.filterLabel": "Filter",
     "liveSchedule.removeStreamReminderButton": "Remove (use creator settings)",
     "liveSchedule.filterAriaLabel": "Filter by creator",
+    "liveSchedule.organizationFilterAriaLabel": "Organization",
+    "liveSchedule.organizationAll": "All",
+    "liveSchedule.organizationVspo": "VSPO",
+    "liveSchedule.organizationHololive": "Hololive",
     "liveSchedule.filterFavoritesGroup": "Favorites",
     "liveSchedule.filterAllGroup": "All creators",
     "liveSchedule.filterAddFavorites": "Add all favorites",
@@ -819,6 +831,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.filterLabel": "フィルター",
     "liveSchedule.removeStreamReminderButton": "削除（クリエイター設定を使う）",
     "liveSchedule.filterAriaLabel": "クリエイターで絞り込み",
+    "liveSchedule.organizationFilterAriaLabel": "事務所",
+    "liveSchedule.organizationAll": "すべて",
+    "liveSchedule.organizationVspo": "VSPO",
+    "liveSchedule.organizationHololive": "Hololive",
     "liveSchedule.filterFavoritesGroup": "お気に入り",
     "liveSchedule.filterAllGroup": "すべてのクリエイター",
     "liveSchedule.filterAddFavorites": "お気に入りをすべて追加",

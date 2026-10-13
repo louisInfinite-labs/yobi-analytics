@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react"
-import { ConfigProvider, Segmented } from "antd"
 import { Search } from "lucide-react"
 import { CreatorStatusList } from "./CreatorStatusList"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
@@ -16,7 +15,7 @@ import { creatorThemeStyle } from "../../../shared/theme/creatorThemeStyle"
 import { selectHomeVideo } from "../../home-room/hooks/useHomeSelectedVideo"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { formatCountdown } from "../model/creatorStatusFormat"
-import { HOME_FILTER_SEGMENTED_TOKENS } from "../../../shared/theme/homeFilterSegmentedTheme"
+import { HomeFilterSegmented } from "../../../shared/ui/HomeFilterSegmented"
 import type { CreatorStatus } from "../model/creatorStatus"
 import { VideoPlayerModal } from "../../media-player/components/VideoPlayerModal"
 
@@ -226,26 +225,16 @@ export function LiveScheduleDock() {
                * --oshi-surface-3 (never creator-tinted) with full-strength text, unselected text is --oshi-text-3 with Home's hover wash.
                * Only the look is shared: the font size stays this drawer's own 14px (Home's bar is 10px) and the control stays a full-width
                * 50/50 pair -- the tokens are the shared HOME_FILTER_SEGMENTED_TOKENS, and no .shared-filter-segmented skin overrides them. */}
-              <ConfigProvider
-                theme={{
-                  components: {
-                    Segmented: HOME_FILTER_SEGMENTED_TOKENS,
-                  },
-                }}
-              >
-                <Segmented<ViewMode>
-                  classNames={{
-                    root: "live-status-view-segmented home-filter-segmented",
-                    label: "live-status-view-segment-label home-filter-segment-label",
-                  }}
-                  value={viewMode}
-                  onChange={setViewMode}
-                  options={[
-                    { value: "all", label: t(locale, "recentVideos.tag.all") },
-                    { value: "favorites", label: t(locale, "oshiSettings.viewFilter.favoritesOnly") },
-                  ]}
-                />
-              </ConfigProvider>
+              <HomeFilterSegmented<ViewMode>
+                rootClassName="live-status-view-segmented"
+                labelClassName="live-status-view-segment-label"
+                value={viewMode}
+                onChange={setViewMode}
+                options={[
+                  { value: "all", label: t(locale, "recentVideos.tag.all") },
+                  { value: "favorites", label: t(locale, "oshiSettings.viewFilter.favoritesOnly") },
+                ]}
+              />
             </div>
           </div>
 

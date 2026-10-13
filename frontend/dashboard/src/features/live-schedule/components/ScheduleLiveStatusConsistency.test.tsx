@@ -236,6 +236,8 @@ describe("Schedule creator filter drawer", () => {
           setSelected(next)
           onChange(next)
         }}
+        organization="all"
+        onOrganizationChange={() => {}}
       />
     )
   }
@@ -328,6 +330,8 @@ describe("Schedule creator filter drawer", () => {
         creatorOptions={options.map((option) => ({ ...option, isFavorite: option.channelId === favorite }))}
         selectedCreators={[]}
         onSelectedCreatorsChange={() => {}}
+        organization="all"
+        onOrganizationChange={() => {}}
       />,
     )
     await open(userEvent.setup())
