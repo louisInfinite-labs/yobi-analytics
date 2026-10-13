@@ -2,6 +2,7 @@ import { useMemo, useState, type CSSProperties } from "react"
 import { ConfigProvider, Drawer, Switch } from "antd"
 import { Heart, Search } from "lucide-react"
 import { CreatorAvatarImage } from "../../../entities/creator/components/CreatorAvatarImage"
+import { creatorMatchesNameQuery } from "../../../entities/creator/utils/creatorNameSearch"
 import { LiveStatusGroups } from "../../live-status/components/LiveStatusGroups"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
@@ -42,20 +43,11 @@ interface TopicCreatorManagementDrawerProps {
   onClose: () => void
 }
 
-/** Same instant, no-Enter, whole-name-substring search as
- * NotificationSettings' own matchesSearch/filterBranchGroups (this
- * feature's own spec section 10: reuse the existing search
- * implementation). Exported (along with filterCreatorList/
- * filterBranchGroups/excludeFavorites below) purely so this feature's own
- * tests can exercise the actual filtering/grouping logic directly against
- * the real roster, without needing to mount antd's Drawer. */
-export function matchesSearch(creator: NotificationCreator, query: string): boolean {
-  const trimmed = query.trim().toLowerCase()
-  return trimmed === "" || creator.displayName.toLowerCase().includes(trimmed)
-}
-
+/** Instant, no-Enter search through the shared creator-name matcher (creatorNameSearch.ts). Exported (along with filterBranchGroups/
+ * excludeFavorites below) purely so this feature's own tests can exercise the actual filtering/grouping logic directly against the real
+ * roster, without needing to mount antd's Drawer. */
 export function filterCreatorList(creators: NotificationCreator[], query: string): NotificationCreator[] {
-  return creators.filter((creator) => matchesSearch(creator, query))
+  return creators.filter((creator) => creatorMatchesNameQuery(creator, query))
 }
 
 /** Filters the WHOLE branch > subgroup > creator hierarchy (Live Status' grouping) so an empty subgroup/branch never leaves a bare

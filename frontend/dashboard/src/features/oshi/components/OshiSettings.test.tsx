@@ -66,6 +66,25 @@ describe("OshiSettings (My Favorites roster)", () => {
     expect(screen.queryByRole("checkbox", { name: /花芽すみれ/ })).not.toBeInTheDocument()
   })
 
+  it("search finds a creator by canonical romanized name in either order -- and not by a typo", async () => {
+    const user = userEvent.setup()
+    renderOshiSettings()
+    const search = screen.getByPlaceholderText("Search creators")
+
+    for (const query of ["aizawaema", "EMA AIZaWa", "aizawa_ema", "ema-aizawa"]) {
+      await user.clear(search)
+      await user.type(search, query)
+      expect(screen.getByRole("checkbox", { name: "Add 藍沢エマ to favorites" })).toBeInTheDocument()
+      expect(screen.queryByRole("checkbox", { name: /花芽すみれ/ })).not.toBeInTheDocument()
+    }
+
+    for (const typo of ["aizamaema", "aizazwaema"]) {
+      await user.clear(search)
+      await user.type(search, typo)
+      expect(screen.queryByRole("checkbox", { name: /藍沢エマ/ })).not.toBeInTheDocument()
+    }
+  })
+
   it("shows the selected count in the page header", async () => {
     const user = userEvent.setup()
     renderOshiSettings()
