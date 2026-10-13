@@ -4,6 +4,7 @@ import pytest
 
 from collection import main as main_module
 from tracking.creator_master import Creator
+from tracking.discovery_windows import UnknownDiscoveryWindowError
 from tracking.tracking_manifest import TrackingManifestError
 from tracking.video_master import Video, VideoMasterError
 from collection.youtube_client import QuotaExhaustedError, YouTubeAPIError
@@ -69,13 +70,69 @@ def test_run_discovery_persists_and_notifies_newly_discovered_videos(monkeypatch
     upserted = []
     notified = []
     monkeypatch.setattr(main_module, "upsert_videos", upserted.append)
-    monkeypatch.setattr(main_module, "record_new_video_events", notified.append)
+    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos, **kw: notified.append(videos))
 
     result = main_module.run_discovery()
 
     assert result == 0
     assert upserted == [new_videos]
     assert notified == [new_videos]
+
+
+def test_run_discovery_stamps_the_window_it_serves_on_every_event(monkeypatch):
+    monkeypatch.setattr(main_module, "load_videos", lambda: [_video("already_known")])
+    monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator()])
+    monkeypatch.setattr(main_module, "_discover_creator", lambda *a, **k: (["v1"], [_video("v1")]))
+    monkeypatch.setattr(main_module, "upsert_videos", lambda videos: None)
+    sources = []
+    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos, *, discovery_source: sources.append(discovery_source))
+
+    assert main_module.run_discovery("1300") == 0
+    assert main_module.run_discovery() == 0
+
+    assert sources == ["discovery_window:1300", "collection_run"]
+
+
+def test_run_discovery_rejects_an_unknown_window_before_doing_any_work(monkeypatch):
+    def _boom(*_a, **_kw):
+        raise AssertionError("no work may start for an unknown window")
+
+    monkeypatch.setattr(main_module, "get_api_key", _boom)
+
+    with pytest.raises(UnknownDiscoveryWindowError):
+        main_module.run_discovery("0615")
+
+
+def test_run_discovery_records_the_events_before_it_writes_video_master(monkeypatch):
+    monkeypatch.setattr(main_module, "load_videos", lambda: [_video("already_known")])
+    monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator()])
+    monkeypatch.setattr(main_module, "_discover_creator", lambda *a, **k: (["v1"], [_video("v1")]))
+    order = []
+    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos, **kw: order.append("events"))
+    monkeypatch.setattr(main_module, "upsert_videos", lambda videos: order.append("video_master"))
+
+    assert main_module.run_discovery("0900") == 0
+
+    assert order == ["events", "video_master"]
+
+
+def test_run_discovery_fails_without_persisting_when_the_events_cannot_be_recorded(monkeypatch):
+    """A video written to Video Master counts as known and is never discovered again, so its lost event could never be recovered.
+    Failing BEFORE the write leaves it undiscovered: the next window finds it again."""
+    monkeypatch.setattr(main_module, "load_videos", lambda: [_video("already_known")])
+    monkeypatch.setattr(main_module, "get_active_creators", lambda: [_creator()])
+    monkeypatch.setattr(main_module, "_discover_creator", lambda *a, **k: (["v1"], [_video("v1")]))
+
+    def _unavailable(videos, **kw):
+        raise main_module.NotificationEventsStoreError("events table unreachable")
+
+    def _must_not_persist(videos):
+        raise AssertionError("videos must not be persisted when their events could not be recorded")
+
+    monkeypatch.setattr(main_module, "record_new_video_events", _unavailable)
+    monkeypatch.setattr(main_module, "upsert_videos", _must_not_persist)
+
+    assert main_module.run_discovery("2200") == 1
 
 
 def test_run_discovery_skips_creators_with_discovery_disabled(monkeypatch):
@@ -106,7 +163,7 @@ def test_run_discovery_continues_past_one_creators_youtube_error(monkeypatch):
     monkeypatch.setattr(main_module, "_discover_creator", _discover)
     upserted = []
     monkeypatch.setattr(main_module, "upsert_videos", upserted.append)
-    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos: None)
+    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos, **kw: None)
 
     result = main_module.run_discovery()
 
@@ -131,7 +188,7 @@ def test_run_discovery_persists_partial_results_and_fails_on_quota_exhaustion(mo
     monkeypatch.setattr(main_module, "_discover_creator", _discover)
     upserted = []
     monkeypatch.setattr(main_module, "upsert_videos", upserted.append)
-    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos: None)
+    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos, **kw: None)
 
     result = main_module.run_discovery()
 
@@ -672,7 +729,7 @@ def _wire_ingestion(monkeypatch, playlist, *, creators):
     monkeypatch.setattr(main_module, "discover_new_videos", discover_new)
     monkeypatch.setattr(main_module, "load_videos", store.load)
     monkeypatch.setattr(main_module, "upsert_videos", store.upsert)
-    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos: notified.extend(v.video_id for v in videos))
+    monkeypatch.setattr(main_module, "record_new_video_events", lambda videos, **kw: notified.extend(v.video_id for v in videos))
     return store, notified
 
 

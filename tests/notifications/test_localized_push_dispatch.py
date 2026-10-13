@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
 
 from api import read_api
-from notifications import live_reminder, notification_dispatch, notification_dispatcher, push_sender
-from notifications.notification_dispatcher import lambda_handler
-from stores import notification_delivery_log_store, notification_events_store, remote_config_store
+from notifications import live_reminder, new_video_dispatcher, notification_dispatch, notification_dispatcher, push_sender
+from stores import remote_config_store
 
+from .new_video_harness import DAY1_EVENING, due_event, fake_delivery_log, install_world
 from .test_notification_dispatcher import (  # noqa: F401  (autouse fixtures must be visible in this module)
-    _event_item,
     _frozen_datetime,
     _holodex_stream,
     _preference_value,
     _remote_config_stub,
-    _subscription_value,
     stub_creators,
     stub_live_streams,
     stub_reminder_items,
@@ -41,18 +39,12 @@ def reminder_payloads(monkeypatch, *, timing, preference, stream=STREAM):
 
 
 def new_video_payloads(monkeypatch, *, preference, title="新曲MVを公開しました【オリジナル】"):
-    now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)  # 18:05 JST, after yesterday's 18:00 discovery's next delivery window
-    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    event = _event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00", title=title)
-    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda day: [event] if day == "2026-09-02" else [])
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": preference}])
-    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
-    monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, at: True)
-    monkeypatch.setattr(notification_delivery_log_store, "confirm_delivered", lambda *a, **kw: None)
+    """The pushes one 30-minute slot run sends (18:00 JST tick, after yesterday's 18:00 discovery's next delivery window)."""
+    fake_delivery_log(monkeypatch)
+    install_world(monkeypatch, events=[due_event(title=title)], preferences={"c1": preference}, stub_push=False)
     sent = []
     monkeypatch.setattr(push_sender, "webpush", lambda *, subscription_info, data, **kwargs: sent.append(json.loads(data)))
-    assert lambda_handler({}, None)["delivered"] == 1
+    assert new_video_dispatcher.run({}, None, now=DAY1_EVENING)["delivered"] == 1
     return sent
 
 

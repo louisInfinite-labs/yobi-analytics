@@ -1,6 +1,7 @@
 import pytest
 
 from api import lambda_handler as lambda_handler_module
+from tracking.discovery_windows import UnknownDiscoveryWindowError
 
 
 def test_lambda_handler_returns_200_on_success(monkeypatch):
@@ -82,7 +83,7 @@ def test_lambda_handler_dispatches_to_discovery_only_in_discovery_only_mode(monk
         raise AssertionError("main() must not run for a discovery_only-mode event")
 
     monkeypatch.setattr(lambda_handler_module, "main", _main_should_not_run)
-    monkeypatch.setattr(lambda_handler_module, "run_discovery", lambda: 0)
+    monkeypatch.setattr(lambda_handler_module, "run_discovery", lambda window=None: 0)
 
     result = lambda_handler_module.lambda_handler({"mode": "discovery_only"}, None)
 
@@ -91,7 +92,25 @@ def test_lambda_handler_dispatches_to_discovery_only_in_discovery_only_mode(monk
 
 def test_lambda_handler_raises_on_discovery_only_failure(monkeypatch):
     """A failed discovery-only run (non-zero exit code) raises, matching the default-mode behavior."""
-    monkeypatch.setattr(lambda_handler_module, "run_discovery", lambda: 1)
+    monkeypatch.setattr(lambda_handler_module, "run_discovery", lambda window=None: 1)
 
     with pytest.raises(RuntimeError, match="exit code 1"):
         lambda_handler_module.lambda_handler({"mode": "discovery_only"}, None)
+
+
+def test_lambda_handler_passes_the_discovery_window_to_the_discovery_run(monkeypatch):
+    seen = []
+    monkeypatch.setattr(lambda_handler_module, "main", lambda: (_ for _ in ()).throw(AssertionError("main() must not run")))
+    monkeypatch.setattr(lambda_handler_module, "run_discovery", lambda window=None: seen.append(window) or 0)
+
+    lambda_handler_module.lambda_handler({"mode": "discovery_only", "window": "2200"}, None)
+    lambda_handler_module.lambda_handler({"mode": "discovery_only"}, None)
+
+    assert seen == ["2200", None]
+
+
+def test_lambda_handler_rejects_an_unknown_discovery_window_before_running_anything(monkeypatch):
+    monkeypatch.setattr(lambda_handler_module, "run_discovery", lambda window=None: (_ for _ in ()).throw(AssertionError("must not run")))
+
+    with pytest.raises(UnknownDiscoveryWindowError):
+        lambda_handler_module.lambda_handler({"mode": "discovery_only", "window": "0615"}, None)

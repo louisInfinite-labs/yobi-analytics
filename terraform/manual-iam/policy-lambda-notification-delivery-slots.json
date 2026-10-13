@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadAndMaintainTheNotificationDeliverySlotIndex",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:Query",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:BatchWriteItem"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:ap-northeast-1:189461315571:table/YobiNotificationDeliverySlots",
+        "arn:aws:dynamodb:ap-northeast-1:189461315571:table/YobiNotificationDeliverySlots/index/clientId-index"
+      ]
+    },
+    {
+      "Sid": "RecordNewVideoEventsWithAConditionalPut",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem"
+      ],
+      "Resource": "arn:aws:dynamodb:ap-northeast-1:189461315571:table/YobiNotificationEvents"
+    }
+  ]
+}

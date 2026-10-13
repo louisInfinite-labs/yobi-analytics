@@ -226,9 +226,9 @@ describe("the Short card in the '+ Add topic' dropdown", () => {
   it("the permanent default cards have no Remove action", async () => {
     renderSettings()
 
-    expect(screen.queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^Remove "/ })).not.toBeInTheDocument()
     await userEvent.setup({ pointerEventsCheck: 0 }).click(await screen.findByRole("button", { name: /^SF6/ }))
-    expect(screen.queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^Remove "/ })).not.toBeInTheDocument()
   })
 
   it("drops the retired notification-only cards (GTA, 7 Days to Die, Mahjong Soul, Endfield) from a stored list", () => {

@@ -94,22 +94,22 @@ def test_daily_history_state_machine_invokes_the_real_due_aware_history_worker()
 # --- 2. No scheduled legacy full-catalog collector path is active ----------
 
 
-def test_discovery_only_schedule_uses_the_light_discovery_mode_not_the_heavy_collector():
-    """discovery_only is the *only* schedule that still targets the collector
-    Lambda -- and it must invoke it in the light discovery_only mode
-    (collection.main.run_discovery), never the heavy default mode
-    (collection.main.main, which does full per-video YouTube statistics
-    collection and has no schedule of its own anywhere)."""
-    block = _schedule_block(_read("eventbridge.tf"), "discovery_only")
+def test_discovery_window_schedules_use_the_light_discovery_mode_not_the_heavy_collector():
+    """discovery_window (one schedule per centralized discovery window) is the
+    *only* schedule resource that still targets the collector Lambda -- and it
+    must invoke it in the light discovery_only mode (collection.main.run_discovery),
+    never the heavy default mode (collection.main.main, which does full per-video
+    YouTube statistics collection and has no schedule of its own anywhere)."""
+    block = _schedule_block(_read("eventbridge.tf"), "discovery_window")
 
     assert "aws_lambda_function.collector.arn" in block
-    assert '"discovery_only"' in block or "discovery_only" in block
+    assert 'mode = "discovery_only"' in block
 
 
-def test_no_enabled_schedule_targets_the_legacy_collector_lambda_except_discovery_only():
+def test_no_enabled_schedule_targets_the_legacy_collector_lambda_except_the_discovery_windows():
     """Every aws_scheduler_schedule resource in this file that targets the
-    collector Lambda AND is currently enabled must be discovery_only (light
-    mode) -- proving there is no other currently-active schedule that would
+    collector Lambda AND is currently enabled must be a discovery window (light
+    discovery_only mode) -- proving there is no other currently-active schedule that would
     invoke collection.main.main()'s O(total catalog) YouTube-collection
     path. R7 (AWS Cost Recovery): trending_precompute_batches -- previously
     the one other, already-Terraform-disabled schedule targeting this same
@@ -128,8 +128,8 @@ def test_no_enabled_schedule_targets_the_legacy_collector_lambda_except_discover
         if not re.search(r'state\s*=\s*"DISABLED"', _schedule_block(eventbridge_tf, name))
     ]
 
-    assert set(collector_targeting_schedules) == {"discovery_only"}
-    assert enabled_collector_targeting_schedules == ["discovery_only"]
+    assert set(collector_targeting_schedules) == {"discovery_window"}
+    assert enabled_collector_targeting_schedules == ["discovery_window"]
 
 
 # --- 3. Legacy precompute schedule/module are fully removed, not disabled --
@@ -212,7 +212,7 @@ def test_run_discovery_does_not_call_load_videos_unconditionally():
     load_videos() directly and unconditionally the way it used to."""
     main_source = _read_src("collection/main.py")
 
-    run_discovery_start = main_source.index("def run_discovery()")
+    run_discovery_start = main_source.index("def run_discovery(")
     run_discovery_end = main_source.index("\ndef ", run_discovery_start + 1)
     run_discovery_body = main_source[run_discovery_start:run_discovery_end]
 
@@ -223,7 +223,7 @@ def test_run_discovery_does_not_call_load_videos_unconditionally():
 def test_run_discovery_patches_the_manifest_incrementally_not_a_full_republish():
     main_source = _read_src("collection/main.py")
 
-    run_discovery_start = main_source.index("def run_discovery()")
+    run_discovery_start = main_source.index("def run_discovery(")
     run_discovery_end = main_source.index("\ndef ", run_discovery_start + 1)
     run_discovery_body = main_source[run_discovery_start:run_discovery_end]
 

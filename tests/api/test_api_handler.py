@@ -15,6 +15,7 @@ from notifications import push_sender
 from ops.config import MissingHolodexApiKeyError
 from api import read_api
 from api import remote_config_api
+from stores import notification_slot_store
 from stores import remote_config_store
 from api.api_handler import lambda_handler
 
@@ -617,6 +618,94 @@ def _preference_body():
         "notificationTimeZone": "Asia/Tokyo",
         "deliveryWindows": ["08:00", "18:00"],
     }
+
+
+@pytest.fixture(autouse=True)
+def slot_index(monkeypatch):
+    """The slot-recipient index calls a preference write makes, recorded instead of reaching DynamoDB."""
+    calls = {"sync": [], "remove": []}
+    monkeypatch.setattr(
+        notification_slot_store,
+        "sync_client_slots",
+        lambda client_id, *, slots, now_iso: calls["sync"].append((client_id, tuple(slots), now_iso)),
+    )
+    monkeypatch.setattr(notification_slot_store, "remove_client", lambda client_id: calls["remove"].append(client_id))
+    return calls
+
+
+def _put_preference(body, client_secret):
+    return lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/notification-preference",
+            path={"clientId": "c1"},
+            body=json.dumps(body),
+            headers={"x-client-secret": client_secret},
+        ),
+        None,
+    )
+
+
+def test_an_enabled_preference_indexes_the_client_under_its_jst_slots(monkeypatch, client_secret, slot_index):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
+
+    response = _put_preference({**_preference_body(), "deliveryWindows": ["18:00", "08:30", "08:30"]}, client_secret)
+
+    assert response["statusCode"] == 200
+    [(client_id, slots, now_iso)] = slot_index["sync"]
+    assert (client_id, slots) == ("c1", (17, 36))  # 08:30 -> 17, 18:00 -> 36, deduplicated and sorted
+    assert now_iso == json.loads(response["body"])["updatedAt"]
+    assert slot_index["remove"] == []
+
+
+def test_a_disabled_preference_removes_the_client_from_the_index(monkeypatch, client_secret, slot_index):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
+
+    response = _put_preference({**_preference_body(), "enabled": False}, client_secret)
+
+    assert response["statusCode"] == 200
+    assert slot_index["remove"] == ["c1"]
+    assert slot_index["sync"] == []
+
+
+@pytest.mark.parametrize(
+    "windows",
+    [
+        ["08:10"],  # not on a half-hour boundary
+        ["06:00", "07:00", "08:00", "09:00", "10:00"],  # more than 4
+        [],  # none
+        ["25:00"],
+        [800],
+    ],
+)
+def test_a_new_preference_with_invalid_delivery_slots_is_rejected_before_anything_is_written(monkeypatch, client_secret, slot_index, windows):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = _put_preference({**_preference_body(), "deliveryWindows": windows}, client_secret)
+
+    assert response["statusCode"] == 400
+    assert slot_index == {"sync": [], "remove": []}
+
+
+def test_four_distinct_half_hour_slots_are_accepted(monkeypatch, client_secret, slot_index):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
+
+    response = _put_preference({**_preference_body(), "deliveryWindows": ["00:00", "07:30", "12:00", "23:30"]}, client_secret)
+
+    assert response["statusCode"] == 200
+    assert slot_index["sync"][0][1] == (0, 15, 24, 47)
+
+
+def test_the_index_is_written_before_the_preference_so_a_failed_index_write_stores_nothing(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    def _failing_sync(client_id, *, slots, now_iso):
+        raise notification_slot_store.NotificationSlotStoreError("table unreachable")
+
+    monkeypatch.setattr(notification_slot_store, "sync_client_slots", _failing_sync)
+
+    response = _put_preference(_preference_body(), client_secret)
+
+    assert response["statusCode"] == 500
 
 
 def test_put_notification_preference_persists_it_with_a_valid_client_secret(monkeypatch, client_secret):

@@ -246,7 +246,7 @@ const saveQueues = new Map<string, Promise<boolean>>()
  * settled, so two quick changes to the same setting reach the backend (and the local store) in click order.
  * Resolves true when the task committed. If it rejects nothing was committed: the failure is reported (the
  * drawer shows an inline alert) and the local state stays at the last confirmed value. */
-function runSerialized(key: string, task: () => Promise<void>, options: { silent?: boolean } = {}): Promise<boolean> {
+export function runSerialized(key: string, task: () => Promise<void>, options: { silent?: boolean } = {}): Promise<boolean> {
   const previous = saveQueues.get(key) ?? Promise.resolve(true)
   const result = previous.then(task).then(
     () => {
@@ -263,7 +263,7 @@ function runSerialized(key: string, task: () => Promise<void>, options: { silent
   return result
 }
 
-const NEW_VIDEO_SYNC_KEY = "newVideoSwitches"
+export const NEW_VIDEO_SYNC_KEY = "newVideoSwitches"
 
 /** Pushes the new effective new-video creators to the backend -- but only when this browser has notifications
  * enabled (a push subscription exists). Otherwise there is no backend preference to update, and the enable flow

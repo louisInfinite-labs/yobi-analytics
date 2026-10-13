@@ -2,12 +2,12 @@ import { apiRequest } from "../../../shared/api/apiClient"
 import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
 import { getOrCreateClientId } from "../../../shared/api/clientId"
 import { getLocale } from "../../../shared/i18n/hooks/useLocale"
+import { getDeliverySlots } from "../hooks/deliverySlotsStore"
+import { DEFAULT_DELIVERY_SLOTS } from "../model/deliverySlots"
 import { getAllNotificationCreators } from "../model/notificationCreatorGrouping"
 
-// Roadmap 4.6's own worked example uses these as the default local delivery
-// windows during Japanese development; a real per-window settings UI is
-// future work.
-export const DEFAULT_DELIVERY_WINDOWS = ["08:00", "18:00"]
+/** The delivery slots a browser sends until its user picks their own (see useDeliverySlots). */
+export const DEFAULT_DELIVERY_WINDOWS = [...DEFAULT_DELIVERY_SLOTS]
 
 const NOTIFICATION_LOCALE_SYNCED_KEY = "yobi.notificationLocaleSynced"
 const NOTIFICATIONS_DISABLED_KEY = "yobi.notificationsDisabled"
@@ -63,11 +63,13 @@ function markNotificationLocaleSynced(locale: string): void {
  * new-video pushes for exactly the creators the UI shows as ON. It only gates new-video pushes -- live
  * reminders are governed by the reminder settings. `newVideoShortCreatorOverride` carries the members of the Short card: Short is a
  * content FORMAT with its own field (never a topic id), and a creator not enabled there is OFF, so with no Short card every
- * value is false. */
+ * value is false. `deliveryWindows` are the half-hour slots (in notificationTimeZone) new-video pushes are delivered at; every writer
+ * sends the user's stored slots unless it is writing a PROPOSED selection that is not stored yet. */
 export function buildNotificationPreference(
   enabled: boolean,
   newVideoEnabledCreatorIds: ReadonlySet<string>,
   shortEnabledCreatorIds: ReadonlySet<string>,
+  deliveryWindows: readonly string[] = getDeliverySlots(),
 ) {
   return {
     enabled,
@@ -76,7 +78,7 @@ export function buildNotificationPreference(
     // The language of this client's push notifications (zh-TW / ja / en): follows the dashboard language, and is part of the
     // full preference so every writer (enable toggle, Settings switches, the language-change sync) carries it.
     notificationLocale: getLocale(),
-    deliveryWindows: DEFAULT_DELIVERY_WINDOWS,
+    deliveryWindows: [...deliveryWindows],
     newVideoCreatorOverride: Object.fromEntries(
       getAllNotificationCreators().map((creator) => [creator.creatorId, newVideoEnabledCreatorIds.has(creator.creatorId)]),
     ),
@@ -106,8 +108,9 @@ function writePreference(
   enabled: boolean,
   newVideoEnabledCreatorIds: ReadonlySet<string>,
   shortEnabledCreatorIds: ReadonlySet<string>,
+  deliveryWindows?: readonly string[],
 ): Promise<unknown> {
-  const body = buildNotificationPreference(enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds)
+  const body = buildNotificationPreference(enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds, deliveryWindows)
   return apiRequest(`/clients/${encodeURIComponent(clientId)}/notification-preference`, {
     method: "PUT",
     headers: clientSecret ? { "X-Client-Secret": clientSecret } : undefined,
@@ -128,8 +131,9 @@ export function putNotificationPreference(
   enabled: boolean,
   newVideoEnabledCreatorIds: ReadonlySet<string>,
   shortEnabledCreatorIds: ReadonlySet<string>,
+  deliveryWindows?: readonly string[],
 ): Promise<unknown> {
-  return inWriteOrder(() => writePreference(clientId, clientSecret, enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds))
+  return inWriteOrder(() => writePreference(clientId, clientSecret, enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds, deliveryWindows))
 }
 
 /** The AUTOMATIC writer (language change, creator switches): writes the full preference as this browser's client, obtaining the
@@ -140,11 +144,12 @@ export async function saveNotificationPreference(
   enabled: boolean,
   newVideoEnabledCreatorIds: ReadonlySet<string>,
   shortEnabledCreatorIds: ReadonlySet<string>,
+  deliveryWindows?: readonly string[],
 ): Promise<void> {
   await inWriteOrder(async () => {
     if (enabled && isNotificationDisabledByUser()) return
     const clientId = getOrCreateClientId()
     const clientSecret = await getOrCreateClientSecret(clientId)
-    await writePreference(clientId, clientSecret, enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds)
+    await writePreference(clientId, clientSecret, enabled, newVideoEnabledCreatorIds, shortEnabledCreatorIds, deliveryWindows)
   })
 }

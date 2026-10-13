@@ -81,10 +81,33 @@ resource "aws_scheduler_schedule" "daily_collection" {
   }
 }
 
-resource "aws_scheduler_schedule" "discovery_only" {
-  name                         = "yobi-analytics-discovery-only"
+# The centralized new-video discovery windows (JST): one collector invocation per window, each a discovery-only run of the whole roster
+# (never per subscriber) that records the new-video events the 30-minute dispatcher below delivers from. THIS LIST MIRRORS
+# DISCOVERY_WINDOWS_JST in src/tracking/discovery_windows.py -- tests/test_discovery_windows_schedule.py fails if they drift, so change
+# both together. Cost: one uploads-playlist read per discovery-enabled creator per window.
+locals {
+  discovery_windows_jst = {
+    "0000" = "00:00"
+    "0900" = "09:00"
+    "1300" = "13:00"
+    "2000" = "20:00"
+    "2200" = "22:00"
+  }
+}
+
+# The existing single 00:00 schedule becomes the "0000" window under its ORIGINAL name, so it is updated in place (it gains the `window`
+# input) rather than destroyed and recreated; the other four windows are new.
+moved {
+  from = aws_scheduler_schedule.discovery_only
+  to   = aws_scheduler_schedule.discovery_window["0000"]
+}
+
+resource "aws_scheduler_schedule" "discovery_window" {
+  for_each = local.discovery_windows_jst
+
+  name                         = each.key == "0000" ? "yobi-analytics-discovery-only" : "yobi-analytics-discovery-${each.key}"
   group_name                   = "default"
-  schedule_expression          = "cron(0 0 * * ? *)"
+  schedule_expression          = "cron(${tonumber(split(":", each.value)[1])} ${tonumber(split(":", each.value)[0])} * * ? *)"
   schedule_expression_timezone = "Asia/Tokyo"
 
   flexible_time_window {
@@ -94,7 +117,7 @@ resource "aws_scheduler_schedule" "discovery_only" {
   target {
     arn      = aws_lambda_function.collector.arn
     role_arn = local.scheduler_role_arn
-    input    = jsonencode({ mode = "discovery_only" })
+    input    = jsonencode({ mode = "discovery_only", window = each.key })
 
     dead_letter_config {
       arn = aws_sqs_queue.scheduler_dlq.arn
@@ -131,6 +154,38 @@ resource "aws_scheduler_schedule" "notification_dispatch" {
   target {
     arn      = aws_lambda_function.notification_dispatcher.arn
     role_arn = local.scheduler_role_arn
+
+    dead_letter_config {
+      arn = aws_sqs_queue.scheduler_dlq.arn
+    }
+  }
+}
+
+# Scheduled new-video delivery: ONE recurring 30-minute dispatcher, at UTC :00/:30 -- the boundaries of the half-hour delivery slots
+# (src/notifications/delivery_slots.py). It is a `mode` of the same notification dispatcher Lambda the 1-minute reminder schedule above
+# invokes; the mode routes it to src/notifications/new_video_dispatcher.py before any reminder work. The input must stay a plain string:
+# jsonencode would escape the angle brackets and the Scheduler would then not substitute its context attribute, which carries the
+# scheduled time the run serves (a run that starts a few seconds late stays in its own slot). A failed run is retried at most
+# twice and only within an hour, so a retry can never serve a long-passed slot.
+resource "aws_scheduler_schedule" "new_video_dispatch" {
+  name                         = "yobi-analytics-new-video-dispatch"
+  group_name                   = "default"
+  schedule_expression          = "cron(0/30 * * * ? *)"
+  schedule_expression_timezone = "UTC"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.notification_dispatcher.arn
+    role_arn = local.scheduler_role_arn
+    input    = "{\"mode\":\"new_video_slots\",\"scheduledTime\":\"<aws.scheduler.scheduled-time>\"}"
+
+    retry_policy {
+      maximum_retry_attempts       = 2
+      maximum_event_age_in_seconds = 3600
+    }
 
     dead_letter_config {
       arn = aws_sqs_queue.scheduler_dlq.arn

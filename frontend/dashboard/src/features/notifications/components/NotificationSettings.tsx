@@ -16,6 +16,7 @@ import { filterDisplayRank, type VideoFilterEntry } from "../../home-room/model/
 import { ALL_TOPICS_ID, getSelectableTopics, isPermanentTopic, isShortCard, type TopicCatalogId } from "../model/notificationTopicCatalog"
 import type { TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
+import { NewVideoDeliveryTimes } from "./NewVideoDeliveryTimes"
 import { TopicCreatorManagementDrawer } from "./TopicCreatorManagementDrawer"
 
 
@@ -369,6 +370,7 @@ export function NotificationSettings() {
 
       <section className="notification-settings-page">
         <div className="notification-settings-content">
+          <NewVideoDeliveryTimes />
           <div className="notification-settings-main">
             <div className="notification-topic-panel">
               <div className="notification-topic-panel__header">

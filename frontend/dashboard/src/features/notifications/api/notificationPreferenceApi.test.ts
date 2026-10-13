@@ -43,6 +43,16 @@ describe("buildNotificationPreference", () => {
     expect(Object.keys(members.newVideoCreatorOverride)).not.toContain("short")
   })
 
+  it("carries the user's stored delivery slots by default and the explicit parameter when given", () => {
+    expect(buildNotificationPreference(true, new Set(), new Set()).deliveryWindows).toEqual(["08:00", "18:00"])
+
+    window.localStorage.setItem("yobi.notificationDeliverySlots", JSON.stringify(["06:30", "21:00", "23:30"]))
+    resetAllSharedStateForTests()
+    expect(buildNotificationPreference(true, new Set(), new Set()).deliveryWindows).toEqual(["06:30", "21:00", "23:30"])
+
+    expect(buildNotificationPreference(true, new Set(), new Set(), ["12:00"]).deliveryWindows).toEqual(["12:00"])
+  })
+
   it("uses the browser's own IANA time zone", () => {
     expect(buildNotificationPreference(false, new Set(), new Set()).notificationTimeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
   })
@@ -69,6 +79,27 @@ describe("putNotificationPreference", () => {
     await putNotificationPreference("c1", null, true, new Set(), new Set())
 
     expect((vi.mocked(apiRequest).mock.calls[0][1] as { headers?: unknown }).headers).toBeUndefined()
+  })
+})
+
+describe("delivery windows on the wire", () => {
+  const sentWindows = () => (vi.mocked(apiRequest).mock.calls.at(-1)![1] as { body: { deliveryWindows: string[] } }).body.deliveryWindows
+
+  it("every writer sends the stored slots, and the explicit parameter wins when passed", async () => {
+    window.localStorage.setItem("yobi.notificationDeliverySlots", JSON.stringify(["07:00", "19:30"]))
+    resetAllSharedStateForTests()
+
+    await putNotificationPreference("c1", null, true, new Set(), new Set())
+    expect(sentWindows()).toEqual(["07:00", "19:30"])
+
+    await saveNotificationPreference(true, new Set(), new Set())
+    expect(sentWindows()).toEqual(["07:00", "19:30"])
+
+    await putNotificationPreference("c1", null, true, new Set(), new Set(), ["01:00"])
+    expect(sentWindows()).toEqual(["01:00"])
+
+    await saveNotificationPreference(true, new Set(), new Set(), ["02:30", "03:00"])
+    expect(sentWindows()).toEqual(["02:30", "03:00"])
   })
 })
 

@@ -14,6 +14,7 @@ if hasattr(sys.stdout, "reconfigure"):
 from ops.config import MissingAPIKeyError, get_api_key
 from stores.history_store import HISTORY_SHARD_COUNT, shard_for_video
 from tracking.creator_master import Creator, get_active_creators
+from tracking.discovery_windows import LEGACY_SOURCE, discovery_source
 from googleapiclient.discovery import Resource
 from stores.snapshot_store import SkippedVideo, Snapshot, SnapshotRunSummary, SnapshotStoreError
 from tracking.tracking_manifest import ManifestEntry, S3TrackingManifestStore, patch_shard, publish_tracking_manifest
@@ -48,8 +49,9 @@ else:
     class NotificationEventsStoreError(Exception):
         """Placeholder so main.py's except clause is valid locally; never raised (see below)."""
 
-    def record_new_video_events(videos: list[Video]) -> None:
+    def record_new_video_events(videos: list[Video], *, discovery_source: str = LEGACY_SOURCE) -> int:
         """No-op locally — the Roadmap 4.6 notification dispatcher only exists once deployed to AWS."""
+        return 0
 
 # The production schedule (Roadmap.md 2.4) runs the collector at 18:00 Asia/Tokyo.
 # Snapshot dates must be derived from JST, not the server's local/UTC clock.
@@ -264,20 +266,27 @@ def main() -> int:
     return 0
 
 
-def run_discovery() -> int:
-    """Discovery-only run (JST 00:00 trigger): find and persist new videos for every active
-    creator, without collecting statistics.
+def run_discovery(window: str | None = None) -> int:
+    """Discovery-only run: find and persist new videos for every active creator, without collecting statistics.
+
+    `window` is the centralized discovery window this run serves (tracking.discovery_windows, five JST windows a day); it is
+    stamped on every event the run records as its `discoverySource`. A run without one (a manual invocation) records the legacy
+    source. One run covers the whole roster once, whatever the number of subscribers.
 
     A separate, lighter invocation from main()'s own 18:00 run, so a new
-    video's notification (record_new_video_events) can fire hours earlier
-    than waiting for the heavier statistics-collection run to also handle
-    discovery, and so the collector's daily YouTube API/DynamoDB load is
-    spread across two smaller windows instead of one long one. Deliberately
+    video's notification can be scheduled hours earlier than waiting for the
+    heavier statistics-collection run to also handle discovery. Deliberately
     duplicates main()'s own discovery-loop shape (accepting the small
     repetition) rather than extracting a shared helper, so this additive
     change carries no risk of altering main()'s own already-relied-upon
     control flow.
+
+    The new-video events are recorded BEFORE the videos are written to Video Master, and a failure to record them fails the run.
+    Once a video is in Video Master it is "known" and is never discovered again, so an event that failed to record AFTER the
+    upsert would be lost for good; recorded first, the worst case is the next window rediscovering the video and recording the
+    same event again (events are first-write-wins, and the dispatcher dedupes by video).
     """
+    source = discovery_source(window)  # raises UnknownDiscoveryWindowError for a stale/mistyped window
     try:
         api_key = get_api_key()
     except MissingAPIKeyError as exc:
@@ -326,11 +335,15 @@ def run_discovery() -> int:
 
     if newly_discovered:
         try:
+            _record_new_video_events(newly_discovered, first_ingestion_creator_ids, run_time, source=source)
+        except NotificationEventsStoreError as exc:
+            print(f"Error: failed to record new-video events (videos not persisted, the next window rediscovers them): {exc}")
+            return 1
+        try:
             upsert_videos(newly_discovered)
         except VideoMasterError as exc:
             print(f"Error: failed to persist discovered videos: {exc}")
             return 1
-        _record_new_video_events_best_effort(newly_discovered, first_ingestion_creator_ids, run_time)
 
     _patch_manifest_with_new_videos_if_configured(newly_discovered)
 
@@ -432,6 +445,30 @@ def _patch_manifest_with_new_videos_if_configured(new_videos: list[Video]) -> No
             print(f"Warning: failed to patch tracking manifest shard {shard:02d} ({type(exc).__name__}): {exc}")
 
 
+def _videos_to_notify(
+    newly_discovered: list[Video], first_ingestion_creator_ids: set[str], run_time: datetime
+) -> list[Video]:
+    """The newly discovered videos that get a notification event: everything except first-ingestion backlog."""
+    to_notify = [
+        video
+        for video in newly_discovered
+        if video.creator_id not in first_ingestion_creator_ids or _is_recent(video, run_time)
+    ]
+    if len(to_notify) < len(newly_discovered):
+        print(f"Seeded {len(newly_discovered) - len(to_notify)} first-ingestion backlog video(s) without notifications")
+    return to_notify
+
+
+def _record_new_video_events(
+    newly_discovered: list[Video], first_ingestion_creator_ids: set[str], run_time: datetime, *, source: str
+) -> int:
+    """Record a notification event for each newly discovered video, except first-ingestion backlog. Raises on failure."""
+    to_notify = _videos_to_notify(newly_discovered, first_ingestion_creator_ids, run_time)
+    if not to_notify:
+        return 0
+    return record_new_video_events(to_notify, discovery_source=source)
+
+
 def _record_new_video_events_best_effort(
     newly_discovered: list[Video], first_ingestion_creator_ids: set[str], run_time: datetime
 ) -> None:
@@ -441,15 +478,10 @@ def _record_new_video_events_best_effort(
     time this runs (the caller always calls upsert_videos first), so a
     failure here means the Roadmap 4.6 notification dispatcher misses one
     run's worth of new-video events — worth a warning, not a reason to fail
-    a collection run that otherwise succeeded.
+    a collection run that otherwise succeeded. Used by main()'s own collection run only; the
+    scheduled discovery windows (run_discovery) record events first and fail the run instead.
     """
-    to_notify = [
-        video
-        for video in newly_discovered
-        if video.creator_id not in first_ingestion_creator_ids or _is_recent(video, run_time)
-    ]
-    if len(to_notify) < len(newly_discovered):
-        print(f"Seeded {len(newly_discovered) - len(to_notify)} first-ingestion backlog video(s) without notifications")
+    to_notify = _videos_to_notify(newly_discovered, first_ingestion_creator_ids, run_time)
     if not to_notify:
         return
     try:

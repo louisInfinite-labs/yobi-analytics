@@ -14,6 +14,16 @@ same Asia/Tokyo zone main.py's COLLECTION_TIMEZONE stamps discovered_at
 with, as YYYY-MM-DD) as partition key, videoId as sort key — one partition
 per day of discovery, at most one item per video, since a video is only
 ever "newly discovered" once.
+
+Durable and idempotent: an event is written with a condition that no item for
+that (eventDate, videoId) exists yet, so recording the same discovery again
+(a retried run, an overlapping window) never changes the first write. An
+event carries the fields the scheduled-delivery path needs: a logical
+`eventId` ("new_video:<videoId>", the notification's own identity),
+`publishedAt`, the `discoverySource` that found it (a discovery window id) and
+`notificationEligible`. The same video can in principle be recorded again under
+a LATER eventDate if a failed run rediscovers it; consumers therefore dedupe by
+videoId (see notifications/new_video_dispatcher.py), never by row.
 """
 
 from __future__ import annotations
@@ -26,6 +36,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import BotoCoreError, ClientError
 
+from tracking.discovery_windows import LEGACY_SOURCE
 from tracking.video_master import CONTENT_TYPE_SHORT, Video
 
 NOTIFICATION_EVENTS_TABLE = os.environ.get("YOBI_NOTIFICATION_EVENTS_TABLE") or "YobiNotificationEvents"
@@ -53,29 +64,35 @@ def _resource():
     return _cached_resource
 
 
-def record_new_video_events(videos: list[Video]) -> None:
-    """Append one notification event per newly discovered video.
+def record_new_video_events(videos: list[Video], *, discovery_source: str = LEGACY_SOURCE) -> int:
+    """Append one notification event per newly discovered video; return how many were newly recorded.
 
     Every video passed in must carry a discovered_at — main.py always
     stamps one on every video it discovers (see Video.discovered_at) — this
     is called once per video, at discovery, never for an update to an
-    already-known Video Master record.
+    already-known Video Master record. An event that already exists is left
+    exactly as first written (not an error, not counted), so the call is safe to repeat.
     """
     if not videos:
-        return
+        return 0
+    recorded = 0
     try:
         table = _resource().Table(NOTIFICATION_EVENTS_TABLE)
-        with table.batch_writer() as batch:
-            for video in videos:
-                batch.put_item(Item=_video_to_event_item(video))
+        for video in videos:
+            try:
+                table.put_item(
+                    Item=_video_to_event_item(video, discovery_source),
+                    ConditionExpression="attribute_not_exists(videoId)",
+                )
+                recorded += 1
+            except ClientError as exc:
+                if exc.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                    raise
     except (ClientError, BotoCoreError) as exc:
-        # BotoCoreError (e.g. EndpointConnectionError) is a separate
-        # exception family from ClientError and can surface from
-        # batch_writer()'s own retries — catching only ClientError let it
-        # bypass _record_new_video_events_best_effort's
-        # NotificationEventsStoreError-only catch in main.py and fail an
-        # otherwise-successful collection run instead of just warning.
+        # BotoCoreError (e.g. EndpointConnectionError) is a separate exception family from ClientError -- catching only
+        # ClientError let it bypass callers' NotificationEventsStoreError-only handling.
         raise NotificationEventsStoreError(f"Failed to write to {NOTIFICATION_EVENTS_TABLE}: {exc}") from exc
+    return recorded
 
 
 def list_events_for_date(event_date: str) -> list[dict[str, Any]]:
@@ -96,7 +113,7 @@ def list_events_for_date(event_date: str) -> list[dict[str, Any]]:
     return [dict(item) for item in items]
 
 
-def _video_to_event_item(video: Video) -> dict[str, Any]:
+def _video_to_event_item(video: Video, discovery_source: str) -> dict[str, Any]:
     """Build one Notification Events item from a newly discovered Video."""
     if video.discovered_at is None:
         raise NotificationEventsStoreError(
@@ -105,9 +122,13 @@ def _video_to_event_item(video: Video) -> dict[str, Any]:
     item: dict[str, Any] = {
         "eventDate": datetime.fromisoformat(video.discovered_at).date().isoformat(),
         "videoId": video.video_id,
+        "eventId": new_video_event_id(video.video_id),
         "creatorId": video.creator_id,
         "title": video.title,
+        "publishedAt": video.published_at,
         "discoveredAt": video.discovered_at,
+        "discoverySource": discovery_source,
+        "notificationEligible": True,
     }
     # A Short is told apart from an ordinary video so the dispatcher can deliver it only to clients that enabled this creator's
     # Shorts (notification_dispatch.is_new_video_wanted). Omitted otherwise -- an event written before this field existed is
@@ -115,3 +136,8 @@ def _video_to_event_item(video: Video) -> dict[str, Any]:
     if video.content_type == CONTENT_TYPE_SHORT:
         item["contentType"] = CONTENT_TYPE_SHORT
     return item
+
+
+def new_video_event_id(video_id: str) -> str:
+    """The logical identity of a new-video notification event."""
+    return f"new_video:{video_id}"
