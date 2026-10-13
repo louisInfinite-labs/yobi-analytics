@@ -18,9 +18,9 @@ export function isShortCard(topicId: TopicCatalogId): boolean {
   return topicId === SHORT_TOPIC_ID
 }
 
-/** The 5 permanent default cards the page starts with, in this exact order (confirmed with the user: 全部/SF6/VALO/APEX/Minecraft). They
- * are never removed; every other card is added through "+ Add topic" and can be removed again. */
-export const PERMANENT_TOPIC_IDS: readonly TopicCatalogId[] = [ALL_TOPICS_ID, "sf6", "valorant", "apex", "minecraft"]
+/** The 5 permanent default cards the page starts with, in this exact order (confirmed with the user: 全部/雜談/歌回/MV/Apex). They
+ * are never removed; every other card (Minecraft/SF6/VALO/Short/其他) is added through "+ Add topic" and can be removed again. */
+export const PERMANENT_TOPIC_IDS: readonly TopicCatalogId[] = [ALL_TOPICS_ID, "chatting", "singing", "mv", "apex"]
 
 export function isPermanentTopic(topicId: TopicCatalogId): boolean {
   return PERMANENT_TOPIC_IDS.includes(topicId)

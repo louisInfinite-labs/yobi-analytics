@@ -27,6 +27,9 @@ export type TranslationKey =
   | "recentVideos.tag.valo"
   | "recentVideos.tag.minecraft"
   | "recentVideos.tag.apex"
+  | "recentVideos.tag.chatting"
+  | "recentVideos.tag.singing"
+  | "recentVideos.tag.mv"
   | "recentVideos.sort.newest"
   | "recentVideos.sort.oldest"
   | "recentVideos.sort.mostViews"
@@ -240,6 +243,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.tag.valo": "VALO",
     "recentVideos.tag.minecraft": "Minecraft",
     "recentVideos.tag.apex": "Apex",
+    "recentVideos.tag.chatting": "雜談",
+    "recentVideos.tag.singing": "歌回",
+    "recentVideos.tag.mv": "MV",
     "recentVideos.sort.newest": "最新上架",
     "recentVideos.sort.oldest": "最舊上架",
     "recentVideos.sort.mostViews": "最多觀看次數",
@@ -452,6 +458,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.tag.valo": "VALO",
     "recentVideos.tag.minecraft": "Minecraft",
     "recentVideos.tag.apex": "Apex",
+    "recentVideos.tag.chatting": "Chatting",
+    "recentVideos.tag.singing": "Singing",
+    "recentVideos.tag.mv": "MV",
     "recentVideos.sort.newest": "Newest",
     "recentVideos.sort.oldest": "Oldest",
     "recentVideos.sort.mostViews": "Most Views",
@@ -664,6 +673,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.tag.valo": "VALO",
     "recentVideos.tag.minecraft": "Minecraft",
     "recentVideos.tag.apex": "Apex",
+    "recentVideos.tag.chatting": "雑談",
+    "recentVideos.tag.singing": "歌枠",
+    "recentVideos.tag.mv": "MV",
     "recentVideos.sort.newest": "新着順",
     "recentVideos.sort.oldest": "古い順",
     "recentVideos.sort.mostViews": "総再生数順",

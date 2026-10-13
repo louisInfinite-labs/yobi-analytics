@@ -39,7 +39,7 @@ describe("useTopicNotificationPreferences", () => {
     })
 
     const { result } = renderHook(() => useTopicNotificationPreferences())
-    expect(result.current.savedTopicIds).toEqual(["all", "sf6", "valorant", "apex", "minecraft", "singing"])
+    expect(result.current.savedTopicIds).toEqual(["all", "chatting", "singing", "mv", "apex"])
     expect(result.current.isLiveEnabled("singing", "aizawa_ema")).toBe(true)
     expect(result.current.isLiveEnabled("gta", "z")).toBe(false)
   })
@@ -61,7 +61,7 @@ describe("useTopicNotificationPreferences", () => {
 
       const { result } = renderHook(() => useTopicNotificationPreferences())
 
-      expect(result.current.savedTopicIds).toEqual(["all", "sf6", "valorant", "apex", "minecraft", "singing"])
+      expect(result.current.savedTopicIds).toEqual(["all", "chatting", "singing", "mv", "apex", "sf6", "valorant", "minecraft"])
       expect(result.current.isLiveEnabled("valorant", "aizawa_ema")).toBe(true)
       expect(result.current.isLiveEnabled("valorant", "kaga_sumire")).toBe(true)
       expect(result.current.isNewVideoEnabled("valorant", "kaga_sumire")).toBe(true)
@@ -91,7 +91,7 @@ describe("useTopicNotificationPreferences", () => {
 
       const { result } = renderHook(() => useTopicNotificationPreferences())
 
-      expect(result.current.savedTopicIds).toEqual(["all", "sf6", "valorant", "apex", "minecraft"])
+      expect(result.current.savedTopicIds).toEqual(["all", "chatting", "singing", "mv", "apex", "sf6", "valorant", "minecraft"])
       expect(result.current.isLiveEnabled("valorant", "aizawa_ema")).toBe(true)
       expect(result.current.isLiveEnabled("valorant", "kaga_sumire")).toBe(true)
       expect(result.current.isNewVideoEnabled("valorant", "aizawa_ema")).toBe(true)
@@ -253,15 +253,15 @@ describe("useTopicNotificationPreferences", () => {
 
     it("a failed backend write is NOT kept: the previous confirmed reminder stays and nothing is persisted", async () => {
       const { result } = renderHook(() => useTopicNotificationPreferences())
-      await act(async () => { await result.current.setMemberReminder("sf6", "aizawa_ema", "1hour") })
+      await act(async () => { await result.current.setMemberReminder("apex", "aizawa_ema", "1hour") })
       vi.mocked(liveReminderApi.saveCreatorReminder).mockRejectedValueOnce(new Error("offline"))
 
       let saved: boolean | undefined
-      await act(async () => { saved = await result.current.setMemberReminder("sf6", "aizawa_ema", "10min") })
+      await act(async () => { saved = await result.current.setMemberReminder("apex", "aizawa_ema", "10min") })
 
       expect(saved).toBe(false)
-      expect(result.current.getMemberReminder("sf6", "aizawa_ema")).toBe("1hour")
-      expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "1hour" })
+      expect(result.current.getMemberReminder("apex", "aizawa_ema")).toBe("1hour")
+      expect(storedState().topics.apex.reminderOverrides).toEqual({ aizawa_ema: "1hour" })
     })
   })
 

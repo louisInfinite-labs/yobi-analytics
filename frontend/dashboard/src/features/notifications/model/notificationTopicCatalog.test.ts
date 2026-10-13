@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { buildVideoFilterEntries } from "../../home-room/model/videoFilterCatalog"
 import { ALL_TOPICS_ID, getSelectableTopics, isShortCard, LEGACY_TOPIC_ID_ALIASES, RETIRED_TOPIC_IDS, SHORT_TOPIC_ID } from "./notificationTopicCatalog"
 
-const DEFAULT_SAVED = ["all", "sf6", "valorant", "apex", "minecraft"]
+const DEFAULT_SAVED = ["all", "chatting", "singing", "mv", "apex"]
 // GET /topics, in the backend's order (src/tracking/video_topics.py).
 const BACKEND_TOPICS = ["valorant", "sf6", "apex", "minecraft", "singing", "mv", "chatting", "other"].map((id) => ({ id, labels: { en: id } }))
 const ENTRIES = buildVideoFilterEntries(BACKEND_TOPICS, "en")
@@ -31,11 +31,11 @@ describe("the selectable categories are Home's list", () => {
   })
 
   it("excludes the cards already saved: after the 5 permanent defaults the dropdown offers the rest, in order", () => {
-    expect(getSelectableTopics(ENTRIES, DEFAULT_SAVED).map((entry) => entry.id)).toEqual(["chatting", "singing", "mv", "short", "other"])
+    expect(getSelectableTopics(ENTRIES, DEFAULT_SAVED).map((entry) => entry.id)).toEqual(["minecraft", "sf6", "valorant", "short", "other"])
   })
 
   it("excludes a Short card once it is saved", () => {
-    expect(getSelectableTopics(ENTRIES, [...DEFAULT_SAVED, "short"]).map((entry) => entry.id)).toEqual(["chatting", "singing", "mv", "other"])
+    expect(getSelectableTopics(ENTRIES, [...DEFAULT_SAVED, "short"]).map((entry) => entry.id)).toEqual(["minecraft", "sf6", "valorant", "other"])
   })
 
   it("offers only Short while GET /topics has not loaded (never a hardcoded topic list)", () => {

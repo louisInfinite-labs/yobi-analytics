@@ -23,7 +23,7 @@ vi.mock("../api/notificationPreferenceApi", async (importOriginal) => ({
 vi.mock("../push/pushNotifications", () => ({ getPushSubscriptionStatus: vi.fn() }))
 
 const STORAGE_KEY = "yobi.topicNotificationPreferences.v2"
-const DEFAULTS = ["all", "sf6", "valorant", "apex", "minecraft"]
+const DEFAULTS = ["all", "chatting", "singing", "mv", "apex"]
 
 function seed(value: unknown) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
@@ -63,8 +63,8 @@ describe("retired notification-only cards (GTA, 7 Days to Die, Mahjong Soul, End
 
     const { result } = renderHook(() => useTopicNotificationPreferences())
 
-    // the permanent defaults are restored in place, VALO and Minecraft are among them, GTA is not; added cards keep their order
-    expect(result.current.savedTopicIds).toEqual([...DEFAULTS, "singing", "short"])
+    // the permanent defaults (all/chatting/singing/mv/apex) are restored in place; VALO and Minecraft were already saved so they stay, appended after the defaults; GTA is not
+    expect(result.current.savedTopicIds).toEqual([...DEFAULTS, "valorant", "minecraft", "short"])
     expect(result.current.savedTopicIds).not.toContain("gta")
     // valid settings survive
     expect(result.current.isLiveEnabled("all", "aizawa_ema")).toBe(true)
@@ -149,20 +149,20 @@ describe("removeTopic", () => {
 
   it("removing an added topic deletes its creator reminders on the backend and stops its members enabling new videos", async () => {
     seed({
-      topicOrder: [...DEFAULTS, "singing"],
-      topics: { singing: card({ live: ["aizawa_ema"], newVideo: ["kaga_nazuna"], reminderOverrides: { aizawa_ema: "10min" } }) },
+      topicOrder: [...DEFAULTS, "sf6"],
+      topics: { sf6: card({ live: ["aizawa_ema"], newVideo: ["kaga_nazuna"], reminderOverrides: { aizawa_ema: "10min" } }) },
     })
     const { result } = renderHook(() => useTopicNotificationPreferences())
     expect(getEffectiveNewVideoCreatorIds().has("kaga_nazuna")).toBe(true)
 
     await act(async () => {
-      await result.current.removeTopic("singing")
+      await result.current.removeTopic("sf6")
     })
 
-    expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "singing")
+    expect(liveReminderApi.deleteCreatorReminder).toHaveBeenCalledWith("aizawa_ema", "sf6")
     expect(getEffectiveNewVideoCreatorIds().has("kaga_nazuna")).toBe(false)
     expect(vi.mocked(notificationPreferenceApi.saveNotificationPreference).mock.calls[0][1].size).toBe(0)
-    expect(result.current.savedTopicIds).not.toContain("singing")
+    expect(result.current.savedTopicIds).not.toContain("sf6")
   })
 
   it("a rejected backend write keeps the card and its members (nothing local changes)", async () => {
