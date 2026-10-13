@@ -215,6 +215,13 @@ jobs:
           src/features/oshi/hooks/useDefaultOshiCreator.test.ts
           src/features/home-room/data/recentArchivedLivestreams.test.ts
           src/shared/api/apiClient.test.ts
+          src/features/pwa/manifest.test.ts
+          src/features/pwa/registerServiceWorker.test.ts
+          src/features/pwa/components/InstallSetting.test.tsx
+          src/features/notifications/push/pushGate.test.tsx
+          src/features/notifications/push/pushPermissionState.test.ts
+          src/features/notifications/push/serviceWorker.notificationclick.test.ts
+          src/features/live-schedule/components/StreamNotificationPanel.pushGate.test.tsx
 
   # The stable required check. Always runs (even when a test group failed or was skipped) and decides from the results:
   # a group whose scope was detected MUST have succeeded; a group whose scope was not detected must have been skipped.
