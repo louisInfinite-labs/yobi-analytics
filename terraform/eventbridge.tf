@@ -161,8 +161,10 @@ resource "aws_scheduler_schedule" "notification_dispatch" {
   }
 }
 
-# Scheduled new-video delivery: ONE recurring 30-minute dispatcher, at UTC :00/:30 -- the boundaries of the half-hour delivery slots
-# (src/notifications/delivery_slots.py). It is a `mode` of the same notification dispatcher Lambda the 1-minute reminder schedule above
+# Scheduled new-video delivery: ONE shared dispatcher every 15 minutes, at UTC :00/:15/:30/:45. Delivery times are the user's own local
+# :00/:30 (src/notifications/delivery_slots.py) and every IANA zone's UTC offset is a multiple of 15 minutes (+05:45 Nepal, +12:45
+# Chatham ...), so every local slot start lands exactly on one of these ticks: 08:00 Kathmandu is delivered at 08:00, not 08:15. Still one
+# schedule for everybody -- no per-user scheduler -- and 96 tiny runs a day. It is a `mode` of the same notification dispatcher Lambda the 1-minute reminder schedule above
 # invokes; the mode routes it to src/notifications/new_video_dispatcher.py before any reminder work. The input must stay a plain string:
 # jsonencode would escape the angle brackets and the Scheduler would then not substitute its context attribute, which carries the
 # scheduled time the run serves (a run that starts a few seconds late stays in its own slot). A failed run is retried at most
@@ -170,7 +172,7 @@ resource "aws_scheduler_schedule" "notification_dispatch" {
 resource "aws_scheduler_schedule" "new_video_dispatch" {
   name                         = "yobi-analytics-new-video-dispatch"
   group_name                   = "default"
-  schedule_expression          = "cron(0/30 * * * ? *)"
+  schedule_expression          = "cron(0/15 * * * ? *)"
   schedule_expression_timezone = "UTC"
 
   flexible_time_window {

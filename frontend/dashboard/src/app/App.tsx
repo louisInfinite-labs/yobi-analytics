@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect } from "react"
 import { AboutPage } from "../pages/about/AboutPage"
 import { AdminPanel } from "../pages/admin/AdminPanel"
 import { HomePage } from "../pages/home/HomePage"
-import { VideosPage } from "../pages/videos/VideosPage"
 import { LiveSchedulePage } from "../pages/schedule/LiveSchedulePage"
 import { LiveScheduleDock } from "../features/live-status/components/LiveScheduleDock"
 import { MainNavbar } from "./navigation/MainNavbar"
@@ -58,8 +57,6 @@ function App() {
         <div className="app-shell__content">
           {page === "home" ? (
             <HomePage />
-          ) : page === "videos" ? (
-            <VideosPage />
           ) : page === "settings" ? (
             <SettingsPage />
           ) : page === "schedule" ? (

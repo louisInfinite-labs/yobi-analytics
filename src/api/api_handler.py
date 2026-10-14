@@ -290,7 +290,8 @@ def _handle_delete_push_subscription(event: dict[str, Any]) -> dict[str, Any]:
 def _handle_put_notification_preference(event: dict[str, Any]) -> dict[str, Any]:
     """Self-service: a client sets its own notification preference (Roadmap 4.6), keyed by its own clientId path parameter.
 
-    Validated strictly (1-4 half-hour delivery slots, always read as JST). The slot-recipient index is updated BEFORE the preference is stored: if the
+    Validated strictly (1-4 half-hour delivery slots, read as wall-clock times in the preference's own IANA
+    `notificationTimeZone`, which the backend validates -- the client never sends a converted time). The slot-recipient index is updated BEFORE the preference is stored: if the
     second write fails the index may hold slots the stored preference does not list, which the dispatcher ignores (it re-checks
     the stored preference), and a retry of this same PUT repairs it. The reverse order could store a preference nobody delivers to.
     Turning notifications OFF removes the client from the index first for the same reason, in the safe direction: if the preference
@@ -299,7 +300,7 @@ def _handle_put_notification_preference(event: dict[str, Any]) -> dict[str, Any]
     client_id = heartbeat_api.parse_client_id(_merged_params(event).get("clientId"))
     _require_client_secret(event, client_id)
     raw_preference = _json_body(event)
-    # Strict first (1-4 half-hour JST slots): a malformed body is a 400 before anything is read or written.
+    # Strict first (1-4 half-hour local slots, a valid IANA zone): a malformed body is a 400 before anything is read or written.
     preference = notification_dispatch.parse_notification_preference(raw_preference, strict_delivery_slots=True)
     # The per-creator new-video activation instants are the BACKEND's: derived from what this client had stored before (so an unrelated edit
     # never moves them, and turning notifications or a creator back ON starts a fresh instant), never taken from the request body.
@@ -315,7 +316,9 @@ def _handle_put_notification_preference(event: dict[str, Any]) -> dict[str, Any]
         {"clientId": client_id, "key": _NOTIFICATION_PREFERENCE_KEY, "value": stamped_preference}, now=now
     )
     if preference.enabled:
-        notification_slot_store.sync_client_slots(client_id, slots=preference.delivery_slots, now_iso=record["updatedAt"])
+        notification_slot_store.sync_client_slots(
+            client_id, zone=preference.time_zone, slots=preference.delivery_slots, now_iso=record["updatedAt"]
+        )
     else:
         notification_slot_store.remove_client(client_id)
     remote_config_store.put_remote_config(record)

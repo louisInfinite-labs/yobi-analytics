@@ -13,16 +13,6 @@ interface VideoPlayerModalProps {
    * report playback through the YouTube IFrame API so a confirmed PLAYING while live is recorded as "watched during
    * live" (see useWatchedDuringLive); leaving it undefined keeps the plain embed with no tracking at all. */
   isLive?: boolean
-  /** Whether the embed should autoplay. Defaults to true, unchanged for every existing call site
-   * (Schedule's player-only embed, LiveScheduleDock) -- mobile Videos' in-place player overlay is the
-   * one caller that passes false (spec: tapping a video opens the overlay but never forces playback). */
-  autoplay?: boolean
-  /** Hides the title caption below the player in the "standard" variant (no effect on "player-only",
-   * which never shows one). Defaults to false, unchanged for every existing call site. Mobile Videos'
-   * overlay passes true: its own Video List card already shows the title, so repeating it here would be
-   * exactly the duplicate-metadata the spec forbids -- while still wanting the "standard" variant's
-   * close button, which "player-only" has none of. */
-  hideTitle?: boolean
 }
 
 /** Centered, medium-sized YouTube player over a dimmed backdrop. Closes on
@@ -32,15 +22,14 @@ interface VideoPlayerModalProps {
  * whatever opened it on close, so keyboard users never land on background
  * controls while the modal is open. In the "player-only" variant there is no
  * close button, so the panel itself is the first focus stop. */
-export function VideoPlayerModal({ videoId, title, onClose, variant = "standard", isLive, autoplay = true, hideTitle = false }: VideoPlayerModalProps) {
+export function VideoPlayerModal({ videoId, title, onClose, variant = "standard", isLive }: VideoPlayerModalProps) {
   const playerOnly = variant === "player-only"
   const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const openerRef = useRef<Element | null>(document.activeElement)
   useWatchedDuringLive(iframeRef, videoId, isLive)
-  const autoplayParam = autoplay ? "autoplay=1" : "autoplay=0"
-  const embedParams = isLive === undefined ? autoplayParam : `${autoplayParam}&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`
+  const embedParams = isLive === undefined ? "autoplay=1" : `autoplay=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`
 
   useEffect(() => {
     const firstStop = () => (playerOnly ? panelRef.current : closeButtonRef.current)
@@ -117,7 +106,7 @@ export function VideoPlayerModal({ videoId, title, onClose, variant = "standard"
             allowFullScreen
           />
         </div>
-        {!playerOnly && !hideTitle && <p className="video-player-modal__title">{title}</p>}
+        {!playerOnly && <p className="video-player-modal__title">{title}</p>}
       </div>
     </div>
   )

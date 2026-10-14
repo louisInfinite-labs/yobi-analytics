@@ -1,20 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
+import { ConfigProvider, Input, Segmented } from "antd"
 import { ChevronRight, Search } from "lucide-react"
 import { OshiErrorState } from "./OshiErrorState"
-import { VideoTagSegmented } from "./VideoTagSegmented"
-import { ContentTypeDropdown, VideoSortDropdown, ViewWindowDropdown } from "./VideoShelfControls"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t, type Locale } from "../../../shared/i18n/translations"
-import { formatCardMeta } from "../utils/videoCardMeta"
+import { formatCompactCount } from "../../oshi-status/utils/oshiActivity"
 import { markContentSeen, migrateWatchedLiveToSeen } from "../../../shared/newContent/newContentTracking"
 import { useLiveStreams } from "../../../shared/api/hooks/useLiveStreams"
 import { toRecentVideo } from "../hooks/useRecentVideos"
 import { composeLatestLiveShelf } from "../utils/latestLiveShelf"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import type { VideoSortOption } from "../utils/recentVideosSelection"
-import { SHORT_VIDEO_FILTER, type VideoSectionSelection } from "../model/specialVideoFilters"
+import { SHORT_VIDEO_FILTER, SPECIAL_VIDEO_FILTERS, SPECIAL_VIDEO_FILTER_LABEL_KEYS, type SpecialVideoFilter, type VideoSectionSelection } from "../model/specialVideoFilters"
+import { buildVideoFilterEntries } from "../model/videoFilterCatalog"
 import {
+  VIDEO_CONTENT_TYPES,
+  VIDEO_VIEW_WINDOWS,
   buildShelfQuery,
   isQuickFilterSelection,
   oshiVideosQueryKey,
@@ -22,9 +24,9 @@ import {
   type VideoViewWindow,
 } from "../model/oshiVideosQuery"
 import { useOshiVideos } from "../hooks/useOshiVideos"
-import { useVideoTagOptions } from "../hooks/useVideoTagOptions"
+import { useVideoTopicCatalog } from "../hooks/useVideoTopicCatalog"
+import { fetchVideoTopics } from "../data/videoTopics"
 import { useVideoSearch } from "../../video-search/hooks/useVideoSearch"
-import { VideoSearchInput } from "../../video-search/components/VideoSearchInput"
 
 interface RecentVideosSectionProps {
   creatorId: string
@@ -49,6 +51,17 @@ const CARD_GAP = 10
 /** Pointer movement (px) before a mouse-down-and-move on the track counts as
  * a drag rather than the start of an ordinary card click. */
 const DRAG_THRESHOLD = 5
+
+/** "{views} views · MM/DD", dropping either half that's missing data (no
+ * viewCount, or an unparseable publishedAt) rather than showing a blank. */
+function formatCardMeta(video: RecentVideo): string {
+  const date = new Date(video.publishedAt)
+  const published = Number.isNaN(date.getTime())
+    ? ""
+    : `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`
+  if (typeof video.viewCount !== "number") return published
+  return published ? `${formatCompactCount(video.viewCount)} views · ${published}` : `${formatCompactCount(video.viewCount)} views`
+}
 
 /** The card's own thumbnail sits above its title, using YouTube's own
  * thumbnail JPG endpoint -- no separate fetch, keyed only by the real
@@ -244,6 +257,251 @@ function VideoTrack({
   )
 }
 
+/** Desktop's always-visible video search box, a sibling of VideoSectionTagBar inside .oshi-videos__header
+ * (never a collapsed icon the user must click to expand -- see home.css's own .oshi-videos__search for the
+ * responsive width this depends on). A plain Input with the search icon as its `prefix` -- deliberately NOT
+ * Input.Search: that component renders its own enterButton/search-submit affordance, and this box has no
+ * submit step at all (every keystroke's onChange IS the search state; allowClear's X only clears the text,
+ * it does not submit anything). Styled to match the existing dark .oshi-videos__sort control (home.css),
+ * not antd's own light input skin. Its query drives the multilingual Video Search (features/video-search:
+ * GET /creators/{creatorId}/videos/search, 250ms debounce, cancellation, session cache) -- see RecentVideosSection. */
+function VideoSearchBox({
+  value,
+  onChange,
+  locale,
+  onCompositionStart,
+  onCompositionEnd,
+}: {
+  value: string
+  onChange: (value: string) => void
+  locale: Locale
+  onCompositionStart: () => void
+  onCompositionEnd: () => void
+}) {
+  return (
+    <div className="oshi-videos__search">
+      {/* Same approach as VideoSectionTagBar's Segmented below: antd's own CSS-in-JS styles are
+          injected at runtime and can outrank a plain stylesheet override regardless of selector
+          specificity, so the dark colors/sizing/no-accent-focus are set through ConfigProvider's
+          actual Input tokens (authoritative, not a cascade race) rather than CSS alone. */}
+      <ConfigProvider
+        theme={{
+          components: {
+            Input: {
+              colorBgContainer: "rgba(0, 0, 0, 0.2)",
+              colorBorder: "var(--oshi-border)",
+              colorText: "var(--oshi-text-2)",
+              colorTextPlaceholder: "var(--oshi-text-3)",
+              colorIcon: "var(--oshi-text-3)",
+              colorIconHover: "var(--oshi-text-2)",
+              hoverBorderColor: "var(--oshi-border)",
+              activeBorderColor: "var(--oshi-border)",
+              activeShadow: "none",
+              borderRadius: 4,
+            },
+          },
+        }}
+      >
+        <Input
+          size="small"
+          allowClear
+          prefix={<Search size={12} aria-hidden="true" />}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onCompositionStart={onCompositionStart}
+          onCompositionEnd={onCompositionEnd}
+          placeholder={t(locale, "videoSearch.placeholder")}
+          aria-label={t(locale, "videoSearch.placeholder")}
+          className="oshi-videos__search-input"
+        />
+      </ConfigProvider>
+    </div>
+  )
+}
+
+/** The filter bar -- the 3 frontend-owned special filters followed by
+ * whatever backend topics GET /topics returned, in that fixed order
+ * (not alphabetical/count/recency/LIVE-status based), rendered as one Ant
+ * Design Segmented control (not N independent buttons) so the whole list
+ * reads as a single continuous selector regardless of how many backend
+ * topics there currently are. `options` is computed by the caller (it alone
+ * knows the current locale and the current backend topic catalog state);
+ * this component just renders whatever list it's given. `trailing` (the
+ * sort control) renders as the next sibling in this same flex row, sharing
+ * its existing `gap` instead of a margin of its own. Deliberately NOT the
+ * shared .shared-filter-segmented skin used by Notification Settings/
+ * Favorites/Live Status (confirmed with the user): this bar keeps its own
+ * compact "small" sizing, and its colors/radius come from the ConfigProvider
+ * component tokens below -- fixed, never creator-tinted (confirmed with the
+ * user: the selected tag's own color must not shift when currentOshi
+ * changes). trackBg matches .oshi-videos's own panel background
+ * (--oshi-surface-1) rather than the shared skin's surface tone, so the
+ * track reads as part of the panel instead of a separately-colored control
+ * sitting on it. */
+function VideoSectionTagBar({
+  selected,
+  onSelect,
+  options,
+  trailing,
+  hideTags = false,
+}: {
+  selected: VideoSectionSelection
+  onSelect: (selection: VideoSectionSelection) => void
+  options: { value: VideoSectionSelection; label: string }[]
+  trailing?: ReactNode
+  /** An active Search hides ONLY the Topic Tags; the controls (content type / sort / period) stay. */
+  hideTags?: boolean
+}) {
+  return (
+    <div className="oshi-videos__filters">
+      {/* The tag strip is its OWN scroll container, apart from the controls: a strip that cannot fit scrolls sideways inside this box
+          instead of painting over the dropdowns that follow it (and, on a phone, the controls take their own row below it). */}
+      {!hideTags && (
+        <div className="oshi-videos__tags">
+          <ConfigProvider
+            theme={{
+              components: {
+                Segmented: {
+                  trackBg: "var(--oshi-surface-1)",
+                  trackPadding: 2,
+                  itemColor: "var(--oshi-text-3)",
+                  itemHoverColor: "var(--oshi-text-1)",
+                  itemHoverBg: "rgba(255, 255, 255, 0.05)",
+                  // Fixed neutral, never creator-tinted (confirmed with the
+                  // user: the selected tag's own color must not shift with
+                  // currentOshi) -- --oshi-surface-3, no --creator-main mix.
+                  itemSelectedBg: "var(--oshi-surface-3)",
+                  itemSelectedColor: "var(--oshi-text-1)",
+                  borderRadius: 4,
+                  borderRadiusSM: 4,
+                },
+              },
+            }}
+          >
+            <Segmented<VideoSectionSelection>
+              size="small"
+              classNames={{
+                root: "oshi-videos__segmented",
+                item: "oshi-videos__segment-item",
+                label: "oshi-videos__segment-label",
+              }}
+              value={selected}
+              onChange={onSelect}
+              options={options}
+            />
+          </ConfigProvider>
+        </div>
+      )}
+      <div className="oshi-videos__controls">{trailing}</div>
+    </div>
+  )
+}
+
+const SORT_OPTIONS: readonly VideoSortOption[] = ["newest", "oldest", "mostViews"]
+const SORT_LABEL_KEYS = {
+  newest: "recentVideos.sort.newest",
+  oldest: "recentVideos.sort.oldest",
+  mostViews: "recentVideos.sort.mostViews",
+} as const
+/** The UI shows the backend's canonical "upload" content type as 影片 / Videos. */
+const CONTENT_TYPE_LABEL_KEYS = {
+  all: "recentVideos.contentType.all",
+  live: "recentVideos.contentType.live",
+  upload: "recentVideos.contentType.video",
+} as const
+
+/** The sort dropdown: exactly Newest / Oldest / Most viewed -- "Most viewed" is itself selectable
+ * (its All/1d/7d/30d period is a separate dropdown, see ViewWindowDropdown). Only for the topic
+ * tags (ALL + the 7 categories); the quick filters have a fixed newest-first order. */
+function VideoSortDropdown({
+  value,
+  onChange,
+  locale,
+  hidden,
+}: {
+  value: VideoSortOption
+  onChange: (sort: VideoSortOption) => void
+  locale: Locale
+  hidden: boolean
+}) {
+  return (
+    <select
+      className="oshi-videos__sort"
+      style={{ visibility: hidden ? "hidden" : "visible" }}
+      value={value}
+      onChange={(event) => onChange(event.target.value as VideoSortOption)}
+      aria-label={t(locale, "recentVideos.sortAriaLabel")}
+      aria-hidden={hidden}
+      tabIndex={hidden ? -1 : undefined}
+    >
+      {SORT_OPTIONS.map((sort) => (
+        <option key={sort} value={sort}>
+          {t(locale, SORT_LABEL_KEYS[sort])}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** The period dropdown (All / 1d / 7d / 30d): rendered ONLY while the sort is "most viewed", right
+ * beside the sort dropdown. It is not rendered at all for newest/oldest. */
+function ViewWindowDropdown({
+  value,
+  onChange,
+  locale,
+}: {
+  value: VideoViewWindow
+  onChange: (window: VideoViewWindow) => void
+  locale: Locale
+}) {
+  return (
+    <select
+      className="oshi-videos__sort"
+      value={value}
+      onChange={(event) => onChange(event.target.value as VideoViewWindow)}
+      aria-label={t(locale, "recentVideos.windowAriaLabel")}
+    >
+      {VIDEO_VIEW_WINDOWS.map((window) => (
+        <option key={window} value={window}>
+          {t(locale, `recentVideos.window.${window}`)}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** All / Live / Videos -- narrows the selected topic (ALL included) to one content
+ * type. Same visibility rule as the sort dropdown: the quick filters don't use it. */
+function ContentTypeDropdown({
+  value,
+  onChange,
+  locale,
+  hidden,
+}: {
+  value: VideoContentType
+  onChange: (contentType: VideoContentType) => void
+  locale: Locale
+  hidden: boolean
+}) {
+  return (
+    <select
+      className="oshi-videos__sort"
+      style={{ visibility: hidden ? "hidden" : "visible" }}
+      value={value}
+      onChange={(event) => onChange(event.target.value as VideoContentType)}
+      aria-label={t(locale, "recentVideos.contentTypeAriaLabel")}
+      aria-hidden={hidden}
+      tabIndex={hidden ? -1 : undefined}
+    >
+      {VIDEO_CONTENT_TYPES.map((type) => (
+        <option key={type} value={type}>
+          {t(locale, CONTENT_TYPE_LABEL_KEYS[type])}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 /** Sits at the header's far-right edge (margin-left: auto), OUTSIDE
  * .oshi-videos__filters -- a sibling of it, not a child, so it stays fixed
  * there regardless of how wide the Segmented/Sort cluster scrolls, and
@@ -280,41 +538,44 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   const [sortOption, setSortOption] = useState<VideoSortOption>("newest")
   const [viewWindow, setViewWindow] = useState<VideoViewWindow>("total")
   const [contentType, setContentType] = useState<VideoContentType>("all")
+  const topicCatalog = useVideoTopicCatalog(fetchVideoTopics)
+  // Desktop search: no separate open/close gesture and no submit step -- every keystroke's onChange IS the query. While Search is
+  // active (the normalized query meets useVideoSearch's activation threshold) ONLY the Topic Tags hide and the shelf shows the
+  // creator's multilingual search results; they come back the instant the query is cleared (see VideoSearchBox).
+  const [searchQuery, setSearchQuery] = useState("")
+  const [isComposing, setIsComposing] = useState(false)
+
   // The special filters always render; backend topics only once GET /topics has actually
   // succeeded -- never a stale/hardcoded topic list while loading or on a failed fetch (the
   // special filters alone stay usable in both of those states, per the architecture this models).
   // Short is a content-format filter, placed immediately before the Other topic (at the end when
-  // there is no Other topic yet). Shared with the mobile Filter sheet (see useVideoTagOptions) --
-  // never a second, manually maintained copy of this list.
-  const { options: tagOptions, topics: topicCatalog } = useVideoTagOptions(locale)
-
-  // Video Search: a trigger toggles the expanded input in place of the Tag Segmented (section 37/38
-  // of the spec this implements) -- `searchOpen` only controls this UI swap; `search.active` (the
-  // normalized query meeting its activation threshold, see useVideoSearch) is what actually switches
-  // the video list over to search results and starts ignoring the selected tag. Closing the trigger
-  // always clears the query too, so reopening never resumes a stale search.
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [isComposing, setIsComposing] = useState(false)
-  const searchInputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (searchOpen) searchInputRef.current?.focus()
-  }, [searchOpen])
+  // there is no Other topic yet).
+  const tagOptions = useMemo(() => {
+    const option = (filter: SpecialVideoFilter) => ({
+      value: filter as VideoSectionSelection,
+      label: t(locale, SPECIAL_VIDEO_FILTER_LABEL_KEYS[filter]),
+    })
+    const special = SPECIAL_VIDEO_FILTERS.map(option)
+    const categories = buildVideoFilterEntries(topicCatalog.state.status === "success" ? topicCatalog.state.topics : null, locale)
+    return [...special, ...categories.map((entry) => ({ value: entry.id as VideoSectionSelection, label: entry.label }))]
+  }, [locale, topicCatalog.state])
 
   const canonicalCreatorId = resolveCreatorKey(creatorId)?.creatorId
-  // Existing Filter/Sort (contentType/sort/viewWindow) stays active during a Search -- there is
-  // deliberately no `topic`/tag field here, so Search can never be narrowed by the selected tag (the
-  // backend endpoint itself has no such parameter either, see src/api/read_api.get_creator_video_search).
-  const searchBase = useMemo(
-    () => (canonicalCreatorId ? { creatorId: canonicalCreatorId, contentType, sort: sortOption, viewWindow } : null),
-    [canonicalCreatorId, contentType, sortOption, viewWindow],
-  )
-  const search = useVideoSearch(searchQuery, searchBase, { isComposing, topics: topicCatalog })
   const shelfQuery = useMemo(
     () => buildShelfQuery(selectedTag, canonicalCreatorId, { contentType, sort: sortOption, viewWindow }),
     [selectedTag, canonicalCreatorId, contentType, sortOption, viewWindow],
   )
   const shelf = useOshiVideos(shelfQuery)
+  // Existing content type / sort / period stay active during a Search, but there is deliberately no topic / tag field here: Search is
+  // creator-scoped over the creator's indexed catalog and can never be narrowed by the selected Topic Tag (the endpoint has none).
+  const searchBase = useMemo(
+    () => (canonicalCreatorId ? { creatorId: canonicalCreatorId, contentType, sort: sortOption, viewWindow } : null),
+    [canonicalCreatorId, contentType, sortOption, viewWindow],
+  )
+  // The SAME already-downloaded GET /topics catalog the tags use: Search resolves topics locally against it, never a second fetch.
+  const searchTopics = topicCatalog.state.status === "success" ? topicCatalog.state.topics : []
+  const search = useVideoSearch(searchQuery, searchBase, { isComposing, topics: searchTopics })
+  const isSearchActive = search.active
 
   // 最新直播 = LIVE, then UPCOMING, then archives. The archive endpoint is archive-only by design (liveStatus=archived),
   // so the creator's current live/upcoming streams come from the canonical GET /live-streams store and are merged in
@@ -322,14 +583,14 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   // 最新影片, so while it shows newest-first livestream content (content type all/live) the current streams lead it too.
   const { streams } = useLiveStreams()
   const showsCurrentStreams =
-    !search.active &&
+    !isSearchActive &&
     (selectedTag === "latestLive" || (selectedTag === "all" && sortOption === "newest" && (contentType === "all" || contentType === "live")))
   const shelfVideos = useMemo(() => {
-    if (search.active) return search.videos
+    if (isSearchActive) return search.videos
     if (!showsCurrentStreams) return shelf.videos
     const current = canonicalCreatorId ? streams.filter((stream) => stream.creatorId === canonicalCreatorId).map(toRecentVideo) : []
     return composeLatestLiveShelf(current, shelf.videos)
-  }, [search.active, search.videos, showsCurrentStreams, canonicalCreatorId, streams, shelf.videos])
+  }, [isSearchActive, search.videos, showsCurrentStreams, canonicalCreatorId, streams, shelf.videos])
 
   // A stream the user watched while it was live is now observed as a completed archive: turn that marker into a
   // permanent seen entry (never NEW). Only completed archives count -- a live/upcoming row is skipped.
@@ -337,13 +598,12 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
     migrateWatchedLiveToSeen(shelfVideos.filter((video) => video.contentFormat === "live_archive").map((video) => video.videoId))
   }, [shelfVideos])
 
-  // The dropdowns apply to the topic tags AND to an active Search (existing Filter/Sort stays active
-  // during Search, see useVideoSearch's own docstring) -- only a quick filter (fixed newest-first
-  // order) hides them, and a quick filter never applies while Search itself is running.
-  const showShelfFilters = search.active || !isQuickFilterSelection(selectedTag)
+  // The dropdowns apply to the topic tags AND to an active Search (the selected tag is ignored during Search, so a quick filter
+  // never hides them then); the period dropdown only to the most-viewed sort.
+  const showShelfFilters = isSearchActive || !isQuickFilterSelection(selectedTag)
   const showViewWindow = showShelfFilters && sortOption === "mostViews"
 
-  const emptyLabel = search.active
+  const emptyLabel = isSearchActive
     ? search.loading
       ? ""
       : t(locale, "videoSearch.empty")
@@ -355,73 +615,53 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
           ? t(locale, "recentVideos.empty.latestLive")
           : t(locale, "recentVideos.empty.other")
 
-  function closeSearch() {
-    setSearchOpen(false)
-    setSearchQuery("")
-  }
-
   return (
     <section className="oshi-videos">
       <header className="oshi-videos__header">
-        {searchOpen ? (
-          <div className="oshi-videos__filters">
-            <VideoSearchInput
-              ref={searchInputRef}
-              value={searchQuery}
-              onChange={setSearchQuery}
-              onClear={closeSearch}
-              locale={locale}
-              className="oshi-videos__search-expanded"
-              onCompositionStart={() => setIsComposing(true)}
-              onCompositionEnd={() => setIsComposing(false)}
-              onSubmit={search.flush}
-            />
-            <div className="oshi-videos__controls">
-              <ContentTypeDropdown value={contentType} onChange={setContentType} locale={locale} hidden={selectedTag === SHORT_VIDEO_FILTER} />
-              <VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={false} />
+        <VideoSearchBox
+          value={searchQuery}
+          onChange={setSearchQuery}
+          locale={locale}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={() => setIsComposing(false)}
+        />
+        <VideoSectionTagBar
+          selected={selectedTag}
+          onSelect={setSelectedTag}
+          options={tagOptions}
+          hideTags={isSearchActive}
+          trailing={
+            <>
+              <ContentTypeDropdown
+                value={contentType}
+                onChange={setContentType}
+                locale={locale}
+                hidden={!showShelfFilters || (!isSearchActive && selectedTag === SHORT_VIDEO_FILTER)}
+              />
+              <VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showShelfFilters} />
               {showViewWindow && <ViewWindowDropdown value={viewWindow} onChange={setViewWindow} locale={locale} />}
-            </div>
-          </div>
-        ) : (
-          <VideoTagSegmented
-            selected={selectedTag}
-            onSelect={setSelectedTag}
-            options={tagOptions}
-            leading={
-              <button type="button" className="video-search-trigger" aria-pressed="false" aria-label={t(locale, "videoSearch.trigger")} onClick={() => setSearchOpen(true)}>
-                <Search size={14} aria-hidden="true" />
-              </button>
-            }
-            trailing={
-              <>
-                <ContentTypeDropdown value={contentType} onChange={setContentType} locale={locale} hidden={!showShelfFilters || selectedTag === SHORT_VIDEO_FILTER} />
-                <VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showShelfFilters} />
-                {showViewWindow && <ViewWindowDropdown value={viewWindow} onChange={setViewWindow} locale={locale} />}
-              </>
-            }
-          />
-        )}
+            </>
+          }
+        />
         {/* V1: the control has no destination yet (see ViewAllButton), so production does not render it at all -- no hidden/inert
             element; it stays available to local development. `import.meta.env.DEV` is replaced at build time, so a production bundle
             contains no trace of the element. */}
-        {import.meta.env.DEV && !searchOpen && <ViewAllButton locale={locale} />}
+        {import.meta.env.DEV && !isSearchActive && <ViewAllButton locale={locale} />}
       </header>
 
       {/* key = the creator + what the shelf is actually showing: a fresh track (scroll position and
           prefetch threshold) per creator, tag, content type, sort and period -- otherwise switching
           creator while the same tag stays selected would carry the PREVIOUS creator's scroll state
-          onto the new creator's videos. An active Search gets its own key component (the query itself)
-          so switching between browsing and searching -- or between two different queries -- never
-          carries over a stale scroll position or prefetch threshold either. */}
+          onto the new creator's videos. An active Search gets its own key component (the query itself) so switching between browsing and
+          searching -- or between two queries -- never carries scroll state across. */}
       <VideoTrack
-        key={`${creatorId}:${search.active ? `search:${searchQuery}` : shelfQuery ? oshiVideosQueryKey(shelfQuery) : selectedTag}`}
+        key={`${creatorId}:${isSearchActive ? `search:${searchQuery}` : shelfQuery ? oshiVideosQueryKey(shelfQuery) : selectedTag}`}
         videos={shelfVideos}
         emptyLabel={emptyLabel}
-        error={search.active ? search.error : shelf.error}
+        error={isSearchActive ? search.error : shelf.error}
         onOpen={(video) => onSelectVideo({ videoId: video.videoId, title: video.title })}
-        // A Search response is always already the query's complete result set -- only the shelf's own
-        // "recent videos" browsing has further pages to reach by scrolling.
-        onNearEnd={search.active ? () => {} : shelf.loadMore}
+        // A Search response is already the query's complete result set -- only the browsing shelf pages.
+        onNearEnd={isSearchActive ? () => {} : shelf.loadMore}
       />
     </section>
   )

@@ -199,20 +199,6 @@
     outline-offset: -2px;
   }
 
-  /* The page-provided action slot (Home's Search entry, Videos' Search+Filter) -- fills the rest of
-     this row, to the right of the hamburger. Empty (zero width/content) on a page that portals
-     nothing into it, so it never affects pages that don't use it. */
-  .main-topbar__slot {
-    display: flex;
-    align-items: center;
-
-    flex: 1 1 auto;
-    min-width: 0;
-
-    gap: 8px;
-    padding-right: 8px;
-  }
-
   .main-navbar {
     z-index: 960;
     width: min(240px, 85vw);

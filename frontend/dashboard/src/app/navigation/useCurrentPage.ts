@@ -5,18 +5,14 @@ import { selectedCreatorStore } from "../../features/oshi/hooks/useSelectedCreat
 import { creatorPath, parseCreatorRoute } from "./creatorRoutes"
 import { readSessionHomePath, writeSessionHomePath } from "./sessionHomePath"
 
-export type Page = "home" | "dashboard" | "settings" | "schedule" | "about" | "videos"
+export type Page = "home" | "dashboard" | "settings" | "schedule" | "about"
 
-/** The fixed (non-creator) pages. Home is either the root "/" or an explicit /creator/:creatorSlug (see creatorRoutes.ts).
- * "videos" (the mobile-only Videos/Search view) stays reachable by direct URL on any viewport -- VideosPage itself
- * redirects back to Home when the current breakpoint isn't mobile, rather than this routing layer knowing about
- * breakpoints at all. */
+/** The fixed (non-creator) pages. Home is either the root "/" or an explicit /creator/:creatorSlug (see creatorRoutes.ts). */
 const PAGE_PATHS: Record<Exclude<Page, "home">, string> = {
   dashboard: "/dashboard",
   settings: "/setting",
   schedule: "/schedule",
   about: "/about",
-  videos: "/videos",
 }
 
 function readPage(): Page {
@@ -30,8 +26,6 @@ function readPage(): Page {
       return "schedule"
     case "/about":
       return "about"
-    case "/videos":
-      return "videos"
     default:
       // "/", "/creator/:slug" and any unknown path: Home.
       return "home"

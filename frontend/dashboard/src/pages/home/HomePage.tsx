@@ -1,10 +1,7 @@
 import { useRef } from "react"
-import { Search } from "lucide-react"
 import { resolveCreatorKey } from "../../entities/creator/data/creatorRegistry"
 import { creatorThemeStyle } from "../../shared/theme/creatorThemeStyle"
 import { useBreakpoint } from "../../shared/hooks/useBreakpoint"
-import { useLocale } from "../../shared/i18n/hooks/useLocale"
-import { t, type Locale } from "../../shared/i18n/translations"
 import { useCreatorStatuses } from "../../features/live-status/hooks/useCreatorStatuses"
 import { useLiveDockExpanded } from "../../features/live-status/hooks/useLiveDockExpanded"
 import { selectHomeVideo, useHomeSelectedVideo } from "../../features/home-room/hooks/useHomeSelectedVideo"
@@ -14,24 +11,6 @@ import { useWatchedDuringLive } from "../../features/media-player/hooks/useWatch
 import { selectLiveEmbedVideo } from "../../features/media-player/utils/liveEmbed"
 import { OshiStatusPanel } from "../../features/oshi-status/components/OshiStatusPanel"
 import { RecentVideosSection } from "../../features/home-room/components/RecentVideosSection"
-import { TopbarSlotPortal } from "../../app/navigation/TopbarSlotPortal"
-import { goToPage } from "../../app/navigation/useCurrentPage"
-
-/** Mobile Home's own Search entry (spec sections 41-44): shares the phone top bar's row with the
- * hamburger (TopbarSlotPortal), reusing that bar's own icon-button treatment exactly
- * (.main-topbar__menu's declared values, see main-navbar.css) rather than inventing a new button skin.
- * Tapping it never renders Search results under Home -- it navigates straight to the dedicated mobile
- * Videos/Search view (VideosPage already autofocuses its own Search input on mount, so there is nothing
- * further to hand off between the two pages). */
-function MobileSearchEntry({ locale }: { locale: Locale }) {
-  return (
-    <TopbarSlotPortal>
-      <button type="button" className="main-topbar__menu" onClick={() => goToPage("videos")} aria-label={t(locale, "videoSearch.trigger")}>
-        <Search size={22} aria-hidden="true" />
-      </button>
-    </TopbarSlotPortal>
-  )
-}
 
 /** The real, playable YouTube embed for the selected creator -- only
  * rendered when selectLiveEmbedVideo finds something eligible (live, upcoming,
@@ -74,7 +53,6 @@ function LiveEmbedPlayer({ videoId, title, autoplay, isLive }: { videoId: string
  * exposes that state to CSS. */
 export function HomePage() {
   const [creatorId] = useSelectedCreator()
-  const [locale] = useLocale()
   // The theme color is read from the canonical Creator Registry (generated from the backend
   // creators.json) -- there is no second, frontend-owned color map to drift from it.
   const { statuses, now } = useCreatorStatuses()
@@ -101,16 +79,8 @@ export function HomePage() {
     selectHomeVideo(video, creatorId, { countsAsOpened: !isCurrentStream })
   }
 
-  // Mobile Home is restructured (spec sections 41-44): Search becomes a top-row entry point (shared
-  // with the hamburger via TopbarSlotPortal) rather than the normal Video List browsing section, which
-  // moves entirely to the dedicated Videos page (pages/videos/VideosPage.tsx) -- Home itself never
-  // renders Search results. Desktop is completely unaffected: RecentVideosSection (with its own,
-  // separately integrated desktop Search) keeps rendering exactly as before.
-  const isMobile = breakpoint === "mobile"
-
   return (
     <div className="oshi-home" data-live-status-open={liveStatusOpen}>
-      {isMobile && <MobileSearchEntry locale={locale} />}
       <main className="oshi-home__canvas" style={creatorThemeStyle(creatorId, resolveCreatorKey(creatorId)?.themeColor)}>
         <section className="oshi-stream">
           <div className="oshi-player-frame" data-live={status.kind === "live"}>
@@ -129,7 +99,7 @@ export function HomePage() {
           </div>
         </section>
 
-        {!isMobile && <RecentVideosSection creatorId={creatorId} onSelectVideo={openVideo} />}
+        <RecentVideosSection creatorId={creatorId} onSelectVideo={openVideo} />
 
         <OshiStatusPanel
           creatorId={creatorId}

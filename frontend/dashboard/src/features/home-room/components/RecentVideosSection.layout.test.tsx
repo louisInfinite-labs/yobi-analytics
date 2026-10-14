@@ -29,12 +29,7 @@ describe("the tag strip and the dropdowns are separate boxes", () => {
     const filters = document.querySelector(".oshi-videos__filters") as HTMLElement
     const tags = filters.querySelector(".oshi-videos__tags") as HTMLElement
     const controls = filters.querySelector(".oshi-videos__controls") as HTMLElement
-    // The Video Search trigger button is a THIRD child, leading the row (left of the tag strip, see
-    // VideoTagSegmented's own `leading` slot) -- it is neither the tag strip nor the controls box.
-    const children = Array.from(filters.children)
-    expect(children).toHaveLength(3)
-    expect(children[0]).toHaveClass("video-search-trigger")
-    expect(children.slice(1)).toEqual([tags, controls])
+    expect(Array.from(filters.children)).toEqual([tags, controls])
     expect(tags.querySelector(".oshi-videos__segmented")).not.toBeNull()
     expect(controls.querySelector(".oshi-videos__segmented")).toBeNull()
     expect(tags.querySelector("select")).toBeNull() // a dropdown is never inside the scrolling strip

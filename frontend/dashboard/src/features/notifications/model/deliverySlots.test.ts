@@ -5,8 +5,12 @@ import {
   DELIVERY_SLOTS_PER_DAY,
   MAX_DELIVERY_SLOTS,
   MIN_DELIVERY_SLOTS,
+  addDeliverySlot,
+  formatDeliverySlot,
+  nextSuggestedDeliverySlot,
   normalizeDeliverySlots,
-  toggleDeliverySlot,
+  removeDeliverySlot,
+  replaceDeliverySlot,
 } from "./deliverySlots"
 
 describe("delivery slot constants", () => {
@@ -51,34 +55,91 @@ describe("normalizeDeliverySlots", () => {
   })
 })
 
-describe("toggleDeliverySlot", () => {
-  it("adds an unselected slot, keeping the result sorted", () => {
-    expect(toggleDeliverySlot(["08:00", "18:00"], "12:30")).toEqual({ ok: true, slots: ["08:00", "12:30", "18:00"] })
+describe("addDeliverySlot", () => {
+  it("adds the next suggested time, keeping the result sorted", () => {
+    expect(addDeliverySlot(["08:00", "18:00"])).toEqual({ ok: true, slots: ["08:00", "12:00", "18:00"] })
+    expect(addDeliverySlot(["08:00", "12:00", "18:00"])).toEqual({ ok: true, slots: ["08:00", "12:00", "18:00", "21:00"] })
   })
 
-  it("removes a selected slot", () => {
-    expect(toggleDeliverySlot(["08:00", "18:00"], "08:00")).toEqual({ ok: true, slots: ["18:00"] })
+  it("adds an explicit time", () => {
+    expect(addDeliverySlot(["08:00", "18:00"], "12:30")).toEqual({ ok: true, slots: ["08:00", "12:30", "18:00"] })
   })
 
-  it("refuses a 5th slot", () => {
-    expect(toggleDeliverySlot(["01:00", "02:00", "03:00", "04:00"], "05:00")).toEqual({ ok: false, reason: "max" })
+  it("refuses a 5th time", () => {
+    expect(addDeliverySlot(["01:00", "02:00", "03:00", "04:00"])).toEqual({ ok: false, reason: "max" })
+    expect(addDeliverySlot(["01:00", "02:00", "03:00", "04:00"], "05:00")).toEqual({ ok: false, reason: "max" })
   })
 
-  it("still allows removing from a full selection", () => {
-    expect(toggleDeliverySlot(["01:00", "02:00", "03:00", "04:00"], "04:00")).toEqual({ ok: true, slots: ["01:00", "02:00", "03:00"] })
-  })
-
-  it("refuses removing the only slot", () => {
-    expect(toggleDeliverySlot(["08:00"], "08:00")).toEqual({ ok: false, reason: "min" })
-  })
-
-  it("refuses a label that is not a slot", () => {
-    expect(toggleDeliverySlot(["08:00"], "08:15")).toEqual({ ok: false, reason: "invalid" })
+  it("refuses a duplicate and a label that is not a half-hour time", () => {
+    expect(addDeliverySlot(["08:00", "18:00"], "08:00")).toEqual({ ok: false, reason: "duplicate" })
+    expect(addDeliverySlot(["08:00"], "08:15")).toEqual({ ok: false, reason: "invalid" })
+    expect(addDeliverySlot(["08:00"], "8:00 AM")).toEqual({ ok: false, reason: "invalid" })
   })
 
   it("does not mutate its input", () => {
     const current = ["08:00", "18:00"]
-    toggleDeliverySlot(current, "09:00")
+    addDeliverySlot(current)
     expect(current).toEqual(["08:00", "18:00"])
+  })
+})
+
+describe("nextSuggestedDeliverySlot", () => {
+  it("skips suggestions that are already chosen and is null at the maximum", () => {
+    expect(nextSuggestedDeliverySlot(["08:00", "18:00"])).toBe("12:00")
+    expect(nextSuggestedDeliverySlot(["12:00", "18:00"])).toBe("21:00")
+    expect(nextSuggestedDeliverySlot(["01:00", "02:00", "03:00", "04:00"])).toBeNull()
+  })
+})
+
+describe("removeDeliverySlot", () => {
+  it("removes a chosen time", () => {
+    expect(removeDeliverySlot(["08:00", "18:00"], "08:00")).toEqual({ ok: true, slots: ["18:00"] })
+  })
+
+  it("still allows removing from a full selection", () => {
+    expect(removeDeliverySlot(["01:00", "02:00", "03:00", "04:00"], "04:00")).toEqual({ ok: true, slots: ["01:00", "02:00", "03:00"] })
+  })
+
+  it("refuses removing the only time, and a time that is not chosen", () => {
+    expect(removeDeliverySlot(["08:00"], "08:00")).toEqual({ ok: false, reason: "min" })
+    expect(removeDeliverySlot(["08:00", "18:00"], "12:00")).toEqual({ ok: false, reason: "missing" })
+  })
+})
+
+describe("replaceDeliverySlot", () => {
+  it("moves a chosen time, keeping the result sorted", () => {
+    expect(replaceDeliverySlot(["08:00", "18:00"], "08:00", "19:30")).toEqual({ ok: true, slots: ["18:00", "19:30"] })
+  })
+
+  it("accepts choosing the same time again (a no-op) but refuses another row's time", () => {
+    expect(replaceDeliverySlot(["08:00", "18:00"], "08:00", "08:00")).toEqual({ ok: true, slots: ["08:00", "18:00"] })
+    expect(replaceDeliverySlot(["08:00", "18:00"], "08:00", "18:00")).toEqual({ ok: false, reason: "duplicate" })
+  })
+
+  it("refuses a value that is not a canonical half-hour time, and a row that does not exist", () => {
+    expect(replaceDeliverySlot(["08:00", "18:00"], "08:00", "6:00 PM")).toEqual({ ok: false, reason: "invalid" })
+    expect(replaceDeliverySlot(["08:00", "18:00"], "09:00", "10:00")).toEqual({ ok: false, reason: "missing" })
+  })
+})
+
+describe("formatDeliverySlot (display only)", () => {
+  it.each([
+    ["08:00", "24h", "08:00"],
+    ["18:00", "24h", "18:00"],
+    ["00:30", "24h", "00:30"],
+    ["08:00", "12h", "8:00 AM"],
+    ["18:00", "12h", "6:00 PM"],
+    ["00:00", "12h", "12:00 AM"],
+    ["12:30", "12h", "12:30 PM"],
+    ["23:30", "12h", "11:30 PM"],
+  ] as const)("shows %s as %s in %s display", (slot, format, expected) => {
+    expect(formatDeliverySlot(slot, format)).toBe(expected)
+  })
+
+  it("never changes the canonical value: every slot formats and still parses back to itself", () => {
+    for (const slot of ALL_DELIVERY_SLOTS) {
+      expect(formatDeliverySlot(slot, "24h")).toBe(slot)
+      expect(ALL_DELIVERY_SLOTS).toContain(slot)
+    }
   })
 })

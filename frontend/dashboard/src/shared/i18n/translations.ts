@@ -47,18 +47,8 @@ export type TranslationKey =
   | "recentVideos.empty.latestLive"
   | "recentVideos.empty.other"
   | "recentVideos.viewAll"
-  | "videoSearch.trigger"
   | "videoSearch.placeholder"
-  | "videoSearch.clear"
   | "videoSearch.empty"
-  | "videoSearch.resultCount"
-  | "videoSearch.filter.trigger"
-  | "videoSearch.filter.title"
-  | "videoSearch.filter.topicSection"
-  | "videoSearch.filter.sortSection"
-  | "videoSearch.filter.apply"
-  | "videoSearch.filter.cancel"
-  | "videoSearch.filter.reset"
   | "liveScheduleDock.title"
   | "liveScheduleDock.close"
   | "liveScheduleDock.panelAriaLabel"
@@ -97,7 +87,6 @@ export type TranslationKey =
   | "mainNavbar.about"
   | "mainNavbar.openNavAriaLabel"
   | "mainNavbar.closeNavAriaLabel"
-  | "mainNavbar.videos"
   | "settingsSecondaryNavbar.title"
   | "settingsSecondaryNavbar.navAriaLabel"
   | "settingsSecondaryNavbar.myOshiSettings"
@@ -126,12 +115,10 @@ export type TranslationKey =
   | "notificationSettings.pageDescription"
   | "notificationSettings.deliveryTimes.title"
   | "notificationSettings.deliveryTimes.description"
-  | "notificationSettings.deliveryTimes.selectedCount"
-  | "notificationSettings.deliveryTimes.selectedTimesLabel"
+  | "notificationSettings.deliveryTimes.listAriaLabel"
+  | "notificationSettings.deliveryTimes.timeAriaLabel"
   | "notificationSettings.deliveryTimes.removeAriaLabel"
-  | "notificationSettings.deliveryTimes.gridAriaLabel"
-  | "notificationSettings.deliveryTimes.maxReachedHint"
-  | "notificationSettings.deliveryTimes.minRequiredHint"
+  | "notificationSettings.deliveryTimes.addAriaLabel"
   | "notificationSettings.liveColumnHeader"
   | "notificationSettings.newVideoColumnHeader"
   | "notificationSettings.liveSwitchAriaLabel"
@@ -318,18 +305,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestLive": "尚無最新直播",
     "recentVideos.empty.other": "沒有影片",
     "recentVideos.viewAll": "查看全部",
-    "videoSearch.trigger": "搜尋",
-    "videoSearch.placeholder": "搜尋這位Vtuber的影片",
-    "videoSearch.clear": "清除搜尋",
+    "videoSearch.placeholder": "搜尋影片",
     "videoSearch.empty": "沒有符合的影片",
-    "videoSearch.resultCount": "{{count}} 筆結果",
-    "videoSearch.filter.trigger": "篩選",
-    "videoSearch.filter.title": "篩選",
-    "videoSearch.filter.topicSection": "影片分類",
-    "videoSearch.filter.sortSection": "排序",
-    "videoSearch.filter.apply": "套用",
-    "videoSearch.filter.cancel": "取消",
-    "videoSearch.filter.reset": "重設",
     "liveScheduleDock.title": "直播狀態",
     "liveScheduleDock.close": "關閉",
     "liveScheduleDock.panelAriaLabel": "直播排程搜尋",
@@ -368,7 +345,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.about": "關於",
     "mainNavbar.openNavAriaLabel": "開啟導覽",
     "mainNavbar.closeNavAriaLabel": "關閉導覽",
-    "mainNavbar.videos": "影片",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
     "settingsSecondaryNavbar.myOshiSettings": "我推設定",
@@ -386,14 +362,12 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.pageTitle": "我的收藏",
     "notificationSettings.pageTitle": "推送通知",
     "notificationSettings.pageDescription": "設定直播與新影片的通知方式、提醒時間及通知對象。",
-    "notificationSettings.deliveryTimes.title": "新影片通知時段",
-    "notificationSettings.deliveryTimes.description": "每天最多可選 4 個半小時時段，新影片通知只會在這些時間送出。時間一律為日本時間（JST，Asia/Tokyo）。",
-    "notificationSettings.deliveryTimes.selectedCount": "已選 {{count}} / {{max}}",
-    "notificationSettings.deliveryTimes.selectedTimesLabel": "已選擇的通知時段",
-    "notificationSettings.deliveryTimes.removeAriaLabel": "移除 {{time}}",
-    "notificationSettings.deliveryTimes.gridAriaLabel": "通知時段（每 30 分鐘）",
-    "notificationSettings.deliveryTimes.maxReachedHint": "最多選 4 個時段，請先移除一個再選其他時段。",
-    "notificationSettings.deliveryTimes.minRequiredHint": "至少需保留 1 個時段。",
+    "notificationSettings.deliveryTimes.title": "新片通知時段",
+    "notificationSettings.deliveryTimes.description": "新片通知會在你所在時區的這些時間送出，每天最多 4 個，以 30 分鐘為單位。",
+    "notificationSettings.deliveryTimes.listAriaLabel": "新片通知時間",
+    "notificationSettings.deliveryTimes.timeAriaLabel": "通知時間 {{index}}",
+    "notificationSettings.deliveryTimes.removeAriaLabel": "刪除通知時間 {{time}}",
+    "notificationSettings.deliveryTimes.addAriaLabel": "新增通知時間",
     "oshiSettings.pageDescription": "管理你收藏的成員，並用於直播狀態、通知設定等功能。",
     "oshiSettings.selectedCountLabel": "已選 {{count}} 人",
     "oshiSettings.viewFilter.favoritesOnly": "收藏",
@@ -588,18 +562,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestLive": "No recent streams",
     "recentVideos.empty.other": "No videos",
     "recentVideos.viewAll": "View All",
-    "videoSearch.trigger": "Search",
-    "videoSearch.placeholder": "Search this creator's videos",
-    "videoSearch.clear": "Clear search",
+    "videoSearch.placeholder": "Search videos",
     "videoSearch.empty": "No matching videos",
-    "videoSearch.resultCount": "{{count}} results",
-    "videoSearch.filter.trigger": "Filter",
-    "videoSearch.filter.title": "Filter",
-    "videoSearch.filter.topicSection": "Video Topic",
-    "videoSearch.filter.sortSection": "Sort",
-    "videoSearch.filter.apply": "Apply",
-    "videoSearch.filter.cancel": "Cancel",
-    "videoSearch.filter.reset": "Reset",
     "liveScheduleDock.title": "LIVE STATUS",
     "liveScheduleDock.close": "Close",
     "liveScheduleDock.panelAriaLabel": "Live schedule search",
@@ -638,7 +602,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.about": "About",
     "mainNavbar.openNavAriaLabel": "Open navigation",
     "mainNavbar.closeNavAriaLabel": "Close navigation",
-    "mainNavbar.videos": "Videos",
     "settingsSecondaryNavbar.title": "Settings",
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
     "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
@@ -656,14 +619,12 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.pageTitle": "My Favorites",
     "notificationSettings.pageTitle": "Push Notifications",
     "notificationSettings.pageDescription": "Configure notifications for live streams and new videos, including reminder timing and recipients.",
-    "notificationSettings.deliveryTimes.title": "New video delivery times",
-    "notificationSettings.deliveryTimes.description": "Choose up to 4 half-hour times per day when new-video notifications are delivered. Times are always Japan Standard Time (JST, Asia/Tokyo).",
-    "notificationSettings.deliveryTimes.selectedCount": "{{count}} / {{max}} selected",
-    "notificationSettings.deliveryTimes.selectedTimesLabel": "Selected delivery times",
-    "notificationSettings.deliveryTimes.removeAriaLabel": "Remove {{time}}",
-    "notificationSettings.deliveryTimes.gridAriaLabel": "Delivery time slots (every 30 minutes)",
-    "notificationSettings.deliveryTimes.maxReachedHint": "You can choose up to 4 times. Remove one first to pick another.",
-    "notificationSettings.deliveryTimes.minRequiredHint": "At least one time is required.",
+    "notificationSettings.deliveryTimes.title": "New Video notification times",
+    "notificationSettings.deliveryTimes.description": "New Video notifications are delivered at these times on your own clock: up to 4 per day, in 30-minute steps.",
+    "notificationSettings.deliveryTimes.listAriaLabel": "New Video notification times",
+    "notificationSettings.deliveryTimes.timeAriaLabel": "Notification time {{index}}",
+    "notificationSettings.deliveryTimes.removeAriaLabel": "Delete notification time {{time}}",
+    "notificationSettings.deliveryTimes.addAriaLabel": "Add a notification time",
     "oshiSettings.pageDescription": "Manage your favorite members for Live Status, notification settings, and other features.",
     "oshiSettings.selectedCountLabel": "{{count}} selected",
     "oshiSettings.viewFilter.favoritesOnly": "Favorites",
@@ -858,18 +819,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestLive": "最新配信はありません",
     "recentVideos.empty.other": "動画がありません",
     "recentVideos.viewAll": "すべて見る",
-    "videoSearch.trigger": "検索",
-    "videoSearch.placeholder": "このVTuberの動画を検索",
-    "videoSearch.clear": "検索をクリア",
+    "videoSearch.placeholder": "動画を検索",
     "videoSearch.empty": "該当する動画がありません",
-    "videoSearch.resultCount": "{{count}}件の結果",
-    "videoSearch.filter.trigger": "フィルター",
-    "videoSearch.filter.title": "フィルター",
-    "videoSearch.filter.topicSection": "動画トピック",
-    "videoSearch.filter.sortSection": "並び替え",
-    "videoSearch.filter.apply": "適用",
-    "videoSearch.filter.cancel": "キャンセル",
-    "videoSearch.filter.reset": "リセット",
     "liveScheduleDock.title": "配信ステータス",
     "liveScheduleDock.close": "閉じる",
     "liveScheduleDock.panelAriaLabel": "配信スケジュール検索",
@@ -908,7 +859,6 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.about": "概要",
     "mainNavbar.openNavAriaLabel": "ナビゲーションを開く",
     "mainNavbar.closeNavAriaLabel": "ナビゲーションを閉じる",
-    "mainNavbar.videos": "動画",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
     "settingsSecondaryNavbar.myOshiSettings": "推し設定",
@@ -926,14 +876,12 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiSettings.pageTitle": "マイお気に入り",
     "notificationSettings.pageTitle": "プッシュ通知",
     "notificationSettings.pageDescription": "配信や新着動画の通知方法、通知タイミング、対象メンバーを設定します。",
-    "notificationSettings.deliveryTimes.title": "新着動画の通知時刻",
-    "notificationSettings.deliveryTimes.description": "新着動画の通知を受け取る時刻を、1日あたり最大4つまで30分単位で選べます。時刻は常に日本時間（JST、Asia/Tokyo）です。",
-    "notificationSettings.deliveryTimes.selectedCount": "{{count}} / {{max}} 件選択中",
-    "notificationSettings.deliveryTimes.selectedTimesLabel": "選択中の通知時刻",
-    "notificationSettings.deliveryTimes.removeAriaLabel": "{{time}} を削除",
-    "notificationSettings.deliveryTimes.gridAriaLabel": "通知時刻（30分ごと）",
-    "notificationSettings.deliveryTimes.maxReachedHint": "選べるのは最大4つです。別の時刻を選ぶには、先にどれか1つを削除してください。",
-    "notificationSettings.deliveryTimes.minRequiredHint": "時刻は最低1つ必要です。",
+    "notificationSettings.deliveryTimes.title": "新着動画の通知時間",
+    "notificationSettings.deliveryTimes.description": "新着動画の通知は、お使いの端末の時刻でこの時間に届きます。1日あたり最大4つまで、30分単位で選べます。",
+    "notificationSettings.deliveryTimes.listAriaLabel": "新着動画の通知時間",
+    "notificationSettings.deliveryTimes.timeAriaLabel": "通知時間 {{index}}",
+    "notificationSettings.deliveryTimes.removeAriaLabel": "通知時間 {{time}} を削除",
+    "notificationSettings.deliveryTimes.addAriaLabel": "通知時間を追加",
     "oshiSettings.pageDescription": "お気に入りのメンバーを管理します。ライブ状況や通知設定などで確認できます。",
     "oshiSettings.selectedCountLabel": "{{count}} 人選択中",
     "oshiSettings.viewFilter.favoritesOnly": "お気に入り",

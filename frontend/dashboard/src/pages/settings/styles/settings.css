@@ -1072,45 +1072,16 @@
   box-sizing: border-box;
 }
 
-/* ---- New video delivery times: the half-hour slots new-video pushes are delivered at ---- */
+/* ---- New video notification times: one compact dropdown per chosen time + a "+" box, inside the topic detail card ---- */
 
 .notification-delivery-times {
-  container: delivery-times / inline-size;
-  flex: 0 0 auto;
   min-width: 0;
-  margin-bottom: 18px;
-  padding: 14px 16px 16px;
-  box-sizing: border-box;
-  background: var(--notification-surface-1);
-  border: 1px solid var(--notification-border-soft);
-  border-radius: 14px;
 }
 
-.notification-delivery-times__title {
-  margin: 0 0 4px;
-  color: var(--notification-text-primary);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.notification-delivery-times__description {
-  margin: 0 0 12px;
-  color: var(--notification-text-muted);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.notification-delivery-times__selection {
+.notification-delivery-times__list {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  margin-bottom: 10px;
-}
-
-.notification-delivery-times__chips {
-  display: flex;
-  flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
   margin: 0;
@@ -1118,131 +1089,103 @@
   list-style: none;
 }
 
-.notification-delivery-times__chip {
+.notification-delivery-times__item {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  min-height: 32px;
-  padding: 0 4px 0 12px;
-  box-sizing: border-box;
-  background: var(--notification-surface-3);
-  border: 1px solid var(--notification-border-selected);
-  border-radius: 999px;
-  color: var(--notification-text-primary);
-  font-size: 13px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
-.notification-delivery-times__chip-remove {
+.notification-delivery-times__select {
+  /* Native <select>: the phone / PWA shows its own picker, the 48 half-hours only exist inside that popup, never on the page. */
+  box-sizing: border-box;
+  height: 36px;
+  min-width: 108px;
+  max-width: 100%;
+  padding: 0 30px 0 12px;
+  appearance: none;
+  background-color: var(--notification-surface-2);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%239ca3af' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  border: 1px solid var(--notification-border);
+  border-radius: 8px;
+  color: var(--notification-text-primary);
+  color-scheme: dark;
+  font: inherit;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.notification-delivery-times__select:hover {
+  border-color: var(--notification-border-hover);
+}
+
+.notification-delivery-times__select:focus-visible {
+  outline: 2px solid var(--notification-border-selected);
+  outline-offset: 1px;
+}
+
+.notification-delivery-times__remove {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   background: transparent;
   border: 0;
   border-radius: 50%;
-  color: var(--notification-text-secondary);
+  /* The page keeps no literal colors in its rules (SettingsThemeConsistency), and Home has no error-red token, so the one red this control
+     uses is declared here as a custom property -- the same #f87171 as .notification-delivery-times__error. */
+  --notification-remove-red: #f87171;
+  /* A soft, light red so the x reads as REMOVE rather than as a neutral close / math symbol. It is that red at reduced strength, kept subtle for the dark theme; stronger on hover / keyboard focus / press. */
+  color: color-mix(in srgb, var(--notification-remove-red) 72%, var(--notification-text-secondary));
   cursor: pointer;
 }
 
-.notification-delivery-times__chip-remove:hover:not(:disabled) {
-  background: var(--notification-selected-bg-hover);
-  color: var(--notification-text-primary);
+.notification-delivery-times__remove:hover,
+.notification-delivery-times__remove:focus-visible {
+  background: color-mix(in srgb, var(--notification-remove-red) 14%, transparent);
+  color: var(--notification-remove-red);
 }
 
-.notification-delivery-times__chip-remove:disabled {
-  color: var(--notification-text-muted);
-  cursor: not-allowed;
+.notification-delivery-times__remove:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--notification-remove-red) 60%, transparent);
+  outline-offset: 1px;
 }
 
-.notification-delivery-times__count {
-  color: var(--notification-text-secondary);
-  font-size: 13px;
-  white-space: nowrap;
+.notification-delivery-times__remove:active {
+  background: color-mix(in srgb, var(--notification-remove-red) 24%, transparent);
+  color: color-mix(in srgb, var(--notification-remove-red) 63%, white);
 }
 
-.notification-delivery-times__hint {
-  margin: 0 0 10px;
-  color: var(--notification-text-muted);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.notification-delivery-times__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.notification-delivery-times__slot {
+/* The "+" box follows the Add topic button's dashed look, at the dropdowns' height. */
+.notification-add-time.ant-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-width: 0;
-  min-height: 36px;
-  padding: 0 2px;
-  box-sizing: border-box;
-  background: var(--notification-surface-2);
-  border: 1px solid var(--notification-border);
-  border-radius: 9px;
+  min-width: 44px;
+  height: 36px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px dashed var(--notification-border-hover);
+  border-radius: 8px;
   color: var(--notification-text-secondary);
-  font: inherit;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease;
 }
 
-.notification-delivery-times__slot:hover:not(:disabled) {
-  background: var(--notification-selected-bg-hover);
+.notification-add-time.ant-btn:hover {
+  background: var(--notification-surface-2);
   border-color: var(--notification-border-hover);
-  color: var(--notification-text-primary);
+  color: var(--notification-text-secondary);
 }
 
-.notification-delivery-times__slot.is-selected {
-  background: var(--notification-selected-bg);
-  border-color: var(--notification-border-selected);
-  color: var(--notification-text-primary);
-  font-weight: 700;
-}
-
-.notification-delivery-times__slot:disabled {
-  cursor: not-allowed;
-}
-
-.notification-delivery-times__slot:disabled:not(.is-selected) {
-  opacity: 0.45;
-}
-
-/* Column count follows the section's own width (not the viewport): the Settings shell keeps its side rails on narrow screens, so the
-   room actually available is far below the viewport width. 60px per column fits the widest label (check mark + "00:00"). */
-@container delivery-times (min-width: 192px) {
-  .notification-delivery-times__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@container delivery-times (min-width: 258px) {
-  .notification-delivery-times__grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@container delivery-times (min-width: 522px) {
-  .notification-delivery-times__grid {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-  }
-}
-
-@container delivery-times (min-width: 786px) {
-  .notification-delivery-times__grid {
-    grid-template-columns: repeat(12, minmax(0, 1fr));
+/* On the narrowest cards two dropdowns share a row and the "+" box wraps below them rather than being squeezed. */
+@media (max-width: 420px) {
+  .notification-delivery-times__select {
+    min-width: 96px;
   }
 }
 
@@ -1682,6 +1625,62 @@
   color: var(--notification-text-primary);
 }
 
+/* ---- Phone accordion (NotificationSettings renders these only below 768px, the app's "mobile" breakpoint -- useBreakpoint): each topic
+   row expands its own detail panel directly below it, one open at a time. Desktop / tablet never render these classes, so their
+   list + detail layout is untouched. The panel is the SAME .notification-detail-panel, flattened into the open row's card. ---- */
+
+.notification-topic-item__chevron {
+  flex: 0 0 auto;
+  color: var(--notification-text-secondary);
+  transition: transform 160ms ease;
+}
+
+.notification-topic-item.is-expanded .notification-topic-item__chevron {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-topic-item__chevron {
+    transition: none;
+  }
+}
+
+.notification-topic-accordion {
+  min-width: 0;
+  margin-bottom: 10px;
+}
+
+.notification-topic-accordion > .notification-topic-item {
+  margin-bottom: 0;
+}
+
+.notification-topic-accordion.is-open > .notification-topic-item {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.notification-topic-accordion__panel {
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 16px 12px;
+  background: var(--notification-surface-1);
+  border: 1px solid var(--notification-border-selected);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+}
+
+.notification-topic-accordion__panel .notification-detail-panel {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.notification-topic-accordion__draft {
+  margin-top: 4px;
+}
+
 /* ---- Add topic ---- */
 
 .notification-add-topic.ant-btn {
@@ -2073,6 +2072,9 @@
   --drawer-text-tertiary: var(--oshi-text-3);
   --drawer-accent: var(--creator-main);
 
+  /* The drawer's side gutter. It lives on the CONTENT, never on the scrolling body: see .ant-drawer-body below. */
+  --drawer-gutter: var(--space-5);
+
   /* Fixed column widths shared by every row and column header, so the switches and reminder controls line up across groups. The reminder
      column is only as wide as its select needs (the longest timing label of the current locale, see the data-locale rules below). */
   --drawer-switch-col: 48px;
@@ -2121,7 +2123,11 @@
 }
 
 .topic-creator-drawer .ant-drawer-body {
-  padding: var(--space-5);
+  /* NO padding on the scroller itself, exactly like Live Status' own .live-status-drawer__body (padding 0). The organization headings are the
+     shared Live Status ones: sticky, top: 0, full-bleed bands. A padded scroller made them stick 24px BELOW the drawer's top edge, so rows
+     scrolled visibly through that gap above them (an avatar peeking over "HOLOLIVE // JP") and the band was inset instead of edge to edge.
+     The gutter is applied to the content below instead. */
+  padding: 0;
 
   /* Reserve the scrollbar's space up front: a scrollbar that appears while the pointer is over the drawer must not narrow every row.
      An overlay scrollbar (hidden at rest, a 10px track once the pointer is over the drawer) did exactly that: every row lost 10px of width on
@@ -2139,6 +2145,9 @@
 .topic-creator-drawer__content {
   display: flex;
   flex-direction: column;
+
+  /* The top / bottom breathing room the scroller's padding used to give. Being content padding, it scrolls away and never holds a sticky heading. */
+  padding: var(--drawer-gutter) 0;
 
   /* The rows' own width (not the viewport) decides when the name needs its own line -- see the @container rule after .topic-creator-drawer__creator-name. */
   container-type: inline-size;
@@ -2179,7 +2188,9 @@
 }
 
 /* The search itself is Home's .live-status-search (markup in TopicCreatorManagementDrawer). */
-.topic-creator-drawer__search {
+.topic-creator-drawer .topic-creator-drawer__search {
+  /* Home's .live-status-search is width: 100%; between the side gutters it must fill the remaining width instead of overflowing by the margins. */
+  width: auto;
   margin-bottom: var(--space-4);
 }
 
@@ -2192,6 +2203,25 @@
 
 .topic-creator-drawer__group {
   margin-bottom: var(--space-4);
+}
+
+/* Side gutter for everything that is not a group band: the notices, the search box, the empty state, and the rows / column headers of each group. */
+.topic-creator-drawer__content > :not(.live-status-group):not(.topic-creator-drawer__group),
+.topic-creator-drawer__subgroup,
+.topic-creator-drawer__group > :not(.live-status-group__heading) {
+  margin-inline: var(--drawer-gutter);
+}
+
+/* The group bands themselves are Live Status' (.live-status-group__heading: 28px, sticky, top 0, #0d1825, bottom border -- not redefined here) and
+   run edge to edge. Only their inline padding differs from Live Status': it puts the label over the avatar column of the rows below (gutter + the
+   row's own inline padding), the same relationship Live Status has (heading padding 12px = its rows' avatar offset). */
+.topic-creator-drawer .live-status-group__heading,
+.topic-creator-drawer .live-status-group__subheading {
+  padding-inline: calc(var(--drawer-gutter) + var(--space-2));
+}
+
+.topic-creator-drawer .live-status-group__org-divider {
+  margin-inline: calc(var(--drawer-gutter) + var(--space-2));
 }
 
 /* The Favorites heading is a Live Status group heading too (.live-status-group__heading); only the h3 default margin is reset. */
@@ -2367,10 +2397,13 @@
   /* 4px column gap + 12px of padding = the same 16px between the New Video switch and the reminder select. */
   .topic-creator-drawer {
     --drawer-reminder-pad: var(--space-3);
+    /* The phone's tighter side gutter -- still on the content, never on the scroller (see .ant-drawer-body above), so the sticky group
+       bands stay flush with the top edge and edge to edge on a phone too. */
+    --drawer-gutter: var(--space-3);
   }
 
-  .topic-creator-drawer .ant-drawer-body {
-    padding: var(--space-4) var(--space-3);
+  .topic-creator-drawer__content {
+    padding-block: var(--space-4);
   }
 
   .topic-creator-drawer__row,
