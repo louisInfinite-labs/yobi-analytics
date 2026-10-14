@@ -1625,6 +1625,62 @@
   color: var(--notification-text-primary);
 }
 
+/* ---- Phone accordion (NotificationSettings renders these only below 768px, the app's "mobile" breakpoint -- useBreakpoint): each topic
+   row expands its own detail panel directly below it, one open at a time. Desktop / tablet never render these classes, so their
+   list + detail layout is untouched. The panel is the SAME .notification-detail-panel, flattened into the open row's card. ---- */
+
+.notification-topic-item__chevron {
+  flex: 0 0 auto;
+  color: var(--notification-text-secondary);
+  transition: transform 160ms ease;
+}
+
+.notification-topic-item.is-expanded .notification-topic-item__chevron {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-topic-item__chevron {
+    transition: none;
+  }
+}
+
+.notification-topic-accordion {
+  min-width: 0;
+  margin-bottom: 10px;
+}
+
+.notification-topic-accordion > .notification-topic-item {
+  margin-bottom: 0;
+}
+
+.notification-topic-accordion.is-open > .notification-topic-item {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.notification-topic-accordion__panel {
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 16px 12px;
+  background: var(--notification-surface-1);
+  border: 1px solid var(--notification-border-selected);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+}
+
+.notification-topic-accordion__panel .notification-detail-panel {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.notification-topic-accordion__draft {
+  margin-top: 4px;
+}
+
 /* ---- Add topic ---- */
 
 .notification-add-topic.ant-btn {
