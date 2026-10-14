@@ -6,8 +6,9 @@ import { Users } from "lucide-react"
 // Symbols visual match; the Manage Members button's icon (detail panel,
 // out of this pass's scope) stays on lucide-react's Users, hence both
 // libraries' icon imports coexisting in this file for now.
-import { PlusIcon, SlidersHorizontalIcon, UsersThreeIcon } from "@phosphor-icons/react"
+import { CaretDownIcon, PlusIcon, SlidersHorizontalIcon, UsersThreeIcon } from "@phosphor-icons/react"
 import { CreatorAvatarImage } from "../../../entities/creator/components/CreatorAvatarImage"
+import { useBreakpoint } from "../../../shared/hooks/useBreakpoint"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { PushPermissionNotice } from "./PushPermissionNotice"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
@@ -148,11 +149,14 @@ function TopicListItem({
   topicId,
   isSelected,
   onSelect,
+  accordionPanelId,
 }: {
   entries: readonly VideoFilterEntry[]
   topicId: TopicCatalogId
   isSelected: boolean
   onSelect: () => void
+  /** Phone only: the row is an accordion header that expands this panel directly below it (desktop leaves it undefined). */
+  accordionPanelId?: string
 }) {
   const [locale] = useLocale()
   const { getEnabledCreatorIds, getOverrideCount } = useTopicNotificationPreferences()
@@ -163,9 +167,11 @@ function TopicListItem({
   return (
     <button
       type="button"
-      className={`notification-topic-item${isSelected ? " is-selected" : ""}`}
+      className={`notification-topic-item${isSelected ? " is-selected" : ""}${accordionPanelId && isSelected ? " is-expanded" : ""}`}
       onClick={onSelect}
-      aria-current={isSelected ? "true" : undefined}
+      aria-current={accordionPanelId ? undefined : isSelected ? "true" : undefined}
+      aria-expanded={accordionPanelId ? isSelected : undefined}
+      aria-controls={accordionPanelId && isSelected ? accordionPanelId : undefined}
     >
       <span className="notification-topic-item__body">
         <span className="notification-topic-item__name">{topicLabel}</span>
@@ -180,6 +186,7 @@ function TopicListItem({
           </span>
         </span>
       </span>
+      {accordionPanelId && <CaretDownIcon className="notification-topic-item__chevron" size={18} weight="bold" aria-hidden="true" />}
     </button>
   )
 }
@@ -193,6 +200,8 @@ interface DetailPanelProps {
   onManage: () => void
   onSave: () => void
   onRemove: () => void
+  /** Phone accordion: the row above already names the topic, so a saved topic's panel starts at its first section. */
+  hideHeader?: boolean
 }
 
 /** The right-hand editor -- one continuous surface for whichever topic is
@@ -200,7 +209,7 @@ interface DetailPanelProps {
  * active. Selecting a topic never navigates away or opens a second panel
  * (section 19): everything here is the SAME component tree, just re-keyed
  * to a different topicId. */
-function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraftTopic, onManage, onSave, onRemove }: DetailPanelProps) {
+function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraftTopic, onManage, onSave, onRemove, hideHeader = false }: DetailPanelProps) {
   const [locale] = useLocale()
   const { getNotificationType } = useTopicNotificationPreferences()
 
@@ -238,10 +247,12 @@ function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraf
 
   return (
     <div className="notification-detail-panel">
-      <div className="notification-detail-header">
-        <h2 className="notification-detail-header__title">{topicLabel}</h2>
-        <p className="notification-detail-header__description">{t(locale, "notificationSettings.detailDescription", { topic: topicLabel })}</p>
-      </div>
+      {!(hideHeader && !isDraft) && (
+        <div className="notification-detail-header">
+          <h2 className="notification-detail-header__title">{topicLabel}</h2>
+          <p className="notification-detail-header__description">{t(locale, "notificationSettings.detailDescription", { topic: topicLabel })}</p>
+        </div>
+      )}
 
       {!isShort && <NotificationTypeSection topicId={topicId} topicLabel={topicLabel} />}
       <MembersSection topicId={topicId} topicLabel={topicLabel} onManage={onManage} />
@@ -283,6 +294,10 @@ export function NotificationSettings() {
   const { savedTopicIds, addTopic, removeTopic, discardUnsavedTopic } = useTopicNotificationPreferences()
 
   const [selectedTopicId, setSelectedTopicId] = useState<TopicCatalogId | null>(savedTopicIds[0] ?? null)
+  // Phone: the topic list is an accordion -- at most one topic open (null = all collapsed, the starting state). Everything a topic
+  // edits lives in the shared stores, so collapsing and reopening it never resets anything. Desktop / tablet keep selectedTopicId.
+  const isPhone = useBreakpoint() === "mobile"
+  const [openTopicId, setOpenTopicId] = useState<TopicCatalogId | null>(null)
 
   // At most one draft at a time (unchanged from before this redesign) --
   // plain component state, not shared/persisted.
@@ -323,6 +338,7 @@ export function NotificationSettings() {
     draftTopicIdRef.current = null
     setDraft({ active: false, topicId: null }) // clears the draft and re-enables "+" together
     setSelectedTopicId(savedTopicId) // the newly saved card becomes the one shown on the right
+    setOpenTopicId(savedTopicId) // ...and the one expanded on a phone
   }
   // Selecting an already-saved topic while a draft is open abandons that
   // draft -- the same "discard on reselect" path selectDraftTopic already
@@ -334,12 +350,40 @@ export function NotificationSettings() {
       setDraft({ active: false, topicId: null })
     }
     setSelectedTopicId(topicId)
+    // Phone: tapping the open topic collapses it, tapping another one swaps the open topic.
+    // (While a draft was open no topic showed as open, so that tap always opens.)
+    setOpenTopicId((current) => (!draft.active && current === topicId ? null : topicId))
   }
+  const shownTopicId = isPhone ? openTopicId : selectedTopicId
 
   const sortOptions = [
     { value: "saved", label: t(locale, "notificationSettings.topicSortSaved") },
     { value: "alphabetical", label: t(locale, "notificationSettings.topicSortAlphabetical") },
   ]
+
+  const detailPanel = (
+    <DetailPanel
+      entries={entries}
+      isDraft={draft.active}
+      topicId={draft.active ? draft.topicId : shownTopicId}
+      selectableTopics={selectableTopics}
+      onSelectDraftTopic={selectDraftTopic}
+      onManage={() => setManagingTopicId(draft.active ? draft.topicId : shownTopicId)}
+      onSave={saveDraft}
+      hideHeader={isPhone}
+      onRemove={() => {
+        if (shownTopicId === null) return
+        const removed = shownTopicId
+        void removeTopic(removed).then((done) => {
+          // The removed card can no longer be the selected one: fall back to the first card (全部); a phone just collapses it.
+          if (done) {
+            setSelectedTopicId((current) => (current === removed ? (savedTopicIds[0] ?? null) : current))
+            setOpenTopicId((current) => (current === removed ? null : current))
+          }
+        })
+      }}
+    />
+  )
 
   return (
     <ConfigProvider
@@ -404,17 +448,39 @@ export function NotificationSettings() {
               <div className="notification-topic-list-scroll">
                 <div className="notification-topic-list-content">
                   <div className="notification-topic-list">
-                    {orderedTopicIds.map((topicId) => (
-                      <TopicListItem
-                        key={topicId}
-                        entries={entries}
-                        topicId={topicId}
-                        isSelected={!draft.active && selectedTopicId === topicId}
-                        onSelect={() => selectTopic(topicId)}
-                      />
-                    ))}
+                    {orderedTopicIds.map((topicId) => {
+                      const isShown = !draft.active && shownTopicId === topicId
+                      const panelId = `notification-topic-panel-${topicId}`
+                      const item = (
+                        <TopicListItem
+                          key={topicId}
+                          entries={entries}
+                          topicId={topicId}
+                          isSelected={isShown}
+                          onSelect={() => selectTopic(topicId)}
+                          accordionPanelId={isPhone ? panelId : undefined}
+                        />
+                      )
+                      if (!isPhone) return item
+                      // Phone accordion: the topic's own detail panel opens directly below its row.
+                      return (
+                        <div key={topicId} className={`notification-topic-accordion${isShown ? " is-open" : ""}`}>
+                          {item}
+                          {isShown && (
+                            <div id={panelId} className="notification-topic-accordion__panel">
+                              {detailPanel}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
-                  {draft.active ? null : selectableTopics.length > 0 ? (
+                  {draft.active ? (
+                    // Add Topic is not an accordion row: its draft editor opens in the Add button's own place on a phone.
+                    isPhone ? (
+                      <div className="notification-topic-accordion__draft">{detailPanel}</div>
+                    ) : null
+                  ) : selectableTopics.length > 0 ? (
                     <Button variant="dashed" block className="notification-add-topic" onClick={startDraft}>
                       <span className="notification-add-topic__icon" aria-hidden="true">
                         <PlusIcon size={16} weight="regular" />
@@ -426,23 +492,7 @@ export function NotificationSettings() {
               </div>
             </div>
 
-            <DetailPanel
-              entries={entries}
-              isDraft={draft.active}
-              topicId={draft.active ? draft.topicId : selectedTopicId}
-              selectableTopics={selectableTopics}
-              onSelectDraftTopic={selectDraftTopic}
-              onManage={() => setManagingTopicId(draft.active ? draft.topicId : selectedTopicId)}
-              onSave={saveDraft}
-              onRemove={() => {
-                if (selectedTopicId === null) return
-                const removed = selectedTopicId
-                void removeTopic(removed).then((done) => {
-                  // The removed card can no longer be the selected one: fall back to the first card (全部).
-                  if (done) setSelectedTopicId((current) => (current === removed ? (savedTopicIds[0] ?? null) : current))
-                })
-              }}
-            />
+            {!isPhone && detailPanel}
           </div>
         </div>
       </section>
