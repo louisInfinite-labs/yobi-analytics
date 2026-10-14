@@ -159,6 +159,7 @@ jobs:
           src/features/home-room/components/RecentVideosSection.test.tsx
           src/features/home-room/components/RecentVideosSection.shelf.test.tsx
           src/features/home-room/components/RecentVideosSection.dynamicTopics.test.tsx
+          src/features/home-room/components/RecentVideosSection.desktopSearchBackend.test.tsx
           src/features/oshi-status/data/oshiStatus.test.ts
           src/features/oshi-status/hooks/useOshiStatus.test.tsx
           src/features/oshi-status/hooks/useLastVisit.test.ts
