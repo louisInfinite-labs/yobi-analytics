@@ -1,6 +1,6 @@
 import pytest
 
-from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS, TOPICS, classify_video_topic, resolve_video_topics
+from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS, TOPICS, classify_video_topic, resolve_video_topics, topics_matching_text
 
 
 def test_taxonomy_ids_and_order_are_stable():
@@ -196,3 +196,24 @@ def test_resolve_video_topics_handles_an_empty_title_safely():
 def test_resolve_video_topics_handles_a_none_title_safely():
     items = [{"videoId": "v1", "title": None, "topic": None}]
     assert resolve_video_topics(items) == {"v1": OTHER_TOPIC}
+
+
+class TestTopicsMatchingText:
+    """topics_matching_text powers Video Search's canonical-topic resolution (src/search/video_search.py):
+    unlike classify_video_topic (one primary topic per title), it returns every topic whose pattern
+    matches, since a search query may legitimately resolve to more than one topic."""
+
+    def test_resolves_a_short_form_alias_the_same_way_classify_video_topic_does(self):
+        assert topics_matching_text("VALO") == {"valorant"}
+        assert topics_matching_text("エペ") == {"apex"}
+        assert topics_matching_text("雑談") == {"chatting"}
+
+    def test_is_case_insensitive_and_nfkc_normalizing_like_classify_video_topic(self):
+        assert topics_matching_text("valo") == {"valorant"}
+        assert topics_matching_text("ＳＦ６") == {"sf6"}  # full-width "SF6"
+
+    def test_returns_an_empty_set_for_text_matching_no_topic(self):
+        assert topics_matching_text("completely unrelated text") == frozenset()
+
+    def test_other_topic_has_no_pattern_and_never_matches(self):
+        assert OTHER_TOPIC not in topics_matching_text("其他 other 任何文字")

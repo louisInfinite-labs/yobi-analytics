@@ -38,6 +38,10 @@ interface ApiRequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE"
   body?: unknown
   headers?: Record<string, string>
+  /** Lets a caller cancel an in-flight request (e.g. Video Search aborting a now-superseded query) --
+   * passed straight through to `fetch`. An aborted request rejects with a `DOMException` named
+   * "AbortError", which callers distinguish from a real failure the normal way (`err.name === "AbortError"`). */
+  signal?: AbortSignal
 }
 
 // This account's Lambda concurrency quota is a shared, low ceiling (a
@@ -80,6 +84,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
         ...options.headers,
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: options.signal,
     })
 
     if (response.status === 429 && attempt < MAX_429_RETRIES) {

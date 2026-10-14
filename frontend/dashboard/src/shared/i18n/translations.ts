@@ -48,6 +48,7 @@ export type TranslationKey =
   | "recentVideos.empty.other"
   | "recentVideos.viewAll"
   | "videoSearch.placeholder"
+  | "videoSearch.empty"
   | "liveScheduleDock.title"
   | "liveScheduleDock.close"
   | "liveScheduleDock.panelAriaLabel"
@@ -305,6 +306,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.other": "沒有影片",
     "recentVideos.viewAll": "查看全部",
     "videoSearch.placeholder": "搜尋影片",
+    "videoSearch.empty": "沒有符合的影片",
     "liveScheduleDock.title": "直播狀態",
     "liveScheduleDock.close": "關閉",
     "liveScheduleDock.panelAriaLabel": "直播排程搜尋",
@@ -561,6 +563,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.other": "No videos",
     "recentVideos.viewAll": "View All",
     "videoSearch.placeholder": "Search videos",
+    "videoSearch.empty": "No matching videos",
     "liveScheduleDock.title": "LIVE STATUS",
     "liveScheduleDock.close": "Close",
     "liveScheduleDock.panelAriaLabel": "Live schedule search",
@@ -817,6 +820,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.other": "動画がありません",
     "recentVideos.viewAll": "すべて見る",
     "videoSearch.placeholder": "動画を検索",
+    "videoSearch.empty": "該当する動画がありません",
     "liveScheduleDock.title": "配信ステータス",
     "liveScheduleDock.close": "閉じる",
     "liveScheduleDock.panelAriaLabel": "配信スケジュール検索",
