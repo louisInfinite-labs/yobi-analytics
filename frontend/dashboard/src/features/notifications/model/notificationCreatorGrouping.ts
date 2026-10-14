@@ -26,6 +26,8 @@ export interface NotificationCreator {
   avatarUrl: string | null
   organization: "hololive" | "vspo"
   youtubeChannelId: string
+  /** The canonical registry's verified theme color (Creator Master `themeColor`), null when there is none. Read ONLY through getCreatorAccent. */
+  themeColor: string | null
   active: boolean
   branch: BranchKey
   channelType: "member" | "group" | "staff"
@@ -48,6 +50,7 @@ function toNotificationCreator(creator: CanonicalCreator): NotificationCreator {
     avatarUrl: creator.avatarUrl,
     organization: creator.organization,
     youtubeChannelId: creator.youtubeChannelId,
+    themeColor: creator.themeColor,
     active: creator.active,
     branch: creator.branch,
     channelType: creator.channelType,
