@@ -52,6 +52,11 @@ locals {
     "DELETE /clients/{clientId}/creator-reminder/{creatorId}/{scope}",
     "PUT /clients/{clientId}/stream-notification-override/{videoId}",
     "DELETE /clients/{clientId}/stream-notification-override/{videoId}",
+    "POST /sync/pairing-sessions",
+    "POST /sync/pairing-sessions/consume",
+    "GET /sync/devices/{deviceId}/profile",
+    "GET /sync/devices/{deviceId}/siblings",
+    "DELETE /sync/devices/{deviceId}/siblings/{targetDeviceId}",
     # RETIRED routes, deliberately kept: api_handler answers each with 410 ENDPOINT_RETIRED (see its
     # _RETIRED_ROUTES) so a client that still calls one gets a diagnosable response with CORS headers instead of
     # API Gateway's bare 404. Removing them from this list would make `terraform apply` delete the live routes.

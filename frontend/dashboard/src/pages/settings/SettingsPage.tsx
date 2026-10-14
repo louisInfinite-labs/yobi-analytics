@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { lazy, Suspense, useRef, useState } from "react"
 import { Menu } from "lucide-react"
 import { MyOshiSettings } from "../../features/oshi/components/MyOshiSettings"
 import { NotificationSettings } from "../../features/notifications/components/NotificationSettings"
@@ -7,9 +7,16 @@ import { useModalFocus } from "../../shared/hooks/useModalFocus"
 import { useLocale } from "../../shared/i18n/hooks/useLocale"
 import { t } from "../../shared/i18n/translations"
 import { DisplaySettings } from "./DisplaySettings"
-import { NAV_ITEMS, type SettingsSection } from "./settingsSections"
+import { visibleNavItems, type SettingsSection } from "./settingsSections"
 import { SettingsSecondaryNavbar } from "./SettingsSecondaryNavbar"
 import { useSettingsSection } from "./useSettingsSection"
+
+/** Device Sync is dev-only (backend/infra rollout isn't approved yet): the same
+ * `import.meta.env.DEV`-gated `lazy()`-or-`null` pattern App.tsx uses for the
+ * Video Data page, so a production build never bundles or mounts this module. */
+const DeviceSyncSettings = import.meta.env.DEV
+  ? lazy(() => import("../../features/device-sync/components/DeviceSyncSettings").then((module) => ({ default: module.DeviceSyncSettings })))
+  : null
 
 /** While the Settings menu drawer is open (below 1440px): focus moves into it, Tab stays inside, Escape closes it, and focus returns to
  * the opener -- the shared modal-focus behavior. Mounted only while open, so the hook is active exactly then. */
@@ -44,7 +51,7 @@ export function SettingsPage() {
     setActiveSection(section)
     closeMenu()
   }
-  const activeLabelKey = NAV_ITEMS.find((item) => item.section === activeSection)?.labelKey
+  const activeLabelKey = visibleNavItems().find((item) => item.section === activeSection)?.labelKey
 
   return (
     <div className="settings-page">
@@ -69,6 +76,11 @@ export function SettingsPage() {
         {activeSection === "oshi" && <OshiSettings />}
         {activeSection === "notification" && <NotificationSettings />}
         {activeSection === "display" && <DisplaySettings />}
+        {activeSection === "deviceSync" && DeviceSyncSettings && (
+          <Suspense fallback={null}>
+            <DeviceSyncSettings />
+          </Suspense>
+        )}
       </div>
     </div>
   )

@@ -2754,3 +2754,373 @@
 .push-permission-notice__action:hover {
   border-color: var(--oshi-text-1);
 }
+
+/* ============ Device Sync (裝置同步) ============
+   PcDeviceSync.tsx and MobileDeviceSync.tsx/AndroidBrowserGuidance.tsx/IosSafariGuidance.tsx are deliberately
+   SEPARATE component trees, never one component reused at a narrower width -- "mobile UX is not a 1:1 desktop
+   copy" (explicit requirement). Their class names never overlap (device-sync-page--pc vs --mobile vs --guidance,
+   device-sync-devices-* vs device-sync-devices-compact-*), so there is no shared rule here that reshapes one
+   into the other; each gets its own rules below. PairingCodeInput's device-sync-code-* classes are the one
+   deliberate exception (shared JSX, see that component's own docstring): a plain label+input+button has no
+   inherent desktop/mobile shape to get wrong. */
+
+.device-sync-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  /* Caps growth on 2K/4K (spec: "layout does not become excessively wide") -- a form/list page reads worse
+     stretched edge-to-edge than Settings' other, denser pages (e.g. the Favorites grid, which fills width with
+     more grid columns instead). */
+  max-width: 640px;
+}
+
+.device-sync-section-title {
+  margin: 0 0 var(--space-3);
+  color: var(--oshi-text-1);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.device-sync-this-device,
+.device-sync-guidance-message,
+.device-sync-onboarding-hint,
+.device-sync-empty {
+  margin: 0;
+  color: var(--oshi-text-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.device-sync-onboarding {
+  padding: var(--space-4);
+  border: 1px dashed var(--oshi-border);
+  border-radius: var(--radius-sm);
+  background: var(--oshi-surface-2);
+}
+
+/* Device Sync's buttons deliberately use the SAME plain-button treatment already established in this exact file
+   for a Settings-page action button (.pwa-install-button, Display Settings' own Install row: height 40px, 4px
+   radius, a neutral rgba(0,0,0,0.2) fill, --oshi-border, 13px/600) -- not a new accent-filled style. "Primary"
+   emphasis (Show QR Code / Scan QR Code / Enter sync code's submit) is conveyed the same way
+   .notification-save-button already conveys it next to .notification-action-button in this same file: a
+   stronger neutral border and heavier font-weight, never a filled brand color. No new color is introduced here. */
+.device-sync-primary-button,
+.device-sync-secondary-button {
+  appearance: none;
+  height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.device-sync-primary-button {
+  border: 1px solid var(--oshi-text-3);
+  color: var(--oshi-text-1);
+  font-weight: 700;
+}
+
+.device-sync-primary-button:hover {
+  border-color: var(--oshi-text-1);
+}
+
+.device-sync-primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.device-sync-secondary-button {
+  border: 1px solid var(--oshi-border);
+  color: var(--oshi-text-2);
+  font-weight: 600;
+}
+
+.device-sync-secondary-button:hover {
+  border-color: var(--oshi-text-3);
+  color: var(--oshi-text-1);
+}
+
+.device-sync-pairing-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--oshi-border);
+  border-radius: var(--radius-sm);
+  background: var(--oshi-surface-2);
+}
+
+.device-sync-qr {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.device-sync-human-code {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--oshi-text-1);
+}
+
+/* ---- Shared code-entry form (PairingCodeInput.tsx) -- the one intentionally shared presentation piece ---- */
+
+.device-sync-code-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.device-sync-code-label {
+  flex: 1 1 160px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 13px;
+  color: var(--oshi-text-2);
+}
+
+/* Matches .oshi-settings__search's own border/radius/surface tokens (the existing plain-text-input convention)
+   -- height 40px to line up with this same form's submit button; monospace/uppercase/letter-spacing is a
+   content transform (the code's own format), not a size/color deviation. */
+.device-sync-code-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 40px;
+  margin-top: var(--space-1);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--oshi-border);
+  border-radius: 4px;
+  background: var(--oshi-surface-1);
+  color: var(--oshi-text-1);
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Same treatment as .device-sync-primary-button (this is the form's own primary action) -- kept as its own rule
+   only because PairingCodeInput.tsx is the one component shared verbatim between PC and Mobile. */
+.device-sync-code-submit {
+  appearance: none;
+  height: 40px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--oshi-text-3);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--oshi-text-1);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.device-sync-code-submit:hover {
+  border-color: var(--oshi-text-1);
+}
+
+.device-sync-code-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ---- Desktop connected-devices list (ConnectedDevicesList.tsx) ---- */
+
+.device-sync-devices-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device-sync-devices-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--oshi-border);
+  border-radius: var(--radius-sm);
+  background: var(--oshi-surface-2);
+}
+
+.device-sync-devices-label {
+  color: var(--oshi-text-1);
+  font-size: 14px;
+}
+
+.device-sync-devices-current {
+  color: var(--oshi-text-3);
+  font-size: 12px;
+}
+
+.device-sync-devices-revoke {
+  appearance: none;
+  height: 40px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--oshi-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--oshi-text-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.device-sync-devices-revoke:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+/* ---- Mobile compact connected-devices list (ConnectedDevicesCompactList.tsx) -- a separate, taller,
+   full-width-tap-target layout, not the desktop row reused narrower. ---- */
+
+.device-sync-devices-compact-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device-sync-devices-compact-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--oshi-border);
+  border-radius: var(--radius-sm);
+  background: var(--oshi-surface-2);
+}
+
+.device-sync-devices-compact-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device-sync-devices-compact-name {
+  color: var(--oshi-text-1);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.device-sync-devices-compact-revoke {
+  appearance: none;
+  height: 40px;
+  width: 100%;
+  border: 1px solid var(--oshi-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--oshi-text-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.device-sync-devices-compact-revoke:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+/* ---- Mobile QR scanner (QrCodeScanner.tsx) ---- */
+
+/* Same neutral primary-button treatment as .device-sync-primary-button -- mobile's main action is still a plain
+   Settings button, not a special "app" CTA. Full width is a layout choice (mobile only), not a new visual style. */
+.device-sync-scan-button {
+  appearance: none;
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--oshi-text-3);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--oshi-text-1);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.device-sync-scan-button:hover {
+  border-color: var(--oshi-text-1);
+}
+
+.device-sync-scan-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.device-sync-scan-fallback {
+  margin: 0;
+  color: var(--oshi-text-2);
+  font-size: 13px;
+}
+
+.device-sync-scan-viewport {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: #000;
+}
+
+.device-sync-scan-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A pure pixel-sampling buffer for the jsqr fallback path -- never meant to be seen; getImageData works on a
+   display:none canvas exactly the same as a visible one. */
+.device-sync-scan-canvas {
+  display: none;
+}
+
+.device-sync-scan-cancel {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* ---- Narrow widths: full-bleed page, no fixed max-width, touch-sized controls stay full-width ---- */
+@media (max-width: 767px) {
+  .device-sync-page {
+    max-width: none;
+  }
+
+  .device-sync-primary-button,
+  .device-sync-secondary-button {
+    width: 100%;
+  }
+
+  .device-sync-code-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* flex: 1 1 160px's 160px basis is a WIDTH hint for the row layout above -- in this column layout flex-basis
+     resolves against the cross axis (height), so without this reset the label alone would claim a 160px-tall
+     flex item and push the input/button pair down by that same empty gap. */
+  .device-sync-code-label {
+    flex: 0 0 auto;
+  }
+
+  .device-sync-code-submit {
+    width: 100%;
+  }
+}

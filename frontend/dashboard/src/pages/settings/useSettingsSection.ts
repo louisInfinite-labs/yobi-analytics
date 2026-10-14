@@ -2,11 +2,16 @@ import { useCallback, useSyncExternalStore } from "react"
 import type { SettingsSection } from "./SettingsSecondaryNavbar"
 
 const SEARCH_PARAM = "section"
-const VALID_SECTIONS: readonly SettingsSection[] = ["myOshi", "oshi", "notification", "display"]
+const VALID_SECTIONS: readonly SettingsSection[] = ["myOshi", "oshi", "notification", "display", "deviceSync"]
 const DEFAULT_SECTION: SettingsSection = "oshi"
 
+/** Device Sync is dev-only (see settingsSections.ts's visibleNavItems): even a
+ * manually crafted `?section=deviceSync` URL must not resolve to it in a
+ * production build, so this is checked here too, not just by hiding the nav
+ * button. */
 function isSettingsSection(value: string | null): value is SettingsSection {
-  return value !== null && (VALID_SECTIONS as readonly string[]).includes(value)
+  if (value === null || !(VALID_SECTIONS as readonly string[]).includes(value)) return false
+  return value !== "deviceSync" || import.meta.env.DEV
 }
 
 function readSection(): SettingsSection {

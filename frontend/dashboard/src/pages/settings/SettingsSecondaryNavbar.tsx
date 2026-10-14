@@ -2,7 +2,7 @@ import { useRef, type Ref } from "react"
 import { X } from "lucide-react"
 import { useLocale } from "../../shared/i18n/hooks/useLocale"
 import { t } from "../../shared/i18n/translations"
-import { NAV_ITEMS, type SettingsSection } from "./settingsSections"
+import { visibleNavItems, type SettingsSection } from "./settingsSections"
 
 export type { SettingsSection }
 
@@ -63,7 +63,7 @@ export function SettingsSecondaryNavbar({
           <X size={20} aria-hidden="true" />
         </button>
       </div>
-      {NAV_ITEMS.map((item) => (
+      {visibleNavItems().map((item) => (
         <button
           key={item.section}
           type="button"

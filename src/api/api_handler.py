@@ -69,6 +69,10 @@ from api import read_api
 from api import remote_config_api
 from stores import notification_slot_store
 from stores import remote_config_store
+from api import pairing_token_api
+from api import sync_profile_api
+from stores import pairing_token_store
+from stores import sync_profile_store
 
 # Roadmap 4.5: only a route that authors config for an arbitrary clientId
 # (or reveals aggregate data across every client) needs this — a route
@@ -96,6 +100,8 @@ _CLIENT_ERROR_TYPES = (
     notification_dispatch.ClientError,
     live_reminder.ClientError,
     push_sender.InvalidSubscriptionError,
+    pairing_token_api.PairingError,
+    sync_profile_api.SyncProfileError,
 )
 
 
@@ -420,6 +426,107 @@ def _handle_post_client_credential(event: dict[str, Any]) -> dict[str, Any]:
     return {"clientId": client_id, "clientSecret": secret}
 
 
+def _handle_post_pairing_session(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: a device creates a new Device Sync pairing session (the QR + human code a second device will consume.
+
+    `profileId` in the body is optional: present when an already-paired
+    device is inviting a second one (attach to MY profile); absent when two
+    fresh, unpaired devices are establishing a Sync Profile for the first
+    time (the consume step mints one). The raw token/code are returned
+    ONLY in this response — only their hashes are ever persisted
+    (pairing_token_store.py), the same way client_credential_api.py's
+    secret is handled.
+    """
+    body = _json_body(event)
+    device_id = pairing_token_api.parse_device_id(body.get("deviceId"))
+    _require_client_secret(event, device_id)
+    record = pairing_token_api.create_pairing_session(body)
+    pairing_token_store.create_pairing_session(record)
+    return {"token": record["token"], "humanCode": record["humanCode"], "expiresAt": record["expiresAt"]}
+
+
+def _handle_post_pairing_consume(event: dict[str, Any]) -> dict[str, Any]:
+    """A joining device redeems a QR-scanned token or a typed human code, attaching itself to a Sync Profile.
+
+    No X-Client-Secret check: possession of the one-time token/code itself
+    (scanned from the inviting device's screen, or typed from it) is this
+    route's whole trust model, the same "whoever can act on it first/at all
+    is treated as authorized" posture client_credential_api.py's own
+    docstring already accepts for clientId registration — there is no
+    account system underneath either one. A session that doesn't resolve
+    (unknown, expired, or already consumed) and a losing race on the
+    atomic consume step are both reported as the same single, generic
+    error, so neither leaks which specific reason applies.
+    """
+    body = _json_body(event)
+    parsed = pairing_token_api.parse_consume_request(body)
+    session = pairing_token_store.get_live_session_by_token_hash(
+        parsed["lookupHash"]
+    ) if parsed["usedToken"] else pairing_token_store.get_live_session_by_code_hash(parsed["lookupHash"])
+    if session is None:
+        raise pairing_token_api.PairingError("This pairing code is invalid or has expired")
+
+    profile_id = session.get("profileId")
+    if profile_id is None:
+        profile_record = sync_profile_api.new_profile_record()
+        sync_profile_store.create_profile(profile_record)
+        profile_id = profile_record["profileId"]
+
+    if not pairing_token_store.mark_consumed(session["tokenHash"], resolved_profile_id=profile_id):
+        raise pairing_token_api.PairingError("This pairing code is invalid or has expired")
+
+    device_record = sync_profile_api.attach_device_record(
+        profile_id=profile_id,
+        device_id=parsed["deviceId"],
+        device_label=parsed["deviceLabel"],
+        device_type=parsed["deviceType"],
+    )
+    sync_profile_store.attach_device(device_record)
+    return {"profileId": profile_id}
+
+
+def _handle_get_device_sync_profile(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: which Sync Profile (if any) this device currently belongs to. `profileId: null` means solo/unpaired."""
+    device_id = pairing_token_api.parse_device_id(_merged_params(event).get("deviceId"))
+    _require_client_secret(event, device_id)
+    return {"deviceId": device_id, "profileId": sync_profile_store.get_profile_id_for_device(device_id)}
+
+
+def _handle_get_device_sync_siblings(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: every device sharing this device's Sync Profile (the Connected Devices list), including itself.
+
+    An unpaired device (no profile) gets an empty list rather than an
+    error — "not connected to anything yet" is this route's normal empty
+    state, not a client mistake.
+    """
+    device_id = pairing_token_api.parse_device_id(_merged_params(event).get("deviceId"))
+    _require_client_secret(event, device_id)
+    profile_id = sync_profile_store.get_profile_id_for_device(device_id)
+    if profile_id is None:
+        return {"profileId": None, "devices": []}
+    return {"profileId": profile_id, "devices": sync_profile_store.list_devices(profile_id)}
+
+
+def _handle_delete_device_sync_sibling(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: revoke one OTHER device from the caller's own Sync Profile (never a bulk "remove everyone" action).
+
+    The caller (`deviceId` path param, proven via X-Client-Secret) must
+    itself currently belong to a Sync Profile, and the target
+    (`targetDeviceId`) must belong to that SAME profile — revoking a device
+    from a profile the caller isn't even in is refused, not silently
+    treated as already-done.
+    """
+    params = _merged_params(event)
+    device_id = pairing_token_api.parse_device_id(params.get("deviceId"))
+    target_device_id = pairing_token_api.parse_device_id(params.get("targetDeviceId"))
+    _require_client_secret(event, device_id)
+    profile_id = sync_profile_store.get_profile_id_for_device(device_id)
+    if profile_id is None or not sync_profile_store.device_belongs_to_profile(profile_id, target_device_id):
+        raise pairing_token_api.PairingError("targetDeviceId is not part of this device's Sync Profile")
+    sync_profile_store.delete_device(profile_id, target_device_id)
+    return {"profileId": profile_id, "deviceId": target_device_id, "deleted": True}
+
+
 def _handle_get_admin_heartbeat_stats(event: dict[str, Any]) -> dict[str, Any]:
     """Admin-only aggregate: how many distinct clients have ever sent a heartbeat, and how many are online now."""
     records = heartbeat_store.list_all()
@@ -477,6 +584,11 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "DELETE /clients/{clientId}/creator-reminder/{creatorId}/{scope}": _handle_delete_creator_reminder,
     "PUT /clients/{clientId}/stream-notification-override/{videoId}": _handle_put_stream_notification_override,
     "DELETE /clients/{clientId}/stream-notification-override/{videoId}": _handle_delete_stream_notification_override,
+    "POST /sync/pairing-sessions": _handle_post_pairing_session,
+    "POST /sync/pairing-sessions/consume": _handle_post_pairing_consume,
+    "GET /sync/devices/{deviceId}/profile": _handle_get_device_sync_profile,
+    "GET /sync/devices/{deviceId}/siblings": _handle_get_device_sync_siblings,
+    "DELETE /sync/devices/{deviceId}/siblings/{targetDeviceId}": _handle_delete_device_sync_sibling,
     "GET /admin/heartbeat-stats": _handle_get_admin_heartbeat_stats,
 }
 

@@ -142,11 +142,11 @@ describe("Settings menu drawer (below 1440px)", () => {
     expect(controls[0]).toHaveFocus()
   })
 
-  it("the drawer is the one persistent nav element at every width: the same labelled <nav> holds the four sections", () => {
+  it("the drawer is the one persistent nav element at every width: the same labelled <nav> holds the five sections", () => {
     renderSettingsPage()
 
     expect(drawer().tagName).toBe("NAV")
-    expect(Array.from(drawer().querySelectorAll(".settings-secondary-navbar__link"))).toHaveLength(4)
+    expect(Array.from(drawer().querySelectorAll(".settings-secondary-navbar__link"))).toHaveLength(5)
   })
 
   it("the menu labels follow the language (zh-TW)", () => {

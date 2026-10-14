@@ -320,3 +320,111 @@ resource "aws_dynamodb_table" "video_master" {
 
   deletion_protection_enabled = true
 }
+
+# Device Sync (src/stores/pairing_token_store.py): one item per pairing session, keyed by tokenHash
+# (the QR's own secret, hashed -- never the raw value). humanCodeHash is looked up via the GSI below so
+# a scanned QR and a typed code both resolve to the same session item. expiresAt is a TTL attribute:
+# background cleanup only, same role as history_execution_lock's ttlAt -- the store's own
+# get_live_session_by_* functions check it directly rather than trusting TTL deletion to be instant.
+# consumed/consumedAt/profileId/createdByDeviceId are ordinary schemaless attributes.
+resource "aws_dynamodb_table" "pairing_tokens" {
+  name         = "YobiPairingTokens"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "tokenHash"
+
+  attribute {
+    name = "tokenHash"
+    type = "S"
+  }
+
+  attribute {
+    name = "humanCodeHash"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "humanCodeHash-index"
+    hash_key        = "humanCodeHash"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
+
+  on_demand_throughput {
+    max_read_request_units  = 200
+    max_write_request_units = 100
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  deletion_protection_enabled = true
+}
+
+# Device Sync (src/stores/sync_profile_store.py): one bare item per Sync Profile -- {profileId, createdAt}.
+# Carries no preference data of its own; synced preference VALUES reuse the existing remote_config
+# table/routes with profileId in place of a lone device's own clientId (see api_handler.py's /sync/*
+# routes' own module-level comment).
+resource "aws_dynamodb_table" "sync_profiles" {
+  name         = "YobiSyncProfiles"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "profileId"
+
+  attribute {
+    name = "profileId"
+    type = "S"
+  }
+
+  on_demand_throughput {
+    max_read_request_units  = 200
+    max_write_request_units = 100
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  deletion_protection_enabled = true
+}
+
+# Device Sync (src/stores/sync_profile_store.py): one item per device attached to a Sync Profile,
+# keyed by (profileId, deviceId). deviceId-index answers "which profile is MY deviceId attached to",
+# the reverse lookup every device needs before it can read/write its shared preferences --
+# without this GSI that would be an unbounded Scan across every profile's devices.
+resource "aws_dynamodb_table" "sync_devices" {
+  name         = "YobiSyncDevices"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "profileId"
+  range_key    = "deviceId"
+
+  attribute {
+    name = "profileId"
+    type = "S"
+  }
+
+  attribute {
+    name = "deviceId"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "deviceId-index"
+    hash_key        = "deviceId"
+    projection_type = "ALL"
+  }
+
+  on_demand_throughput {
+    max_read_request_units  = 200
+    max_write_request_units = 100
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  deletion_protection_enabled = true
+}

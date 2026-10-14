@@ -91,6 +91,28 @@ export type TranslationKey =
   | "settingsSecondaryNavbar.oshiSettings"
   | "settingsSecondaryNavbar.notificationSettings"
   | "settingsSecondaryNavbar.displaySettings"
+  | "settingsSecondaryNavbar.deviceSync"
+  | "deviceSync.title"
+  | "deviceSync.pageDescription"
+  | "deviceSync.thisDevice"
+  | "deviceSync.statusSynced"
+  | "deviceSync.statusSolo"
+  | "deviceSync.connectAnother"
+  | "deviceSync.showQr"
+  | "deviceSync.regenerate"
+  | "deviceSync.joinExisting"
+  | "deviceSync.enterCode"
+  | "deviceSync.connectedDevices"
+  | "deviceSync.noDevices"
+  | "deviceSync.thisDeviceBadge"
+  | "deviceSync.revoke"
+  | "deviceSync.scanQr"
+  | "deviceSync.cameraUnavailable"
+  | "deviceSync.generateCode"
+  | "deviceSync.onboardingTitle"
+  | "deviceSync.onboardingHint"
+  | "deviceSync.installFirstAndroid"
+  | "deviceSync.installFirstIos"
   | "aboutSecondaryNavbar.title"
   | "aboutSecondaryNavbar.navAriaLabel"
   | "myOshiSettings.selectAria"
@@ -349,6 +371,28 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "settingsSecondaryNavbar.oshiSettings": "收藏名單",
     "settingsSecondaryNavbar.notificationSettings": "推送通知(直播 / 新片)",
     "settingsSecondaryNavbar.displaySettings": "顯示設定",
+    "settingsSecondaryNavbar.deviceSync": "裝置同步",
+    "deviceSync.title": "裝置同步",
+    "deviceSync.pageDescription": "透過 QR Code 或同步代碼，在手機與電腦之間同步你的 OshiYobi 設定。",
+    "deviceSync.thisDevice": "此裝置",
+    "deviceSync.statusSynced": "同步狀態：已連接",
+    "deviceSync.statusSolo": "尚未連接其他裝置",
+    "deviceSync.connectAnother": "連接手機",
+    "deviceSync.showQr": "顯示 QR Code",
+    "deviceSync.regenerate": "重新產生",
+    "deviceSync.joinExisting": "已有同步設定？",
+    "deviceSync.enterCode": "輸入同步代碼",
+    "deviceSync.connectedDevices": "已連接裝置",
+    "deviceSync.noDevices": "尚無已連接的裝置",
+    "deviceSync.thisDeviceBadge": "（此裝置）",
+    "deviceSync.revoke": "中斷連接",
+    "deviceSync.scanQr": "掃描 QR Code",
+    "deviceSync.cameraUnavailable": "無法使用相機，請改用同步代碼",
+    "deviceSync.generateCode": "產生同步代碼",
+    "deviceSync.onboardingTitle": "已有其他裝置？",
+    "deviceSync.onboardingHint": "掃描 QR Code 或輸入同步代碼，即可帶入已同步的設定。",
+    "deviceSync.installFirstAndroid": "為避免安裝 OshiYobi 後需要重新設定裝置同步，建議先安裝 OshiYobi，再進行跨裝置同步。",
+    "deviceSync.installFirstIos": "為避免安裝到主畫面後需要重新設定同步，請先將 OshiYobi 加到主畫面，再於安裝版中設定裝置同步。",
     "aboutSecondaryNavbar.title": "關於",
     "aboutSecondaryNavbar.navAriaLabel": "關於導覽",
     "oshiSettings.searchPlaceholder": "搜尋成員",
@@ -608,6 +652,28 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "aboutSecondaryNavbar.title": "About",
     "aboutSecondaryNavbar.navAriaLabel": "About navigation",
     "settingsSecondaryNavbar.displaySettings": "Display",
+    "settingsSecondaryNavbar.deviceSync": "Device Sync",
+    "deviceSync.title": "Device Sync",
+    "deviceSync.pageDescription": "Sync your OshiYobi settings between your phone and computer with a QR code or sync code.",
+    "deviceSync.thisDevice": "This device",
+    "deviceSync.statusSynced": "Sync status: connected",
+    "deviceSync.statusSolo": "Not connected to any other device",
+    "deviceSync.connectAnother": "Connect a phone",
+    "deviceSync.showQr": "Show QR Code",
+    "deviceSync.regenerate": "Regenerate",
+    "deviceSync.joinExisting": "Already have a synced setup?",
+    "deviceSync.enterCode": "Enter sync code",
+    "deviceSync.connectedDevices": "Connected devices",
+    "deviceSync.noDevices": "No connected devices yet",
+    "deviceSync.thisDeviceBadge": "(this device)",
+    "deviceSync.revoke": "Disconnect",
+    "deviceSync.scanQr": "Scan QR Code",
+    "deviceSync.cameraUnavailable": "Camera unavailable — use the sync code instead",
+    "deviceSync.generateCode": "Generate sync code",
+    "deviceSync.onboardingTitle": "Already have another device?",
+    "deviceSync.onboardingHint": "Scan a QR code or enter a sync code to bring in your synced settings.",
+    "deviceSync.installFirstAndroid": "To avoid having to set up Device Sync again after installing, install OshiYobi first, then set up cross-device sync.",
+    "deviceSync.installFirstIos": "To avoid having to set up sync again after adding to your Home Screen, add OshiYobi to your Home Screen first, then set up Device Sync there.",
     "oshiSettings.searchPlaceholder": "Search creators",
     "oshiSettings.noResults": "No creators found",
     "oshiSettings.addFavoriteAria": "Add {{name}} to favorites",
@@ -865,6 +931,28 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "aboutSecondaryNavbar.navAriaLabel": "概要ナビゲーション",
     "settingsSecondaryNavbar.notificationSettings": "通知設定(配信 / 新着動画)",
     "settingsSecondaryNavbar.displaySettings": "表示設定",
+    "settingsSecondaryNavbar.deviceSync": "デバイス同期",
+    "deviceSync.title": "デバイス同期",
+    "deviceSync.pageDescription": "QRコードまたは同期コードで、スマートフォンとパソコンの間で OshiYobi の設定を同期します。",
+    "deviceSync.thisDevice": "このデバイス",
+    "deviceSync.statusSynced": "同期状態：接続済み",
+    "deviceSync.statusSolo": "他のデバイスと未接続",
+    "deviceSync.connectAnother": "スマートフォンを接続",
+    "deviceSync.showQr": "QRコードを表示",
+    "deviceSync.regenerate": "再生成",
+    "deviceSync.joinExisting": "既に同期設定がありますか？",
+    "deviceSync.enterCode": "同期コードを入力",
+    "deviceSync.connectedDevices": "接続済みデバイス",
+    "deviceSync.noDevices": "接続済みのデバイスはありません",
+    "deviceSync.thisDeviceBadge": "（このデバイス）",
+    "deviceSync.revoke": "切断",
+    "deviceSync.scanQr": "QRコードをスキャン",
+    "deviceSync.cameraUnavailable": "カメラを使用できません。同期コードをご利用ください",
+    "deviceSync.generateCode": "同期コードを生成",
+    "deviceSync.onboardingTitle": "他のデバイスをお持ちですか？",
+    "deviceSync.onboardingHint": "QRコードをスキャンするか同期コードを入力すると、同期済みの設定が反映されます。",
+    "deviceSync.installFirstAndroid": "インストール後に装置同期を再設定する手間を避けるため、先に OshiYobi をインストールしてから、デバイス間同期を設定してください。",
+    "deviceSync.installFirstIos": "ホーム画面に追加した後に同期を再設定する手間を避けるため、先に OshiYobi をホーム画面に追加してから、インストール版で装置同期を設定してください。",
     "oshiSettings.searchPlaceholder": "メンバーを検索",
     "oshiSettings.noResults": "該当するメンバーが見つかりません",
     "oshiSettings.addFavoriteAria": "{{name}}を推しに追加",

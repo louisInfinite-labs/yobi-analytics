@@ -17,6 +17,10 @@ from api import read_api
 from api import remote_config_api
 from stores import notification_slot_store
 from stores import remote_config_store
+from api import pairing_token_api
+from api import sync_profile_api
+from stores import pairing_token_store
+from stores import sync_profile_store
 from api.api_handler import lambda_handler
 
 
@@ -1287,3 +1291,238 @@ def test_get_recent_streams_maps_every_holodex_failure_to_a_safe_503(monkeypatch
     assert _body(response)["error"] == "Live stream data is temporarily unavailable"
     assert str(exc) not in response["body"]
     assert str(exc) in capsys.readouterr().out
+
+
+@pytest.fixture
+def device_secret(monkeypatch):
+    """Register a client secret for deviceId 'd1' so Device Sync route tests can supply a matching X-Client-Secret header."""
+    secret = "d1-secret"
+    stored_hash = client_credential_api.hash_secret(secret)
+    monkeypatch.setattr(
+        client_credential_store, "get_secret_hash", lambda client_id: stored_hash if client_id == "d1" else None
+    )
+    return secret
+
+
+def test_post_pairing_session_persists_a_hashed_session_and_returns_raw_values(monkeypatch, device_secret):
+    stored = {}
+    monkeypatch.setattr(pairing_token_store, "create_pairing_session", lambda record: stored.update(record))
+
+    response = lambda_handler(
+        _event(
+            "POST /sync/pairing-sessions",
+            body=json.dumps({"deviceId": "d1"}),
+            headers={"X-Client-Secret": device_secret},
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    body = _body(response)
+    assert len(body["token"]) > 30
+    assert "-" in body["humanCode"]
+    assert isinstance(body["expiresAt"], int)
+    # Only hashes were persisted -- never the raw token/code this response just returned.
+    assert stored["tokenHash"] != body["token"]
+    assert stored["humanCodeHash"] != body["humanCode"]
+    assert stored["profileId"] is None
+    assert stored["createdByDeviceId"] == "d1"
+
+
+def test_post_pairing_session_without_a_matching_client_secret_returns_403(monkeypatch):
+    monkeypatch.setattr(client_credential_store, "get_secret_hash", lambda client_id: None)
+
+    response = lambda_handler(_event("POST /sync/pairing-sessions", body=json.dumps({"deviceId": "d1"})), None)
+
+    assert response["statusCode"] == 403
+
+
+def test_post_pairing_consume_with_a_fresh_token_mints_a_new_profile(monkeypatch):
+    session = {
+        "tokenHash": pairing_token_api.hash_pairing_value("tok-123"),
+        "humanCodeHash": pairing_token_api.hash_pairing_value("ABCDEFGH"),
+        "profileId": None,
+        "consumed": False,
+        "expiresAt": 9999999999,
+    }
+    created_profiles = []
+    attached = {}
+    monkeypatch.setattr(pairing_token_store, "get_live_session_by_token_hash", lambda h: dict(session) if h == session["tokenHash"] else None)
+    monkeypatch.setattr(pairing_token_store, "mark_consumed", lambda token_hash, *, resolved_profile_id: True)
+    monkeypatch.setattr(sync_profile_store, "create_profile", lambda record: created_profiles.append(record))
+    monkeypatch.setattr(sync_profile_store, "attach_device", lambda record: attached.update(record))
+
+    response = lambda_handler(
+        _event(
+            "POST /sync/pairing-sessions/consume",
+            body=json.dumps({"token": "tok-123", "deviceId": "d2", "deviceLabel": "Android PWA", "deviceType": "android"}),
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    body = _body(response)
+    assert len(created_profiles) == 1
+    assert body["profileId"] == created_profiles[0]["profileId"]
+    assert attached["deviceId"] == "d2"
+    assert attached["profileId"] == body["profileId"]
+
+
+def test_post_pairing_consume_with_a_code_attaches_to_the_sessions_existing_profile(monkeypatch):
+    session = {
+        "tokenHash": pairing_token_api.hash_pairing_value("tok-456"),
+        "humanCodeHash": pairing_token_api.hash_pairing_value("ZZZZYYYY"),
+        "profileId": "profile-existing",
+        "consumed": False,
+        "expiresAt": 9999999999,
+    }
+    attached = {}
+    monkeypatch.setattr(pairing_token_store, "get_live_session_by_code_hash", lambda h: dict(session) if h == session["humanCodeHash"] else None)
+    monkeypatch.setattr(pairing_token_store, "mark_consumed", lambda token_hash, *, resolved_profile_id: True)
+    monkeypatch.setattr(sync_profile_store, "create_profile", lambda record: (_ for _ in ()).throw(AssertionError("must not mint a new profile")))
+    monkeypatch.setattr(sync_profile_store, "attach_device", lambda record: attached.update(record))
+
+    response = lambda_handler(
+        _event(
+            "POST /sync/pairing-sessions/consume",
+            body=json.dumps({"code": "zzzz-yyyy", "deviceId": "d3", "deviceLabel": "Desktop Chrome", "deviceType": "desktop"}),
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert _body(response)["profileId"] == "profile-existing"
+    assert attached["profileId"] == "profile-existing"
+
+
+def test_post_pairing_consume_rejects_an_unknown_code(monkeypatch):
+    monkeypatch.setattr(pairing_token_store, "get_live_session_by_code_hash", lambda h: None)
+
+    response = lambda_handler(
+        _event("POST /sync/pairing-sessions/consume", body=json.dumps({"code": "AAAA-AAAA", "deviceId": "d1", "deviceLabel": "x", "deviceType": "desktop"})),
+        None,
+    )
+
+    assert response["statusCode"] == 400
+
+
+def test_post_pairing_consume_rejects_a_replayed_already_consumed_session(monkeypatch):
+    session = {
+        "tokenHash": pairing_token_api.hash_pairing_value("tok-789"),
+        "humanCodeHash": "irrelevant",
+        "profileId": "profile-x",
+        "consumed": False,
+        "expiresAt": 9999999999,
+    }
+    monkeypatch.setattr(pairing_token_store, "get_live_session_by_token_hash", lambda h: dict(session))
+    # The conditional update loses the race / finds it already consumed.
+    monkeypatch.setattr(pairing_token_store, "mark_consumed", lambda token_hash, *, resolved_profile_id: False)
+
+    response = lambda_handler(
+        _event("POST /sync/pairing-sessions/consume", body=json.dumps({"token": "tok-789", "deviceId": "d1", "deviceLabel": "x", "deviceType": "desktop"})),
+        None,
+    )
+
+    assert response["statusCode"] == 400
+
+
+def test_post_pairing_consume_rejects_both_token_and_code_present():
+    response = lambda_handler(
+        _event(
+            "POST /sync/pairing-sessions/consume",
+            body=json.dumps({"token": "t", "code": "c", "deviceId": "d1", "deviceLabel": "x", "deviceType": "desktop"}),
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 400
+
+
+def test_get_device_sync_profile_returns_null_when_unattached(monkeypatch, device_secret):
+    monkeypatch.setattr(sync_profile_store, "get_profile_id_for_device", lambda device_id: None)
+
+    response = lambda_handler(
+        _event("GET /sync/devices/{deviceId}/profile", path={"deviceId": "d1"}, headers={"X-Client-Secret": device_secret}),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert _body(response) == {"deviceId": "d1", "profileId": None}
+
+
+def test_get_device_sync_profile_requires_a_matching_client_secret(monkeypatch):
+    monkeypatch.setattr(client_credential_store, "get_secret_hash", lambda client_id: None)
+    monkeypatch.setattr(sync_profile_store, "get_profile_id_for_device", lambda device_id: "profile-1")
+
+    response = lambda_handler(_event("GET /sync/devices/{deviceId}/profile", path={"deviceId": "d1"}), None)
+
+    assert response["statusCode"] == 403
+
+
+def test_get_device_sync_siblings_lists_every_device_in_the_profile(monkeypatch, device_secret):
+    monkeypatch.setattr(sync_profile_store, "get_profile_id_for_device", lambda device_id: "profile-1")
+    monkeypatch.setattr(
+        sync_profile_store,
+        "list_devices",
+        lambda profile_id: [{"deviceId": "d1", "deviceLabel": "Desktop Chrome"}, {"deviceId": "d2", "deviceLabel": "iPhone PWA"}]
+        if profile_id == "profile-1"
+        else [],
+    )
+
+    response = lambda_handler(
+        _event("GET /sync/devices/{deviceId}/siblings", path={"deviceId": "d1"}, headers={"X-Client-Secret": device_secret}),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    body = _body(response)
+    assert body["profileId"] == "profile-1"
+    assert [d["deviceId"] for d in body["devices"]] == ["d1", "d2"]
+
+
+def test_get_device_sync_siblings_returns_an_empty_list_when_unattached(monkeypatch, device_secret):
+    monkeypatch.setattr(sync_profile_store, "get_profile_id_for_device", lambda device_id: None)
+
+    response = lambda_handler(
+        _event("GET /sync/devices/{deviceId}/siblings", path={"deviceId": "d1"}, headers={"X-Client-Secret": device_secret}),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert _body(response) == {"profileId": None, "devices": []}
+
+
+def test_delete_device_sync_sibling_revokes_a_device_in_the_same_profile(monkeypatch, device_secret):
+    deleted = []
+    monkeypatch.setattr(sync_profile_store, "get_profile_id_for_device", lambda device_id: "profile-1")
+    monkeypatch.setattr(sync_profile_store, "device_belongs_to_profile", lambda profile_id, device_id: device_id == "d2")
+    monkeypatch.setattr(sync_profile_store, "delete_device", lambda profile_id, device_id: deleted.append((profile_id, device_id)))
+
+    response = lambda_handler(
+        _event(
+            "DELETE /sync/devices/{deviceId}/siblings/{targetDeviceId}",
+            path={"deviceId": "d1", "targetDeviceId": "d2"},
+            headers={"X-Client-Secret": device_secret},
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    assert _body(response) == {"profileId": "profile-1", "deviceId": "d2", "deleted": True}
+    assert deleted == [("profile-1", "d2")]
+
+
+def test_delete_device_sync_sibling_rejects_a_target_outside_the_callers_profile(monkeypatch, device_secret):
+    monkeypatch.setattr(sync_profile_store, "get_profile_id_for_device", lambda device_id: "profile-1")
+    monkeypatch.setattr(sync_profile_store, "device_belongs_to_profile", lambda profile_id, device_id: False)
+
+    response = lambda_handler(
+        _event(
+            "DELETE /sync/devices/{deviceId}/siblings/{targetDeviceId}",
+            path={"deviceId": "d1", "targetDeviceId": "someone-elses-device"},
+            headers={"X-Client-Secret": device_secret},
+        ),
+        None,
+    )
+
+    assert response["statusCode"] == 400

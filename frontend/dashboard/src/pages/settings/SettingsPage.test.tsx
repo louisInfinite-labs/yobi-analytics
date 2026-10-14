@@ -32,7 +32,7 @@ describe("SettingsPage navigation", () => {
 
     const nav = screen.getByRole("navigation", { name: "Settings navigation" })
     const labels = Array.from(nav.querySelectorAll(".settings-secondary-navbar__link")).map((item) => item.textContent)
-    expect(labels).toEqual(["Oshi Settings", "Favorites List", "Live/Video Notifications", "Display"])
+    expect(labels).toEqual(["Oshi Settings", "Favorites List", "Live/Video Notifications", "Display", "Device Sync"])
 
     expect(screen.getByRole("button", { name: "Favorites List" })).toHaveAttribute("aria-current", "page")
     expect(screen.getByRole("heading", { name: "My Favorites" })).toBeInTheDocument()
