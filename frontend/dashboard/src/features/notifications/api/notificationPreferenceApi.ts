@@ -10,6 +10,7 @@ import { getAllNotificationCreators } from "../model/notificationCreatorGrouping
 export const DEFAULT_DELIVERY_WINDOWS = [...DEFAULT_DELIVERY_SLOTS]
 
 const NOTIFICATION_LOCALE_SYNCED_KEY = "yobi.notificationLocaleSynced"
+const NOTIFICATION_TIME_ZONE_SYNCED_KEY = "yobi.notificationTimeZoneSynced"
 const NOTIFICATIONS_DISABLED_KEY = "yobi.notificationsDisabled"
 
 // Kept in module memory when storage itself fails after a confirmed write, so the OFF state still holds for the rest of this page
@@ -57,6 +58,31 @@ function markNotificationLocaleSynced(locale: string): void {
   }
 }
 
+/** The browser's IANA time zone ("Asia/Hong_Kong"): what the delivery times are local to. Read from the browser every time -- never from
+ * GPS / geolocation, which is never requested -- so a traveller's or a relocated device's zone is picked up as soon as it changes. */
+export function getBrowserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
+/** The time zone the backend last CONFIRMED (a successful preference write) for this browser, or null if never. Browser-local bookkeeping
+ * only: it lets the app notice that the browser now reports a different zone and re-send the preference, so the backend re-derives the
+ * delivery slots for the new zone while the user's LOCAL times stay exactly as chosen. */
+export function getSyncedNotificationTimeZone(): string | null {
+  try {
+    return window.localStorage.getItem(NOTIFICATION_TIME_ZONE_SYNCED_KEY)
+  } catch {
+    return null
+  }
+}
+
+function markNotificationTimeZoneSynced(timeZone: string): void {
+  try {
+    window.localStorage.setItem(NOTIFICATION_TIME_ZONE_SYNCED_KEY, timeZone)
+  } catch {
+    // Without the marker the next app start simply re-sends the preference once more.
+  }
+}
+
 /** The full notification preference this client stores (PUT .../notification-preference replaces the whole
  * item, so every writer must send everything). `newVideoCreatorOverride` carries the Settings per-creator
  * 新片 switches: an explicit true/false for every creator the Settings roster lists, so the backend delivers
@@ -65,9 +91,10 @@ function markNotificationLocaleSynced(locale: string): void {
  * are NOT listed here: the backend reads a creator with no entry as OFF (fail-closed), so leaving them out is how they stay silent.
  * `newVideoShortCreatorOverride` carries the members of the Short card: Short is a
  * content FORMAT with its own field (never a topic id), and a creator not enabled there is OFF, so with no Short card every
- * value is false. `deliveryWindows` are the fixed Japan Standard Time (Asia/Tokyo) half-hour slots new-video pushes are delivered
- * at -- always JST, never `notificationTimeZone` (which only governs quiet hours and reminders); every writer sends the user's
- * stored slots unless it is writing a PROPOSED selection that is not stored yet. */
+ * value is false. `deliveryWindows` are the half-hour LOCAL wall-clock times ("08:00") new-video pushes are delivered at, in the
+ * user's own `notificationTimeZone` (the browser's IANA zone, which also governs quiet hours and reminders): the backend validates the
+ * zone and does the conversion, nothing here is converted to Japan time or a UTC offset. Every writer sends the user's stored times
+ * unless it is writing a PROPOSED selection that is not stored yet. */
 export function buildNotificationPreference(
   enabled: boolean,
   newVideoEnabledCreatorIds: ReadonlySet<string>,
@@ -77,7 +104,7 @@ export function buildNotificationPreference(
   return {
     enabled,
     notificationLevel: "all",
-    notificationTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    notificationTimeZone: getBrowserTimeZone(),
     // The language of this client's push notifications (zh-TW / ja / en): follows the dashboard language, and is part of the
     // full preference so every writer (enable toggle, Settings switches, the language-change sync) carries it.
     notificationLocale: getLocale(),
@@ -120,6 +147,7 @@ function writePreference(
     body,
   }).then((result) => {
     markNotificationLocaleSynced(body.notificationLocale)
+    markNotificationTimeZoneSynced(body.notificationTimeZone)
     // Recorded as soon as the backend confirms, i.e. before the caller attempts the browser unsubscribe.
     markNotificationEnabledState(enabled)
     return result

@@ -74,17 +74,17 @@ describe("changing the selection while notifications are enabled (backend-first)
 
     let committed: boolean | undefined
     await act(async () => {
-      committed = await result.current.toggleSlot("12:30")
+      committed = await result.current.addSlot()
     })
 
     expect(committed).toBe(true)
     expect(save).toHaveBeenCalledTimes(1)
     expect(save.mock.calls[0][0]).toBe(true)
-    expect(save.mock.calls[0][3]).toEqual(["08:00", "12:30", "18:00"])
+    expect(save.mock.calls[0][3]).toEqual(["08:00", "12:00", "18:00"])
     expect(seenDuringWrite).toEqual(["08:00", "18:00"])
     expect(storedDuringWrite).toBeNull()
-    expect(result.current.slots).toEqual(["08:00", "12:30", "18:00"])
-    expect(stored()).toEqual(["08:00", "12:30", "18:00"])
+    expect(result.current.slots).toEqual(["08:00", "12:00", "18:00"])
+    expect(stored()).toEqual(["08:00", "12:00", "18:00"])
   })
 
   it("a rejected write leaves the selection (and storage) unchanged and raises the save-failed flag", async () => {
@@ -93,7 +93,7 @@ describe("changing the selection while notifications are enabled (backend-first)
 
     let committed: boolean | undefined
     await act(async () => {
-      committed = await result.current.slots.toggleSlot("12:30")
+      committed = await result.current.slots.addSlot()
     })
 
     expect(committed).toBe(false)
@@ -106,22 +106,22 @@ describe("changing the selection while notifications are enabled (backend-first)
     const { result } = renderHook(() => ({ slots: useDeliverySlots(), failed: useNotificationSaveFailed() }))
     save.mockRejectedValueOnce(new Error("HTTP 500"))
     await act(async () => {
-      await result.current.slots.toggleSlot("12:30")
+      await result.current.slots.addSlot()
     })
     expect(result.current.failed).toBe(true)
 
     await act(async () => {
-      await result.current.slots.toggleSlot("12:30")
+      await result.current.slots.addSlot()
     })
 
     expect(result.current.failed).toBe(false)
-    expect(result.current.slots.slots).toEqual(["08:00", "12:30", "18:00"])
+    expect(result.current.slots.slots).toEqual(["08:00", "12:00", "18:00"])
   })
 
   it("removing a slot sends the reduced selection", async () => {
     const { result } = renderHook(() => useDeliverySlots())
     await act(async () => {
-      await result.current.toggleSlot("08:00")
+      await result.current.removeSlot("08:00")
     })
     expect(save.mock.calls[0][3]).toEqual(["18:00"])
     expect(result.current.slots).toEqual(["18:00"])
@@ -132,20 +132,20 @@ describe("changing the selection while notifications are enabled (backend-first)
     reload()
     const { result } = renderHook(() => useDeliverySlots())
     await act(async () => {
-      await result.current.toggleSlot("05:00")
+      await result.current.addSlot()
     })
     expect(result.current.slots).toEqual(["01:00", "02:00", "03:00", "04:00"])
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(["01:00"]))
     reload()
     await act(async () => {
-      await result.current.toggleSlot("01:00")
+      await result.current.removeSlot("01:00")
     })
     expect(result.current.slots).toEqual(["01:00"])
     expect(save).not.toHaveBeenCalled()
   })
 
-  it("serializes two quick toggles: the second request is built from the first's committed result", async () => {
+  it("serializes two quick additions: the second request is built from the first's committed result", async () => {
     const { result } = renderHook(() => useDeliverySlots())
     let releaseFirst!: () => void
     save.mockImplementationOnce(() => new Promise<void>((resolve) => (releaseFirst = resolve)))
@@ -153,12 +153,12 @@ describe("changing the selection while notifications are enabled (backend-first)
     let first!: Promise<boolean>
     let second!: Promise<boolean>
     await act(async () => {
-      first = result.current.toggleSlot("09:00")
-      second = result.current.toggleSlot("10:00")
+      first = result.current.addSlot()
+      second = result.current.addSlot()
       await Promise.resolve()
     })
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
-    expect(save.mock.calls[0][3]).toEqual(["08:00", "09:00", "18:00"])
+    expect(save.mock.calls[0][3]).toEqual(["08:00", "12:00", "18:00"])
 
     await act(async () => {
       releaseFirst()
@@ -166,8 +166,56 @@ describe("changing the selection while notifications are enabled (backend-first)
     })
 
     expect(save).toHaveBeenCalledTimes(2)
-    expect(save.mock.calls[1][3]).toEqual(["08:00", "09:00", "10:00", "18:00"])
-    expect(result.current.slots).toEqual(["08:00", "09:00", "10:00", "18:00"])
+    expect(save.mock.calls[1][3]).toEqual(["08:00", "12:00", "18:00", "21:00"])
+    expect(result.current.slots).toEqual(["08:00", "12:00", "18:00", "21:00"])
+  })
+})
+
+describe("changing one chosen time", () => {
+  it("sends the proposed selection with the time moved, backend-first, and keeps the canonical 24-hour strings", async () => {
+    const { result } = renderHook(() => useDeliverySlots())
+    await act(async () => {
+      expect(await result.current.changeSlot("08:00", "07:30")).toBe(true)
+    })
+    expect(save.mock.calls[0][3]).toEqual(["07:30", "18:00"])
+    expect(result.current.slots).toEqual(["07:30", "18:00"])
+    expect(stored()).toEqual(["07:30", "18:00"])
+  })
+
+  it("refuses a time that is already chosen without any request (duplicates are impossible)", async () => {
+    const { result } = renderHook(() => useDeliverySlots())
+    await act(async () => {
+      await result.current.changeSlot("08:00", "18:00")
+    })
+    expect(save).not.toHaveBeenCalled()
+    expect(result.current.slots).toEqual(["08:00", "18:00"])
+  })
+
+  it("never stores a formatted string such as '8:00 AM': a value that is not a canonical half-hour time is refused", async () => {
+    const { result } = renderHook(() => useDeliverySlots())
+    await act(async () => {
+      await result.current.changeSlot("08:00", "8:00 AM")
+    })
+    expect(save).not.toHaveBeenCalled()
+    expect(stored()).toBeNull()
+  })
+
+  it("a removed extra time lets the next addition suggest it again, and the maximum is four", async () => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(["08:00", "12:00", "18:00", "21:00"]))
+    reload()
+    const { result } = renderHook(() => useDeliverySlots())
+    await act(async () => {
+      expect(await result.current.addSlot()).toBe(true) // refused (a no-op) at four: nothing is sent
+    })
+    expect(save).not.toHaveBeenCalled()
+    await act(async () => {
+      await result.current.removeSlot("21:00")
+    })
+    expect(result.current.slots).toEqual(["08:00", "12:00", "18:00"])
+    await act(async () => {
+      await result.current.addSlot()
+    })
+    expect(result.current.slots).toEqual(["08:00", "12:00", "18:00", "21:00"])
   })
 })
 
@@ -176,20 +224,20 @@ describe("changing the selection while notifications are not enabled in this bro
     vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue(status)
     const { result } = renderHook(() => useDeliverySlots())
     await act(async () => {
-      await result.current.toggleSlot("12:30")
+      await result.current.addSlot()
     })
     expect(save).not.toHaveBeenCalled()
-    expect(result.current.slots).toEqual(["08:00", "12:30", "18:00"])
-    expect(stored()).toEqual(["08:00", "12:30", "18:00"])
+    expect(result.current.slots).toEqual(["08:00", "12:00", "18:00"])
+    expect(stored()).toEqual(["08:00", "12:00", "18:00"])
   })
 
   it("commits locally when the push status cannot be read", async () => {
     vi.mocked(pushNotifications.getPushSubscriptionStatus).mockRejectedValue(new Error("no service worker"))
     const { result } = renderHook(() => useDeliverySlots())
     await act(async () => {
-      await result.current.toggleSlot("12:30")
+      await result.current.addSlot()
     })
     expect(save).not.toHaveBeenCalled()
-    expect(result.current.slots).toEqual(["08:00", "12:30", "18:00"])
+    expect(result.current.slots).toEqual(["08:00", "12:00", "18:00"])
   })
 })

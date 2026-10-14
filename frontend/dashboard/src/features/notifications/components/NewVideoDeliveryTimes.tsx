@@ -1,31 +1,36 @@
 import { useId, useState } from "react"
-import { Check, X } from "lucide-react"
+import { Button } from "antd"
+import { PlusIcon } from "@phosphor-icons/react"
+import { X } from "lucide-react"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
+import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { t } from "../../../shared/i18n/translations"
 import { useNotificationSaveFailed } from "../hooks/notificationSaveStatus"
 import { useDeliverySlots } from "../hooks/useDeliverySlots"
-import { ALL_DELIVERY_SLOTS, MAX_DELIVERY_SLOTS, MIN_DELIVERY_SLOTS } from "../model/deliverySlots"
+import { ALL_DELIVERY_SLOTS, formatDeliverySlot, MAX_DELIVERY_SLOTS, MIN_DELIVERY_SLOTS } from "../model/deliverySlots"
 
-/** Picks the (at most 4) fixed Japan Standard Time (Asia/Tokyo) half-hour times at which new-video pushes are delivered. */
+/** Picks the (1 to 4) half-hour times of the user's OWN day at which new-video pushes are delivered -- always their local clock, in
+ * their display format (24h / 12h). One dropdown per chosen time (default 08:00 and 18:00) and a "+" box to add another, up to the maximum.
+ * What is stored and sent is the canonical "HH:MM" local time plus the browser's IANA time zone; the backend does the conversion. */
 export function NewVideoDeliveryTimes() {
   const [locale] = useLocale()
-  const { slots, toggleSlot } = useDeliverySlots()
+  const [timeFormat] = useTimeFormat()
+  const { slots, addSlot, removeSlot, changeSlot } = useDeliverySlots()
   // The failure flag is page-wide (the member drawer raises it too): only this section's own failed change is shown here.
   const saveFailed = useNotificationSaveFailed()
   const [failedHere, setFailedHere] = useState(false)
   const titleId = useId()
 
-  const change = (slot: string) => void toggleSlot(slot).then((committed) => setFailedHere(!committed))
-
+  const track = (committed: Promise<boolean>) => void committed.then((done) => setFailedHere(!done))
   const atMax = slots.length >= MAX_DELIVERY_SLOTS
   const atMin = slots.length <= MIN_DELIVERY_SLOTS
 
   return (
-    <section className="notification-delivery-times" aria-labelledby={titleId}>
-      <h2 className="notification-delivery-times__title" id={titleId}>
+    <section className="notification-detail-section notification-delivery-times" aria-labelledby={titleId}>
+      <h3 className="notification-detail-section__title" id={titleId}>
         {t(locale, "notificationSettings.deliveryTimes.title")}
-      </h2>
-      <p className="notification-delivery-times__description">{t(locale, "notificationSettings.deliveryTimes.description")}</p>
+      </h3>
+      <p className="notification-detail-section__description">{t(locale, "notificationSettings.deliveryTimes.description")}</p>
 
       {saveFailed && failedHere && (
         <p className="notification-delivery-times__error" role="alert">
@@ -33,52 +38,47 @@ export function NewVideoDeliveryTimes() {
         </p>
       )}
 
-      <div className="notification-delivery-times__selection">
-        <ul className="notification-delivery-times__chips" aria-label={t(locale, "notificationSettings.deliveryTimes.selectedTimesLabel")}>
-          {slots.map((slot) => (
-            <li key={slot} className="notification-delivery-times__chip">
-              <span className="notification-delivery-times__chip-time">{slot}</span>
+      <ul className="notification-delivery-times__list" aria-label={t(locale, "notificationSettings.deliveryTimes.listAriaLabel")}>
+        {slots.map((slot, index) => (
+          <li key={slot} className="notification-delivery-times__item">
+            <select
+              className="notification-delivery-times__select"
+              aria-label={t(locale, "notificationSettings.deliveryTimes.timeAriaLabel", { index: String(index + 1) })}
+              value={slot}
+              onChange={(event) => track(changeSlot(slot, event.target.value))}
+            >
+              {ALL_DELIVERY_SLOTS.map((option) => (
+                // A time another row already uses is not selectable here, so duplicates cannot be picked at all.
+                <option key={option} value={option} disabled={option !== slot && slots.includes(option)}>
+                  {formatDeliverySlot(option, timeFormat)}
+                </option>
+              ))}
+            </select>
+            {!atMin && (
               <button
                 type="button"
-                className="notification-delivery-times__chip-remove"
-                aria-label={t(locale, "notificationSettings.deliveryTimes.removeAriaLabel", { time: slot })}
-                disabled={atMin}
-                onClick={() => change(slot)}
+                className="notification-delivery-times__remove"
+                aria-label={t(locale, "notificationSettings.deliveryTimes.removeAriaLabel", { time: formatDeliverySlot(slot, timeFormat) })}
+                onClick={() => track(removeSlot(slot))}
               >
                 <X size={14} aria-hidden="true" />
               </button>
-            </li>
-          ))}
-        </ul>
-        <span className="notification-delivery-times__count" aria-live="polite">
-          {t(locale, "notificationSettings.deliveryTimes.selectedCount", { count: String(slots.length), max: String(MAX_DELIVERY_SLOTS) })}
-        </span>
-      </div>
-
-      {(atMax || atMin) && (
-        <p className="notification-delivery-times__hint" role="note">
-          {t(locale, atMax ? "notificationSettings.deliveryTimes.maxReachedHint" : "notificationSettings.deliveryTimes.minRequiredHint")}
-        </p>
-      )}
-
-      <div className="notification-delivery-times__grid" role="group" aria-label={t(locale, "notificationSettings.deliveryTimes.gridAriaLabel")}>
-        {ALL_DELIVERY_SLOTS.map((slot) => {
-          const selected = slots.includes(slot)
-          return (
-            <button
-              key={slot}
-              type="button"
-              className={`notification-delivery-times__slot${selected ? " is-selected" : ""}`}
-              aria-pressed={selected}
-              disabled={selected ? atMin : atMax}
-              onClick={() => change(slot)}
+            )}
+          </li>
+        ))}
+        {!atMax && (
+          <li className="notification-delivery-times__item">
+            <Button
+              variant="dashed"
+              className="notification-add-time"
+              aria-label={t(locale, "notificationSettings.deliveryTimes.addAriaLabel")}
+              onClick={() => track(addSlot())}
             >
-              {selected && <Check size={12} strokeWidth={3} aria-hidden="true" />}
-              {slot}
-            </button>
-          )
-        })}
-      </div>
+              <PlusIcon size={16} weight="regular" aria-hidden="true" />
+            </Button>
+          </li>
+        )}
+      </ul>
     </section>
   )
 }
