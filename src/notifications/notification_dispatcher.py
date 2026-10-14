@@ -3,7 +3,7 @@
 One Lambda, two schedules (terraform/eventbridge.tf):
 
 - no `mode` (rate(1 minute)): the live reminders below. This path no longer delivers new-video pushes.
-- `{"mode": "new_video_slots"}` (every 30 minutes, UTC :00/:30): scheduled new-video delivery, implemented in
+- `{"mode": "new_video_slots"}` (every 15 minutes, UTC :00/:15/:30/:45): scheduled new-video delivery, implemented in
   new_video_dispatcher.py. It is routed there before any reminder work, so the two never share a run.
 
 Each reminder run:

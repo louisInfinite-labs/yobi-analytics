@@ -9,7 +9,7 @@ import pathlib
 import re
 
 from notifications import new_video_dispatcher
-from notifications.delivery_slots import SLOT_MINUTES
+from notifications.delivery_slots import SLOT_MINUTES, TICK_MINUTES
 from stores import notification_slot_store
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -24,11 +24,31 @@ def _block(source: str, header: str) -> str:
     return source[start : start + len(header) + following.start()] if following else source[start:]
 
 
-def test_the_dispatcher_runs_on_the_half_hour_boundaries_in_utc():
+def test_the_dispatcher_runs_on_the_quarter_hour_boundaries_in_utc_as_one_shared_schedule():
     block = _block(EVENTBRIDGE_TF, 'resource "aws_scheduler_schedule" "new_video_dispatch"')
-    assert 'schedule_expression          = "cron(0/30 * * * ? *)"' in block
+    assert 'schedule_expression          = "cron(0/15 * * * ? *)"' in block
     assert 'schedule_expression_timezone = "UTC"' in block
-    assert SLOT_MINUTES == 30  # the cron step is the slot length
+    assert TICK_MINUTES == 15  # the cron step is the tick length
+    assert SLOT_MINUTES % TICK_MINUTES == 0  # a user-chosen half hour is always a whole number of ticks
+    # One schedule for everybody: no per-user or per-zone scheduler exists in the Terraform at all.
+    assert "for_each" not in block and "count" not in block.replace("account", "")
+
+
+def test_every_iana_zone_offset_is_a_whole_multiple_of_the_tick_so_a_local_slot_start_is_always_exactly_a_tick():
+    """The guarantee the 15-minute cadence rests on. If a future tzdata ever introduced an offset that is not a multiple of 15 minutes, this
+    fails and the cadence has to be revisited -- rather than silently delivering such a zone's users late."""
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo, available_timezones
+
+    sample_days = [datetime(2026, month, 15, 12, tzinfo=timezone.utc) for month in range(1, 13)]
+    odd = {}
+    for name in sorted(available_timezones()):
+        zone = ZoneInfo(name)
+        for day in sample_days:
+            offset = day.astimezone(zone).utcoffset()
+            if offset % timedelta(minutes=TICK_MINUTES) != timedelta(0):
+                odd[name] = offset
+    assert odd == {}
 
 
 def test_the_dispatcher_invokes_the_existing_notification_dispatcher_lambda_in_slot_mode():

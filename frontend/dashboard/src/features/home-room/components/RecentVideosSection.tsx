@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
-import { ConfigProvider, Segmented } from "antd"
-import { ChevronRight } from "lucide-react"
+import { ConfigProvider, Input, Segmented } from "antd"
+import { ChevronRight, Search } from "lucide-react"
 import { OshiErrorState } from "./OshiErrorState"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
@@ -256,6 +256,55 @@ function VideoTrack({
   )
 }
 
+/** Desktop's always-visible video search box, a sibling of VideoSectionTagBar inside .oshi-videos__header
+ * (never a collapsed icon the user must click to expand -- see home.css's own .oshi-videos__search for the
+ * responsive width this depends on). A plain Input with the search icon as its `prefix` -- deliberately NOT
+ * Input.Search: that component renders its own enterButton/search-submit affordance, and this box has no
+ * submit step at all (every keystroke's onChange IS the search state; allowClear's X only clears the text,
+ * it does not submit anything). Styled to match the existing dark .oshi-videos__sort control (home.css),
+ * not antd's own light input skin. Local UI state only: it does not filter the shelf or call any API yet
+ * (no per-creator video catalog is cached client-side to search against -- see useOshiVideos.ts), pending a
+ * decision on the search data source. */
+function VideoSearchBox({ value, onChange, locale }: { value: string; onChange: (value: string) => void; locale: Locale }) {
+  return (
+    <div className="oshi-videos__search">
+      {/* Same approach as VideoSectionTagBar's Segmented below: antd's own CSS-in-JS styles are
+          injected at runtime and can outrank a plain stylesheet override regardless of selector
+          specificity, so the dark colors/sizing/no-accent-focus are set through ConfigProvider's
+          actual Input tokens (authoritative, not a cascade race) rather than CSS alone. */}
+      <ConfigProvider
+        theme={{
+          components: {
+            Input: {
+              colorBgContainer: "rgba(0, 0, 0, 0.2)",
+              colorBorder: "var(--oshi-border)",
+              colorText: "var(--oshi-text-2)",
+              colorTextPlaceholder: "var(--oshi-text-3)",
+              colorIcon: "var(--oshi-text-3)",
+              colorIconHover: "var(--oshi-text-2)",
+              hoverBorderColor: "var(--oshi-border)",
+              activeBorderColor: "var(--oshi-border)",
+              activeShadow: "none",
+              borderRadius: 4,
+            },
+          },
+        }}
+      >
+        <Input
+          size="small"
+          allowClear
+          prefix={<Search size={12} aria-hidden="true" />}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={t(locale, "videoSearch.placeholder")}
+          aria-label={t(locale, "videoSearch.placeholder")}
+          className="oshi-videos__search-input"
+        />
+      </ConfigProvider>
+    </div>
+  )
+}
+
 /** The filter bar -- the 3 frontend-owned special filters followed by
  * whatever backend topics GET /topics returned, in that fixed order
  * (not alphabetical/count/recency/LIVE-status based), rendered as one Ant
@@ -471,6 +520,10 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   const [viewWindow, setViewWindow] = useState<VideoViewWindow>("total")
   const [contentType, setContentType] = useState<VideoContentType>("all")
   const topicCatalog = useVideoTopicCatalog(fetchVideoTopics)
+  // Desktop search: active the moment there's a non-empty query, no separate open/close gesture --
+  // Topic Tags hide for that duration and come back the instant the query is cleared (see VideoSearchBox).
+  const [searchQuery, setSearchQuery] = useState("")
+  const isSearchActive = searchQuery.trim().length > 0
 
   // The special filters always render; backend topics only once GET /topics has actually
   // succeeded -- never a stale/hardcoded topic list while loading or on a failed fetch (the
@@ -528,22 +581,25 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   return (
     <section className="oshi-videos">
       <header className="oshi-videos__header">
-        <VideoSectionTagBar
-          selected={selectedTag}
-          onSelect={setSelectedTag}
-          options={tagOptions}
-          trailing={
-            <>
-              <ContentTypeDropdown value={contentType} onChange={setContentType} locale={locale} hidden={!showShelfFilters || selectedTag === SHORT_VIDEO_FILTER} />
-              <VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showShelfFilters} />
-              {showViewWindow && <ViewWindowDropdown value={viewWindow} onChange={setViewWindow} locale={locale} />}
-            </>
-          }
-        />
+        <VideoSearchBox value={searchQuery} onChange={setSearchQuery} locale={locale} />
+        {!isSearchActive && (
+          <VideoSectionTagBar
+            selected={selectedTag}
+            onSelect={setSelectedTag}
+            options={tagOptions}
+            trailing={
+              <>
+                <ContentTypeDropdown value={contentType} onChange={setContentType} locale={locale} hidden={!showShelfFilters || selectedTag === SHORT_VIDEO_FILTER} />
+                <VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showShelfFilters} />
+                {showViewWindow && <ViewWindowDropdown value={viewWindow} onChange={setViewWindow} locale={locale} />}
+              </>
+            }
+          />
+        )}
         {/* V1: the control has no destination yet (see ViewAllButton), so production does not render it at all -- no hidden/inert
             element; it stays available to local development. `import.meta.env.DEV` is replaced at build time, so a production bundle
             contains no trace of the element. */}
-        {import.meta.env.DEV && <ViewAllButton locale={locale} />}
+        {import.meta.env.DEV && !isSearchActive && <ViewAllButton locale={locale} />}
       </header>
 
       {/* key = the creator + what the shelf is actually showing: a fresh track (scroll position and

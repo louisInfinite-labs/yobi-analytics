@@ -623,12 +623,13 @@ def _preference_body():
 @pytest.fixture(autouse=True)
 def slot_index(monkeypatch):
     """The slot-recipient index calls a preference write makes, recorded instead of reaching DynamoDB."""
-    calls = {"sync": [], "remove": []}
-    monkeypatch.setattr(
-        notification_slot_store,
-        "sync_client_slots",
-        lambda client_id, *, slots, now_iso: calls["sync"].append((client_id, tuple(slots), now_iso)),
-    )
+    calls = {"sync": [], "remove": [], "zones": []}
+
+    def _sync(client_id, *, zone, slots, now_iso):
+        calls["sync"].append((client_id, tuple(slots), now_iso))
+        calls["zones"].append(zone)
+
+    monkeypatch.setattr(notification_slot_store, "sync_client_slots", _sync)
     monkeypatch.setattr(notification_slot_store, "remove_client", lambda client_id: calls["remove"].append(client_id))
     # A preference write also reads what the client had stored before (to stamp the per-creator new-video activation): nothing, by default.
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
@@ -647,7 +648,7 @@ def _put_preference(body, client_secret):
     )
 
 
-def test_an_enabled_preference_indexes_the_client_under_its_jst_slots(monkeypatch, client_secret, slot_index):
+def test_an_enabled_preference_indexes_the_client_under_its_own_zone_and_local_slots(monkeypatch, client_secret, slot_index):
     monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
 
     response = _put_preference({**_preference_body(), "deliveryWindows": ["18:00", "08:30", "08:30"]}, client_secret)
@@ -656,7 +657,43 @@ def test_an_enabled_preference_indexes_the_client_under_its_jst_slots(monkeypatc
     [(client_id, slots, now_iso)] = slot_index["sync"]
     assert (client_id, slots) == ("c1", (17, 36))  # 08:30 -> 17, 18:00 -> 36, deduplicated and sorted
     assert now_iso == json.loads(response["body"])["updatedAt"]
+    assert slot_index["zones"] == ["Asia/Tokyo"]
     assert slot_index["remove"] == []
+
+
+def test_the_canonical_preference_keeps_the_zone_and_the_local_times_the_client_chose_unconverted(monkeypatch, client_secret, slot_index):
+    stored = {}
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: stored.update(record))
+
+    body = {**_preference_body(), "notificationTimeZone": "Asia/Hong_Kong", "deliveryWindows": ["08:00", "18:00"]}
+    response = _put_preference(body, client_secret)
+
+    assert response["statusCode"] == 200
+    # The backend stores what the user chose -- IANA zone + LOCAL wall-clock times -- and indexes the LOCAL slots under that zone. Nothing
+    # is converted to Japan time or to a UTC offset, which would silently break at a daylight-saving transition.
+    assert stored["value"]["notificationTimeZone"] == "Asia/Hong_Kong"
+    assert stored["value"]["deliveryWindows"] == ["08:00", "18:00"]
+    assert slot_index["zones"] == ["Asia/Hong_Kong"] and slot_index["sync"][0][1] == (16, 36)
+
+
+def test_a_changed_browser_time_zone_reindexes_the_same_local_times_under_the_new_zone(monkeypatch, client_secret, slot_index):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
+
+    _put_preference({**_preference_body(), "notificationTimeZone": "Asia/Hong_Kong"}, client_secret)
+    _put_preference({**_preference_body(), "notificationTimeZone": "Europe/London"}, client_secret)
+
+    assert slot_index["zones"] == ["Asia/Hong_Kong", "Europe/London"]
+    assert [call[1] for call in slot_index["sync"]] == [(16, 36), (16, 36)]  # the local 08:00 / 18:00 did not move
+
+
+@pytest.mark.parametrize("zone", ["Mars/Olympus_Mons", "", None, "UTC+9", "Asia/Tokyo|16"])
+def test_an_unknown_or_missing_time_zone_is_rejected_before_anything_is_written(monkeypatch, client_secret, slot_index, zone):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    response = _put_preference({**_preference_body(), "notificationTimeZone": zone}, client_secret)
+
+    assert response["statusCode"] == 400
+    assert slot_index == {"sync": [], "remove": [], "zones": []}
 
 
 def test_a_disabled_preference_removes_the_client_from_the_index(monkeypatch, client_secret, slot_index):
@@ -685,7 +722,7 @@ def test_a_new_preference_with_invalid_delivery_slots_is_rejected_before_anythin
     response = _put_preference({**_preference_body(), "deliveryWindows": windows}, client_secret)
 
     assert response["statusCode"] == 400
-    assert slot_index == {"sync": [], "remove": []}
+    assert slot_index == {"sync": [], "remove": [], "zones": []}
 
 
 def test_four_distinct_half_hour_slots_are_accepted(monkeypatch, client_secret, slot_index):
@@ -700,7 +737,7 @@ def test_four_distinct_half_hour_slots_are_accepted(monkeypatch, client_secret, 
 def test_the_index_is_written_before_the_preference_so_a_failed_index_write_stores_nothing(monkeypatch, client_secret):
     monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
 
-    def _failing_sync(client_id, *, slots, now_iso):
+    def _failing_sync(client_id, *, zone, slots, now_iso):
         raise notification_slot_store.NotificationSlotStoreError("table unreachable")
 
     monkeypatch.setattr(notification_slot_store, "sync_client_slots", _failing_sync)
