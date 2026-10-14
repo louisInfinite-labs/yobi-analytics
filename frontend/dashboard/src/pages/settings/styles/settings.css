@@ -2073,6 +2073,9 @@
   --drawer-text-tertiary: var(--oshi-text-3);
   --drawer-accent: var(--creator-main);
 
+  /* The drawer's side gutter. It lives on the CONTENT, never on the scrolling body: see .ant-drawer-body below. */
+  --drawer-gutter: var(--space-5);
+
   /* Fixed column widths shared by every row and column header, so the switches and reminder controls line up across groups. The reminder
      column is only as wide as its select needs (the longest timing label of the current locale, see the data-locale rules below). */
   --drawer-switch-col: 48px;
@@ -2121,7 +2124,11 @@
 }
 
 .topic-creator-drawer .ant-drawer-body {
-  padding: var(--space-5);
+  /* NO padding on the scroller itself, exactly like Live Status' own .live-status-drawer__body (padding 0). The organization headings are the
+     shared Live Status ones: sticky, top: 0, full-bleed bands. A padded scroller made them stick 24px BELOW the drawer's top edge, so rows
+     scrolled visibly through that gap above them (an avatar peeking over "HOLOLIVE // JP") and the band was inset instead of edge to edge.
+     The gutter is applied to the content below instead. */
+  padding: 0;
 
   /* Reserve the scrollbar's space up front: a scrollbar that appears while the pointer is over the drawer must not narrow every row.
      An overlay scrollbar (hidden at rest, a 10px track once the pointer is over the drawer) did exactly that: every row lost 10px of width on
@@ -2139,6 +2146,9 @@
 .topic-creator-drawer__content {
   display: flex;
   flex-direction: column;
+
+  /* The top / bottom breathing room the scroller's padding used to give. Being content padding, it scrolls away and never holds a sticky heading. */
+  padding: var(--drawer-gutter) 0;
 
   /* The rows' own width (not the viewport) decides when the name needs its own line -- see the @container rule after .topic-creator-drawer__creator-name. */
   container-type: inline-size;
@@ -2179,7 +2189,9 @@
 }
 
 /* The search itself is Home's .live-status-search (markup in TopicCreatorManagementDrawer). */
-.topic-creator-drawer__search {
+.topic-creator-drawer .topic-creator-drawer__search {
+  /* Home's .live-status-search is width: 100%; between the side gutters it must fill the remaining width instead of overflowing by the margins. */
+  width: auto;
   margin-bottom: var(--space-4);
 }
 
@@ -2192,6 +2204,25 @@
 
 .topic-creator-drawer__group {
   margin-bottom: var(--space-4);
+}
+
+/* Side gutter for everything that is not a group band: the notices, the search box, the empty state, and the rows / column headers of each group. */
+.topic-creator-drawer__content > :not(.live-status-group):not(.topic-creator-drawer__group),
+.topic-creator-drawer__subgroup,
+.topic-creator-drawer__group > :not(.live-status-group__heading) {
+  margin-inline: var(--drawer-gutter);
+}
+
+/* The group bands themselves are Live Status' (.live-status-group__heading: 28px, sticky, top 0, #0d1825, bottom border -- not redefined here) and
+   run edge to edge. Only their inline padding differs from Live Status': it puts the label over the avatar column of the rows below (gutter + the
+   row's own inline padding), the same relationship Live Status has (heading padding 12px = its rows' avatar offset). */
+.topic-creator-drawer .live-status-group__heading,
+.topic-creator-drawer .live-status-group__subheading {
+  padding-inline: calc(var(--drawer-gutter) + var(--space-2));
+}
+
+.topic-creator-drawer .live-status-group__org-divider {
+  margin-inline: calc(var(--drawer-gutter) + var(--space-2));
 }
 
 /* The Favorites heading is a Live Status group heading too (.live-status-group__heading); only the h3 default margin is reset. */
@@ -2367,10 +2398,13 @@
   /* 4px column gap + 12px of padding = the same 16px between the New Video switch and the reminder select. */
   .topic-creator-drawer {
     --drawer-reminder-pad: var(--space-3);
+    /* The phone's tighter side gutter -- still on the content, never on the scroller (see .ant-drawer-body above), so the sticky group
+       bands stay flush with the top edge and edge to edge on a phone too. */
+    --drawer-gutter: var(--space-3);
   }
 
-  .topic-creator-drawer .ant-drawer-body {
-    padding: var(--space-4) var(--space-3);
+  .topic-creator-drawer__content {
+    padding-block: var(--space-4);
   }
 
   .topic-creator-drawer__row,

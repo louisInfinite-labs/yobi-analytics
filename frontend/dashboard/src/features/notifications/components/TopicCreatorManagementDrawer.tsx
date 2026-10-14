@@ -21,7 +21,7 @@ import {
 import type { TopicCatalogId } from "../model/notificationTopicCatalog"
 import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES, type ReminderTimeValue, type TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
-import { getMemberAccent } from "../../../shared/theme/memberAccent"
+import { getCreatorAccent } from "../../../entities/creator/utils/creatorAccent"
 
 type CreatorAccentStyle = CSSProperties & {
   "--creator-accent": string
@@ -29,7 +29,7 @@ type CreatorAccentStyle = CSSProperties & {
 }
 
 function creatorAccentStyle(creator: NotificationCreator): CreatorAccentStyle {
-  const accent = getMemberAccent(creator.youtubeChannelId)
+  const accent = getCreatorAccent(creator)
   return {
     "--creator-accent": accent.primary,
     "--creator-accent-soft": accent.soft,

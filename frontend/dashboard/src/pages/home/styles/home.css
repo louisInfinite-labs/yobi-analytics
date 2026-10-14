@@ -1703,6 +1703,16 @@
   text-transform: uppercase;
 }
 
+/* A long organization / group name is cut with an ellipsis inside the fixed 28px band instead of wrapping out of it or pushing the live count away. */
+.live-status-group__heading > span:first-child {
+  min-width: 0;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .live-status-group__live-count {
   display: inline-flex;
   align-items: center;

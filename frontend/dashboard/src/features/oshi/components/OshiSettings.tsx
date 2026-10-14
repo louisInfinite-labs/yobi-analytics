@@ -12,7 +12,7 @@ import {
   groupCreatorsForOshiSettings,
   OTHER_GROUP_LABEL_KEY,
 } from "../utils/oshiSettingsGrouping"
-import { getMemberAccent } from "../../../shared/theme/memberAccent"
+import { getCreatorAccent } from "../../../entities/creator/utils/creatorAccent"
 import { useMemberTheme } from "../../../shared/theme/ThemeContext"
 
 /** Every subgroup label is a real, locale-independent group/generation name
@@ -46,7 +46,7 @@ type CreatorAccentStyle = CSSProperties & {
  * pixel-identical to before this migration (C8B) -- same hash input as when
  * this page read MockCreator.channelId directly. */
 function creatorAccentStyle(creator: CanonicalCreator): CreatorAccentStyle {
-  const accent = getMemberAccent(toLegacyRosterId(creator), creator.themeColor)
+  const accent = getCreatorAccent(creator)
   return {
     "--creator-accent": accent.primary,
     "--creator-accent-soft": accent.soft,
@@ -92,7 +92,7 @@ function FavoriteTile({ creator }: { creator: CanonicalCreator }) {
   // checkbox's own aria-label reads as one normal sentence, not literal
   // newlines.
   const spokenName = creator.displayName.replace(/\n/g, " ")
-  const accent = getMemberAccent(legacyFavoriteId, creator.themeColor)
+  const accent = getCreatorAccent(creator)
   // C7B populated the current production registry with real YouTube avatar
   // thumbnails, but the schema stays nullable (a creator can still lack one)
   // -- this fallback mirrors CreatorStatusList.tsx's own CreatorAvatar
