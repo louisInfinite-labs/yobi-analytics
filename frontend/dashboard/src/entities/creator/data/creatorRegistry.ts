@@ -93,7 +93,7 @@ export function resolveCreatorKey(key: string): CanonicalCreator | undefined {
  * persisted pick, also read by Live Status's CreatorStatusList and Home's
  * useSelectedCreator) -- an ordinary canonical-registry consumer should
  * never need this. */
-export function toLegacyRosterId(creator: CanonicalCreator): string {
+export function toLegacyRosterId(creator: Pick<CanonicalCreator, "creatorId">): string {
   const aliasEntry = Object.entries(registry.legacyAliases).find(([, canonicalId]) => canonicalId === creator.creatorId)
   return aliasEntry ? aliasEntry[0] : `${LEGACY_ROSTER_ID_PREFIX}${creator.creatorId}`
 }
