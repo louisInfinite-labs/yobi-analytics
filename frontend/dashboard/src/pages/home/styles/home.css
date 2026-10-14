@@ -933,6 +933,43 @@
   gap: 5px;
 }
 
+/* Desktop only (hidden below 1024px -- see the tablet/phone block further down, which this task leaves
+   untouched): always visible, never a collapsed icon. The preferred width targets 10 full-width CJK
+   characters at this row's 10px input text (~10em) plus the search icon, input padding and clear button
+   (~3em) -- `vw` so it already eases down on a narrower window before flex-shrink has to take over, and
+   the hard min/max keep it from ever collapsing to nothing or overflowing the header. */
+.oshi-videos__search {
+  flex: 1 1 clamp(140px, 14vw, 220px);
+  min-width: 88px;
+  max-width: 260px;
+}
+
+/* Colors, background, border and radius all come from VideoSearchBox's own ConfigProvider Input
+   tokens, not CSS here -- see that component's docstring for why (antd's injected styles can outrank
+   a plain override for those). `height` has no such Input token (antd derives it from padding/line
+   height, not a settable size token), so it's set directly here same as .oshi-videos__sort. */
+/* font-size/font-weight are set on the WRAPPER, not `.ant-input` itself: antd's own rule for the
+   inner <input> is `font-size: inherit` at a higher specificity (an extra `input` type selector) than
+   a plain `.oshi-videos__search-input .ant-input` override can win, so it must come from the parent
+   it inherits from instead. */
+.oshi-videos__search-input.ant-input-affix-wrapper {
+  width: 100%;
+  height: 22px;
+
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.oshi-videos__search-input .ant-input {
+  height: 20px;
+
+  font-weight: 600;
+}
+
+.oshi-videos__search-input .ant-input-prefix {
+  margin-inline-end: 4px;
+}
+
 /* The Ant Design Segmented control replacing the former ten independent
    filter buttons -- colors/radius come from the ConfigProvider component
    tokens in RecentVideosSection.tsx (theme-bound, incl. --creator-main on
@@ -2315,6 +2352,12 @@
     width: auto;
     height: var(--oshi-videos-height);
     margin-inline: var(--home-gap);
+  }
+
+  /* Desktop-only search box (see the default rule above) -- not part of this task's scope for
+     Mobile/Tablet, so it stays out of the existing header layout here entirely. */
+  .oshi-videos__search {
+    display: none;
   }
 }
 
