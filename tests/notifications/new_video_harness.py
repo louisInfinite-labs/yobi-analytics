@@ -2,7 +2,7 @@
 
 `run_slot_pass` stands in for everything outside the dispatcher -- the events table, the slot-recipient index, the stored
 preference/subscription, and the push sender -- so a test states only the scenario. The index is modelled the way the preference
-write path really fills it: a client appears under the JST slots of its preference only while it is enabled.
+write path really fills it: a client appears under the (own IANA zone, local slot) keys of its preference only while it is enabled.
 """
 
 from __future__ import annotations
@@ -113,15 +113,15 @@ def fake_delivery_log(monkeypatch) -> dict:
     return rows
 
 
-def _indexed_slots(preference: dict) -> set[int] | None:
-    """The JST slots the preference write path would index this client under, or None when it indexes nothing."""
+def _indexed_slots(preference: dict) -> tuple[str, set[int]] | None:
+    """The (zone, local slots) the preference write path would index this client under, or None when it indexes nothing."""
     try:
         parsed = notification_dispatch.parse_notification_preference(preference)
     except notification_dispatch.ClientError:
         return None
     if not parsed.enabled:
         return None
-    return set(parsed.delivery_slots)
+    return parsed.time_zone, set(parsed.delivery_slots)
 
 
 def install_world(
@@ -132,13 +132,13 @@ def install_world(
     with_subscription: bool = True,
     active_since: str = DEFAULT_ACTIVE_SINCE,
     index_clients: list[str] | None = None,
-    index_override: dict[int, list[str]] | None = None,
+    index_override: dict[tuple[str, int], list[str]] | None = None,
     stub_push: bool = True,
 ) -> list:
     """Install the stores for one pass and return the list push payloads are appended to.
 
     `preferences` maps clientId -> stored preference value. The index is derived from them unless `index_override`
-    ({slot: [clientIds]}) pins it explicitly (used to model a stale index entry). `stub_push=False` leaves
+    ({(zone, local slot): [clientIds]}) pins it explicitly (used to model a stale index entry). `stub_push=False` leaves
     push_sender.send_push_notification alone so a test can capture the real payload at push_sender.webpush instead.
     """
     monkeypatch.setattr(
@@ -161,16 +161,18 @@ def install_world(
     else:
         index = {}
         for client_id in index_clients if index_clients is not None else list(preferences):
-            slots = _indexed_slots(preferences[client_id])
-            if slots is None:
+            indexed = _indexed_slots(preferences[client_id])
+            if indexed is None:
                 continue
+            zone, slots = indexed
             for slot in slots:
-                index.setdefault(slot, []).append(client_id)
+                index.setdefault((zone, slot), []).append(client_id)
 
+    monkeypatch.setattr(notification_slot_store, "list_zones", lambda: sorted({zone for zone, _ in index}))
     monkeypatch.setattr(
         notification_slot_store,
         "list_recipients",
-        lambda slot: [notification_slot_store.SlotRecipient(c, active_since) for c in sorted(index.get(slot, []))],
+        lambda zone, slot: [notification_slot_store.SlotRecipient(c, active_since) for c in sorted(index.get((zone, slot), []))],
     )
 
     sent: list = []

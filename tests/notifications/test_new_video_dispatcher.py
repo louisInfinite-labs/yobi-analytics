@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -20,7 +21,7 @@ from tests.notifications.new_video_harness import (
     subscription_value,
 )
 
-TICK_1800_JST = datetime(2026, 9, 3, 9, 0, tzinfo=timezone.utc)  # slot 36: 18:00-18:30 JST
+TICK_1800_JST = datetime(2026, 9, 3, 9, 0, tzinfo=timezone.utc)  # 18:00 JST: the local slot 36 of Asia/Tokyo
 
 
 def _run(monkeypatch, *, now=DAY1_EVENING, **world):
@@ -52,7 +53,7 @@ def test_delivers_a_due_event_to_the_client_whose_slot_it_is_and_confirms_it(mon
 
     assert sent == [{"videoId": "v1"}]
     assert rows == {("c1", "v1"): "delivered"}
-    assert (summary["events"], summary["slot"], summary["recipients"], summary["delivered"]) == (1, 36, 1, 1)
+    assert (summary["events"], summary["zones"], summary["slotsServed"], summary["recipients"], summary["delivered"]) == (1, 1, 1, 1, 1)
     assert summary["tick"] == "2026-09-03T09:00:00+00:00"
 
 
@@ -139,7 +140,7 @@ def test_a_client_without_a_push_subscription_is_skipped_without_reading_its_del
 
 
 def test_a_client_with_an_invalid_stored_preference_is_skipped(monkeypatch):
-    install_world(monkeypatch, events=[due_event()], preferences={"c1": {"enabled": "not-a-bool"}}, index_override={36: ["c1"]})
+    install_world(monkeypatch, events=[due_event()], preferences={"c1": {"enabled": "not-a-bool"}}, index_override={("Asia/Tokyo", 36): ["c1"]})
 
     def _boom(client_id, key):
         if key == "pushSubscription":
@@ -182,10 +183,10 @@ def test_events_the_bulk_read_reports_as_handled_are_skipped(monkeypatch):
 # --- which clients a tick serves ------------------------------------------------
 
 
-def test_a_tick_serves_only_the_clients_who_chose_the_jst_slot_it_starts(monkeypatch):
+def test_a_tick_serves_only_the_clients_who_chose_the_local_slot_it_starts(monkeypatch):
     rows = fake_delivery_log(monkeypatch)
     preferences = {
-        "due": preference_value(deliveryWindows=["18:00"]),  # 09:00 UTC is 18:00 JST
+        "due": preference_value(deliveryWindows=["18:00"]),  # 09:00 UTC is 18:00 in Tokyo
         "not_due": preference_value(deliveryWindows=["08:00"]),
         "also_due": preference_value(deliveryWindows=["08:00", "18:00", "18:30"]),
     }
@@ -193,51 +194,155 @@ def test_a_tick_serves_only_the_clients_who_chose_the_jst_slot_it_starts(monkeyp
     _, summary = _run(monkeypatch, events=[due_event()], preferences=preferences)
 
     assert {client for (client, _video), status in rows.items() if status == "delivered"} == {"due", "also_due"}
-    assert (summary["slot"], summary["recipients"]) == (36, 2)
+    assert (summary["slotsServed"], summary["recipients"]) == (1, 2)
 
 
-def test_a_clients_own_stored_time_zone_does_not_move_its_delivery_slot(monkeypatch):
+def test_each_clients_own_stored_time_zone_decides_which_tick_serves_its_local_times(monkeypatch):
     rows = fake_delivery_log(monkeypatch)
     preferences = {
-        # 09:00 UTC is 05:00 in New York and 14:45 in Kathmandu, but delivery slots are JST: only the 18:00 entries are due.
-        "new_york_18": preference_value(notificationTimeZone="America/New_York", deliveryWindows=["18:00"]),
+        # 09:00 UTC is 05:00 in New York (EDT), 17:00 in Hong Kong and 18:00 in Tokyo.
         "new_york_05": preference_value(notificationTimeZone="America/New_York", deliveryWindows=["05:00"]),
-        "kathmandu_18": preference_value(notificationTimeZone="Asia/Kathmandu", deliveryWindows=["18:00"]),
-        "kathmandu_14_30": preference_value(notificationTimeZone="Asia/Kathmandu", deliveryWindows=["14:30"]),
+        "new_york_18": preference_value(notificationTimeZone="America/New_York", deliveryWindows=["18:00"]),
+        "hong_kong_17": preference_value(notificationTimeZone="Asia/Hong_Kong", deliveryWindows=["17:00"]),
+        "kathmandu_18": preference_value(notificationTimeZone="Asia/Kathmandu", deliveryWindows=["18:00"]),  # 09:00 UTC is 14:45 there
+        "tokyo_18": preference_value(deliveryWindows=["18:00"]),
     }
 
     _, summary = _run(monkeypatch, events=[due_event()], preferences=preferences)
 
-    assert {client for (client, _video), status in rows.items() if status == "delivered"} == {"new_york_18", "kathmandu_18"}
-    assert summary["recipients"] == 2
+    delivered = {client for (client, _video), status in rows.items() if status == "delivered"}
+    assert delivered == {"new_york_05", "hong_kong_17", "tokyo_18"}
+    assert summary["zones"] == 4 and summary["recipients"] == 3
 
 
-def test_the_same_utc_tick_delivers_the_same_jst_slot_in_summer_and_winter(monkeypatch):
+@pytest.mark.parametrize(
+    ("zone", "tick"),
+    [
+        # 08:00 LOCAL, delivered at exactly 08:00 local -- including the quarter-hour-offset zone, which used to wait for 08:15.
+        ("Asia/Hong_Kong", datetime(2026, 9, 3, 0, 0, tzinfo=timezone.utc)),
+        ("Asia/Tokyo", datetime(2026, 9, 2, 23, 0, tzinfo=timezone.utc)),
+        ("Asia/Kathmandu", datetime(2026, 9, 3, 2, 15, tzinfo=timezone.utc)),
+        ("Pacific/Chatham", datetime(2026, 9, 2, 19, 15, tzinfo=timezone.utc)),
+    ],
+)
+def test_a_local_08_00_is_delivered_at_exactly_08_00_local_and_not_a_tick_earlier(monkeypatch, zone, tick):
     rows = fake_delivery_log(monkeypatch)
-    preference = preference_value(notificationTimeZone="America/New_York", deliveryWindows=["18:00"])  # New York changes UTC offset; JST does not
+    preference = preference_value(notificationTimeZone=zone, deliveryWindows=["08:00"])
+    event = due_event()  # discovered 09-02 18:00 JST (09:00 UTC): its next 08:00 local is the one under test, in every zone above
+    assert tick.astimezone(ZoneInfo(zone)).strftime("%H:%M") == "08:00"
 
-    summer = event_item(eventDate="2026-06-30", discoveredAt="2026-06-30T00:00:00+09:00")
-    _run(monkeypatch, now=datetime(2026, 7, 1, 8, 30, tzinfo=timezone.utc), events=[summer], preferences={"c1": preference})
-    assert rows == {}
-    _run(monkeypatch, now=datetime(2026, 7, 1, 9, 0, tzinfo=timezone.utc), events=[summer], preferences={"c1": preference})
-    assert rows == {("c1", "v1"): "delivered"}
+    _run(monkeypatch, now=tick - timedelta(minutes=15) + timedelta(seconds=30), events=[event], preferences={"c1": preference})
+    assert rows == {}  # the previous quarter hour: 07:45 local, nothing yet
+
+    sent, summary = _run(monkeypatch, now=tick + timedelta(seconds=30), events=[event], preferences={"c1": preference})
+    assert sent == [{"videoId": "v1"}] and rows == {("c1", "v1"): "delivered"}
+    assert summary["tick"] == tick.isoformat()  # served on the exact tick, not a later one
+
+
+def test_the_same_local_time_is_delivered_at_a_different_utc_tick_in_summer_and_winter(monkeypatch):
+    rows = fake_delivery_log(monkeypatch)
+    preference = preference_value(notificationTimeZone="America/New_York", deliveryWindows=["18:00"])  # New York changes UTC offset
+
+    summer = event_item(eventDate="2026-06-30", discoveredAt="2026-06-30T00:00:00+09:00")  # 15:00 UTC on 06-29
+    _run(monkeypatch, now=datetime(2026, 6, 29, 21, 30, tzinfo=timezone.utc), events=[summer], preferences={"c1": preference})
+    assert rows == {}  # 17:30 EDT
+    _run(monkeypatch, now=datetime(2026, 6, 29, 22, 0, tzinfo=timezone.utc), events=[summer], preferences={"c1": preference})
+    assert rows == {("c1", "v1"): "delivered"}  # 18:00 EDT = 22:00 UTC
 
     rows.clear()
-    winter = event_item(eventDate="2026-01-14", discoveredAt="2026-01-14T00:00:00+09:00")
-    _run(monkeypatch, now=datetime(2026, 1, 15, 8, 30, tzinfo=timezone.utc), events=[winter], preferences={"c1": preference})
-    assert rows == {}
-    _run(monkeypatch, now=datetime(2026, 1, 15, 9, 0, tzinfo=timezone.utc), events=[winter], preferences={"c1": preference})
-    assert rows == {("c1", "v1"): "delivered"}
+    winter = event_item(eventDate="2026-01-14", discoveredAt="2026-01-14T00:00:00+09:00")  # 15:00 UTC on 01-13
+    _run(monkeypatch, now=datetime(2026, 1, 13, 22, 0, tzinfo=timezone.utc), events=[winter], preferences={"c1": preference})
+    assert rows == {}  # 17:00 EST: the summer tick no longer means 18:00
+    _run(monkeypatch, now=datetime(2026, 1, 13, 23, 0, tzinfo=timezone.utc), events=[winter], preferences={"c1": preference})
+    assert rows == {("c1", "v1"): "delivered"}  # 18:00 EST = 23:00 UTC
 
 
-def test_quiet_hours_still_follow_the_clients_own_stored_time_zone_not_jst(monkeypatch):
+def test_a_local_time_inside_a_spring_forward_gap_is_delivered_when_it_resolves_not_lost(monkeypatch):
     rows = fake_delivery_log(monkeypatch)
-    # 09:00 UTC is 05:00 in New York (inside its 04:00-06:00 quiet hours) but 18:00 JST (outside them): the existing rule is kept.
-    quiet = preference_value(notificationTimeZone="America/New_York", deliveryWindows=["18:00"], quietHours=["04:00", "06:00"])
+    # New York, 2026-03-08: 02:00 EST -> 03:00 EDT, so a 02:30 local delivery time does not exist that day; it resolves to 03:30 EDT.
+    preference = preference_value(notificationTimeZone="America/New_York", deliveryWindows=["02:30"])
+    event = event_item(eventDate="2026-03-08", discoveredAt="2026-03-08T00:00:00+09:00")  # 15:00 UTC on 03-07
 
-    sent, _ = _run(monkeypatch, events=[due_event()], preferences={"c1": quiet})
+    _run(monkeypatch, now=datetime(2026, 3, 8, 7, 0, tzinfo=timezone.utc), events=[event], preferences={"c1": preference})
+    assert rows == {}  # 03:00 EDT: not yet
+    _run(monkeypatch, now=datetime(2026, 3, 8, 7, 30, tzinfo=timezone.utc), events=[event], preferences={"c1": preference})
+    assert rows == {("c1", "v1"): "delivered"}  # 03:30 EDT: where the skipped 02:30 resolves
+
+
+def test_a_repeated_fall_back_slot_never_delivers_the_same_video_twice(monkeypatch):
+    rows = fake_delivery_log(monkeypatch)
+    preference = preference_value(notificationTimeZone="America/New_York", deliveryWindows=["01:30"])
+    event = event_item(eventDate="2026-11-01", discoveredAt="2026-11-01T00:00:00+09:00")  # 15:00 UTC on 10-31
+
+    sent_first, _ = _run(monkeypatch, now=datetime(2026, 11, 1, 5, 30, tzinfo=timezone.utc), events=[event], preferences={"c1": preference})
+    sent_second, summary = _run(monkeypatch, now=datetime(2026, 11, 1, 6, 30, tzinfo=timezone.utc), events=[event], preferences={"c1": preference})
+
+    assert sent_first == [{"videoId": "v1"}] and sent_second == []  # 01:30 EDT delivered; the repeated 01:30 EST is not even a due slot
+    assert summary["slotsServed"] == 0 and rows == {("c1", "v1"): "delivered"}
+
+
+def test_a_client_that_moved_to_another_zone_is_skipped_at_its_old_zones_slot(monkeypatch):
+    rows = fake_delivery_log(monkeypatch)
+    # The index still lists c1 under Hong Kong 17:00 (its preference write moved it to London but the old row is not cleaned yet).
+    moved = preference_value(notificationTimeZone="Europe/London", deliveryWindows=["17:00"])
+
+    sent, summary = _run(
+        monkeypatch, events=[due_event()], preferences={"c1": moved}, index_override={("Asia/Hong_Kong", 34): ["c1"]}
+    )
 
     assert sent == [] and rows == {}
+    assert (summary["staleIndexEntries"], summary["recipients"]) == (1, 0)
+
+
+def test_a_zone_the_runtime_does_not_know_is_ignored_without_failing_the_run(monkeypatch, capsys):
+    fake_delivery_log(monkeypatch)
+    sent, summary = _run(
+        monkeypatch,
+        events=[due_event()],
+        preferences={"c1": preference_value()},
+        index_override={("Not/AZone", 36): ["x"], ("Asia/Tokyo", 36): ["c1"]},
+    )
+
+    assert sent == [{"videoId": "v1"}] and summary["delivered"] == 1
+    assert "unknown time zone 'Not/AZone'" in capsys.readouterr().out
+
+
+def test_a_tick_reads_the_zone_registry_once_and_only_the_slots_that_are_due_never_all_clients(monkeypatch):
+    fake_delivery_log(monkeypatch)
+    install_world(
+        monkeypatch,
+        events=[due_event()],
+        preferences={
+            "tokyo": preference_value(deliveryWindows=["18:00"]),
+            "new_york": preference_value(notificationTimeZone="America/New_York", deliveryWindows=["05:00"]),
+        },
+    )
+    zone_reads, slot_reads = [], []
+    real_zones, real_recipients = notification_slot_store.list_zones, notification_slot_store.list_recipients
+    monkeypatch.setattr(notification_slot_store, "list_zones", lambda: zone_reads.append(1) or real_zones())
+    monkeypatch.setattr(notification_slot_store, "list_recipients", lambda zone, slot: slot_reads.append((zone, slot)) or real_recipients(zone, slot))
+
+    def _no_scan(*_args, **_kwargs):
+        raise AssertionError("the dispatcher must never list every stored preference")
+
+    monkeypatch.setattr(remote_config_store, "list_by_key", _no_scan)
+
+    new_video_dispatcher.run({}, None, now=DAY1_EVENING)
+
+    assert len(zone_reads) == 1
+    assert sorted(slot_reads) == [("America/New_York", 10), ("Asia/Tokyo", 36)]  # exactly one due slot per registered zone
+
+
+def test_quiet_hours_and_delivery_times_both_follow_the_clients_own_stored_time_zone(monkeypatch):
+    rows = fake_delivery_log(monkeypatch)
+    # 22:00 UTC on 09-03 is 18:00 in New York (EDT): inside its 17:00-19:00 quiet hours, so nothing is sent or recorded -- the same rule
+    # that has always applied to reminders.
+    quiet = preference_value(notificationTimeZone="America/New_York", deliveryWindows=["18:00"], quietHours=["17:00", "19:00"])
+
+    sent, summary = _run(monkeypatch, now=datetime(2026, 9, 3, 22, 0, tzinfo=timezone.utc), events=[due_event()], preferences={"c1": quiet})
+
+    assert sent == [] and rows == {}
+    assert summary["recipients"] == 1  # it was due; quiet hours held it back
 
 
 def test_a_client_that_never_stored_a_preference_receives_nothing(monkeypatch):
@@ -273,7 +378,7 @@ def test_an_index_entry_the_stored_preference_no_longer_backs_is_skipped_and_cou
     rows = fake_delivery_log(monkeypatch)
 
     sent, summary = _run(
-        monkeypatch, events=[due_event()], preferences={"c1": stored}, index_override={36: ["c1"]}
+        monkeypatch, events=[due_event()], preferences={"c1": stored}, index_override={("Asia/Tokyo", 36): ["c1"]}
     )
 
     assert sent == [] and rows == {}
@@ -281,7 +386,7 @@ def test_an_index_entry_the_stored_preference_no_longer_backs_is_skipped_and_cou
 
 
 def test_an_index_entry_whose_preference_was_deleted_is_a_stale_entry(monkeypatch):
-    sent, summary = _run(monkeypatch, events=[due_event()], preferences={}, index_override={36: ["ghost"]})
+    sent, summary = _run(monkeypatch, events=[due_event()], preferences={}, index_override={("Asia/Tokyo", 36): ["ghost"]})
 
     assert sent == [] and summary["staleIndexEntries"] == 1
 

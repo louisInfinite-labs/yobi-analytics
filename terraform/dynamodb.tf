@@ -118,13 +118,17 @@ resource "aws_dynamodb_table" "notification_delivery_log" {
 }
 
 # Slot-recipient index for scheduled new-video delivery (src/stores/notification_slot_store.py): one item per
-# (fixed JST half-hour slot, client) the client chose, so the 30-minute dispatcher asks "who is due at this slot?" with a bounded
-# Query instead of reading every stored notification preference. slotKey is the plain "00".."47" JST slot (notifications.delivery_slots.
-# slot_key) -- there is no per-time-zone key or zone registry; every delivery slot is Asia/Tokyo wall-clock (see delivery_slots.py).
+# (IANA time zone, local half-hour slot, client) the client chose, so the 30-minute dispatcher asks "who is due at this slot?" with a
+# bounded Query instead of reading every stored notification preference. slotKey is "<IANA zone>|<local slot 00..47>"
+# (notifications.delivery_slots.zone_slot_key): the key is the client's LOCAL time in its own zone, so a daylight-saving change or a
+# moved device never needs a re-index -- the dispatcher works out, per zone, which local slots a tick starts. The partition slotKey =
+# "zones" is a small registry (clientId = the zone name) of the zones that have recipients. Both live in this one table and use the
+# same two key attributes, so no schema change was needed when delivery times became local (rows of the first release, whose slotKey was
+# the bare JST slot, are re-keyed by scripts/migration/backfill_notification_slots.py).
 # The remote-config table's configKey-index cannot answer this: it can only list EVERY client that stored a notificationPreference,
 # and a client has up to four slots.
 # clientId-index lists one client's own items so a changed or cancelled selection removes exactly its stale ones. The other item
-# attributes (slot, activeSince) are ordinary schemaless attributes, so only the key attributes are declared.
+# attributes (zone, slot, activeSince) are ordinary schemaless attributes, so only the key attributes are declared.
 resource "aws_dynamodb_table" "notification_delivery_slots" {
   name         = "YobiNotificationDeliverySlots"
   billing_mode = "PAY_PER_REQUEST"

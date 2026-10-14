@@ -1,17 +1,18 @@
-"""The 30-minute scheduled dispatcher for new-video pushes.
+"""The shared 15-minute scheduled dispatcher for new-video pushes.
 
 Runs on a UTC :00/:30 schedule (terraform/eventbridge.tf, `new_video_dispatch`) as a `mode` of the existing notification
 dispatcher Lambda; live reminders stay on that Lambda's own 1-minute run and never touch the code below.
 
-Each run is one TICK. Delivery slots are fixed JST (Asia/Tokyo) half hours and a UTC :00/:30 tick is the start of exactly one of
-them, so a run:
+Each run is one TICK. Delivery slots are half hours of each client's OWN local day (its IANA `notificationTimeZone` + the local
+`deliveryWindows`), so a run:
 
 1. loads the recent new-video events (notification_events_store), deduplicated by video; with none, it stops here -- nothing
    needs the client index at all;
-2. asks the slot-recipient index (notification_slot_store) which clients chose that slot -- one bounded Query, never a scan of
-   all clients;
+2. lists the IANA zones that have recipients (one tiny Query), works out for each which local half-hour slot(s) this tick starts
+   (delivery_slots.due_local_slots -- daylight saving and unusual offsets are handled there, nothing is re-indexed when an offset
+   changes) and asks the slot-recipient index (notification_slot_store) who chose each -- bounded Queries, never a scan of all clients;
 3. for each such client: re-reads its stored preference (the source of truth; the index only says who to look at), checks it
-   still lists this slot, and delivers every pending event the client wants, through the same claim -> send -> confirm/release
+   is still enabled, still in that zone and still lists that slot, and delivers every pending event the client wants, through the same claim -> send -> confirm/release
    delivery log the dispatcher always used (notification_delivery_log_store), keyed by (clientId, videoId). That key is the
    notification's logical identity: it makes a video reach a client at most once no matter how many slots, windows, retries or
    overlapping runs touch it, and it keeps every row written before this scheduler existed valid.
@@ -30,12 +31,12 @@ from __future__ import annotations
 import dataclasses
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from notifications import notification_dispatch
 from notifications import notification_text
 from notifications import push_sender
-from notifications.delivery_slots import DELIVERY_TIME_ZONE, floor_to_tick, jst_slot, slot_start_time
+from notifications.delivery_slots import due_local_slots, floor_to_tick, slot_start_time
 from ops.config import get_vapid_credentials
 from stores import notification_delivery_log_store
 from stores import notification_events_store
@@ -73,7 +74,8 @@ def run(event: dict[str, Any], context: Any, *, now: datetime | None = None) -> 
         "mode": MODE,
         "tick": tick.isoformat(),
         "events": 0,
-        "slot": jst_slot(tick),
+        "zones": 0,
+        "slotsServed": 0,
         "recipients": 0,
         "delivered": 0,
         "staleIndexEntries": 0,
@@ -88,31 +90,41 @@ def run(event: dict[str, Any], context: Any, *, now: datetime | None = None) -> 
     creators_by_id = {creator.creator_id: creator for creator in load_creators()}
     vapid_private_key, vapid_claims = get_vapid_credentials()
 
-    slot = summary["slot"]
-    for recipient in notification_slot_store.list_recipients(slot):
-        if _near_deadline(context):
-            summary["stoppedEarly"] = True
-            print(f"Warning: stopping before the Lambda deadline at tick {tick.isoformat()}; later clients wait for their next slot")
-            return summary
-        outcome = _serve_recipient(
-            recipient,
-            slot=slot,
-            tick=tick,
-            events=events,
-            creators_by_id=creators_by_id,
-            vapid_private_key=vapid_private_key,
-            vapid_claims=vapid_claims,
-        )
-        if outcome is None:
-            summary["staleIndexEntries"] += 1
+    zones = notification_slot_store.list_zones()
+    summary["zones"] = len(zones)
+    for zone in zones:
+        try:
+            due_slots = due_local_slots(tick, zone)
+        except (ZoneInfoNotFoundError, ValueError):
+            print(f"Warning: ignoring unknown time zone {zone!r} in the slot-recipient index")
             continue
-        summary["recipients"] += 1
-        summary["delivered"] += outcome
+        for slot in due_slots:
+            summary["slotsServed"] += 1
+            for recipient in notification_slot_store.list_recipients(zone, slot):
+                if _near_deadline(context):
+                    summary["stoppedEarly"] = True
+                    print(f"Warning: stopping before the Lambda deadline at tick {tick.isoformat()}; later clients wait for their next slot")
+                    return summary
+                outcome = _serve_recipient(
+                    recipient,
+                    zone=zone,
+                    slot=slot,
+                    tick=tick,
+                    events=events,
+                    creators_by_id=creators_by_id,
+                    vapid_private_key=vapid_private_key,
+                    vapid_claims=vapid_claims,
+                )
+                if outcome is None:
+                    summary["staleIndexEntries"] += 1
+                    continue
+                summary["recipients"] += 1
+                summary["delivered"] += outcome
     return summary
 
 
 def resolve_tick(event: dict[str, Any] | None, now: datetime) -> datetime:
-    """The UTC :00/:30 tick this run serves: the schedule's own scheduled time when it is sane, else the current half hour.
+    """The UTC :00/:15/:30/:45 tick this run serves: the schedule's own scheduled time when it is sane, else the current quarter hour.
 
     Using the scheduled time (not the wall clock) keeps a run that starts a few seconds late in the slot it was scheduled for.
     """
@@ -164,22 +176,19 @@ def _near_deadline(context: Any) -> bool:
     return remaining is not None and remaining() < _DEADLINE_MARGIN_MS
 
 
-def _jst_schedule(preference: notification_dispatch.NotificationPreference) -> notification_dispatch.NotificationPreference:
-    """The preference as the window logic must see it: delivery times are the client's JST slot starts, whatever its own zone.
+def _slot_schedule(preference: notification_dispatch.NotificationPreference) -> notification_dispatch.NotificationPreference:
+    """The preference as the window logic must see it: delivery times are exactly the client's (normalized) local slot starts.
 
-    Only the window calculation uses this view; quiet hours and every other suppression rule keep reading the client's real
-    preference, so they still follow its own stored time zone.
+    The windows stay wall-clock times in the client's own IANA zone, so next_delivery_window_utc converts them through that zone
+    (daylight saving included). Only the window calculation uses this view; quiet hours and every other rule read the real preference.
     """
-    return dataclasses.replace(
-        preference,
-        time_zone=DELIVERY_TIME_ZONE.key,
-        delivery_windows=tuple(slot_start_time(slot) for slot in preference.delivery_slots),
-    )
+    return dataclasses.replace(preference, delivery_windows=tuple(slot_start_time(slot) for slot in preference.delivery_slots))
 
 
 def _serve_recipient(
     recipient: notification_slot_store.SlotRecipient,
     *,
+    zone: str,
     slot: int,
     tick: datetime,
     events: list[dict[str, Any]],
@@ -200,9 +209,9 @@ def _serve_recipient(
     # A preference stored before activation tracking existed has no newVideoActivatedAt: bound it by its own last write so the
     # 3-day lookback is never replayed for it (see notification_dispatch.with_legacy_new_video_activation).
     preference = notification_dispatch.with_legacy_new_video_activation(preference, stored_at=_record_updated_at(record))
-    # The index only says who to look at. The stored preference decides: a client that has since turned OFF or dropped this slot
-    # (an index write that outran a failed preference write, or one not yet cleaned up) is skipped.
-    if not preference.enabled or slot not in preference.delivery_slots:
+    # The index only says who to look at. The stored preference decides: a client that has since turned OFF, moved to another time zone
+    # or dropped this slot (an index write that outran a failed preference write, or one not yet cleaned up) is skipped.
+    if not preference.enabled or preference.time_zone != zone or slot not in preference.delivery_slots:
         return None
 
     subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
@@ -211,7 +220,7 @@ def _serve_recipient(
     subscription = subscription_record["value"]
 
     active_since = datetime.fromisoformat(recipient.active_since)
-    schedule = _jst_schedule(preference)
+    schedule = _slot_schedule(preference)
     candidates = [
         event
         for event in events
@@ -260,7 +269,7 @@ def deliver_new_video_if_due(
     suppression row is no longer needed here: the client's `activeSince` stops it from ever replaying what it missed. A creator
     whose per-creator new-video switch is OFF is still recorded as suppressed and skipped for good, so turning that switch back ON
     never replays it from the lookback window. An event whose delivery window has not arrived yet is left alone. `schedule` is the
-    JST view of the client's slots (see _jst_schedule) used only for the window check; `preference` drives every other rule.
+    client's local slots (see _slot_schedule) used only for the window check; `preference` drives every other rule.
     """
     video_id = candidate["videoId"]
     if video_id in already_handled:

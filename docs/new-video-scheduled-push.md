@@ -12,13 +12,14 @@ applied or deployed.** Phase 2 (a machine with AWS credentials) must verify the 
                                        ▼
                               YobiNotificationEvents  (eventDate, videoId)  first-write-wins, eventId new_video:<videoId>
 
- client picks ≤4 of 48 half-hour JST slots ──► PUT notification-preference
-   (always Asia/Tokyo wall-clock)                │ writes the slot index first, then the preference
+ client picks ≤4 of 48 half-hour LOCAL times ──► PUT notification-preference
+   (+ its browser IANA zone; no conversion)      │ writes the slot index first, then the preference
                                                   ▼
-                       YobiNotificationDeliverySlots  (slotKey "<slot 00-47>", clientId)   + clientId-index GSI
+                       YobiNotificationDeliverySlots  (slotKey "<IANA zone>|<local slot 00-47>", clientId)   + clientId-index GSI
+                         + registry partition slotKey "zones" (clientId = zone name)
 
- one recurring 30-minute dispatcher (UTC :00/:30, mode new_video_slots of the EXISTING dispatcher Lambda)
-   tick ─► which JST slot does this tick start? ─► Query that slot's recipients
+ one shared 15-minute dispatcher (UTC :00/:15/:30/:45, mode new_video_slots of the EXISTING dispatcher Lambda)
+   tick ─► per registered zone: which LOCAL slot(s) does this tick start? ─► Query that (zone, slot)'s recipients
         ─► per recipient: re-read stored preference (source of truth), deliver pending events through the existing
            claim → Web Push → confirm/release delivery log (clientId, videoId)
 ```
@@ -30,14 +31,14 @@ Livestream completion, the 18:00 history Step Functions workflow, Holodex pollin
 
 | Topic | Decision |
 | --- | --- |
-| Slots | 48 fixed half-hour slots of the **JST (Asia/Tokyo) day** (slot 0 = 00:00–00:30 JST). **No browser-local or DST reinterpretation:** the client's stored `notificationTimeZone` is ignored for new-video slots (it still governs quiet hours and reminders). Max 4 per client; min 1 (the existing backend already rejects an empty `deliveryWindows`, section 6). Wire format unchanged: `deliveryWindows` = distinct `"HH:MM"` on `:00`/`:30`. New writes are rejected (HTTP 400) otherwise; stored legacy values are floored to the half hour and capped at 4, and are now read as JST. |
-| Tick | JST is a whole-hour UTC offset (+9) with no daylight saving, so every UTC `:00/:30` tick is the start of exactly one JST slot: "who is due" is one Query of that slot. |
+| Slots | 48 half-hour slots of the **client's own local day** (slot 0 = 00:00–00:30 local). The canonical preference is the browser's **IANA zone** (`notificationTimeZone`, which also governs quiet hours and reminders) plus the **local wall-clock times** (`deliveryWindows`); nothing is converted to Japan time or to a UTC offset, and the browser never sends a converted value (the backend validates the zone). Max 4 per client; min 1 (the existing backend already rejects an empty `deliveryWindows`, section 6). Wire format unchanged: `deliveryWindows` = distinct `"HH:MM"` on `:00`/`:30`. New writes are rejected (HTTP 400) otherwise; stored legacy values are floored to the half hour and capped at 4. |
+| Tick | ONE shared schedule, every 15 minutes (`cron(0/15 * * * ? *)`, UTC). Why 15: every IANA zone's UTC offset is a whole multiple of 15 minutes (+05:45 Nepal, +12:45 Chatham, +08:45 Eucla, +05:30 India, +10:30 Lord Howe ...; a test enumerates every zone), so a local `:00`/`:30` always falls exactly on a tick and a user who picked 08:00 is eligible at 08:00 local in every zone -- a 30-minute tick would have made +05:45 zones wait until 08:15. Per tick the dispatcher goes from zones to slots rather than from clients to times: per zone that has recipients (one Query of the `zones` registry partition) it asks `delivery_slots.due_local_slots(tick, zone)` which local slots the tick serves, then Queries each `(zone, slot)`. A slot is served at the first tick at or after the instant its wall-clock time occurs, computed exactly like `next_delivery_window_utc`, so a nonexistent spring-forward time is served at the instant it resolves to and a repeated fall-back time once (its first occurrence). Daylight saving and a changed time zone therefore need **no re-index job and no scan**. Work per tick is fixed at zones x due slots; most ticks serve no slot in most zones and cost one registry Query. Cost of the quarter-hour cadence: 96 instead of 48 invocations a day of a few hundred ms at 512 MB, plus one Query per run -- well under a cent a month. |
 | Tick source | Scheduler passes `<aws.scheduler.scheduled-time>`; a late start stays in its slot. A missing/invalid/stale (>2 h) value falls back to the current half hour. |
-| Index | New table `YobiNotificationDeliverySlots`: one item per `(slot, client)` (`slotKey` = `"00"`..`"47"`) + `clientId-index` GSI (own items, for cleanup). |
+| Index | Table `YobiNotificationDeliverySlots`: one item per `(zone, local slot, client)` (`slotKey` = `"<IANA zone>|<00..47>"`) + `clientId-index` GSI (own items, for cleanup) + a small registry partition (`slotKey` = `"zones"`, `clientId` = zone name) listing the zones that have recipients. **No schema change** from the first release (same two key attributes), so no Terraform resource change; rows of the first release (bare JST slot key) are re-keyed by the backfill. |
 | Dedupe | Logical identity of a notification = `(clientId, videoId)` in the existing delivery log (kept as-is so every existing row stays valid). Events are first-write-wins and the dispatcher dedupes events by `videoId` (a rediscovery on a later date is a second row). |
 | No replay | Index items carry `activeSince` (start of the client's current enabled stretch). An event whose delivery window had **already passed** before `activeSince` is never delivered; one still waiting is delivered normally. Turning OFF removes the client from the index. A second, per-creator layer (PR #110) holds on top of it: the PUT route stamps `newVideoActivatedAt[creatorId]` from the server clock when a creator's switch goes ON (first enable, creator OFF→ON, global OFF→ON), and an ordinary video **discovered before** that instant is recorded as suppressed and never delivered, so enabling one creator later never replays that creator's old events. A preference stored before this field existed is bounded by its record's `updatedAt`. Both layers must pass. |
 | Eligibility | **Fail-closed** (PR #110): only an explicit `newVideoCreatorOverride[creatorId] = true` makes a creator eligible; `false` **and a missing entry** are OFF (the Settings roster omits group/staff/graduated channels, which must never default to ON). Shorts keep their own Short-card rule. |
-| Index is a hint | The dispatcher re-reads the stored preference and skips a client that is disabled or no longer lists the slot (counted as `staleIndexEntries`). The PUT writes the index **first**, so a failed second write can only leave a superset the dispatcher ignores. |
+| Index is a hint | The dispatcher re-reads the stored preference and skips a client that is disabled, has moved to another time zone, or no longer lists the slot (counted as `staleIndexEntries`). A changed browser time zone is re-sent by the dashboard (`useNotificationLocaleSync`), the PUT re-indexes the same local times under the new zone and keeps `activeSince`, so nothing is replayed. The PUT writes the index **first**, so a failed second write can only leave a superset the dispatcher ignores. |
 | Durable events | `run_discovery` records events before the Video Master upsert and **fails the run** if it cannot (a video already in Video Master is never rediscovered, so a lost event could not be recovered). `main()`'s legacy 18:00 path is unchanged (best-effort). |
 | Deadline | The run stops starting new clients ~20 s before the Lambda deadline; the rest are served at their next slot (late, not lost, within the 3-day lookback). |
 | Lambda | **No new Lambda.** The existing dispatcher Lambda gains `mode: new_video_slots`; unknown modes raise. Timeout 60 → 300 s. |
@@ -45,12 +46,17 @@ Livestream completion, the 18:00 history Step Functions workflow, Holodex pollin
 ## 3. Cutover order (do NOT run on the source machine; Phase 2 / deploy time)
 
 1. Create `YobiNotificationDeliverySlots` (Terraform) and attach `terraform/manual-iam/policy-lambda-notification-delivery-slots.json`
-   to the Lambda role (hand-managed).
+   to the Lambda role (hand-managed). Registry reads/writes use the same Query/PutItem permissions: no IAM change for local times.
 2. `python scripts/migration/backfill_notification_slots.py` (dry run) → review → `--apply`. Existing clients are invisible to the
    new dispatcher until indexed.
 3. Deploy Lambda code (collector, API, dispatcher).
-4. Apply the schedules: five discovery windows + `new_video_dispatch`. The old `yobi-analytics-discovery-only` schedule is *moved*
+4. Apply the schedules: five discovery windows + `new_video_dispatch` (`cron(0/15 * * * ? *)`). Where `new_video_dispatch` already exists with the earlier
+   `cron(0/30 * * * ? *)`, this is a targeted in-place update of that one schedule's expression. The old `yobi-analytics-discovery-only` schedule is *moved*
    onto window `0000` (same name, updated in place) by the `moved` block.
+
+**Migrating the first release's JST-keyed index to local-time keys (gap-free):** (a) `--apply --keep-legacy` adds each client's
+`(zone, slot)` rows and the zone registry while the running dispatcher keeps reading the old bare-slot rows; (b) deploy the API and
+dispatcher Lambdas; (c) `--apply` once more prunes the old rows. No Terraform change; no push is sent by any of these steps.
 
 Rollback: disable `new_video_dispatch`; the reminder run is unaffected. Events stay deliverable for 3 days.
 
@@ -67,7 +73,7 @@ Rollback: disable `new_video_dispatch`; the reminder run is unaffected. Events s
 | 7 | The scheduler role can already invoke `yobi-analytics-notification-dispatcher` (reused), and the DLQ policy covers the new schedule. | Inspect the role policy and the DLQ queue policy. | Add the invoke/DLQ grant manually. |
 | 8 | The Lambda role allows `dynamodb:PutItem` on `YobiNotificationEvents` (events used to be written with `BatchWriteItem`) and Query/PutItem/DeleteItem/BatchWriteItem on the new table + index. | `aws iam simulate-principal-policy` or read the role policies. | Attach the new policy JSON / extend the existing one. |
 | 9 | Peak recipients per slot fit one sequential 300 s run (every client now shares ONE clock, and the defaults `08:00`/`18:00` concentrate them). Sends are sequential (boto3 resources are not thread-safe). | Count `notificationPreference` items and the distribution of `deliveryWindows`; the backfill dry run reports them. | Fan out per slot shard (several invokes), or add bounded concurrency with per-thread clients. |
-| 10 | Stored preferences mostly satisfy the new rule. Existing windows were written as the client's LOCAL wall-clock times; they are now read as JST, so a client outside Japan changes its effective delivery time. | Backfill dry run lists floored/capped clients; count clients whose `notificationTimeZone` is not Asia/Tokyo. | Decide whether to migrate/notify those users. |
+| 10 | Existing clients migrate without a re-save: their stored `deliveryWindows` were always their LOCAL times and `notificationTimeZone` is a required stored field, so the backfill indexes each client under its own stored zone, keeping its original `activeSince`. | Backfill dry run: per-zone client counts, floored/capped clients. | n/a |
 | 11 | Deployed Python 3.12 runtime has IANA tzdata for `Asia/Tokyo` (existing code already used `ZoneInfo`). | Invoke-free: check the package/runtime. | Bundle `tzdata`. |
 | 12 | Package layout `notifications/`, `stores/`, `tracking/` is deployed as-is (handler `notifications.notification_dispatcher.lambda_handler`). | Inspect the last packaged zip. | n/a |
 
@@ -79,7 +85,7 @@ up in the generic `GET /remote-config` listing (needs an exclusion like `pushSub
 ## 5. Local verification performed (source machine, no AWS)
 
 - `pytest` — whole Python suite green, including moto-backed tests of the slot store, events store and backfill.
-- New dispatcher tests cover: fixed-JST slot selection (a client's stored zone, DST and a +05:45 zone do not move it; quiet hours still follow the stored zone), stale index entries, dedupe across
+- New dispatcher tests cover: local-time slot selection per zone (Hong Kong 08:00 is 00:00 UTC, Tokyo, New York in summer and winter, a +05:45 zone, a spring-forward gap, a repeated fall-back hour, a moved client), the zone registry and bounded lookups (no scan), quiet hours in the stored zone, stale index entries, dedupe across
   dates, `activeSince`, tick resolution, deadline stop, bulk delivery-log read, routing, and that the reminder run no longer reads
   events or the slot index.
 - Static checks: `terraform fmt -check` and `terraform validate` pass (local provider cache, no credentials, no plan/apply);

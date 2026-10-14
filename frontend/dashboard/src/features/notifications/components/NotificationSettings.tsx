@@ -202,6 +202,7 @@ interface DetailPanelProps {
  * to a different topicId. */
 function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraftTopic, onManage, onSave, onRemove }: DetailPanelProps) {
   const [locale] = useLocale()
+  const { getNotificationType } = useTopicNotificationPreferences()
 
   if (topicId === null) {
     if (isDraft) {
@@ -231,6 +232,9 @@ function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraf
   const topicLabel = topicLabelFor(entries, locale, topicId)
   // Short is a video format with no live channel, so it has no notification type to pick.
   const isShort = isShortCard(topicId)
+  // The new-video times only matter for a topic that sends new-video notifications: a Live-only topic hides the section (a Short card is
+  // all new videos, so it always shows it).
+  const sendsNewVideos = isShort || getNotificationType(topicId) !== "live"
 
   return (
     <div className="notification-detail-panel">
@@ -241,6 +245,7 @@ function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraf
 
       {!isShort && <NotificationTypeSection topicId={topicId} topicLabel={topicLabel} />}
       <MembersSection topicId={topicId} topicLabel={topicLabel} onManage={onManage} />
+      {sendsNewVideos && <NewVideoDeliveryTimes />}
 
       {/* No actions, no row: a saved permanent topic has nothing to Save or Remove, so the footer (and its divider and padding) is not rendered. */}
       {(isDraft || !isPermanentTopic(topicId)) && (
@@ -373,7 +378,6 @@ export function NotificationSettings() {
 
       <section className="notification-settings-page">
         <div className="notification-settings-content">
-          <NewVideoDeliveryTimes />
           <div className="notification-settings-main">
             <div className="notification-topic-panel">
               <div className="notification-topic-panel__header">
