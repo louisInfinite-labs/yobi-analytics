@@ -52,10 +52,13 @@ from analytics.video_ranking import CONTENT_TYPE_SCOPE_ALL as VIDEO_RANKING_CONT
 from analytics.video_ranking import LIVE_STATUS_SCOPE_ALL, VALID_LIVE_STATUS_SCOPES, row_matches_live_status
 from analytics.video_ranking import TOPIC_SCOPE_ALL as VIDEO_RANKING_TOPIC_ALL
 from analytics.video_ranking import VALID_CONTENT_TYPE_SCOPES as VALID_VIDEO_RANKING_CONTENT_TYPES
+from analytics.video_ranking import TOTAL_METRIC as VIDEO_RANKING_TOTAL_METRIC
 from analytics.video_ranking import VALID_METRICS as VALID_VIDEO_RANKING_METRICS
 from analytics.video_ranking import VALID_TOPIC_SCOPES as VALID_VIDEO_RANKING_TOPICS
 from analytics.video_ranking import CONTENT_TYPE_SHORT as VIDEO_RANKING_CONTENT_TYPE_SHORT
 from analytics.video_ranking import rank_video_rows
+from search.video_search import VALID_SEARCH_SORTS as VALID_VIDEO_SEARCH_SORTS
+from search.video_search import search_creator_video_rows
 from stores.video_ranking_store import S3VideoRankingStore
 from tracking.video_master import VALID_LIVE_STATUSES, Video
 from tracking.video_master import is_known_non_livestream
@@ -782,6 +785,210 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
         "sort": sort,
         "videos": videos,
         "hasMore": offset + limit < len(ordered),
+    }
+
+
+def parse_search_query(raw: Any) -> str:
+    """The raw search query string, exactly as the client typed it (before normalization) -- required.
+    An empty/whitespace string is valid (search.video_search normalizes it to "" and matches nothing,
+    the same "nothing to search for" case a cleared Search box represents), but the parameter itself
+    must be present and be a string."""
+    if raw is None:
+        raise ClientError("q is required")
+    if not isinstance(raw, str):
+        raise ClientError(f"q must be a string, got {raw!r}")
+    return raw
+
+
+VIDEO_SEARCH_SORT_NEWEST = "newest"
+
+
+def parse_video_search_sort(raw: Any) -> str:
+    """Validate the optional sort parameter for Video Search: "newest" (default), "oldest", or
+    "mostViews" -- unlike GET /creators/{creatorId}/videos/recent's own sort (which never includes
+    mostViews, that lives on the separate GET .../videos/ranking endpoint instead), Search is one new
+    endpoint free to unify all three the same way the frontend's own single VideoSortOption concept
+    already does, rather than forcing the frontend to call two different endpoints depending on sort."""
+    if raw is None or raw == "":
+        return VIDEO_SEARCH_SORT_NEWEST
+    if not isinstance(raw, str):
+        raise ClientError(f"sort must be a string, got {raw!r}")
+    # Case-SENSITIVE, unlike the other closed-enum parsers in this file: "mostViews" has a meaningful
+    # capital V (it mirrors the frontend's own VideoSortOption literal exactly), so lowercasing before
+    # comparing would reject the one real value a client actually sends for it.
+    normalized = raw.strip()
+    if normalized in VALID_VIDEO_SEARCH_SORTS:
+        return normalized
+    raise ClientError(f"sort must be one of {sorted(VALID_VIDEO_SEARCH_SORTS)}, got {raw!r}")
+
+
+def parse_video_search_exclude_shorts(raw: Any) -> bool:
+    """Validate the optional excludeShorts flag for Video Search: defaults to TRUE, unlike
+    parse_exclude_shorts' own universal default of False for the other per-creator video endpoints.
+    Search's baseline mirrors the existing Oshi Videos "ALL" tag's own definition (model/
+    oshiVideosQuery.ts's buildShelfQuery "all" case already sends excludeShorts=true) -- Short is its
+    own separate content-format filter everywhere else in this product, and Search searching "every
+    topic" is the same kind of "everything" scope as the ALL tag, not a reason to suddenly surface
+    Shorts by default where nothing else does."""
+    if raw is None or raw == "":
+        return True
+    if not isinstance(raw, str):
+        raise ClientError(f"excludeShorts must be a string, got {raw!r}")
+    normalized = raw.strip().lower()
+    if normalized in {"true", "false"}:
+        return normalized == "true"
+    raise ClientError(f"excludeShorts must be 'true' or 'false', got {raw!r}")
+
+
+def parse_video_search_metric(raw: Any) -> str:
+    """Validate the optional metric parameter for Video Search: one of "total"/"1d"/"7d"/"30d"
+    (default "total") -- only meaningful when sort=mostViews, mirroring parse_video_ranking_metric's own
+    closed-enum reasoning but optional here (Search's default sort is "newest", not ranking)."""
+    if raw is None or raw == "":
+        return VIDEO_RANKING_TOTAL_METRIC
+    if not isinstance(raw, str) or raw not in VALID_VIDEO_RANKING_METRICS:
+        raise ClientError(f"metric must be one of {sorted(VALID_VIDEO_RANKING_METRICS)}, got {raw!r}")
+    return raw
+
+
+def parse_video_search_topic_ids(raw: Any) -> frozenset[str]:
+    """Validate the optional `topicIds` parameter for Video Search: a comma-separated list of canonical
+    topic ids the FRONTEND has already resolved from its own downloaded copy of the authoritative
+    GET /topics catalog (see search.video_search's own module docstring -- this backend no longer
+    re-derives topic ids from query text at all). Absent/empty means no topic filter contributed by this
+    request, never "match every topic" -- direct title matching still applies on its own. An id unknown
+    to this backend's own taxonomy is harmless to pass through unvalidated: no persisted video's `topic`
+    field will ever equal it, so it simply contributes nothing (see search.video_search.
+    video_matches_query) -- there is nothing here worth validating against the real topic id set."""
+    if raw is None or raw == "":
+        return frozenset()
+    if not isinstance(raw, str):
+        raise ClientError(f"topicIds must be a comma-separated string, got {raw!r}")
+    return frozenset(item.strip() for item in raw.split(",") if item.strip())
+
+
+def get_creator_video_search(query: dict[str, Any]) -> dict[str, Any]:
+    """`GET /creators/{creatorId}/videos/search?q=...&topicIds=...`: Video Search (Video List
+    Multilingual Search). One creator's COMPLETE video catalog (never just a recent/paginated subset --
+    the same whole, already-in-memory per-creator-per-report-date S3 result get_recent_creator_videos/
+    get_video_ranking already read, see S3VideoRankingStore), searched by DIRECT TITLE MATCH (`q`)
+    **union** TOPIC MATCH (`topicIds`) -- see search.video_search's own module docstring for the full
+    union-semantics rationale and why this backend no longer performs multilingual topic resolution
+    itself.
+
+    FINAL ARCHITECTURE: canonical multilingual topic resolution ("does this query refer to a topic, and
+    which one") is now the FRONTEND's job, done locally against the SAME authoritative catalog
+    GET /topics returns (id + labels + tracking.video_topics.Topic.search_aliases -- see
+    api.dashboard_catalog_api.get_topics and frontend/dashboard/src/features/video-search/model/
+    topicResolution.ts). The frontend sends BOTH the raw query (`q`, for direct title matching -- ALWAYS
+    required, never omitted even when topic resolution succeeds) and the topic ids it already resolved
+    from that SAME query (`topicIds`, optional -- empty is the normal "no topic resolved" case, not an
+    error). This endpoint only checks "is this row's own persisted topic in the given id set", a plain
+    membership test with no multilingual knowledge of its own.
+
+    Returns EVERY matching video in ONE response -- deliberately no `limit`/`offset`/`hasMore` at all
+    (Search-session cache follow-up, product correction): one Creator's catalog is itself bounded, and a
+    valid Search query (activation-threshold gated on the frontend) normally narrows it much further, so
+    there is no pagination contract to design around here. A representative ~1500-row worst-case
+    response (every persisted video for one creator matching) serializes to well under 1 MB -- far below
+    both API Gateway's and Lambda's own hard response-size limits -- so returning the complete result set
+    in one response is safe at the product's current scale; this is a deliberate choice, not an
+    oversight, and should be revisited (not silently re-paginated) if a creator's catalog ever grows
+    enough to threaten that margin.
+
+    An empty (or whitespace-only) `q` is explicitly defended against returning the creator's whole
+    catalog: search.video_search.video_matches_query returns False unconditionally for an empty
+    normalized query -- even if `topicIds` were somehow non-empty alongside it -- so `rows` filters down
+    to nothing and this always answers with `videos: []`, never "no filter = everything" -- see
+    test_video_search_api.py's own proof of this.
+
+    Each returned video carries its own persisted `topic` (already an existing field, not new) -- the
+    frontend's Search-session cache uses `title` + `topic` + its own already-downloaded topic catalog to
+    decide, for a LATER, longer query that is a true extension of this one, whether this already-returned
+    result would still match, entirely locally and with no further backend evidence needed (see
+    frontend/dashboard/src/features/video-search/model/searchSessionCache.ts). Because every successful
+    response here is always the query's complete result set, EVERY such response is a safe
+    local-narrowing base -- there is no per-response completeness flag to check before caching one.
+
+    Deliberately has NO Video Tag/Topic SELECTION parameter: that is a separate, UI-only concept a valid
+    Search always ignores (product rule) -- `topicIds` here is query-DERIVED (computed by the frontend
+    from `q` itself), a completely different thing from the user's separately-remembered browsing Tag,
+    which a caller must never forward into this parameter.
+
+    contentType/liveStatus/excludeShorts/sort/metric are the SAME existing Filter/Sort dimensions
+    get_recent_creator_videos/get_video_ranking already expose, and keep applying to the combined
+    (title-union-topic) result exactly as they do during normal browsing (product rule: "existing
+    Filter/Sort remains active during Search") -- this endpoint introduces no Search-specific relevance
+    ranking of its own.
+
+    Same one-GetObject-per-creator cost profile as every other per-creator video endpoint: no DynamoDB
+    Scan, no per-keystroke collection call, no YouTube/Holodex call. A request for a reportDate with no
+    persisted result yet behaves exactly like get_recent_creator_videos' own miss handling.
+    """
+    creator_id = parse_creator_id(query.get("creatorId"))
+    raw_query = parse_search_query(query.get("q"))
+    topic_ids = parse_video_search_topic_ids(query.get("topicIds"))
+    content_type = parse_video_ranking_content_type(query.get("contentType"))
+    live_status = parse_recent_creator_videos_live_status(query.get("liveStatus"))
+    exclude_shorts = parse_video_search_exclude_shorts(query.get("excludeShorts"))
+    sort = parse_video_search_sort(query.get("sort"))
+    metric = parse_video_search_metric(query.get("metric"))
+    report_dates = _leaderboard_report_dates(query.get("reportDate"))
+
+    creator = _find_creator(creator_id)
+    if creator is None:
+        raise ClientError(f"No creator found for creatorId {creator_id!r}")
+
+    store = S3VideoRankingStore.from_environment_or_default()
+    result = None
+    for candidate_date in report_dates:
+        result = store.read_result(candidate_date, creator_id)
+        if result is not None:
+            break
+    if result is None:
+        _raise_no_result(
+            creator_id,
+            f"Video search for creatorId={creator_id!r} reportDate={report_dates[0].isoformat()!r} is not yet computed",
+        )
+
+    # The creator's WHOLE persisted catalog, not a page of it -- search.video_search.search_creator_video_rows
+    # itself never truncates, so completeness here is what makes Search genuinely complete-dataset.
+    rows = [row for row in result["videos"] if row.get("creatorId") == creator_id]
+    ordered = search_creator_video_rows(
+        rows,
+        raw_query=raw_query,
+        topic_ids=topic_ids,
+        content_type=content_type,
+        live_status=live_status,
+        exclude_shorts=exclude_shorts,
+        sort=sort,
+        metric=metric,
+    )
+    videos = [
+        {
+            "videoId": row["videoId"],
+            "creatorId": row["creatorId"],
+            "topic": row["topic"],
+            "contentType": row.get("contentType"),
+            "liveStatus": row.get("liveStatus"),
+            "currentViewCount": row["currentViewCount"],
+            "title": row.get("title"),
+            "thumbnailUrl": row.get("thumbnailUrl"),
+            "publishedAt": row.get("publishedAt"),
+            "discoveredAt": row.get("discoveredAt"),
+        }
+        for row in ordered
+    ]
+
+    return {
+        "reportDate": result["reportDate"],
+        "generatedAt": result["generatedAt"],
+        "creatorId": creator_id,
+        "query": raw_query,
+        "contentType": content_type,
+        "liveStatus": live_status,
+        "sort": sort,
+        "videos": videos,
     }
 
 

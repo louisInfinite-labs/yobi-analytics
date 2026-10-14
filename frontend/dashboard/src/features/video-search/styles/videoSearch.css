@@ -1,0 +1,294 @@
+/* Video Search + mobile Videos: every rule below reuses an existing OshiYobi token/class/component value
+   verbatim (see each comment for its source); nothing here introduces a new color, border, radius or
+   shadow. Desktop's own Search trigger/input CSS lives in pages/home/styles/home.css (it is Home-page-
+   scoped, same as every other Oshi Videos rule) -- this file is the mobile-only pieces: the Filter
+   sheet and the Videos page's own layout. */
+
+/* ===== Filter sheet (mobile Videos) =====
+   Copies features/live-schedule/components/ScheduleCreatorFilter.tsx + pages/schedule/styles/
+   schedule.css's .schedule-creator-drawer rules exactly -- the one existing "Filter sheet with pending
+   state" precedent in this codebase. A new, page-scoped class rather than reusing .schedule-creator-
+   drawer's own selector directly, matching this project's established convention of each feature
+   owning its own stylesheet that reuses identical token VALUES (see e.g. .oshi-videos__sort vs.
+   .schedule-control, which likewise duplicate declared values rather than share a selector). */
+.video-filter-drawer .ant-drawer-content-wrapper {
+  max-width: 100vw;
+
+  box-shadow: -12px 0 28px rgba(0, 0, 0, 0.28);
+}
+
+.video-filter-drawer .ant-drawer-section {
+  background: #0b1521;
+
+  border-left: 1px solid var(--oshi-border-strong);
+
+  color: var(--oshi-text-1);
+}
+
+.video-filter-drawer .ant-drawer-header {
+  padding: 12px 16px;
+
+  border-bottom: 1px solid var(--oshi-border);
+}
+
+.video-filter-drawer .ant-drawer-title {
+  color: var(--oshi-text-1);
+
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.video-filter-drawer .ant-drawer-close {
+  color: var(--oshi-text-3);
+}
+
+.video-filter-drawer .ant-drawer-close:hover {
+  color: var(--oshi-text-1);
+}
+
+.video-filter-drawer .ant-drawer-body {
+  display: flex;
+  flex-direction: column;
+
+  padding: 0;
+
+  overflow-y: auto;
+}
+
+.video-filter-drawer__section {
+  flex: 0 0 auto;
+
+  padding: 12px 16px;
+
+  border-bottom: 1px solid var(--oshi-border);
+}
+
+.video-filter-drawer__heading {
+  margin: 0 0 8px;
+
+  color: var(--oshi-text-2);
+
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.video-filter-drawer__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+
+  gap: 6px;
+}
+
+/* The content type / sort / view window selects are .oshi-videos__sort elsewhere (a dark, compact 22px
+   control meant for Home's own tight header row); inside this wider, roomier sheet section they get a
+   little more breathing room using the exact same declared colors/border/radius, just taller. */
+.video-filter-drawer__controls .oshi-videos__sort {
+  height: 32px;
+
+  font-size: 12px;
+}
+
+.video-filter-drawer__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+
+  gap: 8px;
+
+  padding: 12px 16px;
+}
+
+/* Exactly .schedule-creator-drawer__action's own declared values (schedule.css). */
+.video-filter-drawer__action {
+  appearance: none;
+
+  height: 28px;
+  padding: 0 12px;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 3px;
+  background: transparent;
+
+  color: var(--oshi-text-3);
+  font: inherit;
+  font-size: 12px;
+
+  cursor: pointer;
+}
+
+.video-filter-drawer__action:hover {
+  color: var(--oshi-text-1);
+  border-color: var(--oshi-text-3);
+}
+
+.video-filter-drawer__action:focus-visible {
+  outline: 1px solid var(--creator-main, var(--oshi-text-1));
+  outline-offset: 2px;
+}
+
+/* Apply is the one emphasized action in this sheet -- exactly dashboard.css's own .soft-button--primary
+   treatment (var(--theme-primary) fill, white text, 600 weight), the SAME existing filled-emphasis
+   pattern this app already uses for a dialog's primary confirm action, not a new saturated color. */
+.video-filter-drawer__action--primary {
+  border-color: var(--theme-primary);
+  background: var(--theme-primary);
+
+  color: white;
+  font-weight: 600;
+}
+
+.video-filter-drawer__action--primary:hover {
+  color: white;
+  border-color: var(--theme-text-accent);
+  background: var(--theme-text-accent);
+}
+
+/* ===== Mobile Videos page ===== */
+
+/* [Drawer][Search][Filter] (spec section 46) is literally ONE row: Search and Filter are portaled into
+   the existing phone top bar's own slot (#main-topbar-slot, see app/navigation/TopbarSlotPortal.tsx and
+   MainNavbar.tsx) alongside the hamburger, not a second row below it -- MainNavbar itself stays
+   page-agnostic and unaware of either control. This page's own root is just the vertical list below
+   that shared top bar, filling the rest of the viewport. */
+.mobile-videos {
+  /* Exactly .oshi-home's own declarations (home.css): without these, this page would inherit the app
+     root's LIGHT color-scheme/background (app/styles/index.css), leaving this feature's --oshi-text-*
+     (light-on-dark) text nearly invisible against it -- not a new background value, the same dark
+     surface already used everywhere else in this feature. */
+  color-scheme: dark;
+  color: var(--oshi-text-1);
+  background: var(--oshi-bg);
+
+  display: flex;
+  flex-direction: column;
+
+  /* 100dvh (not 100vh) accounts for a mobile browser's own collapsing address bar, matching every other
+     full-viewport surface in this app (see home.css's own .oshi-home use of dvh for the same reason). */
+  height: 100dvh;
+  min-height: 0;
+}
+
+.mobile-videos__search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The Filter trigger button -- same declared values as .video-search-trigger (home.css) scaled to this
+   page's own 32px control height (matching .live-status-search's own native height here, since this
+   shared top-bar row is 48px tall, not Home's own compact 22px header row). */
+.mobile-videos__filter-trigger {
+  position: relative;
+
+  flex: 0 0 auto;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 32px;
+  height: 32px;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 4px;
+
+  background: rgba(0, 0, 0, 0.14);
+  color: var(--oshi-text-3);
+
+  cursor: pointer;
+}
+
+.mobile-videos__filter-trigger:hover,
+.mobile-videos__filter-trigger[data-active="true"] {
+  color: var(--oshi-text-1);
+}
+
+.mobile-videos__filter-trigger[data-active="true"] {
+  border-color: var(--oshi-text-3);
+}
+
+/* Exactly .schedule-creator-filter__count's own treatment (schedule.css) -- a small pill badge marking
+   a non-default Filter selection, reused rather than invented. */
+.mobile-videos__filter-trigger__badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 999px;
+  background: #17304f;
+
+  color: var(--oshi-text-1);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.mobile-videos__list {
+  flex: 1 1 auto;
+  min-height: 0;
+
+  overflow-y: auto;
+
+  /* A phone-width, single-column list of full-width cards -- unlike Home's own horizontally scrolling
+     .oshi-videos__list track, since this page has its own full vertical space rather than a fixed-height
+     shelf to scroll sideways within. */
+  display: flex;
+  flex-direction: column;
+
+  gap: 8px;
+
+  padding: 12px;
+}
+
+/* Reuses .oshi-video-card's own existing visual treatment (home.css) but as a full-width horizontal
+   row (thumbnail at a fixed width, title/meta filling the rest) instead of Home's vertical shelf card --
+   a layout-only override, declared with higher specificity under this page's own list so Home's shelf
+   card is untouched. */
+.mobile-videos__list .oshi-video-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+
+  width: 100%;
+
+  gap: 10px;
+}
+
+.mobile-videos__list .oshi-video-card__thumbnail {
+  flex: 0 0 auto;
+  width: 120px;
+}
+
+.mobile-videos__list .oshi-video-card__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* EmptyState/OshiErrorState's shared .state-panel (shared/ui/states/EmptyState.tsx, dashboard.css)
+   reads the generic --text-secondary/--text-tertiary tokens, which resolve to their LIGHT (index.css)
+   values outside .dashboard-page's own dark override -- this mobile Videos list is a dark --oshi-*
+   surface, so it redirects those two properties to the existing --oshi-text-2/--oshi-text-3 tokens
+   (already used throughout this feature), not a new color. */
+.mobile-videos__list .state-panel {
+  color: var(--oshi-text-2);
+}
+
+.mobile-videos__list .state-panel__icon {
+  color: var(--oshi-text-3);
+}
+
+/* ===== Player overlay (mobile Videos) =====
+   Reuses VideoPlayerModal's own existing backdrop/panel/close-button styles (dashboard.css) completely
+   unmodified -- no new overlay rule is declared here at all. The only difference from its other call
+   sites is the props passed (autoplay={false}, hideTitle), not any CSS. */

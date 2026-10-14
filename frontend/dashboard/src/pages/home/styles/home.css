@@ -1020,6 +1020,53 @@
   color: var(--oshi-text-3);
 }
 
+/* Video Search (desktop): the trigger button and the expanded input reuse this header's own existing
+   declared values -- .video-search-trigger copies .oshi-videos__sort's own border/radius/background/
+   color exactly (home.css, same file), and .oshi-videos__search-expanded copies .live-status-search's
+   own border/background/color/focus treatment exactly (also home.css), scaled to this row's existing
+   22px control height instead of that input's native 32px (every other control in this header --
+   segment items, the sort dropdown -- is already 22px; a 32px input here would be the one inconsistent
+   size, not a second visual language). No new color, border, radius or shadow value is introduced. */
+.video-search-trigger {
+  flex: 0 0 auto;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 22px;
+  height: 22px;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 4px;
+
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--oshi-text-2);
+
+  cursor: pointer;
+}
+
+.video-search-trigger:hover {
+  color: var(--oshi-text-1);
+}
+
+.video-search-trigger[aria-pressed="true"] {
+  background: var(--oshi-surface-3);
+  color: var(--oshi-text-1);
+}
+
+.oshi-videos__search-expanded {
+  flex: 1 1 auto;
+  min-width: 0;
+
+  height: 22px;
+  padding: 0 8px;
+}
+
+.oshi-videos__search-expanded input {
+  font-size: 10px;
+}
+
 /* Sibling of VideoSectionTagBar inside .oshi-videos__header (NOT a child of
    .oshi-videos__filters, which scrolls) -- margin-left: auto pushes it to
    the header's far-right edge regardless of how wide the Segmented/Sort
@@ -1585,6 +1632,37 @@
 
 .live-status-search input::placeholder {
   color: var(--oshi-text-3);
+}
+
+/* Video Search's own clear (x) button -- no existing search input in this codebase has one (the
+   design-system audit for this feature found none to reuse), so its colors are drawn from this same
+   input's own existing icon/placeholder tokens (--oshi-text-3 at rest, --oshi-text-1 on hover) rather
+   than introducing a new icon-button skin. Layout only: no border, no background, no radius. */
+.video-search-input__clear {
+  flex: 0 0 auto;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  background: transparent;
+  color: var(--oshi-text-3);
+
+  cursor: pointer;
+}
+
+.video-search-input__clear:hover {
+  color: var(--oshi-text-1);
+}
+
+/* This input renders its own clear button above -- suppress the native type="search" one so there is
+   never a second, browser-drawn x overlapping it. */
+.video-search-input input::-webkit-search-cancel-button {
+  display: none;
 }
 
 .live-status-filter-row {

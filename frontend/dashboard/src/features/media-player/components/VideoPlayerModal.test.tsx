@@ -76,4 +76,30 @@ describe("VideoPlayerModal", () => {
       expect(document.activeElement).toBe(document.querySelector(".video-player-modal__panel"))
     })
   })
+
+  describe("autoplay / hideTitle (mobile Videos' in-place overlay)", () => {
+    it("defaults to autoplay=1 in the embed src, unchanged for every existing call site", () => {
+      render(<VideoPlayerModal videoId="abc123" title="Test video" onClose={vi.fn()} />)
+      const iframe = document.querySelector("iframe") as HTMLIFrameElement
+      expect(iframe.src).toContain("autoplay=1")
+    })
+
+    it("autoplay={false} does not force playback", () => {
+      render(<VideoPlayerModal videoId="abc123" title="Test video" onClose={vi.fn()} autoplay={false} />)
+      const iframe = document.querySelector("iframe") as HTMLIFrameElement
+      expect(iframe.src).toContain("autoplay=0")
+    })
+
+    it("hideTitle suppresses the title caption but keeps the close button (unlike player-only, which has neither)", () => {
+      render(<VideoPlayerModal videoId="abc123" title="Test video" onClose={vi.fn()} hideTitle />)
+      expect(screen.queryByText("Test video")).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /close video player/i })).toBeInTheDocument()
+    })
+
+    it("hideTitle has no effect on the player-only variant, which already shows neither", () => {
+      render(<VideoPlayerModal videoId="abc123" title="Test video" onClose={vi.fn()} variant="player-only" hideTitle />)
+      expect(screen.queryByRole("button")).not.toBeInTheDocument()
+      expect(screen.queryByText("Test video")).not.toBeInTheDocument()
+    })
+  })
 })

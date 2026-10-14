@@ -164,8 +164,17 @@ def test_the_fallback_literal_has_exactly_one_home_in_src():
 
 
 def test_read_api_serves_only_through_the_read_side_factories():
-    """Every serving path in read_api must use from_environment_or_default(); the strict factory would 503 forever."""
+    """Every serving path in read_api must use from_environment_or_default() (the strict factory would 503
+    forever on a serving path) -- and specifically through one of READ_SIDE_FACTORIES, never some other
+    store's own factory. Counts call sites per allowed factory class rather than one flat magic total: a
+    legitimate new serving path built on an already-approved factory (read_api has grown several of these
+    over time, e.g. Video Search's get_creator_video_search) needs no update here, while a serving path
+    that bypassed these two factories entirely would still make this fail (the per-class sum would no
+    longer equal the total `.from_environment_or_default()` call count)."""
     source = (SRC / "api" / "read_api.py").read_text(encoding="utf-8")
 
     assert ".from_environment()" not in source
-    assert source.count(".from_environment_or_default()") == 5
+    total_calls = source.count(".from_environment_or_default()")
+    calls_via_allowed_factories = sum(source.count(f"{factory.__name__}.from_environment_or_default()") for factory in READ_SIDE_FACTORIES)
+    assert total_calls == calls_via_allowed_factories
+    assert total_calls >= 1

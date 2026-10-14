@@ -1,14 +1,16 @@
-import { CalendarClock, Gauge, Home, Info, Menu, Settings, X } from "lucide-react"
+import { CalendarClock, Gauge, Home, Info, Menu, Settings, Video, X } from "lucide-react"
 import { useRef, useState, type ComponentType, type RefObject } from "react"
 import brandIcon from "../../assets/brand-icon.png"
 import type { Page } from "./useCurrentPage"
 import { useCurrentPage } from "./useCurrentPage"
+import { useBreakpoint } from "../../shared/hooks/useBreakpoint"
 import { useModalFocus } from "../../shared/hooks/useModalFocus"
 import { useLocale } from "../../shared/i18n/hooks/useLocale"
 import { t, type TranslationKey } from "../../shared/i18n/translations"
 
 const NAV_ITEMS: { page: Page; labelKey: TranslationKey; Icon: ComponentType<{ size?: number; strokeWidth?: number }> }[] = [
   { page: "home", labelKey: "mainNavbar.home", Icon: Home },
+  { page: "videos", labelKey: "mainNavbar.videos", Icon: Video },
   { page: "schedule", labelKey: "mainNavbar.schedule", Icon: CalendarClock },
   { page: "dashboard", labelKey: "mainNavbar.dashboard", Icon: Gauge },
   { page: "settings", labelKey: "mainNavbar.settings", Icon: Settings },
@@ -17,9 +19,17 @@ const NAV_ITEMS: { page: Page; labelKey: TranslationKey; Icon: ComponentType<{ s
 
 /** The Video Data page (影片數據) is development-only: a production build has no nav entry for it (and no route -- see useCurrentPage / App).
  * `import.meta.env.DEV` is the project's own dev-only gate (the same one Home's dev controls use); it is replaced at build time, and the
- * entry is not rendered, rather than hidden with CSS. */
-function visibleNavItems() {
-  return NAV_ITEMS.filter((item) => item.page !== "dashboard" || import.meta.env.DEV)
+ * entry is not rendered, rather than hidden with CSS.
+ *
+ * "videos" (the mobile-only Videos/Search view) is gated to the phone breakpoint for the same reason: desktop already has its own Video
+ * List + Search on Home (RecentVideosSection) and keeps its current information architecture unchanged (spec), so a desktop user has no
+ * use for a second, separate Videos destination in this nav -- it would just be dead weight next to the equivalent desktop feature. */
+function visibleNavItems(breakpoint: ReturnType<typeof useBreakpoint>) {
+  return NAV_ITEMS.filter((item) => {
+    if (item.page === "dashboard") return import.meta.env.DEV
+    if (item.page === "videos") return breakpoint === "mobile"
+    return true
+  })
 }
 
 /** How far left (px) a touch must travel inside the open drawer to count as a close swipe. */
@@ -48,6 +58,7 @@ function NavDrawerFocusScope({ drawerRef, onClose }: { drawerRef: RefObject<HTML
 export function MainNavbar() {
   const [page, setPage] = useCurrentPage()
   const [locale] = useLocale()
+  const breakpoint = useBreakpoint()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const drawerRef = useRef<HTMLElement | null>(null)
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
@@ -66,6 +77,12 @@ export function MainNavbar() {
         >
           <Menu size={24} aria-hidden="true" />
         </button>
+        {/* An empty slot the current page may portal its own phone-only top-row action into (e.g. Home's
+            Search entry, Videos' Search input + Filter trigger -- see TopbarSlotPortal) -- MainNavbar
+            itself never imports or knows about any of that; it only renders this fixed anchor point,
+            which is what keeps it page-agnostic (see this component's own docstring). Empty and inert
+            on every page that portals nothing into it. */}
+        <div id="main-topbar-slot" className="main-topbar__slot" />
       </header>
       {drawerOpen && <NavDrawerFocusScope drawerRef={drawerRef} onClose={closeDrawer} />}
       {drawerOpen && <div className="main-navbar-backdrop" onClick={closeDrawer} aria-hidden="true" />}
@@ -94,7 +111,7 @@ export function MainNavbar() {
             <X size={22} aria-hidden="true" />
           </button>
         </div>
-        {visibleNavItems().map((item) => {
+        {visibleNavItems(breakpoint).map((item) => {
           const label = t(locale, item.labelKey)
           return (
             <button

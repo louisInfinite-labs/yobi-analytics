@@ -75,13 +75,21 @@ def get_topics(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     order. `labels` is every topic's zh-TW/en/ja display text -- the frontend's
     only source for it, so a new topic needs no frontend code change to render
     correctly in any locale (see video_topics.Topic's own docstring). `label` is
-    additive, backward-compat-only (see _LEGACY_TOPIC_LABELS above)."""
+    additive, backward-compat-only (see _LEGACY_TOPIC_LABELS above).
+
+    `searchAliases` is new (Video List Multilingual Search's final architecture): every real,
+    backend-owned literal synonym for this topic beyond its own id/labels (video_topics.Topic.
+    search_aliases) -- the frontend's Video Search feature downloads this SAME catalog once and resolves
+    a user's free-text query to canonical topic ids locally against it (id + labels + searchAliases),
+    rather than the backend re-deriving that mapping per Search request or the frontend maintaining any
+    taxonomy of its own. Always a list, empty when a topic has no alias beyond its own id/labels."""
     return {
         "topics": [
             {
                 "id": topic.id,
                 "label": _LEGACY_TOPIC_LABELS.get(topic.id, topic.labels.get("en", topic.id)),
                 "labels": dict(topic.labels),
+                "searchAliases": list(topic.search_aliases),
             }
             for topic in TOPICS
         ]

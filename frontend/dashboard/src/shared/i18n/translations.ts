@@ -47,6 +47,18 @@ export type TranslationKey =
   | "recentVideos.empty.latestLive"
   | "recentVideos.empty.other"
   | "recentVideos.viewAll"
+  | "videoSearch.trigger"
+  | "videoSearch.placeholder"
+  | "videoSearch.clear"
+  | "videoSearch.empty"
+  | "videoSearch.resultCount"
+  | "videoSearch.filter.trigger"
+  | "videoSearch.filter.title"
+  | "videoSearch.filter.topicSection"
+  | "videoSearch.filter.sortSection"
+  | "videoSearch.filter.apply"
+  | "videoSearch.filter.cancel"
+  | "videoSearch.filter.reset"
   | "liveScheduleDock.title"
   | "liveScheduleDock.close"
   | "liveScheduleDock.panelAriaLabel"
@@ -85,6 +97,7 @@ export type TranslationKey =
   | "mainNavbar.about"
   | "mainNavbar.openNavAriaLabel"
   | "mainNavbar.closeNavAriaLabel"
+  | "mainNavbar.videos"
   | "settingsSecondaryNavbar.title"
   | "settingsSecondaryNavbar.navAriaLabel"
   | "settingsSecondaryNavbar.myOshiSettings"
@@ -305,6 +318,18 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestLive": "尚無最新直播",
     "recentVideos.empty.other": "沒有影片",
     "recentVideos.viewAll": "查看全部",
+    "videoSearch.trigger": "搜尋",
+    "videoSearch.placeholder": "搜尋這位Vtuber的影片",
+    "videoSearch.clear": "清除搜尋",
+    "videoSearch.empty": "沒有符合的影片",
+    "videoSearch.resultCount": "{{count}} 筆結果",
+    "videoSearch.filter.trigger": "篩選",
+    "videoSearch.filter.title": "篩選",
+    "videoSearch.filter.topicSection": "影片分類",
+    "videoSearch.filter.sortSection": "排序",
+    "videoSearch.filter.apply": "套用",
+    "videoSearch.filter.cancel": "取消",
+    "videoSearch.filter.reset": "重設",
     "liveScheduleDock.title": "直播狀態",
     "liveScheduleDock.close": "關閉",
     "liveScheduleDock.panelAriaLabel": "直播排程搜尋",
@@ -343,6 +368,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.about": "關於",
     "mainNavbar.openNavAriaLabel": "開啟導覽",
     "mainNavbar.closeNavAriaLabel": "關閉導覽",
+    "mainNavbar.videos": "影片",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定導覽",
     "settingsSecondaryNavbar.myOshiSettings": "我推設定",
@@ -562,6 +588,18 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestLive": "No recent streams",
     "recentVideos.empty.other": "No videos",
     "recentVideos.viewAll": "View All",
+    "videoSearch.trigger": "Search",
+    "videoSearch.placeholder": "Search this creator's videos",
+    "videoSearch.clear": "Clear search",
+    "videoSearch.empty": "No matching videos",
+    "videoSearch.resultCount": "{{count}} results",
+    "videoSearch.filter.trigger": "Filter",
+    "videoSearch.filter.title": "Filter",
+    "videoSearch.filter.topicSection": "Video Topic",
+    "videoSearch.filter.sortSection": "Sort",
+    "videoSearch.filter.apply": "Apply",
+    "videoSearch.filter.cancel": "Cancel",
+    "videoSearch.filter.reset": "Reset",
     "liveScheduleDock.title": "LIVE STATUS",
     "liveScheduleDock.close": "Close",
     "liveScheduleDock.panelAriaLabel": "Live schedule search",
@@ -600,6 +638,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.about": "About",
     "mainNavbar.openNavAriaLabel": "Open navigation",
     "mainNavbar.closeNavAriaLabel": "Close navigation",
+    "mainNavbar.videos": "Videos",
     "settingsSecondaryNavbar.title": "Settings",
     "settingsSecondaryNavbar.navAriaLabel": "Settings navigation",
     "settingsSecondaryNavbar.myOshiSettings": "Oshi Settings",
@@ -819,6 +858,18 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestLive": "最新配信はありません",
     "recentVideos.empty.other": "動画がありません",
     "recentVideos.viewAll": "すべて見る",
+    "videoSearch.trigger": "検索",
+    "videoSearch.placeholder": "このVTuberの動画を検索",
+    "videoSearch.clear": "検索をクリア",
+    "videoSearch.empty": "該当する動画がありません",
+    "videoSearch.resultCount": "{{count}}件の結果",
+    "videoSearch.filter.trigger": "フィルター",
+    "videoSearch.filter.title": "フィルター",
+    "videoSearch.filter.topicSection": "動画トピック",
+    "videoSearch.filter.sortSection": "並び替え",
+    "videoSearch.filter.apply": "適用",
+    "videoSearch.filter.cancel": "キャンセル",
+    "videoSearch.filter.reset": "リセット",
     "liveScheduleDock.title": "配信ステータス",
     "liveScheduleDock.close": "閉じる",
     "liveScheduleDock.panelAriaLabel": "配信スケジュール検索",
@@ -857,6 +908,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "mainNavbar.about": "概要",
     "mainNavbar.openNavAriaLabel": "ナビゲーションを開く",
     "mainNavbar.closeNavAriaLabel": "ナビゲーションを閉じる",
+    "mainNavbar.videos": "動画",
     "settingsSecondaryNavbar.title": "設定",
     "settingsSecondaryNavbar.navAriaLabel": "設定ナビゲーション",
     "settingsSecondaryNavbar.myOshiSettings": "推し設定",
