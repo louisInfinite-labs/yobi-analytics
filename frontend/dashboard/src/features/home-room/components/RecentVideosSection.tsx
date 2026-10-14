@@ -343,55 +343,51 @@ function VideoSectionTagBar({
   onSelect,
   options,
   trailing,
-  hideTags = false,
 }: {
   selected: VideoSectionSelection
   onSelect: (selection: VideoSectionSelection) => void
   options: { value: VideoSectionSelection; label: string }[]
   trailing?: ReactNode
-  /** An active Search hides ONLY the Topic Tags; the controls (content type / sort / period) stay. */
-  hideTags?: boolean
 }) {
   return (
     <div className="oshi-videos__filters">
       {/* The tag strip is its OWN scroll container, apart from the controls: a strip that cannot fit scrolls sideways inside this box
           instead of painting over the dropdowns that follow it (and, on a phone, the controls take their own row below it). */}
-      {!hideTags && (
-        <div className="oshi-videos__tags">
-          <ConfigProvider
-            theme={{
-              components: {
-                Segmented: {
-                  trackBg: "var(--oshi-surface-1)",
-                  trackPadding: 2,
-                  itemColor: "var(--oshi-text-3)",
-                  itemHoverColor: "var(--oshi-text-1)",
-                  itemHoverBg: "rgba(255, 255, 255, 0.05)",
-                  // Fixed neutral, never creator-tinted (confirmed with the
-                  // user: the selected tag's own color must not shift with
-                  // currentOshi) -- --oshi-surface-3, no --creator-main mix.
-                  itemSelectedBg: "var(--oshi-surface-3)",
-                  itemSelectedColor: "var(--oshi-text-1)",
-                  borderRadius: 4,
-                  borderRadiusSM: 4,
-                },
+      <div className="oshi-videos__tags">
+        <ConfigProvider
+          theme={{
+            components: {
+              Segmented: {
+                trackBg: "var(--oshi-surface-1)",
+                trackPadding: 2,
+                itemColor: "var(--oshi-text-3)",
+                itemHoverColor: "var(--oshi-text-1)",
+                itemHoverBg: "rgba(255, 255, 255, 0.05)",
+                // Fixed neutral, never creator-tinted (confirmed with the
+                // user: the selected tag's own color must not shift with
+                // currentOshi) -- --oshi-surface-3, no --creator-main mix.
+                itemSelectedBg: "var(--oshi-surface-3)",
+                itemSelectedColor: "var(--oshi-text-1)",
+                borderRadius: 4,
+                borderRadiusSM: 4,
               },
+            },
+          }}
+        >
+          <Segmented<VideoSectionSelection>
+            size="small"
+            classNames={{
+              root: "oshi-videos__segmented",
+              item: "oshi-videos__segment-item",
+              label: "oshi-videos__segment-label",
             }}
-          >
-            <Segmented<VideoSectionSelection>
-              size="small"
-              classNames={{
-                root: "oshi-videos__segmented",
-                item: "oshi-videos__segment-item",
-                label: "oshi-videos__segment-label",
-              }}
-              value={selected}
-              onChange={onSelect}
-              options={options}
-            />
-          </ConfigProvider>
-        </div>
-      )}
+            value={selected}
+            onChange={onSelect}
+            options={options}
+          />
+        </ConfigProvider>
+      </div>
+    
       <div className="oshi-videos__controls">{trailing}</div>
     </div>
   )
@@ -540,8 +536,8 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   const [contentType, setContentType] = useState<VideoContentType>("all")
   const topicCatalog = useVideoTopicCatalog(fetchVideoTopics)
   // Desktop search: no separate open/close gesture and no submit step -- every keystroke's onChange IS the query. While Search is
-  // active (the normalized query meets useVideoSearch's activation threshold) ONLY the Topic Tags hide and the shelf shows the
-  // creator's multilingual search results; they come back the instant the query is cleared (see VideoSearchBox).
+  // active (the normalized query meets useVideoSearch's activation threshold) the shelf shows the creator's multilingual search
+  // results; the header (search box, Topic Tags and the content type / sort / period controls) never changes, so nothing jumps.
   const [searchQuery, setSearchQuery] = useState("")
   const [isComposing, setIsComposing] = useState(false)
 
@@ -629,7 +625,6 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
           selected={selectedTag}
           onSelect={setSelectedTag}
           options={tagOptions}
-          hideTags={isSearchActive}
           trailing={
             <>
               <ContentTypeDropdown
@@ -646,7 +641,7 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
         {/* V1: the control has no destination yet (see ViewAllButton), so production does not render it at all -- no hidden/inert
             element; it stays available to local development. `import.meta.env.DEV` is replaced at build time, so a production bundle
             contains no trace of the element. */}
-        {import.meta.env.DEV && !isSearchActive && <ViewAllButton locale={locale} />}
+        {import.meta.env.DEV && <ViewAllButton locale={locale} />}
       </header>
 
       {/* key = the creator + what the shelf is actually showing: a fresh track (scroll position and

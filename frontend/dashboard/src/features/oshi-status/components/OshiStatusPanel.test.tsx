@@ -92,14 +92,15 @@ describe("OshiStatusPanel: backend request", () => {
     expect(fetchMock).toHaveBeenCalledWith("aizawa_ema", PREVIOUS_VISIT)
   })
 
-  it("a first visit sends no `since` and shows the first-visit message instead of since-last-visit numbers", async () => {
+  it("a first visit sends no `since`, and the Not watched yet counts still come from the NEW rows (there is no first-visit placeholder any more)", async () => {
     vi.mocked(useLastVisit.usePreviousVisit).mockReturnValue(null)
     fetchMock.mockResolvedValue(status({ sinceLastVisit: null }))
     renderPanel()
 
     await screen.findByText("Unseen upload")
     expect(fetchMock).toHaveBeenCalledWith("aizawa_ema", null)
-    expect(screen.getByText("First visit — nothing to catch up on yet")).toBeInTheDocument()
+    expect(screen.queryByText(/First visit/)).toBeNull()
+    expect(metrics("Not watched yet")).toEqual({ Videos: "1", Livestreams: "0" })
   })
 
   it("switching the current Oshi re-requests for the new creator and never keeps the old creator's numbers", async () => {
@@ -138,13 +139,12 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
     expect(document.querySelector(".oshi-status__subscriber-count")).toBeNull()
   })
 
-  it("Since your last visit shows the backend's new uploads and streams", async () => {
+  it("Not watched yet counts the NEW rows of Recent Activity -- not the backend's last-visit numbers (4 uploads / 1 stream here)", async () => {
     renderPanel()
 
     await screen.findByText("Unseen upload")
-    const since = metrics("Since your last visit")
-    expect(since.Uploads).toBe("4")
-    expect(since.Streams).toBe("1")
+    expect(metrics("Not watched yet")).toEqual({ Videos: "1", Livestreams: "0" })
+    expect(screen.queryByText("Since your last visit")).toBeNull()
   })
 
   it("This week shows only the backend's new uploads and streams", async () => {
@@ -159,7 +159,7 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
 
     await screen.findByText("Unseen upload")
     expect(metrics("This week")).not.toHaveProperty("View growth")
-    expect(metrics("Since your last visit")).not.toHaveProperty("View growth")
+    expect(metrics("Not watched yet")).not.toHaveProperty("View growth")
     expect(screen.queryByText("View growth")).toBeNull()
     expect(screen.queryByText("12.3K")).toBeNull() // the 7-day growth value that used to be shown
   })
@@ -174,19 +174,19 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
     }
   })
 
-  it("keeps the other this-week and since-last-visit metrics (uploads, streams) in place", async () => {
+  it("keeps the this-week metrics (uploads, streams) and the Not watched yet metrics (videos, livestreams) in place", async () => {
     renderPanel()
 
     await screen.findByText("Unseen upload")
     expect(Object.keys(metrics("This week")).sort()).toEqual(["Streams", "Uploads"])
-    expect(Object.keys(metrics("Since your last visit")).sort()).toEqual(["Streams", "Uploads"])
+    expect(Object.keys(metrics("Not watched yet")).sort()).toEqual(["Livestreams", "Videos"])
   })
 
   it("shows placeholders, never a fabricated 0, while the data is not available", () => {
     fetchMock.mockImplementation(() => new Promise(() => {}))
     renderPanel()
 
-    expect(metrics("Since your last visit")).toEqual({ Uploads: "—", Streams: "—" })
+    expect(metrics("Not watched yet")).toEqual({ Videos: "—", Livestreams: "—" })
     expect(metrics("This week")).toEqual({ Streams: "—", Uploads: "—" })
   })
 
@@ -216,6 +216,83 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
     expect(await screen.findByText("No recent activity")).toBeInTheDocument()
     expect(screen.queryByRole("alert")).toBeNull()
     expect(metrics("This week").Uploads).toBe("2") // the rest of the panel still renders
+  })
+})
+
+/** The Not watched yet (尚未觀看) counts come from the SAME NEW judgement the Recent Activity rows draw their badge from. */
+describe("OshiStatusPanel Not watched yet counts follow Recent Activity's NEW state", () => {
+  const newUpload = (id: string): OshiStatusRecentItem => ({ ...unseenItem, videoId: id, title: `New upload ${id}`, kind: "upload" })
+  const newLive = (id: string): OshiStatusRecentItem => ({ ...unseenItem, videoId: id, title: `New livestream ${id}`, kind: "livestream" })
+  const badges = () => document.querySelectorAll(".oshi-status__recent-new-badge").length
+
+  it("A. a NEW video adds one to Videos", async () => {
+    fetchMock.mockResolvedValue(status({ recent: [newUpload("v1"), seenItem] }))
+    renderPanel()
+    await screen.findByText("New upload v1")
+
+    expect(metrics("Not watched yet")).toEqual({ Videos: "1", Livestreams: "0" })
+  })
+
+  it("B. a NEW livestream adds one to Livestreams", async () => {
+    fetchMock.mockResolvedValue(status({ recent: [newLive("l1"), seenItem] }))
+    renderPanel()
+    await screen.findByText("New livestream l1")
+
+    expect(metrics("Not watched yet")).toEqual({ Videos: "0", Livestreams: "1" })
+  })
+
+  it("C. 2 NEW videos and 1 NEW livestream read Videos 2 / Livestreams 1, matching the NEW badges one for one", async () => {
+    fetchMock.mockResolvedValue(status({ recent: [newUpload("v1"), newLive("l1"), newUpload("v2"), seenItem] }))
+    renderPanel()
+    await screen.findByText("New upload v1")
+
+    expect(metrics("Not watched yet")).toEqual({ Videos: "2", Livestreams: "1" })
+    expect(badges()).toBe(3)
+  })
+
+  it("D. viewed items and items before the tracking baseline are not counted (they carry no NEW badge either)", async () => {
+    localStorage.setItem(SEEN_KEY, JSON.stringify(["v_viewed"]))
+    resetAllSharedStateForTests()
+    fetchMock.mockResolvedValue(
+      status({ recent: [newUpload("v_viewed"), newLive("l_viewed"), newUpload("v_new"), seenItem /* published before the baseline */] }),
+    )
+    renderPanel()
+    await screen.findByText("New upload v_new")
+
+    expect(metrics("Not watched yet")).toEqual({ Videos: "1", Livestreams: "1" }) // v_new + l_viewed (only v_viewed was opened)
+    expect(badges()).toBe(2)
+  })
+
+  it("E. opening a NEW row lowers the matching count immediately, in step with its badge", async () => {
+    const user = userEvent.setup()
+    fetchMock.mockResolvedValue(status({ recent: [newUpload("v1"), newLive("l1"), newUpload("v2")] }))
+    renderPanel()
+    await screen.findByText("New upload v1")
+    expect(metrics("Not watched yet")).toEqual({ Videos: "2", Livestreams: "1" })
+
+    await user.click(screen.getByText("New upload v1"))
+    expect(metrics("Not watched yet")).toEqual({ Videos: "1", Livestreams: "1" })
+    await user.click(screen.getByText("New livestream l1"))
+    expect(metrics("Not watched yet")).toEqual({ Videos: "1", Livestreams: "0" })
+    expect(badges()).toBe(1)
+  })
+
+  it("does not depend on the last visit: the same counts with no previous visit, and none of the old last-visit wording", async () => {
+    vi.mocked(useLastVisit.usePreviousVisit).mockReturnValue(null)
+    fetchMock.mockResolvedValue(status({ recent: [newUpload("v1"), newLive("l1")], sinceLastVisit: { newUploads: 9, newStreams: 9, clamped: false } }))
+    renderPanel()
+    await screen.findByText("New upload v1")
+
+    expect(metrics("Not watched yet")).toEqual({ Videos: "1", Livestreams: "1" })
+    expect(screen.queryByText(/last visit/i)).toBeNull()
+  })
+
+  it("the This week numbers are unrelated and unchanged", async () => {
+    fetchMock.mockResolvedValue(status({ recent: [newUpload("v1")], thisWeek: { newUploads: 7, newStreams: 5 } }))
+    renderPanel()
+    await screen.findByText("New upload v1")
+
+    expect(metrics("This week")).toEqual({ Streams: "5", Uploads: "7" })
   })
 })
 

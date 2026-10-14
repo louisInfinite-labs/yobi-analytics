@@ -87,23 +87,40 @@ describe("Desktop video search box drives the multilingual backend search", () =
     expect(screen.queryByText("Title shelf-1")).toBeNull() // the shelf shows the search result, not a local filter of the loaded list
   })
 
-  it("hides ONLY the Topic Tags while searching: content type and sort stay, and everything is restored when the query is cleared", async () => {
+  it("keeps the Topic Tags (and the whole header) in place while searching: type -> tags still visible, backend used, clear -> normal results", async () => {
     const user = await renderSection()
+    const header = document.querySelector(".oshi-videos__header") as HTMLElement
+    const layout = () => Array.from(header.querySelectorAll(":scope > *, .oshi-videos__filters > *")).map((el) => el.className)
+    // 1. Topic Tags are visible before typing.
     expect(tags()).not.toBeNull()
+    const layoutBefore = layout()
+    const tagLabels = Array.from(document.querySelectorAll(".oshi-videos__segment-item")).map((el) => el.textContent)
+    expect(tagLabels.length).toBeGreaterThan(0)
 
+    // 2. Type a search query.
     await user.type(searchInput(), "minecraft")
     await act(async () => {
       vi.advanceTimersByTime(250)
     })
     await flush()
 
-    expect(tags()).toBeNull()
-    expect(controls()).not.toBeNull()
-    expect(controls().querySelectorAll("select").length).toBeGreaterThanOrEqual(2) // content type + sort
+    // 3. Topic Tags are STILL visible, with the same options.
+    expect(tags()).not.toBeNull()
+    expect(Array.from(document.querySelectorAll(".oshi-videos__segment-item")).map((el) => el.textContent)).toEqual(tagLabels)
+    // 4. The multilingual backend search is what answered.
+    expect(fetchSearchMock).toHaveBeenCalledTimes(1)
+    expect(fetchSearchMock.mock.calls[0][0]).toMatchObject({ creatorId: canonicalCreatorId, rawQuery: "minecraft" })
+    expect(await screen.findByText("Title search-1")).toBeInTheDocument()
+    // 5. No control / header element disappeared or appeared: the search box, tags and the content type + sort controls are all still there.
+    expect(layout()).toEqual(layoutBefore)
+    expect(searchInput()).toBeVisible()
+    expect(controls().querySelectorAll("select").length).toBeGreaterThanOrEqual(2)
 
+    // 6. Clearing the query restores the normal video result state.
     await user.clear(searchInput())
     await flush()
     expect(tags()).not.toBeNull()
+    expect(layout()).toEqual(layoutBefore)
     expect(await screen.findByText("Title shelf-1")).toBeInTheDocument()
     expect(screen.queryByText("Title search-1")).toBeNull()
   })
@@ -124,6 +141,7 @@ describe("Desktop video search box drives the multilingual backend search", () =
     expect(Object.keys(query)).not.toContain("topic") // the endpoint has no tag parameter at all
     expect(query.topicIds).toEqual(["valorant"]) // derived from the QUERY, not from the selected Minecraft tag
     expect(await screen.findByText("Title search-1")).toBeInTheDocument()
+    expect(tags()).not.toBeNull() // the tags are visible during the search too, but the search itself never uses the selected tag
   })
 
   it("keeps the sort control live during a search: changing it searches again with the new sort", async () => {
@@ -158,7 +176,7 @@ describe("Desktop video search box drives the multilingual backend search", () =
     expect(await screen.findByText("No matching videos")).toBeInTheDocument()
   })
 
-  it("a query below the engine's activation threshold does not search, and the Topic Tags stay (nothing is half-hidden)", async () => {
+  it("a query below the engine's activation threshold does not search and leaves the normal shelf in place", async () => {
     const user = await renderSection()
     await user.type(searchInput(), "a")
     await act(async () => {
