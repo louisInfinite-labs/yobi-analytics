@@ -1138,13 +1138,26 @@
   background: transparent;
   border: 0;
   border-radius: 50%;
-  color: var(--notification-text-secondary);
+  /* A soft, light red so the x reads as REMOVE rather than as a neutral close / math symbol. It is the page's own error red (#f87171, see
+     .notification-delivery-times__error) at reduced strength, kept subtle for the dark theme; stronger on hover / keyboard focus / press. */
+  color: color-mix(in srgb, #f87171 72%, var(--notification-text-secondary));
   cursor: pointer;
 }
 
-.notification-delivery-times__remove:hover {
-  background: var(--notification-selected-bg-hover);
-  color: var(--notification-text-primary);
+.notification-delivery-times__remove:hover,
+.notification-delivery-times__remove:focus-visible {
+  background: color-mix(in srgb, #f87171 14%, transparent);
+  color: #f87171;
+}
+
+.notification-delivery-times__remove:focus-visible {
+  outline: 2px solid color-mix(in srgb, #f87171 60%, transparent);
+  outline-offset: 1px;
+}
+
+.notification-delivery-times__remove:active {
+  background: color-mix(in srgb, #f87171 24%, transparent);
+  color: #fca5a5;
 }
 
 /* The "+" box follows the Add topic button's dashed look, at the dropdowns' height. */

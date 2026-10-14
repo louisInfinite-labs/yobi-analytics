@@ -47,4 +47,45 @@ describe("New Video notification times layout (settings.css)", () => {
     expect(rules.length).toBeGreaterThan(0)
     expect(css).not.toMatch(/@media[^{]*\{[^@]*notification-delivery-times__(list|item)[^}]*display:\s*none/)
   })
+
+  describe("the delete x beside each chosen time", () => {
+    const ERROR_RED = "#f87171" // the page's own error red (.notification-delivery-times__error)
+
+    it("is a soft, light red by default -- the error red mixed down toward the muted text color, not a bright warning red", () => {
+      const remove = ruleBody(css, ".notification-delivery-times__remove")
+      expect(remove).toMatch(/color:\s*color-mix\(in srgb,\s*#f87171\s+\d+%,\s*var\(--notification-text-secondary\)\)/)
+      const strength = Number(remove.match(/#f87171\s+(\d+)%/)?.[1])
+      expect(strength).toBeGreaterThan(40)
+      expect(strength).toBeLessThan(100) // always mixed down, never the full-strength red by default
+    })
+
+    it("gets stronger on hover and keyboard focus, and again on press", () => {
+      const hover = rulesOf(css).find((rule) => rule.selector.includes(".notification-delivery-times__remove:hover"))!
+      expect(hover.selector).toContain(".notification-delivery-times__remove:focus-visible")
+      expect(hover.body).toContain(`color: ${ERROR_RED}`)
+      expect(hover.body).toMatch(/background:\s*color-mix\(in srgb,\s*#f87171\s+14%,\s*transparent\)/)
+      const focusRing = rulesOf(css).find((rule) => rule.selector.trim() === ".notification-delivery-times__remove:focus-visible")!
+      expect(focusRing.body).toMatch(/outline:\s*2px solid color-mix\(in srgb,\s*#f87171/)
+      const active = ruleBody(css, ".notification-delivery-times__remove:active")
+      expect(active).toMatch(/background:\s*color-mix\(in srgb,\s*#f87171\s+24%,\s*transparent\)/)
+      expect(active).toMatch(/color:\s*#fca5a5/)
+    })
+
+    it("changes only color: its size, shape and spacing are exactly what they were", () => {
+      const remove = ruleBody(css, ".notification-delivery-times__remove")
+      expect(remove).toMatch(/width:\s*28px/)
+      expect(remove).toMatch(/height:\s*28px/)
+      expect(remove).toMatch(/border-radius:\s*50%/)
+      expect(remove).toMatch(/padding:\s*0/)
+      expect(remove).toMatch(/background:\s*transparent/)
+      expect(ruleBody(css, ".notification-delivery-times__item")).toMatch(/gap:\s*4px/)
+    })
+
+    it("leaves the + box and every other control alone: the red appears only in the delete control's own rules (and the existing inline error)", () => {
+      expect(ruleBody(css, ".notification-add-time.ant-btn")).not.toMatch(/f87171|fca5a5/i)
+      expect(ruleBody(css, ".notification-add-time.ant-btn:hover")).not.toMatch(/f87171|fca5a5/i)
+      const withRed = rulesOf(css).filter((rule) => /#f87171|#fca5a5/i.test(rule.body) && rule.selector.includes("notification-delivery-times"))
+      expect(withRed.every((rule) => /__remove|__error/.test(rule.selector))).toBe(true)
+    })
+  })
 })
