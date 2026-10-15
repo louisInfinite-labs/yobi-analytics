@@ -13,7 +13,7 @@ import { composeLatestLiveShelf } from "../utils/latestLiveShelf"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import type { VideoSortOption } from "../utils/recentVideosSelection"
 import { SHORT_VIDEO_FILTER, SPECIAL_VIDEO_FILTERS, SPECIAL_VIDEO_FILTER_LABEL_KEYS, type SpecialVideoFilter, type VideoSectionSelection } from "../model/specialVideoFilters"
-import { buildVideoFilterEntries } from "../model/videoFilterCatalog"
+import { buildHomeVideoTagEntries } from "../model/videoFilterCatalog"
 import {
   VIDEO_CONTENT_TYPES,
   VIDEO_VIEW_WINDOWS,
@@ -549,18 +549,18 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   const [searchQuery, setSearchQuery] = useState("")
   const [isComposing, setIsComposing] = useState(false)
 
-  // The special filters always render; backend topics only once GET /topics has actually
-  // succeeded -- never a stale/hardcoded topic list while loading or on a failed fetch (the
-  // special filters alone stay usable in both of those states, per the architecture this models).
-  // Short is a content-format filter, placed immediately before the Other topic (at the end when
-  // there is no Other topic yet).
+  // The bar is FIXED at twelve options -- ALL, 最新影片, 最新直播, 雜談, 歌回, MV, Apex, Minecraft, SF6, VALO, Short, 其他 -- whatever
+  // GET /topics returns: the catalog supplies each topic's id and localized label, but never decides which topics Home shows (the rest of the
+  // catalog is for Search and the future Video Filter Dialog). The special filters always render; the topics only once GET /topics has
+  // actually succeeded -- never a stale/hardcoded topic list while loading or on a failed fetch. Short is a content-format filter, placed
+  // immediately before the Other topic (at the end when there is no Other topic).
   const tagOptions = useMemo(() => {
     const option = (filter: SpecialVideoFilter) => ({
       value: filter as VideoSectionSelection,
       label: t(locale, SPECIAL_VIDEO_FILTER_LABEL_KEYS[filter]),
     })
     const special = SPECIAL_VIDEO_FILTERS.map(option)
-    const categories = buildVideoFilterEntries(topicCatalog.state.status === "success" ? topicCatalog.state.topics : null, locale)
+    const categories = buildHomeVideoTagEntries(topicCatalog.state.status === "success" ? topicCatalog.state.topics : null, locale)
     return [...special, ...categories.map((entry) => ({ value: entry.id as VideoSectionSelection, label: entry.label }))]
   }, [locale, topicCatalog.state])
 
