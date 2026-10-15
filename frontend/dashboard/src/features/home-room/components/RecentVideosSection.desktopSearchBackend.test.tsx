@@ -82,7 +82,8 @@ describe("Desktop video search box drives the multilingual backend search", () =
     expect(fetchSearchMock).toHaveBeenCalledTimes(1)
     const [query] = fetchSearchMock.mock.calls[0]
     expect(query).toMatchObject({ creatorId: canonicalCreatorId, rawQuery: "minecraft", contentType: "all", sort: "newest", viewWindow: "total" })
-    expect(query.topicIds).toContain("minecraft") // resolved locally from the SAME downloaded /topics catalog
+    expect(query.terms).toContain("minecraft") // expanded locally from the SAME downloaded /topics catalog (title terms, never ids)
+    expect(Object.keys(query)).not.toContain("topicIds")
     expect(await screen.findByText("Title search-1")).toBeInTheDocument()
     expect(screen.queryByText("Title shelf-1")).toBeNull() // the shelf shows the search result, not a local filter of the loaded list
   })
@@ -139,7 +140,7 @@ describe("Desktop video search box drives the multilingual backend search", () =
 
     const [query] = fetchSearchMock.mock.calls[0]
     expect(Object.keys(query)).not.toContain("topic") // the endpoint has no tag parameter at all
-    expect(query.topicIds).toEqual(["valorant"]) // derived from the QUERY, not from the selected Minecraft tag
+    expect(query.terms).toEqual(["valo"]) // expanded from the QUERY, not from the selected Minecraft tag
     expect(await screen.findByText("Title search-1")).toBeInTheDocument()
     expect(tags()).not.toBeNull() // the tags are visible during the search too, but the search itself never uses the selected tag
   })

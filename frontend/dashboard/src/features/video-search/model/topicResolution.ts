@@ -1,19 +1,21 @@
 import { normalizeQuery } from "./queryNormalization"
 import type { BackendVideoTopic } from "../../home-room/model/videoTopicCatalog"
 
-/** The final Video Search architecture: canonical multilingual topic resolution ("does this query refer
- * to a topic, and which one") is done HERE, on the frontend, against the SAME authoritative catalog
- * GET /topics returns (id + every locale label + search_aliases -- tracking.video_topics.Topic on the
- * backend) -- never a second, frontend-maintained taxonomy, and never re-derived by the backend per
- * request (see src/search/video_search.py's own module docstring for the backend side of this).
+/** The Topic Catalog (GET /topics: id + every locale label + searchAliases) as a MULTILINGUAL THESAURUS for the Home SearchView -- nothing
+ * more. SearchView is a title search: this module only decides which extra LITERAL strings to look for in titles besides the typed
+ * query (typing "birth" also looks for "birthday", "誕生日", ...). It never produces topic ids for matching: a video's persisted topic plays
+ * no part in SearchView (Topic Filter, a separate operation, owns that), and the backend applies no topic regex.
  *
- * The matching rule mirrors the backend's own (now-removed) resolve_canonical_ids_with_evidence exactly:
- * a query resolves to a topic when the normalized query is a PREFIX of one of that topic's own
- * searchable forms (id, any locale label, or any search alias). This is monotonic for ANY catalog
- * content -- if `form.startsWith(Q2)` and `Q` is a prefix of `Q2`, then `form.startsWith(Q)` necessarily
- * holds too -- which is exactly the property the Search-session cache's local narrowing depends on (see
- * searchSessionCache.ts). No fuzzy matching, no typo correction: a query that is not a literal prefix of
- * a stored form never resolves. */
+ * A query resolves to a concept when the normalized query is a PREFIX of one of that topic's own searchable forms (id, any locale
+ * label, or any search alias) -- the existing prefix-resolution rule, unchanged. This is monotonic for ANY catalog content: if
+ * `form.startsWith(Q2)` and Q is a prefix of Q2, then `form.startsWith(Q)` necessarily holds too, so the concepts (and therefore the
+ * expanded terms) a longer query resolves to are always a subset of what its prefix resolved to -- which is what the Search-session cache's
+ * local narrowing depends on (see searchSessionCache.ts). No fuzzy matching, no typo correction. */
+
+/** The one normalization every term goes through (the same NFKC / trim / whitespace / lowercase rules as the query itself). */
+function normalizeTerm(value: string | undefined | null): string {
+  return normalizeQuery(value ?? "").normalized
+}
 
 /** Every normalized, searchable literal form for one topic: its own id, every locale label (regardless
  * of the CURRENT UI locale -- display language and Search-match language are deliberately independent,
@@ -47,4 +49,31 @@ export function resolveTopicIds(rawQuery: string, topics: readonly BackendVideoT
     if (searchableFormsFor(topic).some((form) => form.startsWith(normalized))) ids.push(topic.id)
   }
   return ids
+}
+
+/** The literal title-search terms a raw query expands to: for every concept the query resolves to (see resolveTopicIds), that topic's
+ * localized labels (every locale, regardless of the current UI locale) and its search aliases -- normalized, blanks dropped, and
+ * de-duplicated (two spellings that normalize identically are one term), in catalog order. The topic ID is NOT a term (ids are machine
+ * names), and the raw query itself is always searched separately by the backend, so "no concept resolved" simply yields []. Empty or
+ * blank queries expand to nothing.
+ *
+ * The result is monotonic under query extension -- expandSearchTerms(Q2) is a subset of expandSearchTerms(Q1) whenever Q1 is a prefix of
+ * Q2 -- for a fixed catalog; searchSessionCache.ts still records the terms each cached result was fetched with, so a catalog that changed
+ * in between (for example GET /topics finishing after the first search) can never make local narrowing incomplete. */
+export function expandSearchTerms(rawQuery: string, topics: readonly BackendVideoTopic[]): string[] {
+  const normalized = normalizeQuery(rawQuery).normalized
+  if (!normalized) return []
+  const terms = new Set<string>()
+  for (const topic of topics) {
+    if (!searchableFormsFor(topic).some((form) => form.startsWith(normalized))) continue
+    for (const label of Object.values(topic.labels)) {
+      const term = normalizeTerm(label)
+      if (term) terms.add(term)
+    }
+    for (const alias of topic.searchAliases ?? []) {
+      const term = normalizeTerm(alias)
+      if (term) terms.add(term)
+    }
+  }
+  return [...terms]
 }

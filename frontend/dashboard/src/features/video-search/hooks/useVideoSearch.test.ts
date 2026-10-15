@@ -251,52 +251,89 @@ describe("useVideoSearch -- every successful response is a complete result set (
   })
 })
 
-describe("useVideoSearch -- final architecture: frontend resolves topic ids locally, never a frontend taxonomy or backend-resolved evidence", () => {
-  // FIXTURE-ONLY topic -- "birthday" is not a real backend topic id (tracking.video_topics.TOPICS has no
-  // such entry); used purely to exercise the generic resolve-locally/union/narrow mechanism end to end.
-  const FIXTURE_TOPICS: BackendVideoTopic[] = [{ id: "birthday", labels: { en: "Birthday" }, searchAliases: ["birth", "birthday"] }]
+describe("useVideoSearch -- title-only SearchView: the catalog is only a thesaurus for expanded title terms", () => {
+  // The production catalog's own 誕生日 record: id is the Japanese word, English label "Birthday", mixed-language aliases.
+  const BIRTHDAY: BackendVideoTopic = {
+    id: "誕生日",
+    labels: { "zh-TW": "生日", en: "Birthday", ja: "誕生日" },
+    searchAliases: ["誕生日", "誕生日配信", "birthday", "3d birthday live"],
+  }
+  const TOPICS: BackendVideoTopic[] = [BIRTHDAY]
 
-  it("resolves topicIds locally against the caller-supplied catalog and sends them ALONGSIDE the raw query on the very first request", async () => {
-    mockBackend({ bir: [searchResult("v1", "誕生日配信", "birthday")] })
-    renderHook(() => useVideoSearch("bir", BASE, { topics: FIXTURE_TOPICS }))
+  it("`birth` is sent with the raw query AND the expanded literal terms -- and never a topic id", async () => {
+    mockBackend({ birth: [searchResult("v1", "今日は誕生日配信")] })
+    renderHook(() => useVideoSearch("birth", BASE, { topics: TOPICS }))
     await settle()
-    // "bir" is a prefix of the fixture alias "birth" -- resolves ["birthday"] -- and `rawQuery` is still sent.
-    expect(fetchVideoSearch).toHaveBeenCalledWith(expect.objectContaining({ rawQuery: "bir", topicIds: ["birthday"] }), expect.anything())
+    const query = vi.mocked(fetchVideoSearch).mock.calls[0][0]
+    expect(query.rawQuery).toBe("birth")
+    expect(query.terms).toEqual(expect.arrayContaining(["birthday", "誕生日", "誕生日配信", "生日"]))
+    expect(Object.keys(query)).not.toContain("topicIds")
   })
 
-  it("still sends the raw query even when local resolution finds no topic -- topicIds is never a substitute for it", async () => {
+  it("still sends the raw query when no concept resolves: terms is just empty", async () => {
     mockBackend({ "funny moment": [searchResult("v1", "funny moment compilation")] })
-    renderHook(() => useVideoSearch("funny moment", BASE, { topics: FIXTURE_TOPICS }))
+    renderHook(() => useVideoSearch("funny moment", BASE, { topics: TOPICS }))
     await settle()
-    expect(fetchVideoSearch).toHaveBeenCalledWith(expect.objectContaining({ rawQuery: "funny moment", topicIds: [] }), expect.anything())
+    expect(fetchVideoSearch).toHaveBeenCalledWith(expect.objectContaining({ rawQuery: "funny moment", terms: [] }), expect.anything())
   })
 
-  it("keeps a Japanese-titled result across a narrowing extension via its topic + the downloaded catalog, with zero extra requests", async () => {
-    mockBackend({ bir: [searchResult("v1", "誕生日配信", "birthday")] })
-    const { result, rerender } = renderHook(({ q }) => useVideoSearch(q, BASE, { topics: FIXTURE_TOPICS }), { initialProps: { q: "bir" } })
+  it("narrows locally by TITLE (raw query or expanded term), with zero extra requests", async () => {
+    mockBackend({ bir: [searchResult("v1", "誕生日配信"), searchResult("v2", "Happy Birthday stream")] })
+    const { result, rerender } = renderHook(({ q }) => useVideoSearch(q, BASE, { topics: TOPICS }), { initialProps: { q: "bir" } })
     await settle()
     expect(requestCount()).toBe(1)
-    expect(result.current.videos).toHaveLength(1)
+    expect(result.current.videos.map((v) => v.videoId)).toEqual(["v1", "v2"])
 
-    rerender({ q: "birth" }) // the title itself does NOT contain "birth" -- only topic+catalog resolution does
+    rerender({ q: "birth" }) // v1's title does not contain "birth", but it contains the expanded term 誕生日
     await act(async () => {})
     expect(requestCount()).toBe(1)
-    expect(result.current.videos).toHaveLength(1)
+    expect(result.current.videos.map((v) => v.videoId)).toEqual(["v1", "v2"])
 
     rerender({ q: "birthday" })
     await act(async () => {})
     expect(requestCount()).toBe(1)
-    expect(result.current.videos).toHaveLength(1)
+    expect(result.current.videos.map((v) => v.videoId)).toEqual(["v1", "v2"])
   })
 
-  it("drops the topic-matched video once the query extends past every searchable form of its topic -- zero extra requests either way", async () => {
-    mockBackend({ bir: [searchResult("v1", "誕生日配信", "birthday")] })
-    const { result, rerender } = renderHook(({ q }) => useVideoSearch(q, BASE, { topics: FIXTURE_TOPICS }), { initialProps: { q: "bir" } })
+  it("drops results once the query extends past every term and title -- still zero extra requests", async () => {
+    mockBackend({ bir: [searchResult("v1", "誕生日配信")] })
+    const { result, rerender } = renderHook(({ q }) => useVideoSearch(q, BASE, { topics: TOPICS }), { initialProps: { q: "bir" } })
     await settle()
     rerender({ q: "birthdayx" })
     await act(async () => {})
     expect(requestCount()).toBe(1)
     expect(result.current.videos).toHaveLength(0)
+  })
+
+  it("never keeps a result because of its persisted topic, even if the backend (hypothetically) returned it", async () => {
+    mockBackend({ bir: [searchResult("v1", "全く別の配信", "誕生日"), searchResult("v2", "誕生日の夜", null)] })
+    const { result, rerender } = renderHook(({ q }) => useVideoSearch(q, BASE, { topics: TOPICS }), { initialProps: { q: "bir" } })
+    await settle()
+    rerender({ q: "birth" })
+    await act(async () => {})
+    expect(result.current.videos.map((v) => v.videoId)).toEqual(["v2"])
+  })
+
+  it("the selected Topic Filter plays no part: the request has no topic/tag field at all", async () => {
+    mockBackend({ birth: [] })
+    renderHook(() => useVideoSearch("birth", BASE, { topics: TOPICS }))
+    await settle()
+    const keys = Object.keys(vi.mocked(fetchVideoSearch).mock.calls[0][0])
+    expect(keys.sort()).toEqual(["contentType", "creatorId", "rawQuery", "sort", "terms", "viewWindow"])
+  })
+
+  it("a catalog that finishes loading AFTER a cached search does not let a stale, un-expanded base answer a query that now expands", async () => {
+    mockBackend({ bir: [searchResult("v1", "birthday stream")], birth: [searchResult("v1", "birthday stream"), searchResult("v2", "誕生日配信")] })
+    const { result, rerender } = renderHook(({ q, topics }) => useVideoSearch(q, BASE, { topics }), {
+      initialProps: { q: "bir", topics: [] as BackendVideoTopic[] },
+    })
+    await settle()
+    expect(requestCount()).toBe(1) // "bir" fetched with no catalog yet: no expanded terms
+
+    rerender({ q: "birth", topics: TOPICS }) // the catalog arrived; "birth" now expands to 誕生日 -- the cached "bir" base lacks such rows
+    await settle()
+    expect(requestCount()).toBe(2)
+    expect(result.current.videos.map((v) => v.videoId)).toEqual(["v1", "v2"])
   })
 })
 

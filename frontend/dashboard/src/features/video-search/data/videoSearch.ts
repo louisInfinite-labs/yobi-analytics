@@ -26,12 +26,11 @@ interface VideoSearchResponse {
 export interface VideoSearchQuery {
   creatorId: string
   rawQuery: string
-  /** Canonical topic ids the frontend has ALREADY resolved from `rawQuery`, locally, against its own
-   * downloaded /topics catalog (see ../model/topicResolution.ts) -- NOT the user's separately-remembered
-   * browsing Video Tag, which must never be threaded through here (Search always ignores it). Empty is
-   * the normal "this query didn't resolve to any topic" case, not an error: direct title matching via
-   * `rawQuery` always applies regardless, and is never omitted just because this resolved to something. */
-  topicIds: readonly string[]
+  /** The literal title-search terms the frontend expanded from `rawQuery` against the Topic Catalog's labels and aliases (see
+   * ../model/topicResolution.ts expandSearchTerms) -- normalized and de-duplicated; empty is the normal "nothing resolved" case. The
+   * backend only compares them to video TITLES. NEVER a topic id and never the user's separately-remembered browsing Tag (which Search
+   * always ignores). */
+  terms: readonly string[]
   contentType: VideoContentType
   sort: VideoSortOption
   viewWindow: VideoViewWindow
@@ -58,25 +57,17 @@ function toVideoSearchResult(dto: VideoSearchResultDto): VideoSearchResult {
   }
 }
 
-/** Product correction (Search-session cache follow-up): the backend returns EVERY matching video for
- * one query in ONE response -- no `limit`/`offset`/`hasMore` at all (src/api/read_api.py's
- * get_creator_video_search no longer paginates Search; see that function's own docstring for the
- * measured payload-size justification). Every successful response is therefore, by construction,
- * already a complete result set -- see ../model/searchSessionCache.ts, which stores it as a
- * Search-session base with no separate "is this complete?" check needed.
+/** The backend returns EVERY matching video for one query in ONE response -- no `limit`/`offset`/`hasMore` at all (src/api/read_api.py's
+ * get_creator_video_search). Every successful response is therefore a complete result set -- see ../model/searchSessionCache.ts.
  *
- * `query.rawQuery` (direct title matching) is ALWAYS sent, independently of whether `query.topicIds`
- * resolved to anything -- this is a hard product rule (see ../hooks/useVideoSearch.ts, the only caller,
- * for where `topicIds` is actually computed via ../model/topicResolution.ts). `topicIds` is sent as a
- * comma-separated `topicIds` parameter when non-empty (the project's existing multi-value query-param
- * convention, e.g. Holodex's own `channels=<comma-separated>`), and omitted entirely when empty -- never
- * an empty-string parameter, which `read_api.parse_video_search_topic_ids` would treat identically to
- * "absent" anyway, but omitting it keeps the request URL itself honest about having no topic filter. */
+ * `query.rawQuery` is ALWAYS sent, independently of whether anything expanded. `query.terms` (the expanded literal title terms) is sent
+ * as a JSON array in the `terms` parameter -- a JSON array, not a comma list, because an alias may contain a comma -- and omitted entirely
+ * when empty. The request never carries a topic id: SearchView matches on titles only. */
 export async function fetchVideoSearch(query: VideoSearchQuery, signal?: AbortSignal): Promise<VideoSearchResult[]> {
   try {
     const params = new URLSearchParams({ q: query.rawQuery, contentType: query.contentType, sort: query.sort })
     if (query.sort === "mostViews") params.set("metric", query.viewWindow)
-    if (query.topicIds.length > 0) params.set("topicIds", query.topicIds.join(","))
+    if (query.terms.length > 0) params.set("terms", JSON.stringify(query.terms))
     const response = await apiRequest<VideoSearchResponse>(`/creators/${encodeURIComponent(query.creatorId)}/videos/search?${params}`, { signal })
     return response.videos.map(toVideoSearchResult)
   } catch (err) {

@@ -1,53 +1,23 @@
-"""Video Search (the Video List Multilingual Search feature): one creator's COMPLETE video catalog,
-searched by DIRECT TITLE MATCH **union** TOPIC MATCH, with the creator's existing Filter/Sort
-(contentType / sort / metric / excludeShorts) applied to the combined result. Video Tag/Topic selection
-is deliberately NOT a parameter here -- Search always considers every topic, never just the currently
-selected one (see api.read_api.get_creator_video_search's docstring for the product rule this encodes).
+"""Video Search (the Video List SearchView): one creator's COMPLETE video catalog, searched by TITLE ONLY, with the creator's existing
+Filter/Sort (contentType / sort / metric / excludeShorts) applied to the result. Video Tag/Topic selection is deliberately NOT a
+parameter here -- Search always considers every video, never just the currently selected topic.
 
-FINAL ARCHITECTURE (Video Search frontend-resolved-topics pass): canonical multilingual topic
-resolution -- turning a raw query like "VALO" or "エペ" into the topic id(s) it refers to -- is now the
-FRONTEND's job, done locally against the SAME authoritative catalog GET /topics exposes (id + labels +
-tracking.video_topics.Topic.search_aliases; see frontend/dashboard/src/features/video-search/model/
-topicResolution.ts). This module therefore no longer resolves a query to topic ids itself: the request
-already carries both pieces the frontend has already decided --
+SearchView and Topic Filter are two different operations. Topic Filter filters by a video's pre-classified canonical topic id. SearchView
+never looks at a video's persisted `topic` at all: a video with a missing, wrong or unrelated topic is still found when its title matches,
+and a video is never returned merely because its topic matches. The two share only VOCABULARY -- the Topic Catalog's labels and search
+aliases -- and that sharing happens on the FRONTEND: it resolves the typed query against the downloaded GET /topics catalog (prefix match
+on id / localized labels / aliases) and sends the matching concepts' LITERAL labels and aliases as explicit title-search terms.
 
-  q        -- the raw text, for direct title matching (ALWAYS present and ALWAYS applied, independently
-              of topic resolution; see video_matches_query -- a resolved topic id can never substitute
-              for or suppress a title match)
-  topicIds -- the canonical ids the frontend already resolved from that SAME q against the catalog
-              (empty when the query didn't resolve to any topic, which is not an error -- direct title
-              matching still applies on its own)
-
-and `video_matches_query`/`search_creator_video_rows` only need to check "does this row's own
-persisted topic belong to the given id set", a plain membership test with no multilingual knowledge of
-its own. There is no remaining backend code path that re-derives topic ids from query text: this
-module no longer imports tracking.video_topics or search.canonical_topic_matching at all (the
-canonical_topic_matching module itself, and this module's own former resolve_query_topics/
-resolve_query_topics_with_evidence/matched_topic_aliases_for_row, were deleted as dead code once their
-only caller -- this file's own old self-resolution path -- was removed). Topic.search_aliases remains
-very much alive: it is what GET /topics now serves to the frontend (api.dashboard_catalog_api.
-get_topics), it just has no remaining backend Search-side consumer.
-
-UNION, NOT FALLBACK: a row is included if EITHER its title contains `q` OR its topic is in `topicIds`
--- never "if topic resolved, only match by topic" and never "title OR topic, pick one." Both sources are
-evaluated unconditionally; see video_matches_query. Because this is a single boolean OR per row (not two
-separately built lists that are then merged), there is no separate "dedupe by videoId" step needed: each
-row is visited exactly once, so a row matching both conditions is naturally included only once -- see
-video_matches_query's own docstring.
-
-Why the frontend, not the backend, resolves topic ids: the topic catalog (today 8 topics, intended to
-grow to a much larger backend-managed catalog later, see docs/) only changes when a creator-management
-action adds a topic, not per Search keystroke -- resolving it once per request would be pointless
-re-computation. The frontend already needs this same catalog for Tag display and a future Topic Picker,
-so sharing ONE downloaded, authoritative copy for all three uses (display, future picker, Search
-resolution) avoids a second backend-owned taxonomy duplicated into the request path, which is exactly
-what this product has repeatedly guarded against introducing on the FRONTEND side (see topicResolution.ts
-for the local resolver, which depends on exactly the same prefix-matching monotonicity property
-resolve_canonical_ids_with_evidence used to provide here).
+The request therefore carries
+  q      -- the raw text, ALWAYS present and ALWAYS applied
+  terms  -- zero or more already-expanded literal strings (a JSON array of strings; empty is the normal "nothing resolved" case)
+and a row matches when its normalized title contains the normalized `q` OR any normalized, de-duplicated term (see video_matches_query).
+This module never imports tracking.video_topics, never applies a topic regex, and never falls back to persisted-topic matching.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from analytics.video_ranking import (
@@ -65,56 +35,51 @@ SORT_MOST_VIEWS = "mostViews"
 VALID_SEARCH_SORTS = frozenset({SORT_NEWEST, SORT_OLDEST, SORT_MOST_VIEWS})
 
 
-def video_matches_query(row: dict[str, Any], normalized_query: str, topic_ids: frozenset[str]) -> bool:
-    """A row matches when its (normalized) title contains `normalized_query` as a substring, OR its
-    persisted topic is one `topic_ids` names -- pure OR (UNION semantics), either condition alone is
-    enough, and both are always evaluated (never "stop checking title once a topic matched"). An empty
-    `normalized_query` always returns False regardless of `topic_ids` -- the same defensive rule as
-    before (an accidental empty/whitespace-only Search must never behave like "match everything"), now
-    also covering the case of a caller sending topic_ids without a real query. A row with no persisted
-    topic can only ever match by title."""
+def normalize_terms(raw_terms: Iterable[str]) -> frozenset[str]:
+    """The authoritative term set: every term normalized with the same NFKC / whitespace / casefold rules as the query and the titles,
+    blank terms dropped and duplicates collapsed (two spellings that normalize identically are one term)."""
+    return frozenset(term for term in (normalize_query(raw) for raw in raw_terms) if term)
+
+
+def video_matches_query(row: dict[str, Any], normalized_query: str, terms: frozenset[str] = frozenset()) -> bool:
+    """TITLE-ONLY: a row matches when its normalized title contains `normalized_query` as a substring, OR contains any of `terms` (already
+    normalized -- see normalize_terms). The row's persisted `topic` is never read. An empty `normalized_query` never matches, whatever
+    `terms` hold (an accidental empty Search must never behave like "match everything")."""
     if not normalized_query:
         return False
     title = normalize_query(row.get("title") or "")
     if normalized_query in title:
         return True
-    return bool(topic_ids) and row.get("topic") in topic_ids
+    return any(term in title for term in terms)
 
 
 def search_creator_video_rows(
     rows: list[dict[str, Any]],
     *,
     raw_query: str,
-    topic_ids: frozenset[str] = frozenset(),
+    terms: Iterable[str] = (),
     content_type: str = CONTENT_TYPE_SCOPE_ALL,
     live_status: str = LIVE_STATUS_SCOPE_ALL,
     exclude_shorts: bool = True,
     sort: str = SORT_NEWEST,
     metric: str = TOTAL_METRIC,
 ) -> list[dict[str, Any]]:
-    """`rows` is already this one creator's own rows (the caller's job, exactly like
-    analytics.video_ranking.rank_video_rows) -- Search is never given a multi-creator row set to filter
-    down itself, so "search is scoped to the current creator" is enforced by the caller, not re-checked
-    here.
+    """`rows` is already this one creator's own rows (the caller's job, exactly like analytics.video_ranking.rank_video_rows) -- Search is
+    never given a multi-creator row set to filter down itself, so "search is scoped to the current creator" is enforced by the caller.
 
-    `topic_ids` are canonical topic ids the CALLER has already resolved from `raw_query` (frontend-side,
-    against the authoritative /topics catalog) -- an unknown id (one that matches no real topic) is
-    harmless: no row's own `topic` will ever equal it, so it simply contributes nothing, never an error.
-    An empty `topic_ids` is the normal "this query didn't resolve to any topic" case, not an error --
-    direct title matching still applies on its own (see video_matches_query).
+    `terms` are the literal title-search strings the CALLER (the frontend) expanded from the query against the Topic Catalog's labels and
+    aliases; they are normalized and de-duplicated here, so duplicate aliases can never produce duplicate results (each row is visited once
+    and is either in or out). An empty `terms` is the normal "nothing resolved" case: the raw query still searches titles on its own.
 
-    Filter order: query match (title OR topic, unioned) -> contentType -> excludeShorts -> liveStatus ->
-    sort. There is no `topic` TAG parameter: Video Tag/Topic SELECTION never narrows a Search (spec:
-    "Search ignores the currently selected Video Tag") -- `topic_ids` here is query-DERIVED, a completely
-    different concept from the user's separately-remembered browsing Tag, which the caller must never
-    pass through to this parameter.
+    Filter order: title match (raw query OR any term) -> contentType -> excludeShorts -> liveStatus -> sort. There is no topic parameter
+    of any kind: neither the selected Video Tag nor any video's persisted topic influences which rows match.
 
-    `sort`/`metric` mirror the existing Oshi Videos shelf's own Filter/Sort semantics exactly (newest/
-    oldest = publishedAt stable sort, mostViews = the existing ranking metric) -- Search introduces no
-    relevance ranking of its own; if no special sort is requested the normal default (newest) applies.
+    `sort`/`metric` mirror the existing Oshi Videos shelf's own Filter/Sort semantics exactly (newest/oldest = publishedAt stable sort,
+    mostViews = the existing ranking metric) -- Search introduces no relevance ranking of its own.
     """
     normalized = normalize_query(raw_query)
-    matching = [row for row in rows if video_matches_query(row, normalized, topic_ids)]
+    normalized_terms = normalize_terms(terms)
+    matching = [row for row in rows if video_matches_query(row, normalized, normalized_terms)]
 
     if content_type != CONTENT_TYPE_SCOPE_ALL:
         matching = [row for row in matching if row.get("contentType") == content_type]

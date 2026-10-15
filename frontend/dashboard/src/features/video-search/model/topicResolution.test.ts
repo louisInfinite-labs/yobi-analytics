@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { resolveTopicIds } from "./topicResolution"
+import { expandSearchTerms, resolveTopicIds } from "./topicResolution"
 import type { BackendVideoTopic } from "../../home-room/model/videoTopicCatalog"
 
 /** Real backend topic data (src/tracking/video_topics.py's TOPICS, as GET /topics would actually return
@@ -106,5 +106,67 @@ describe("resolveTopicIds -- monotonicity (required for Search-session cache saf
       for (const id of previous) expect(shorter.has(id)).toBe(true)
       previous = shorter
     }
+  })
+})
+
+/** The production Topic Catalog's own record for 誕生日 (GLOBAL partition): the id is the Japanese word itself, the English label is
+ * "Birthday", and the aliases mix English and Japanese phrases. */
+const BIRTHDAY: BackendVideoTopic = {
+  id: "誕生日",
+  labels: { "zh-TW": "生日", en: "Birthday", ja: "誕生日" },
+  searchAliases: ["誕生日", "誕生日配信", "birthday", "3d birthday live"],
+}
+const CATALOG: BackendVideoTopic[] = [...REAL_TOPICS, BIRTHDAY]
+
+describe("expandSearchTerms -- the catalog as a multilingual thesaurus (title terms, never topic ids)", () => {
+  it("`birth` resolves against the English label Birthday and expands to its labels and aliases", () => {
+    const terms = expandSearchTerms("birth", CATALOG)
+    expect(terms).toEqual(expect.arrayContaining(["birthday", "誕生日", "誕生日配信", "生日", "3d birthday live"]))
+  })
+
+  it("never returns the topic id as a term (ids are machine names), unless the id happens to equal a label or alias", () => {
+    const topics: BackendVideoTopic[] = [{ id: "repo_game", labels: { en: "R.E.P.O." }, searchAliases: [] }]
+    expect(expandSearchTerms("repo", topics)).toEqual(["r.e.p.o."])
+  })
+
+  it("returns [] when no concept resolves (the raw query still searches titles on its own) and for empty or blank input", () => {
+    expect(expandSearchTerms("funny moment", CATALOG)).toEqual([])
+    expect(expandSearchTerms("", CATALOG)).toEqual([])
+    expect(expandSearchTerms("   ", CATALOG)).toEqual([])
+    expect(expandSearchTerms("birth", [])).toEqual([])
+  })
+
+  it("normalizes (NFKC, lowercase, whitespace) and de-duplicates terms that normalize identically", () => {
+    const topics: BackendVideoTopic[] = [
+      { id: "demo", labels: { en: "ＤＥＭＯ", ja: "demo" }, searchAliases: ["Demo", " demo ", "DEMO  game", "demo game"] },
+    ]
+    expect(expandSearchTerms("dem", topics).sort()).toEqual(["demo", "demo game"])
+  })
+
+  it("keeps a term that contains a comma as one term", () => {
+    const topics: BackendVideoTopic[] = [{ id: "x", labels: { en: "X" }, searchAliases: ["a,b"] }]
+    expect(expandSearchTerms("x", topics)).toEqual(["x", "a,b"])
+  })
+
+  it("a topic with no searchAliases field at all does not throw", () => {
+    expect(expandSearchTerms("asm", [{ id: "asmr", labels: { en: "ASMR" } }])).toEqual(["asmr"])
+  })
+
+  it("expands in every locale regardless of the display locale (locale is not even a parameter)", () => {
+    expect(expandSearchTerms("生日", CATALOG)).toEqual(expect.arrayContaining(["birthday", "誕生日"]))
+  })
+
+  it("is monotonic: a longer query never gains a term its prefix did not already have (what the session cache relies on)", () => {
+    const query = "birthday"
+    let previous = new Set(expandSearchTerms(query, CATALOG))
+    for (let end = query.length - 1; end > 0; end--) {
+      const shorter = new Set(expandSearchTerms(query.slice(0, end), CATALOG))
+      for (const term of previous) expect(shorter.has(term)).toBe(true)
+      previous = shorter
+    }
+  })
+
+  it("does not fuzzy-match a typo", () => {
+    expect(expandSearchTerms("birtgday", CATALOG)).toEqual([])
   })
 })
