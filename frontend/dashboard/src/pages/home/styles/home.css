@@ -944,6 +944,15 @@
   max-width: 260px;
 }
 
+/* With the full Topic Catalog (50+ tags) the tag strip's own content is thousands of px wide, and flex would shrink the search box to its
+   88px floor to make room. The strip scrolls, so IT (with its controls) gives way first: this group takes almost all of the shrinking and
+   the search box keeps its preferred width. */
+@media (min-width: 1024px) {
+  .oshi-videos__filters {
+    flex: 0 100 auto;
+  }
+}
+
 /* Colors, background, border and radius all come from VideoSearchBox's own ConfigProvider Input
    tokens, not CSS here -- see that component's docstring for why (antd's injected styles can outrank
    a plain override for those). `height` has no such Input token (antd derives it from padding/line
