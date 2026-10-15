@@ -1,9 +1,27 @@
-"""Canonical video topic taxonomy and the deterministic title classifier."""
+"""Canonical video topic taxonomy and the deterministic title classifier.
+
+The taxonomy is NOT defined in code. The DynamoDB table YobiTopicCatalog, partition catalog_id="GLOBAL", is the single source
+of truth for which topic ids exist, their order (display_order = display order AND first-match-wins precedence), their zh-TW/en/ja
+labels and their search aliases (stores.topic_catalog_store). This module only (a) turns that catalog into the live `Taxonomy`
+(cached, refreshed every CATALOG_TTL_SECONDS, fail-safe: the last good copy, else FALLBACK_TOPIC_IDS), and (b) supplies the curated
+title patterns the classifier applies to the topics the catalog contains.
+
+Patterns are a code-side library (`PATTERN_LIBRARY`, keyed by topic id). A catalog topic is classified from titles only when the
+library holds a pattern for its id (or for the one id CATALOG_PATTERN_SOURCE explicitly maps it to). A catalog topic with no pattern is
+still a fully valid id everywhere (GET /topics, topic filters, search aliases, reminder scopes) -- it simply is not assigned
+automatically. Search aliases are never turned into classification patterns: they are matching phrases for the search box, and
+classifying every title containing e.g. "生放送" or "3d" would silently re-file a large share of the catalog. The REVIEW partition is
+never read.
+"""
 
 from __future__ import annotations
 
 import re
+import threading
+import time
 import unicodedata
+from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Set as AbstractSet
 from typing import Any, Iterable, Mapping, NamedTuple
 
 OTHER_TOPIC = "other"
@@ -38,13 +56,15 @@ class Topic(NamedTuple):
     # trusted by inspection alone. Empty for the fallback topic (no pattern to source synonyms from) and
     # for any topic whose pattern is already fully covered by its own id/labels.
     search_aliases: tuple[str, ...] = ()
+    # GET /topics' legacy single-string `label` (catalog attribute `legacy_label`); None -> the response falls back to the English label.
+    legacy_label: str | None = None
 
 
 # Tuple order is both the display order and the match precedence: game topics
 # first, then singing, then mv (published music works), then chatting. A
 # title matching several topics gets the earliest one. Persisted values are
 # the ids, never the labels.
-TOPICS: tuple[Topic, ...] = (
+PATTERN_LIBRARY: tuple[Topic, ...] = (
     Topic(
         "valorant",
         {"zh-TW": "VALO", "en": "VALO", "ja": "VALO"},
@@ -165,29 +185,187 @@ TOPICS: tuple[Topic, ...] = (
     Topic(OTHER_TOPIC, {"zh-TW": "其他", "en": "Other", "ja": "その他"}, None),
 )
 
-TOPIC_IDS = frozenset(topic.id for topic in TOPICS)
+_PATTERN_BY_LIBRARY_ID: Mapping[str, str] = {topic.id: topic.pattern for topic in PATTERN_LIBRARY if topic.pattern}
 
-_COMPILED_PATTERNS = tuple((topic.id, re.compile(topic.pattern)) for topic in TOPICS if topic.pattern)
+# Catalog ids whose curated pattern is filed in the library under a different id: ONLY pairs with identical labels, i.e. the same
+# game (R.E.P.O., ARK, watch-along). Pairs that differ in scope (pokemon_sv vs pokemon, mario_kart_8dx vs mario_kart, undertale vs
+# undertale_deltarune, ...) are deliberately NOT mapped -- guessing would change what a topic means.
+CATALOG_PATTERN_SOURCE: Mapping[str, str] = {
+    "repo": "repo_game",
+    "ark": "ark_survival",
+    "watch_along": "watchalong",
+}
+
+# The pre-catalog production taxonomy; every id is in the approved GLOBAL catalog. Used only when the catalog has never been readable.
+FALLBACK_TOPIC_IDS: tuple[str, ...] = ("valorant", "sf6", "apex", "minecraft", "singing", "mv", "chatting", OTHER_TOPIC)
+
+CATALOG_TTL_SECONDS = 300.0
+CATALOG_RETRY_SECONDS = 30.0
+
+
+class Taxonomy(NamedTuple):
+    topics: tuple[Topic, ...]  # display / match-precedence order
+    ids: frozenset[str]
+    compiled: tuple[tuple[str, "re.Pattern[str]"], ...]  # (topic id, pattern) for the topics that have one, in precedence order
+    source: str  # "catalog" or "fallback"
+
+
+def _fallback_topic(topic_id: str) -> Topic:
+    return next(topic for topic in PATTERN_LIBRARY if topic.id == topic_id)
+
+
+def _other_topic() -> Topic:
+    return _fallback_topic(OTHER_TOPIC)
+
+
+def _assemble(topics: list[Topic], source: str) -> Taxonomy:
+    if not any(topic.id == OTHER_TOPIC for topic in topics):
+        topics.append(_other_topic())  # the unclassifiable bucket must always exist, even if a catalog edit dropped it
+    compiled = tuple((topic.id, re.compile(topic.pattern)) for topic in topics if topic.pattern)
+    return Taxonomy(tuple(topics), frozenset(topic.id for topic in topics), compiled, source)
+
+
+def build_taxonomy(items: Iterable[Mapping[str, Any]]) -> Taxonomy:
+    """The taxonomy of catalog GLOBAL records: ids, labels and aliases from the records, ordered by their `display_order`; the
+    curated pattern (if any) from the library. Raises ValueError when the records hold no usable topic."""
+    rows = [item for item in items if isinstance(item.get("topic_tag"), str) and item["topic_tag"]]
+    if not rows:
+        raise ValueError("the topic catalog has no usable GLOBAL topics")
+
+    def order(item: Mapping[str, Any]) -> tuple[int, str]:
+        try:
+            return int(item.get("display_order")), item["topic_tag"]
+        except (TypeError, ValueError):
+            return 10**9, item["topic_tag"]
+
+    topics: list[Topic] = []
+    seen: set[str] = set()
+    for item in sorted(rows, key=order):
+        tag = item["topic_tag"]
+        if tag in seen:
+            continue
+        seen.add(tag)
+        labels = {
+            "zh-TW": item.get("topic_zh") or tag,
+            "en": item.get("topic_en") or tag,
+            "ja": item.get("topic_ja") or tag,
+        }
+        pattern = None if tag == OTHER_TOPIC else _PATTERN_BY_LIBRARY_ID.get(CATALOG_PATTERN_SOURCE.get(tag, tag))
+        aliases = tuple(alias for alias in (item.get("search_aliases") or ()) if isinstance(alias, str))
+        legacy = item.get("legacy_label")
+        topics.append(Topic(tag, labels, pattern, aliases, legacy if isinstance(legacy, str) else None))
+    return _assemble(topics, "catalog")
+
+
+def fallback_taxonomy() -> Taxonomy:
+    return _assemble([_fallback_topic(topic_id) for topic_id in FALLBACK_TOPIC_IDS], "fallback")
+
+
+CatalogLoader = Callable[[], "list[Mapping[str, Any]]"]
+_loader: CatalogLoader | None = None
+_lock = threading.Lock()
+_cached: Taxonomy | None = None
+_expires_at = 0.0
+
+
+def set_catalog_loader(loader: CatalogLoader | None) -> None:
+    """Replace how the GLOBAL records are read (None = the real DynamoDB table) and drop the cache. Tests only."""
+    global _loader
+    _loader = loader
+    reset_taxonomy_cache()
+
+
+def reset_taxonomy_cache() -> None:
+    global _cached, _expires_at
+    with _lock:
+        _cached = None
+        _expires_at = 0.0
+
+
+def _load_items() -> list[Mapping[str, Any]]:
+    if _loader is not None:
+        return _loader()
+    from stores.topic_catalog_store import query_global_topics  # lazy: keeps this module importable without boto3 configuration
+
+    return query_global_topics()
+
+
+def current_taxonomy() -> Taxonomy:
+    """The live taxonomy. Cached for CATALOG_TTL_SECONDS; when a refresh fails the last good copy keeps serving (retried after
+    CATALOG_RETRY_SECONDS), and if the catalog has never been readable the pre-catalog fallback taxonomy is used -- a transient
+    DynamoDB problem must never break classification, validation or GET /topics."""
+    global _cached, _expires_at
+    now = time.monotonic()
+    cached = _cached
+    if cached is not None and now < _expires_at:
+        return cached
+    with _lock:
+        now = time.monotonic()
+        if _cached is not None and now < _expires_at:
+            return _cached
+        try:
+            _cached = build_taxonomy(_load_items())
+            _expires_at = now + CATALOG_TTL_SECONDS
+        except Exception as exc:  # noqa: BLE001 -- fail-safe by design, see the docstring
+            print(f"Warning: the topic catalog could not be read ({exc}); using {'the last good copy' if _cached else 'the fallback taxonomy'}")
+            if _cached is None:
+                _cached = fallback_taxonomy()
+            _expires_at = now + CATALOG_RETRY_SECONDS
+        return _cached
+
+
+class LiveSet(AbstractSet[str]):
+    """A read-only set whose members are recomputed from the live taxonomy on every use, so module-level constants such as TOPIC_IDS
+    always follow the catalog (a plain frozenset would freeze the ids at import time)."""
+
+    def __init__(self, supplier: Callable[[], Iterable[str]]):
+        self._supplier = supplier
+
+    def __contains__(self, item: object) -> bool:
+        return item in frozenset(self._supplier())
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(frozenset(self._supplier()))
+
+    def __len__(self) -> int:
+        return len(frozenset(self._supplier()))
+
+    @classmethod
+    def _from_iterable(cls, it: Iterable[str]) -> frozenset[str]:
+        return frozenset(it)
+
+    def __repr__(self) -> str:
+        return f"LiveSet({sorted(self)!r})"
+
+
+class _TopicsView(Sequence[Topic]):
+    """`TOPICS`: the live taxonomy's topics, in display order, as a read-only sequence."""
+
+    def __getitem__(self, index):  # type: ignore[override]
+        return current_taxonomy().topics[index]
+
+    def __len__(self) -> int:
+        return len(current_taxonomy().topics)
+
+    def __iter__(self) -> Iterator[Topic]:
+        return iter(current_taxonomy().topics)
+
+
+TOPICS = _TopicsView()
+TOPIC_IDS = LiveSet(lambda: current_taxonomy().ids)
 
 
 def classify_video_topic(title: str) -> str:
     """Return the single primary topic id for a video title, `other` when nothing matches."""
     normalized = unicodedata.normalize("NFKC", title).casefold()
-    return next((topic_id for topic_id, pattern in _COMPILED_PATTERNS if pattern.search(normalized)), OTHER_TOPIC)
+    return next((topic_id for topic_id, pattern in current_taxonomy().compiled if pattern.search(normalized)), OTHER_TOPIC)
 
 
 def topics_matching_text(text: str) -> frozenset[str]:
-    """Every topic id whose classification pattern matches `text` (NFKC + casefold normalized first,
-    the same convention classify_video_topic uses) -- the UNION of every match, not just the single
-    primary topic classify_video_topic would pick for a real video title.
-
-    Used by Video Search (src/search/video_search.py) to resolve a user's search query to every
-    canonical topic it legitimately refers to, reusing the exact same authoritative multilingual
-    keyword patterns topic classification already depends on (e.g. "VALO"/"バロラント"/"ヴァロ" all
-    already resolve to valorant here) -- there is no separate alias database to invent or keep in sync.
-    """
+    """Every topic id whose classification pattern matches `text` (NFKC + casefold normalized first, the same convention
+    classify_video_topic uses) -- the UNION of every match, not just the single primary topic."""
     normalized = unicodedata.normalize("NFKC", text).casefold()
-    return frozenset(topic_id for topic_id, pattern in _COMPILED_PATTERNS if pattern.search(normalized))
+    return frozenset(topic_id for topic_id, pattern in current_taxonomy().compiled if pattern.search(normalized))
 
 
 def resolve_video_topics(items: Iterable[Mapping[str, Any]]) -> dict[str, str]:

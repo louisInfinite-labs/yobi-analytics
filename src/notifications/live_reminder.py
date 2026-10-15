@@ -61,7 +61,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS
+from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS, LiveSet
 
 CREATOR_REMINDER_KEY_PREFIX = "creatorReminder#"
 STREAM_OVERRIDE_KEY_PREFIX = "streamOverride#"
@@ -75,7 +75,8 @@ ALL_TOPICS_SCOPE = "all"
 # classifier topic except the "nothing matched" fallback, which names no
 # game/genre a user could pick (a stream classified "other" is simply
 # topic-less: only creator 全部 or a stream override can apply to it).
-REMINDER_TOPIC_IDS = frozenset(TOPIC_IDS - {OTHER_TOPIC})
+# (A live view over the Topic Catalog, not frozen at import.)
+REMINDER_TOPIC_IDS = LiveSet(lambda: frozenset(TOPIC_IDS) - {OTHER_TOPIC})
 
 # A system-wide remote-config record, NOT scoped to any one client -- stored
 # under this fixed sentinel clientId in the same generic

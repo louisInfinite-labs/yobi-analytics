@@ -6,8 +6,8 @@ display_order}. GET /topics (api.dashboard_catalog_api.get_topics) queries
 this table instead of iterating tracking.video_topics.TOPICS directly, so the
 canonical topic list lives in one place a Lambda can read without a
 YobiVideoMaster scan. The taxonomy itself (ids, match patterns, labels) still
-lives in video_topics.TOPICS -- this store only holds what GET /topics needs
-to serve, kept in sync by scripts/migration/seed_topic_catalog_dynamodb.py.
+lives in this table alone (tracking.video_topics builds its live taxonomy from it). The backend only READS it: the GLOBAL
+partition is curated by hand and is the single source of truth, so nothing in this repo writes, seeds or promotes records.
 """
 
 from __future__ import annotations
@@ -61,34 +61,3 @@ def query_global_topics() -> list[dict[str, Any]]:
         return items
     except (ClientError, BotoCoreError) as exc:
         raise TopicCatalogStoreError(f"Failed to read {TOPIC_CATALOG_TABLE}: {exc}") from exc
-
-
-def put_topic(
-    topic_tag: str,
-    topic_zh: str,
-    topic_en: str,
-    topic_ja: str,
-    display_order: int,
-    legacy_label: str | None = None,
-    search_aliases: tuple[str, ...] = (),
-) -> None:
-    """Upsert one topic's catalog record. A plain PutItem, not conditional: re-running the seed
-    script for an already-seeded topic must replace its item with the current labels/aliases/order
-    rather than erroring, so this is idempotent by full-item overwrite on the same (catalog_id,
-    topic_tag) key -- never a second, duplicate item."""
-    item: dict[str, Any] = {
-        "catalog_id": GLOBAL_CATALOG_ID,
-        "topic_tag": topic_tag,
-        "topic_zh": topic_zh,
-        "topic_en": topic_en,
-        "topic_ja": topic_ja,
-        "display_order": display_order,
-        "search_aliases": list(search_aliases),
-    }
-    if legacy_label is not None:
-        item["legacy_label"] = legacy_label
-    try:
-        table = _resource().Table(TOPIC_CATALOG_TABLE)
-        table.put_item(Item=item)
-    except (ClientError, BotoCoreError) as exc:
-        raise TopicCatalogStoreError(f"Failed to write to {TOPIC_CATALOG_TABLE}: {exc}") from exc

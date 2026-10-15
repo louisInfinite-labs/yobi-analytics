@@ -1,5 +1,5 @@
 """Focused tests for the PROPOSAL-ONLY module (scripts/analysis/proposed_topic_classification.py).
-Nothing here touches tracking.video_topics.TOPICS or AWS -- these tests only prove the proposed
+Nothing here touches the live taxonomy or AWS -- these tests only prove the proposed
 patterns actually match real production titles correctly, matching the same NFKC+casefold
 convention classify_video_topic itself uses."""
 
@@ -9,7 +9,7 @@ import unicodedata
 import pytest
 
 from scripts.analysis.proposed_topic_classification import AMBIGUOUS_NOT_RECOMMENDED, PROPOSED_TOPICS, VERIFICATION
-from tracking.video_topics import TOPICS
+from tracking.video_topics import PATTERN_LIBRARY
 
 # One real, verbatim title per candidate (from a full paginated Scan of YobiVideoMaster's
 # topic="other" videos this session) -- NEVER fabricated. resident_evil's example was swapped
@@ -90,16 +90,16 @@ def test_each_proposed_topic_has_a_complete_labels_dict(topic):
     assert all(topic.labels[locale] for locale in ("zh-TW", "en", "ja"))
 
 
-def test_every_proposed_topic_was_activated_into_the_deployed_taxonomy():
-    """This proposal's 49 candidates were reviewed and merged into tracking.video_topics.TOPICS
-    (Topic Discovery batch 1) -- this confirms every one made it in, with the exact same labels/
-    pattern, not just a same-named-but-different entry."""
-    deployed_by_id = {t.id: t for t in TOPICS}
+def test_every_proposed_topic_is_in_the_pattern_library_with_the_exact_same_labels_and_pattern():
+    """This proposal's 49 candidates were merged into tracking.video_topics.PATTERN_LIBRARY (the curated title patterns). That
+    library is NOT the taxonomy: the Topic Catalog (DynamoDB GLOBAL) decides which topics exist, and a library pattern is applied only
+    to a topic id the catalog contains. This confirms the library entries are the proposal verbatim."""
+    library_by_id = {t.id: t for t in PATTERN_LIBRARY}
     for proposed in PROPOSED_TOPICS:
-        assert proposed.id in deployed_by_id, f"{proposed.id} is missing from the deployed taxonomy"
-        deployed = deployed_by_id[proposed.id]
-        assert deployed.labels == proposed.labels
-        assert deployed.pattern == proposed.pattern
+        assert proposed.id in library_by_id, f"{proposed.id} is missing from the pattern library"
+        library = library_by_id[proposed.id]
+        assert library.labels == proposed.labels
+        assert library.pattern == proposed.pattern
 
 
 def test_no_proposed_topic_id_collides_with_itself_or_the_ambiguous_set():

@@ -325,16 +325,16 @@ resource "aws_dynamodb_table" "video_master" {
   deletion_protection_enabled = true
 }
 
-# Home Topic Catalog: the single global dictionary of every canonical video
-# topic (tracking.video_topics.TOPICS), queried by GET /topics
-# (api.dashboard_catalog_api.get_topics) instead of that endpoint iterating
-# the Python tuple directly. One partition ("GLOBAL") so the whole catalog is
-# one Query, never a YobiVideoMaster scan. Seeded and kept in sync by
-# scripts/seed_topic_catalog.py, which is idempotent (re-running upserts, never
-# duplicates) -- the taxonomy only grows when a new Topic is added to TOPICS in
-# code, so there is no runtime writer to grant this to the Lambda fleet for yet
-# (see terraform/manual-iam/policy-lambda-topic-catalog-access.json for the
-# reader grant GET /topics' yobi-analytics-api Lambda still needs manually).
+# Home Topic Catalog: the SINGLE SOURCE OF TRUTH for which video topics exist (ids, display order, zh-TW/en/ja labels, search aliases).
+# Partition catalog_id="GLOBAL" holds the approved topics (one Query serves the whole list, never a YobiVideoMaster scan); a separate
+# catalog_id="REVIEW" partition holds unreviewed candidates that nothing in this repo reads or promotes. The backend only READS this
+# table (stores/topic_catalog_store.py -> tracking/video_topics.py); the records are curated by hand and are never written, seeded or
+# reconciled from code.
+#
+# This table was created by hand in the console (2026-10-15) and then brought under Terraform with `terraform import`; the settings
+# below describe it exactly as it is, so a plan shows no change for it. Deletion protection and point-in-time recovery are OFF today --
+# both are cheap and worth turning on, but that is a deliberate change to a live table, made separately, not as a side effect here.
+# The Lambda role's read access is the inline policy `YobiTopicCatalogAccess` (terraform/manual-iam/).
 resource "aws_dynamodb_table" "topic_catalog" {
   name         = "YobiTopicCatalog"
   billing_mode = "PAY_PER_REQUEST"
@@ -351,14 +351,9 @@ resource "aws_dynamodb_table" "topic_catalog" {
     type = "S"
   }
 
-  on_demand_throughput {
-    max_read_request_units  = 50
-    max_write_request_units = 10
-  }
-
   point_in_time_recovery {
-    enabled = true
+    enabled = false
   }
 
-  deletion_protection_enabled = true
+  deletion_protection_enabled = false
 }
