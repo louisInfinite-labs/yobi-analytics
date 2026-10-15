@@ -182,6 +182,8 @@ jobs:
           src/features/media-player/components/VideoPlayerModal.fullscreen.test.tsx
           src/features/media-player/components/VideoPlayerModal.test.tsx
           src/pages/schedule/LiveSchedulePage.fullscreen.test.tsx
+          src/features/home-room/components/RecentVideosSection.fixedTagBar.test.tsx
+          src/features/home-room/model/videoFilterCatalog.homeBar.test.ts
           src/features/oshi-status/data/oshiStatus.test.ts
           src/features/oshi-status/hooks/useOshiStatus.test.tsx
           src/features/oshi-status/hooks/useLastVisit.test.ts

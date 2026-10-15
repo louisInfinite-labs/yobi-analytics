@@ -7,12 +7,10 @@ import { fetchVideoTopics } from "../data/videoTopics"
 import type { BackendVideoTopic } from "../model/videoTopicCatalog"
 import { getCreators, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 
-/** Proves the architecture requirement this file exists for: Home's Oshi Videos tag
- * bar renders backend topics from GET /topics dynamically (data/videoTopics.ts,
- * hooks/useVideoTopicCatalog.ts) -- it does not fall back to, or need updating
- * alongside, any frontend-maintained topic list/union/count. See
- * RecentVideosSection.shelf.test.tsx for interaction coverage of today's real topics;
- * this file is specifically about topics the frontend does NOT already know about. */
+/** Home's Oshi Videos tag bar takes each fixed topic's id and localized label from GET /topics (data/videoTopics.ts,
+ * hooks/useVideoTopicCatalog.ts), never from a frontend label table -- but the catalog does NOT decide WHICH topics the bar shows: it is
+ * fixed at twelve options (see RecentVideosSection.fixedTagBar.test.tsx). A topic the catalog gains later therefore never appears here. See
+ * RecentVideosSection.shelf.test.tsx for interaction coverage of today's real topics. */
 
 Element.prototype.setPointerCapture ??= () => {}
 Element.prototype.releasePointerCapture ??= () => {}
@@ -63,16 +61,14 @@ describe("A. backend topics render from GET /topics", () => {
   })
 })
 
-describe("B. a backend-only future topic the frontend has never seen needs no frontend change", () => {
-  it("appears in the tag bar and selecting it sends exactly its own id, with no union/list edit required", async () => {
+describe("B. a topic the catalog gains later is NOT added to the fixed Home bar", () => {
+  it("stays out of the tag bar (it belongs to Search and the future Video Filter Dialog), while the fixed topics still render", async () => {
     const FUTURE_TOPIC: BackendVideoTopic = { id: "future-topic", labels: { en: "Future Topic" } }
     fetchTopicsMock.mockResolvedValue([{ id: "sf6", labels: { en: "SF6" } }, FUTURE_TOPIC])
     renderSection()
 
-    const user = userEvent.setup()
-    await user.click(await screen.findByText("Future Topic"))
-
-    await waitFor(() => expect(lastQuery()).toMatchObject({ topic: "future-topic" }))
+    await screen.findByText("SF6")
+    expect(screen.queryByText("Future Topic")).not.toBeInTheDocument()
   })
 })
 
@@ -93,7 +89,7 @@ describe("C. topics follow the product display order (not alphabetical, not the 
     expect(indexOf("MV")).toBeLessThan(indexOf("VALO"))
   })
 
-  it("a topic the backend adds later still appears (after the known ones, in the backend's order)", async () => {
+  it("topics the backend adds later are never appended after the known ones", async () => {
     fetchTopicsMock.mockResolvedValue([
       { id: "new_topic_b", labels: { en: "New B" } },
       { id: "new_topic_a", labels: { en: "New A" } },
@@ -101,10 +97,11 @@ describe("C. topics follow the product display order (not alphabetical, not the 
     ])
     renderSection()
 
-    await screen.findByText("New B")
+    await screen.findByText("VALO")
     const labels = renderedTagLabels()
-    expect(labels.indexOf("VALO")).toBeLessThan(labels.indexOf("New B"))
-    expect(labels.indexOf("New B")).toBeLessThan(labels.indexOf("New A"))
+    expect(labels).not.toContain("New B")
+    expect(labels).not.toContain("New A")
+    expect(labels.slice(-2)).toEqual(["VALO", "Short"]) // the bar ends VALO, Short (the Other topic is not in this response)
   })
 })
 
