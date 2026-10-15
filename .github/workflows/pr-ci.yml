@@ -61,6 +61,9 @@ jobs:
           python -m pytest -q -p no:cacheprovider
           tests/api/test_home_oshi_videos_api.py
           tests/api/test_dashboard_catalog_api.py
+          tests/stores/test_topic_catalog_store.py
+          tests/scripts/migration/test_seed_topic_catalog_dynamodb.py
+          tests/scripts/analysis/test_proposed_topic_classification.py
           tests/tracking/test_video_topics.py
           tests/analytics/test_video_ranking.py
           tests/scripts/backfill/test_backfill_video_topics.py
@@ -160,6 +163,7 @@ jobs:
           src/features/home-room/components/RecentVideosSection.shelf.test.tsx
           src/features/home-room/components/RecentVideosSection.dynamicTopics.test.tsx
           src/features/home-room/components/RecentVideosSection.desktopSearchBackend.test.tsx
+          src/features/home-room/components/RecentVideosSection.searchTagClick.test.tsx
           src/features/oshi-status/data/oshiStatus.test.ts
           src/features/oshi-status/hooks/useOshiStatus.test.tsx
           src/features/oshi-status/hooks/useLastVisit.test.ts

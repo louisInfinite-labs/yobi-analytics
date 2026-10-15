@@ -257,8 +257,11 @@ def test_the_full_topic_by_content_type_by_sort_by_window_matrix_matches_an_inde
         assert _all_pages(sort="newest", **query) == newest
         assert _all_pages(sort="oldest", **query) == oldest
 
+        # /videos/ranking is a top-N leaderboard, hard-capped at MAX_LIMIT (100) with no pagination --
+        # topic="all" alone now spans more than 100 rows (57 topics x 3 archived kinds), so the oracle
+        # comparison must match that real, documented cap rather than assume every row comes back.
         total = [row["videoId"] for row in sorted(by_id, key=lambda row: -row["currentViewCount"])]
-        assert _ids(_ranking(metric="total", limit="100", **query), "rows") == total
+        assert _ids(_ranking(metric="total", limit="100", **query), "rows") == total[: read_api.MAX_LIMIT]
         for period in ("1d", "7d", "30d"):
             field = f"anchor{period}ViewCount"
             ranked = [
@@ -268,10 +271,10 @@ def test_the_full_topic_by_content_type_by_sort_by_window_matrix_matches_an_inde
                     key=lambda row: -(row["currentViewCount"] - row[field]),
                 )
             ]
-            assert _ids(_ranking(metric=period, limit="100", **query), "rows") == ranked
+            assert _ids(_ranking(metric=period, limit="100", **query), "rows") == ranked[: read_api.MAX_LIMIT]
         checked += 1
 
-    assert checked == len(CONTENT_TYPES) * (len(TOPICS) + 1) == 27  # every capability-matrix cell
+    assert checked == len(CONTENT_TYPES) * (len(TOPICS) + 1) == 174  # every capability-matrix cell
 
 
 # --- 3. oldest is a true ascending sort, never a reversed truncated newest page ----------------------

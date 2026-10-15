@@ -20,6 +20,7 @@ from analytics.video_ranking import (
 )
 from analytics.video_ranking_result import build_video_ranking_result
 from stores.history_store import HistoryRow
+from tracking.video_topics import TOPIC_IDS
 
 REPORT_DATE = date(2026, 9, 29)
 D1 = date(2026, 9, 28)
@@ -64,9 +65,7 @@ def test_module_exposes_the_expected_metric_and_topic_constants():
     assert TOTAL_METRIC == "total"
     assert GROWTH_METRICS == ("1d", "7d", "30d")
     assert TOPIC_SCOPE_ALL == "all"
-    assert VALID_TOPIC_SCOPES == frozenset(
-        {"all", "valorant", "sf6", "apex", "minecraft", "singing", "mv", "chatting", "other"}
-    )
+    assert VALID_TOPIC_SCOPES == frozenset({"all"}) | TOPIC_IDS
 
 
 def test_one_creator_never_includes_another_creators_videos():
