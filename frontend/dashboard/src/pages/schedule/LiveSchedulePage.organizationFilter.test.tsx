@@ -136,15 +136,17 @@ describe("Schedule organization filter", () => {
     expect(visibleTitles(container)).toEqual(["Hololive JP stream"])
   })
 
-  it("changing the organization does not reset the creator selection", async () => {
+  it("changing the organization does not reset the creator selection (it is kept, and comes back with its tile when its organization is chosen again)", async () => {
     const { user } = await renderLoadedPage()
     await openFilter(user)
     await toggleCreator(user, "ch_usada_pekora")
+    const pekora = () => document.querySelector(".schedule-creator-item[data-channel-id='ch_usada_pekora']")
 
     for (const name of ["VSPO", "Hololive", "All"] as const) {
       await user.click(segment(name))
-      expect(document.querySelector(".schedule-creator-item[data-channel-id='ch_usada_pekora']")).toHaveAttribute("aria-pressed", "true")
-      expect(document.querySelector(".schedule-creator-filter__count")).toHaveTextContent("1")
+      expect(document.querySelector(".schedule-creator-filter__count")).toHaveTextContent("1") // still selected, whatever the scope
+      if (name === "VSPO") expect(pekora()).toBeNull() // out of scope: not listed, but not forgotten
+      else expect(pekora()).toHaveAttribute("aria-pressed", "true")
     }
   })
 

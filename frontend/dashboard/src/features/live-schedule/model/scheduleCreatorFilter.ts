@@ -24,15 +24,15 @@ export interface CreatorFilterOption {
   isFavorite: boolean
 }
 
-/** One option per creator that has a stream in the schedule (plus any currently selected creator, so a selection never shows a raw id),
- * favorites first, each group alphabetical by name. */
+/** One option per creator that has a stream in `streams` -- the caller passes the streams actually on the displayed schedule (already scoped
+ * to the organization), so a creator with no matching event is never offered. Neither the roster nor Favorites add choices; they only
+ * decorate them (heart, favorites first). Each group alphabetical by name. */
 export function buildCreatorFilterOptions(
   streams: readonly ScheduledStream[],
-  selected: ReadonlySet<string>,
   favorites: ReadonlySet<string>,
   nameFor: (channelId: string) => string,
 ): CreatorFilterOption[] {
-  const ids = new Set<string>([...streams.map((stream) => stream.channelId), ...selected])
+  const ids = new Set<string>(streams.map((stream) => stream.channelId))
   return [...ids]
     .map((channelId) => ({ channelId, name: nameFor(channelId), isFavorite: favorites.has(channelId) }))
     .sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite) || a.name.localeCompare(b.name))
