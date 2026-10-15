@@ -183,7 +183,7 @@ function LiveOrNext({ status, now, onOpen }: { status: CreatorStatus; now: Date;
 }
 
 /** Home's compact right-hand panel: who the current Oshi is, what they're
- * streaming, what changed since the last visit, and this week's activity.
+ * streaming, what is still unwatched (the NEW items of Recent Activity), and this week's activity.
  * Live/Next comes from the shared Holodex status; everything else (subscriber count,
  * since-last-visit and this-week counts, view growth, the recent rows) is the backend's
  * GET /creators/{creatorId}/oshi-status read model for the CURRENT creator. */
@@ -214,6 +214,13 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
     migrateWatchedLiveToSeen((data?.recent ?? []).filter((item) => item.kind === "livestream").map((item) => item.videoId))
   }, [data])
   const number = (value: number | undefined) => (value === undefined ? VALUE_UNAVAILABLE : String(value))
+  // 尚未觀看: counted from the SAME NEW judgement the Recent Activity rows below draw their NEW badge from (useNewContent's isNew, with the same
+  // `{ videoId, publishedAt }` candidate and `now`) -- never from the last-visit time or a second unread system. Opening a row marks it seen, which
+  // re-renders both the badge and this count. Uploads count as videos, completed livestreams as livestreams. Unavailable (not 0) until the rows load.
+  const { isNew: isNewContent } = useNewContent()
+  const rowsAvailable = !loading && !error && data !== null
+  const unseenVideos = recent.filter((item) => item.kind !== "livestream" && isNewContent({ videoId: item.videoId, publishedAt: item.publishedAt }, now)).length
+  const unseenLive = recent.filter((item) => item.kind === "livestream" && isNewContent({ videoId: item.videoId, publishedAt: item.publishedAt }, now)).length
 
   return (
     <aside className="oshi-status">
@@ -276,15 +283,11 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
         </section>
 
         <section className="oshi-status__section">
-          <div className="oshi-status__section-title">{t(locale, "oshiStatus.sinceLastVisit")}</div>
-          {previousVisit ? (
-            <div className="oshi-status__metrics">
-              <Metric value={number(data?.sinceLastVisit?.newUploads)} label={t(locale, "oshiStatus.uploads")} />
-              <Metric value={number(data?.sinceLastVisit?.newStreams)} label={t(locale, "oshiStatus.streams")} />
-            </div>
-          ) : (
-            <div className="oshi-empty-state">{t(locale, "oshiStatus.firstVisit")}</div>
-          )}
+          <div className="oshi-status__section-title">{t(locale, "oshiStatus.unseen")}</div>
+          <div className="oshi-status__metrics">
+            <Metric value={rowsAvailable ? String(unseenVideos) : VALUE_UNAVAILABLE} label={t(locale, "oshiStatus.unseenVideos")} />
+            <Metric value={rowsAvailable ? String(unseenLive) : VALUE_UNAVAILABLE} label={t(locale, "oshiStatus.unseenLive")} />
+          </div>
         </section>
 
         <section className="oshi-status__section">

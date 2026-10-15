@@ -59,10 +59,11 @@ export type TranslationKey =
   | "oshiStatus.liveNext"
   | "oshiStatus.noScheduledStream"
   | "oshiStatus.liveNow"
-  | "oshiStatus.sinceLastVisit"
+  | "oshiStatus.unseen"
+  | "oshiStatus.unseenVideos"
+  | "oshiStatus.unseenLive"
   | "oshiStatus.uploads"
   | "oshiStatus.streams"
-  | "oshiStatus.firstVisit"
   | "oshiStatus.thisWeek"
   | "oshiStatus.recent"
   | "oshiStatus.noRecentActivity"
@@ -317,10 +318,11 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.liveNext": "直播／接下來 24小時內",
     "oshiStatus.noScheduledStream": "尚無排定的直播",
     "oshiStatus.liveNow": "直播中",
-    "oshiStatus.sinceLastVisit": "自上次造訪後",
+    "oshiStatus.unseen": "尚未觀看",
+    "oshiStatus.unseenVideos": "影片",
+    "oshiStatus.unseenLive": "直播",
     "oshiStatus.uploads": "上傳影片",
     "oshiStatus.streams": "直播場次",
-    "oshiStatus.firstVisit": "首次造訪 — 尚無可回顧的內容",
     "oshiStatus.thisWeek": "本週",
     "oshiStatus.recent": "最近動態",
     "oshiStatus.noRecentActivity": "尚無最近動態",
@@ -574,10 +576,11 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.liveNext": "Live / Next 24 Hours",
     "oshiStatus.noScheduledStream": "No scheduled stream",
     "oshiStatus.liveNow": "LIVE NOW",
-    "oshiStatus.sinceLastVisit": "Since your last visit",
+    "oshiStatus.unseen": "Not watched yet",
+    "oshiStatus.unseenVideos": "Videos",
+    "oshiStatus.unseenLive": "Livestreams",
     "oshiStatus.uploads": "Uploads",
     "oshiStatus.streams": "Streams",
-    "oshiStatus.firstVisit": "First visit — nothing to catch up on yet",
     "oshiStatus.thisWeek": "This week",
     "oshiStatus.recent": "Recent",
     "oshiStatus.noRecentActivity": "No recent activity",
@@ -831,10 +834,11 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.liveNext": "ライブ／今後24時間以内",
     "oshiStatus.noScheduledStream": "予定されている配信はありません",
     "oshiStatus.liveNow": "配信中",
-    "oshiStatus.sinceLastVisit": "前回の訪問から",
+    "oshiStatus.unseen": "未視聴",
+    "oshiStatus.unseenVideos": "動画",
+    "oshiStatus.unseenLive": "ライブ配信",
     "oshiStatus.uploads": "アップロード",
     "oshiStatus.streams": "配信",
-    "oshiStatus.firstVisit": "初回訪問 — まだ追いつく内容はありません",
     "oshiStatus.thisWeek": "今週",
     "oshiStatus.recent": "最近の動き",
     "oshiStatus.noRecentActivity": "最近の動きはありません",

@@ -6,8 +6,8 @@ import { fetchOshiVideos } from "../data/oshiVideos"
 import { mediaBlocks, outsideMedia, readStylesheet, rulesOf } from "../../../test/readStylesheet"
 
 // Desktop Search View: the input is always visible (never a collapsed icon the user must click to
-// expand), and Topic Tags hide for as long as there is an active query, coming back the moment it's
-// cleared. No filtering/API wiring is covered here -- see VideoSearchBox's own docstring.
+// expand), and the Topic Tags STAY visible while a query is typed (typing never changes the header).
+// The backend search wiring is covered in RecentVideosSection.desktopSearchBackend.test.tsx.
 
 vi.mock("../data/oshiVideos", () => ({ fetchOshiVideos: vi.fn() }))
 vi.stubEnv("VITE_API_BASE_URL", "")
@@ -30,7 +30,7 @@ describe("Desktop video search box", () => {
     expect(search).toBeVisible()
   })
 
-  it("hides Topic Tags once a query is typed, and restores them when the query is cleared", async () => {
+  it("keeps the Topic Tags visible while a query is typed and after it is cleared", async () => {
     const user = userEvent.setup()
     render(<RecentVideosSection creatorId="ch_aizawa_ema" onSelectVideo={() => {}} />)
     await screen.findByRole("combobox", { name: /sort|排序|並び/i })
@@ -39,7 +39,7 @@ describe("Desktop video search box", () => {
 
     const search = document.querySelector(".oshi-videos__search input") as HTMLInputElement
     await user.type(search, "sing")
-    expect(document.querySelector(".oshi-videos__tags")).toBeNull()
+    expect(document.querySelector(".oshi-videos__tags")).not.toBeNull() // typing must NOT hide the Topic Tags
     expect(search.value).toBe("sing") // typing never clears its own query
 
     await user.clear(search)
