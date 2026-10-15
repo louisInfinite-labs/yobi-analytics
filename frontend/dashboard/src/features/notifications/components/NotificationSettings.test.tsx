@@ -6,6 +6,7 @@ import * as liveReminderApi from "../api/liveReminderApi"
 import { ensurePushEnabled } from "../push/pushGate"
 import { fetchVideoTopics } from "../../home-room/data/videoTopics"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
+import { closedReminderText } from "../../../test/reminderSelect"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
 
 // Each render here mounts the whole ~120-creator roster; under a loaded machine (CI) the default 5s is not enough.
@@ -464,7 +465,7 @@ describe("member drawer reminders", () => {
 
     const [trigger] = await openDrawerFor(user, /^SF6/)
 
-    expect(trigger).toHaveDisplayValue("At start") // the closed select reads 開播時 (At start), not a dash
+    expect(closedReminderText(trigger)).toBe("At start") // the closed select reads 開播時 (At start), not a dash
     expect(storedState().topics.sf6.reminderOverrides).toEqual({}) // showing the placeholder stores nothing
   })
 

@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react"
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { ConfigProvider, Drawer, Switch } from "antd"
 import { useBreakpoint } from "../../../shared/hooks/useBreakpoint"
 import { Heart, Search } from "lucide-react"
@@ -109,7 +109,11 @@ function ColumnHeader({ locale, notificationType }: { locale: Locale; notificati
       <span aria-hidden="true" />
       {showLive && <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.liveColumnHeader")}</span>}
       {showNewVideo && <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.newVideoColumnHeader")}</span>}
-      {showReminder && <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.drawerReminderColumnHeader")}</span>}
+      {showReminder && (
+        <span className="topic-creator-drawer__column-header-label topic-creator-drawer__column-header-label--reminder">
+          {t(locale, "notificationSettings.drawerReminderColumnHeader")}
+        </span>
+      )}
     </div>
   )
 }
@@ -137,6 +141,58 @@ function NotificationCheckbox({ checked, onChange, ariaLabel }: { checked: boole
         aria-label={ariaLabel}
       />
     </label>
+  )
+}
+
+/** The reminder-time dropdown: EXACTLY the five real timings, each once (開播時, 1 / 10 / 30 分鐘前, 1 小時前).
+ *
+ * A member with no reminder yet (unset -- no stored item, and no default is ever assumed) must not get a SIXTH option for it: the earlier
+ * hidden placeholder option listed 開播時 twice, because iOS's picker ignores `hidden`. Instead nothing is selected (selectedIndex -1), and the
+ * closed control shows the prompt 開播時 over it (a non-interactive overlay, see settings.css). Picking 開播時 from there is still a real change
+ * from "nothing" (so the existing at-start setting can be stored); once any timing is chosen, that option is the checked one. Uncontrolled on
+ * purpose (React would otherwise force the first option selected): the selection is synced from `value` after every render, and it is one
+ * element throughout, so focus survives a change. */
+function ReminderSelect({
+  value,
+  disabled,
+  ariaLabel,
+  locale,
+  onPick,
+}: {
+  value: ReminderTimeValue | null
+  disabled: boolean
+  ariaLabel: string
+  locale: Locale
+  onPick: (value: ReminderTimeValue) => void
+}) {
+  const ref = useRef<HTMLSelectElement>(null)
+  useLayoutEffect(() => {
+    if (ref.current) ref.current.selectedIndex = value === null ? -1 : REMINDER_TIME_VALUES.indexOf(value)
+  })
+
+  return (
+    <span className="topic-creator-drawer__reminder-select-wrap">
+      {/* Home's own dropdown, verbatim: the same native <select> and .oshi-videos__sort class Home's sort / content-type controls use, so its
+          height, padding, border, radius, colors, chevron, hover/focus and OPEN list are Home's by construction. */}
+      <select
+        ref={ref}
+        className="oshi-videos__sort topic-creator-drawer__reminder-select"
+        disabled={disabled}
+        onChange={(event) => onPick(event.target.value as ReminderTimeValue)}
+        aria-label={ariaLabel}
+      >
+        {REMINDER_TIME_VALUES.map((option) => (
+          <option key={option} value={option}>
+            {t(locale, REMINDER_TIME_LABEL_KEYS[option])}
+          </option>
+        ))}
+      </select>
+      {value === null && (
+        <span className="topic-creator-drawer__reminder-select-prompt" aria-hidden="true">
+          {t(locale, REMINDER_TIME_LABEL_KEYS.at_start)}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -174,38 +230,18 @@ function ReminderCell({
     )
   }
 
-  const options = REMINDER_TIME_VALUES.map((value) => ({ value: value as string, label: t(locale, REMINDER_TIME_LABEL_KEYS[value]) }))
   const memberReminder = getMemberReminder(topicId, creator.creatorId)
   const shadowed = reminderSupported && isReminderShadowedByAll(topicId, creator.creatorId)
 
   return (
     <span className="topic-creator-drawer__reminder-cell-content">
-      {/* Home's own dropdown, verbatim: the same native <select> and .oshi-videos__sort class Home's sort / content-type controls use, so its
-          height, padding, border, radius, colors, chevron, hover/focus and OPEN list are Home's by construction. */}
-      <select
-        className="oshi-videos__sort topic-creator-drawer__reminder-select"
+      <ReminderSelect
+        value={memberReminder}
         disabled={!reminderSupported}
-        value={memberReminder ?? ""}
-        onChange={(event) => {
-          const value = event.target.value as ReminderTimeValue
-          void applyWhenPushReady(() => setMemberReminder(topicId, creator.creatorId, value))
-        }}
-        aria-label={t(locale, "notificationSettings.reminderSelectAriaLabel", { name: creator.displayName })}
-      >
-        {/* No advance reminder yet: the closed select reads 開播時 (At start), not a dash -- a stream-start notification is always sent
-            (see reminderSectionHelp), so that is what "no earlier reminder" really means. Still the unset "" value, hidden from the open
-            list, which holds only the real timings (the 開播時 option among them keeps its own stored value). */}
-        {memberReminder === null && (
-          <option value="" disabled hidden>
-            {t(locale, REMINDER_TIME_LABEL_KEYS.at_start)}
-          </option>
-        )}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        ariaLabel={t(locale, "notificationSettings.reminderSelectAriaLabel", { name: creator.displayName })}
+        locale={locale}
+        onPick={(value) => void applyWhenPushReady(() => setMemberReminder(topicId, creator.creatorId, value))}
+      />
       {shadowed && <span className="topic-creator-drawer__reminder-not-in-effect">{t(locale, "notificationSettings.reminderNotInEffectHint")}</span>}
     </span>
   )

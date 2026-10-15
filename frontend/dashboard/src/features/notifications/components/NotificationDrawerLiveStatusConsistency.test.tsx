@@ -10,6 +10,7 @@ import { groupEligibleCreatorsForLiveStatus } from "../../live-status/utils/live
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
 import { readStylesheet, rulesOf, ruleBody } from "../../../test/readStylesheet"
+import { closedReminderText } from "../../../test/reminderSelect"
 
 // A device that can already deliver Web Push: the gate (pushGate.ts) lets every "turn a notification on" action through, so these
 // tests keep exercising the save behavior itself. The gate's own behavior is covered in pushGate.test.ts / pushEnableFlow.test.tsx.
@@ -131,7 +132,7 @@ describe("B: the surface and the dropdown are Home's", () => {
     expect(select.tagName).toBe("SELECT")
     expect(select).toHaveClass("oshi-videos__sort")
     expect(drawer.querySelector(".ant-btn, .ant-dropdown-trigger")).toBeNull()
-    expect(select).toHaveDisplayValue("At start") // unset: shows 開播時, as a hidden placeholder -- not an extra option in the list
+    expect(closedReminderText(select)).toBe("At start") // unset: nothing selected, the prompt 開播時 over it -- not an extra option in the list
     // only the width is the drawer's own; every other look is Home's .oshi-videos__sort
     expect(ruleBody(settingsCss, ".topic-creator-drawer__reminder-select").replace(/\s+/g, " ").trim()).toBe("width: 100%;")
   })
@@ -211,17 +212,14 @@ describe("the member drawer's six-point correction", () => {
     expect(ruleBody(settingsCss, ".topic-creator-drawer .ant-drawer-body:hover")).not.toMatch(/scrollbar-width/) // hover changes colors, never the width
   })
 
-  it("2. the reminder-time list holds only real timings: no 'No reminder' option, and the unset placeholder is a hidden, disabled option", async () => {
+  it("2. the reminder-time list holds exactly the five real timings, each once: no 'No reminder' option and no extra placeholder option", async () => {
     seed(["aizawa_ema"])
     const { drawer } = await openDrawer()
 
     const select = within(drawer).getAllByRole("combobox", { name: /'s reminder time/ })[0]
     const options = Array.from(select.querySelectorAll("option"))
-    const listed = options.filter((option) => !option.hidden).map((option) => option.textContent)
-    expect(listed).toEqual(["At start", "1 minute before", "10 minutes before", "30 minutes before", "1 hour before"])
-    const placeholder = options.find((option) => option.hidden)!
-    expect(placeholder).toBeDisabled()
-    expect(placeholder.value).toBe("")
+    expect(options.map((option) => option.textContent)).toEqual(["At start", "1 minute before", "10 minutes before", "30 minutes before", "1 hour before"])
+    expect(options.every((option) => !option.hidden && !option.disabled)).toBe(true)
   })
 
   it("3. the reminder column is sized to its select (a per-locale fixed width) and the name column takes the rest", () => {

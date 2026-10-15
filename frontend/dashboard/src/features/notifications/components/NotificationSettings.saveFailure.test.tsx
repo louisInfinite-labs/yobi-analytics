@@ -7,6 +7,7 @@ import * as notificationPreferenceApi from "../api/notificationPreferenceApi"
 import * as pushNotifications from "../push/pushNotifications"
 import { fetchVideoTopics } from "../../home-room/data/videoTopics"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
+import { closedReminderText } from "../../../test/reminderSelect"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
 
 // A device that can already deliver Web Push: the gate (pushGate.ts) lets every "turn a notification on" action through, so these
@@ -68,13 +69,13 @@ describe("Settings drawer when a notification write is rejected", () => {
     await openAllDrawer(user)
     await user.click(screen.getAllByRole("switch", { name: /live notifications/ })[0])
     const trigger = screen.getAllByRole("combobox", { name: /'s reminder time/ })[0]
-    expect(trigger).toHaveDisplayValue("At start")
+    expect(closedReminderText(trigger)).toBe("At start")
     vi.mocked(liveReminderApi.saveCreatorReminder).mockRejectedValueOnce(new Error("HTTP 500"))
 
     await user.selectOptions(trigger, "10 minutes before")
 
     expect(await screen.findByRole("alert")).toHaveTextContent(SAVE_FAILED)
-    expect(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0]).toHaveDisplayValue("At start")
+    expect(closedReminderText(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0])).toBe("At start")
     expect(storedState().topics.all.reminderOverrides).toEqual({})
   })
 
@@ -129,6 +130,6 @@ describe("Settings drawer when a notification write is rejected", () => {
 
     resetAllSharedStateForTests() // what a page reload does to the in-memory stores
 
-    expect(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0]).toHaveDisplayValue("At start")
+    expect(closedReminderText(screen.getAllByRole("combobox", { name: /'s reminder time/ })[0])).toBe("At start")
   })
 })
