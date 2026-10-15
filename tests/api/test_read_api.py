@@ -689,7 +689,7 @@ def test_read_shared_live_snapshot_reads_through_to_livestream_lifecycle(monkeyp
 
     monkeypatch.setenv("YOBI_STORAGE_BACKEND", "dynamodb")
     streams = [{"videoId": "v1", "status": "live"}]
-    monkeypatch.setattr(livestream_lifecycle, "read_snapshot", lambda: streams)
+    monkeypatch.setattr(livestream_lifecycle, "read_serving_snapshot", lambda: streams)
 
     assert read_api._read_shared_live_snapshot() is streams
 
@@ -706,10 +706,26 @@ def test_read_shared_live_snapshot_propagates_a_read_failure_rather_than_falling
     def _boom():
         raise RuntimeError("DynamoDB unreachable")
 
-    monkeypatch.setattr(livestream_lifecycle, "read_snapshot", _boom)
+    monkeypatch.setattr(livestream_lifecycle, "read_serving_snapshot", _boom)
 
     with pytest.raises(RuntimeError):
         read_api._read_shared_live_snapshot()
+
+
+def test_get_live_streams_refuses_a_stale_snapshot_instead_of_serving_or_refetching(monkeypatch):
+    """A snapshot older than the bounded age raises LiveSnapshotStaleError (a HolodexAPIError -> 503): never served as
+    current, and never turned into a per-request Holodex call."""
+    from tracking import livestream_lifecycle
+
+    def _stale():
+        raise livestream_lifecycle.LiveSnapshotStaleError("snapshot too old")
+
+    monkeypatch.setenv("YOBI_STORAGE_BACKEND", "dynamodb")
+    monkeypatch.setattr(livestream_lifecycle, "read_serving_snapshot", _stale)
+    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: pytest.fail("a stale snapshot must not trigger a Holodex call"))
+
+    with pytest.raises(livestream_lifecycle.LiveSnapshotStaleError):
+        get_live_streams()
 
 
 def test_get_live_streams_reuses_the_shared_snapshot_without_calling_holodex(monkeypatch):

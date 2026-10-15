@@ -1367,14 +1367,16 @@ def _without_known_non_livestreams(streams: list[dict[str, Any]]) -> list[dict[s
 def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     """`GET /live-streams`: current live/upcoming streams for Yobi's supported creators, sourced from Holodex.
 
-    Snapshot-first (DynamoDB backend only): tracking.livestream_lifecycle runs a centralized Holodex refresh every
-    5 minutes and persists its result as a shared snapshot (stores.remote_config_store) specifically so this
-    endpoint's latency/availability stop depending on a synchronous Holodex round-trip per request, and so a
-    completion-candidate diff has a well-defined "previous" snapshot to compare against. _read_shared_live_snapshot
-    returns None -- and this function falls back to fetch_live_streams_from_holodex below, the original direct-fetch
-    behavior, completely unchanged -- only when the snapshot has genuinely never been persisted yet: a non-DynamoDB
-    environment (local dev, every existing test) or a fresh deploy before the periodic job's first run. A snapshot-
-    READ FAILURE (the store itself erroring) is deliberately NOT folded into that same None/fallback path -- see
+    Snapshot-first (DynamoDB backend only): tracking.livestream_lifecycle refreshes a shared snapshot
+    (stores.remote_config_store) every minute -- the display refresh, independent of its 5-minute completion cycle --
+    specifically so this endpoint's latency/availability stop depending on a synchronous Holodex round-trip per
+    request, and so a stream that just went LIVE is visible within about a minute. The snapshot is served only while
+    bounded-fresh (see tracking.livestream_lifecycle.read_serving_snapshot): beyond that it raises
+    LiveSnapshotStaleError, a HolodexAPIError, so api_handler.py answers 503 instead of an arbitrarily old list.
+    _read_shared_live_snapshot returns None -- and this function falls back to fetch_live_streams_from_holodex below,
+    the original direct-fetch behavior, completely unchanged -- only when no snapshot has genuinely ever been
+    persisted yet: a non-DynamoDB environment (local dev, every existing test) or a fresh deploy before the periodic
+    job's first run. A snapshot-READ FAILURE (the store itself erroring) is deliberately NOT folded into that same None/fallback path -- see
     _read_shared_live_snapshot's own docstring for why -- so it propagates out of this function instead, caught by
     api_handler.py's generic catch-all (500) the same as any other unexpected error. Raises
     HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError on a direct-fetch failure rather than
@@ -1388,7 +1390,7 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def _read_shared_live_snapshot() -> list[dict[str, Any]] | None:
-    """tracking.livestream_lifecycle's persisted snapshot, or None only when nothing has been persisted yet (a
+    """tracking.livestream_lifecycle's freshness-bounded serving snapshot, or None only when nothing has been persisted yet (a
     non-DynamoDB backend, or a fresh deploy before the periodic job's first run) -- the caller then falls back to
     fetch_live_streams_from_holodex, bounded to this one request, no worse than this endpoint's behavior before
     this feature existed.
@@ -1407,9 +1409,9 @@ def _read_shared_live_snapshot() -> list[dict[str, Any]] | None:
     """
     if os.environ.get("YOBI_STORAGE_BACKEND") != "dynamodb":
         return None
-    from tracking.livestream_lifecycle import read_snapshot
+    from tracking.livestream_lifecycle import read_serving_snapshot
 
-    return read_snapshot()
+    return read_serving_snapshot()
 
 
 def fetch_live_streams_from_holodex() -> list[dict[str, Any]]:

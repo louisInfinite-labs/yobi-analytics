@@ -36,7 +36,15 @@ class HolodexAPIError(RuntimeError):
     Always raised, never swallowed into an empty result — distinguishing a
     Holodex outage from a genuine empty Live/Upcoming result is the calling
     handler's job (H4), not this client's.
+
+    `status_code` is the upstream HTTP status when the failure was a non-2xx response (None for a timeout, a
+    transport error or a malformed body), so a caller can tell a 429 rate limit apart and back off accordingly.
     """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        """Carry the upstream HTTP status alongside the message."""
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def holodex_get(path: str, params: dict[str, str] | None = None) -> Any:
@@ -64,7 +72,8 @@ def holodex_get(path: str, params: dict[str, str] | None = None) -> Any:
 
     if not response.ok:
         raise HolodexAPIError(
-            f"Holodex API request to {path!r} failed with status {response.status_code}: {response.text}"
+            f"Holodex API request to {path!r} failed with status {response.status_code}: {response.text}",
+            status_code=response.status_code,
         )
 
     try:
