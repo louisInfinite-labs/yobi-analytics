@@ -1,7 +1,5 @@
 import { normalizeQuery } from "./queryNormalization"
-import { resolveTopicIds } from "./topicResolution"
 import type { VideoSearchResult } from "../data/videoSearch"
-import type { BackendVideoTopic } from "../../home-room/model/videoTopicCatalog"
 
 /** One COMPLETE backend Search response for one normalized query, under one cache identity (creator +
  * applicable Filter/Sort -- never the selected Video Tag, which Search always ignores). The backend
@@ -14,6 +12,9 @@ import type { BackendVideoTopic } from "../../home-room/model/videoTopicCatalog"
 export interface SearchSnapshot {
   baseQuery: string
   videos: readonly VideoSearchResult[]
+  /** The normalized expanded title terms this response was fetched WITH (besides the raw `baseQuery`, which is always searched). A
+   * snapshot can only stand in for a query whose own terms are a subset of these -- see findReusableBase. */
+  terms: readonly string[]
 }
 
 /** Creator + the Filter/Sort fields the backend actually applies during Search (read_api.py's
@@ -71,10 +72,10 @@ export class SearchSessionCache {
    * response IS the complete result set (the endpoint has no pagination), so every successful response
    * is safe to store here unconditionally; see useVideoSearch.ts's own call site. Evicts the
    * least-recently-used snapshot once MAX_SNAPSHOTS is exceeded. */
-  store(identity: SearchCacheIdentity, baseQuery: string, videos: readonly VideoSearchResult[]): void {
+  store(identity: SearchCacheIdentity, baseQuery: string, videos: readonly VideoSearchResult[], terms: readonly string[] = []): void {
     this.resetIfIdentityChanged(identity)
     this.snapshots.delete(baseQuery)
-    this.snapshots.set(baseQuery, { baseQuery, videos })
+    this.snapshots.set(baseQuery, { baseQuery, videos, terms })
     while (this.snapshots.size > MAX_SNAPSHOTS) {
       const oldest = this.snapshots.keys().next().value
       if (oldest === undefined) break
@@ -86,17 +87,24 @@ export class SearchSessionCache {
    * found: an exact match first, else the LONGEST cached query that `normalizedQuery` is a true
    * extension of (a cached "" base is never reusable -- an empty query is never a valid Search base,
    * see spec sections 9/46). Returns null when no safe base exists -- the caller must then go to the
-   * backend; a different (non-matching) identity also always returns null, without touching anything. */
-  findReusableBase(identity: SearchCacheIdentity, normalizedQuery: string): SearchSnapshot | null {
+   * backend; a different (non-matching) identity also always returns null, without touching anything.
+   *
+   * `terms` are the expanded title terms of `normalizedQuery` itself. A snapshot is only a safe (complete) base when every one of those
+   * terms was already part of what it was fetched with: matching is "title contains the query OR any term", so a base fetched with FEWER
+   * terms could be missing rows the longer query still matches. For a fixed catalog this always holds (the terms of a longer query are a
+   * subset of its prefix's -- see topicResolution.ts), and it keeps local narrowing correct if the catalog changed between the two
+   * requests, e.g. a first search sent before GET /topics had loaded. */
+  findReusableBase(identity: SearchCacheIdentity, normalizedQuery: string, terms: readonly string[] = []): SearchSnapshot | null {
     if (this.currentIdentityKey !== identityKey(identity)) return null
+    const covers = (snapshot: SearchSnapshot) => terms.every((term) => snapshot.terms.includes(term))
     const exact = this.snapshots.get(normalizedQuery)
-    if (exact) {
+    if (exact && covers(exact)) {
       this.touch(normalizedQuery)
       return exact
     }
     let best: SearchSnapshot | null = null
     for (const snapshot of this.snapshots.values()) {
-      if (snapshot.baseQuery.length === 0) continue
+      if (snapshot.baseQuery.length === 0 || !covers(snapshot)) continue
       if (normalizedQuery.startsWith(snapshot.baseQuery) && (!best || snapshot.baseQuery.length > best.baseQuery.length)) {
         best = snapshot
       }
@@ -113,31 +121,23 @@ export class SearchSessionCache {
   }
 }
 
-/** Whether `video` still matches `normalizedQuery`, re-derived from this one result's own already-
- * returned `title` + `topic` fields and the frontend's OWN already-downloaded topic catalog (never a
- * second backend round-trip, never backend-computed per-row evidence -- see this module's own top
- * docstring for why that is no longer needed). Correct, not an approximation, because BOTH mechanisms
- * are monotonically shrinking under query extension: a title that contained the base query only
- * continues to contain a strictly longer extension of it if the longer text is still literally present,
- * and `resolveTopicIds` is monotonic for the same reason src/search/video_search.py's own (now removed)
- * resolve_canonical_ids_with_evidence was -- plain prefix-matching over a static catalog, which can only
- * ever shrink the matching id set as the query lengthens (see topicResolution.ts's own docstring). */
-function stillMatches(video: VideoSearchResult, normalizedQuery: string, topics: readonly BackendVideoTopic[]): boolean {
-  const titleMatch = normalizeQuery(video.title).normalized.includes(normalizedQuery)
-  if (titleMatch) return true
-  if (!video.topic) return false
-  return resolveTopicIds(normalizedQuery, topics).includes(video.topic)
+/** Whether `video` still matches `normalizedQuery`, re-derived from this one result's own already-returned `title` and the query's expanded
+ * `terms` (never a second backend round-trip, and never the video's `topic`: SearchView matches on titles only). It mirrors the backend rule
+ * exactly -- the normalized title contains the normalized query OR any normalized term -- and is a correct narrowing, not an approximation,
+ * because the matching set only shrinks as the query is extended: a title that contains a longer query also contains its prefix, and the
+ * terms of a longer query are a subset of its prefix's (see findReusableBase, which also enforces that for the snapshot actually used). */
+function stillMatches(video: VideoSearchResult, normalizedQuery: string, terms: readonly string[]): boolean {
+  const title = normalizeQuery(video.title).normalized
+  return title.includes(normalizedQuery) || terms.some((term) => title.includes(term))
 }
 
-/** The visible result list for `normalizedQuery`, derived from `snapshot` -- ALWAYS computed fresh from
- * the snapshot's own preserved, never-mutated `videos`, never by filtering an already-narrowed previous
- * view (spec: backspacing from a 3-result narrowed view back toward the base must restore the original
- * 10, not try to reconstruct 10 from 3). Preserves the snapshot's own relative ordering -- Search has no
- * relevance ranking of its own, so a filter here must never reorder (Array.prototype.filter already
- * preserves order, which is all this needs). `topics` is the SAME already-downloaded catalog the caller
- * used to resolve the backend request's own `topicIds` -- passed in rather than fetched here, since this
- * module must never issue its own network request. */
-export function deriveVisibleResults(snapshot: SearchSnapshot, normalizedQuery: string, topics: readonly BackendVideoTopic[]): VideoSearchResult[] {
+/** The visible result list for `normalizedQuery`, derived from `snapshot` -- ALWAYS computed fresh from the snapshot's own preserved,
+ * never-mutated `videos`, never by filtering an already-narrowed previous view (backspacing from a 3-result narrowed view back toward the
+ * base must restore the original 10, not try to reconstruct 10 from 3). Preserves the snapshot's own relative ordering -- Search has no
+ * relevance ranking of its own, so a filter here must never reorder (Array.prototype.filter already preserves order). `terms` is the SAME
+ * expansion the caller sent (or would send) to the backend for `normalizedQuery` -- passed in rather than computed here, since this module
+ * must never issue its own network request or read the catalog. */
+export function deriveVisibleResults(snapshot: SearchSnapshot, normalizedQuery: string, terms: readonly string[] = []): VideoSearchResult[] {
   if (snapshot.baseQuery === normalizedQuery) return [...snapshot.videos]
-  return snapshot.videos.filter((video) => stillMatches(video, normalizedQuery, topics))
+  return snapshot.videos.filter((video) => stillMatches(video, normalizedQuery, terms))
 }

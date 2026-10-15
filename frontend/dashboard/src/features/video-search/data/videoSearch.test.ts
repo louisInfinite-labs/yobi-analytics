@@ -11,7 +11,7 @@ vi.stubEnv("VITE_API_BASE_URL", "http://localhost")
  * Search-session snapshot stale. This test is the proof: it inspects the actual URL fetchVideoSearch
  * builds and asserts neither parameter is ever present. */
 describe("fetchVideoSearch -- request shape", () => {
-  const BASE: VideoSearchQuery = { creatorId: "ch_emma", rawQuery: "minecraft", topicIds: [], contentType: "all", sort: "newest", viewWindow: "total" }
+  const BASE: VideoSearchQuery = { creatorId: "ch_emma", rawQuery: "minecraft", terms: [], contentType: "all", sort: "newest", viewWindow: "total" }
 
   beforeEach(() => {
     vi.stubGlobal(
@@ -48,17 +48,29 @@ describe("fetchVideoSearch -- request shape", () => {
     expect(params.get("metric")).toBe("7d")
   })
 
-  it("omits topicIds entirely when resolution found no topic (not an empty-string parameter)", async () => {
+  it("omits terms entirely when nothing expanded (not an empty-string or empty-array parameter)", async () => {
     await fetchVideoSearch(BASE)
-    expect(new URL(vi.mocked(fetch).mock.calls[0][0] as string, "http://localhost").searchParams.has("topicIds")).toBe(false)
+    expect(new URL(vi.mocked(fetch).mock.calls[0][0] as string, "http://localhost").searchParams.has("terms")).toBe(false)
   })
 
-  it("ALWAYS sends the raw query, and additionally sends comma-separated topicIds when resolution succeeded", () => {
-    // This is the hard product rule (section 12/39): a resolved topic is never a substitute for `q`.
-    return fetchVideoSearch({ ...BASE, topicIds: ["valorant", "sf6"] }).then(() => {
-      const params = new URL(vi.mocked(fetch).mock.calls[0][0] as string, "http://localhost").searchParams
-      expect(params.get("q")).toBe("minecraft")
-      expect(params.get("topicIds")).toBe("valorant,sf6")
-    })
+  it("ALWAYS sends the raw query, and additionally sends the expanded title terms as a JSON array", async () => {
+    // The hard product rule: expanded terms are never a substitute for `q`.
+    await fetchVideoSearch({ ...BASE, rawQuery: "birth", terms: ["birthday", "誕生日", "誕生日配信"] })
+    const params = new URL(vi.mocked(fetch).mock.calls[0][0] as string, "http://localhost").searchParams
+    expect(params.get("q")).toBe("birth")
+    expect(JSON.parse(params.get("terms") as string)).toEqual(["birthday", "誕生日", "誕生日配信"])
+  })
+
+  it("keeps a term that contains a comma intact (a JSON array, not a comma-separated list)", async () => {
+    await fetchVideoSearch({ ...BASE, terms: ["a,b", "c"] })
+    const params = new URL(vi.mocked(fetch).mock.calls[0][0] as string, "http://localhost").searchParams
+    expect(JSON.parse(params.get("terms") as string)).toEqual(["a,b", "c"])
+  })
+
+  it("never sends a topic id or topicIds: SearchView matches titles only", async () => {
+    await fetchVideoSearch({ ...BASE, terms: ["valo"] })
+    const params = new URL(vi.mocked(fetch).mock.calls[0][0] as string, "http://localhost").searchParams
+    expect(params.has("topicIds")).toBe(false)
+    expect(params.has("topic")).toBe(false)
   })
 })

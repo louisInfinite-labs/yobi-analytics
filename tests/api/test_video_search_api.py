@@ -5,6 +5,8 @@ endpoint reads from the exact same S3VideoRankingStore per-creator result."""
 
 from __future__ import annotations
 
+import json
+
 from datetime import date
 
 import pytest
@@ -126,16 +128,14 @@ class TestVideoSearchApiContract:
         _wire(monkeypatch, {"emma": [_row("v1", "a"), _row("v2", "b")]})
         assert _search(q="   ")["videos"] == []
 
-    def test_each_video_carries_its_own_persisted_topic_for_frontend_local_narrowing(self, monkeypatch):
-        """Final architecture: there is no backend-computed per-row match evidence any more
-        (`matchedTopicAliases` is gone) -- the frontend's Search-session cache derives local narrowing
-        from this already-existing `topic` field plus its own downloaded /topics catalog."""
+    def test_each_video_still_carries_its_persisted_topic_as_a_display_field_only(self, monkeypatch):
+        """`topic` stays in the response shape (an existing field) but plays no part in matching -- see TestVideoSearchMatching."""
         _wire(monkeypatch, {"emma": [_row("v1", "今日のバロラント配信", topic="valorant")]})
-        response = _search(q="バロラント", topicIds="valorant")
+        response = _search(q="バロラント")
         assert response["videos"][0]["topic"] == "valorant"
         assert "matchedTopicAliases" not in response["videos"][0]
 
-    def test_a_query_with_no_topicids_still_does_plain_direct_title_matching(self, monkeypatch):
+    def test_a_query_with_no_terms_still_does_plain_direct_title_matching(self, monkeypatch):
         _wire(monkeypatch, {"emma": [_row("v1", "3Dモデルお披露目", topic="chatting")]})
         response = _search(q="3D")
         assert _ids(response) == ["v1"]
@@ -173,41 +173,54 @@ class TestVideoSearchMatching:
         _wire(monkeypatch, {"emma": [_row("v1", "3Dモデルお披露目"), _row("v2", "雑談配信", topic="chatting")]})
         assert _ids(_search(q="3D")) == ["v1"]
 
-    def test_topic_match_via_frontend_resolved_topicids_even_without_title_overlap(self, monkeypatch):
-        """The backend no longer resolves "VALO" -> valorant itself -- the frontend does that locally
-        against GET /topics and sends the resolved id explicitly. A request with a resolved topicIds but
-        a title that doesn't contain it still matches by topic (UNION semantics)."""
-        _wire(monkeypatch, {"emma": [_row("v1", "今日の配信アーカイブ", topic="valorant")]})
-        assert _ids(_search(q="VALO", topicIds="valorant")) == ["v1"]
+    def test_birth_finds_a_title_containing_the_expanded_japanese_term(self, monkeypatch):
+        """The frontend resolves "birth" against the catalog (English label Birthday) and sends the concept's LITERAL labels/aliases as
+        `terms`; the backend only checks titles."""
+        _wire(monkeypatch, {"emma": [_row("v1", "今日は誕生日配信", topic=None), _row("v2", "unrelated", topic="誕生日")]})
+        assert _ids(_search(q="birth", terms=json.dumps(["birthday", "誕生日", "誕生日配信"], ensure_ascii=False))) == ["v1"]
 
-    def test_a_raw_query_with_no_matching_topicids_resolved_falls_back_to_title_matching_only(self, monkeypatch):
-        """If the frontend's local resolution found nothing (topicIds omitted/empty), Search still works
-        normally as direct-title search -- not an error, not a reason to return nothing."""
+    def test_the_same_result_with_no_persisted_topic_or_a_wrong_one(self, monkeypatch):
+        rows = [_row("a", "誕生日の日", topic=None), _row("b", "誕生日の夜", topic="minecraft"), _row("c", "誕生日の朝", topic="誕生日")]
+        _wire(monkeypatch, {"emma": rows})
+        assert set(_ids(_search(q="birth", terms=json.dumps(["誕生日"], ensure_ascii=False)))) == {"a", "b", "c"}
+
+    def test_a_video_is_not_returned_solely_because_its_persisted_topic_matches(self, monkeypatch):
+        _wire(monkeypatch, {"emma": [_row("v1", "全く別の配信", topic="誕生日")]})
+        assert _ids(_search(q="birth", terms=json.dumps(["birthday", "誕生日"], ensure_ascii=False))) == []
+
+    def test_the_old_topicids_parameter_is_ignored_not_honored(self, monkeypatch):
+        _wire(monkeypatch, {"emma": [_row("v1", "今日の配信アーカイブ", topic="valorant")]})
+        assert _ids(_search(q="VALO", topicIds="valorant")) == []  # an old client: title-only, never a persisted-topic match
+        assert _ids(_search(q="配信", topicIds="valorant")) == ["v1"]
+
+    def test_a_raw_query_that_resolved_nothing_still_searches_titles(self, monkeypatch):
         _wire(monkeypatch, {"emma": [_row("v1", "funny moment compilation", topic="chatting")]})
         assert _ids(_search(q="funny moment")) == ["v1"]
+        assert _ids(_search(q="funny moment", terms="[]")) == ["v1"]
 
-    def test_multiple_comma_separated_topicids_are_all_unioned(self, monkeypatch):
-        _wire(
-            monkeypatch,
-            {
-                "emma": [
-                    _row("v1", "unrelated title", topic="valorant"),
-                    _row("v2", "unrelated title", topic="sf6"),
-                    _row("v3", "unrelated title", topic="minecraft"),
-                ]
-            },
-        )
-        assert set(_ids(_search(q="zz", topicIds="valorant,sf6"))) == {"v1", "v2"}
+    def test_duplicate_and_equivalent_terms_do_not_create_duplicate_results(self, monkeypatch):
+        _wire(monkeypatch, {"emma": [_row("v1", "誕生日 birthday")]})
+        terms = json.dumps(["誕生日", "誕生日", " 誕生日 ", "birthday", "BIRTHDAY", "ｂｉｒｔｈｄａｙ"], ensure_ascii=False)
+        assert _ids(_search(q="birth", terms=terms)) == ["v1"]
 
-    def test_an_unknown_topicid_does_not_break_direct_title_matching(self, monkeypatch):
-        _wire(monkeypatch, {"emma": [_row("v1", "Minecraft part 1", topic="minecraft")]})
-        assert _ids(_search(q="minecraft", topicIds="not_a_real_topic")) == ["v1"]
+    def test_normalization_is_nfkc_and_case_insensitive_for_the_query_and_the_terms(self, monkeypatch):
+        _wire(monkeypatch, {"emma": [_row("v1", "ＡＢＣ Stream"), _row("v2", "plain TERM here")]})
+        assert set(_ids(_search(q="abc"))) == {"v1"}
+        assert set(_ids(_search(q="zz", terms=json.dumps(["ａｂｃ", "term"])))) == {"v1", "v2"}
 
-    def test_an_empty_query_with_a_topicid_still_returns_zero_videos(self, monkeypatch):
-        """Defensive rule unchanged by the frontend-resolved-topics refactor: an empty q must never
-        return results, even if a (malformed/direct) request also supplies a real topicIds."""
+    def test_a_term_may_contain_a_comma(self, monkeypatch):
+        _wire(monkeypatch, {"emma": [_row("v1", "a,b collab"), _row("v2", "a b collab")]})
+        assert _ids(_search(q="zz", terms=json.dumps(["a,b"]))) == ["v1"]
+
+    def test_an_empty_query_with_terms_still_returns_zero_videos(self, monkeypatch):
         _wire(monkeypatch, {"emma": [_row("v1", "anything", topic="valorant")]})
-        assert _search(q="", topicIds="valorant")["videos"] == []
+        assert _search(q="", terms=json.dumps(["anything"]))["videos"] == []
+
+    def test_terms_must_be_a_json_array_of_bounded_strings(self, monkeypatch):
+        _wire(monkeypatch, {"emma": [_row("v1", "anything")]})
+        for bad in ("not json", '{"a": 1}', "[1, 2]", "[" + ",".join(['"a"'] * 101) + "]", json.dumps(["x" * 101])):
+            with pytest.raises(read_api.ClientError):
+                _search(q="anything", terms=bad)
 
     def test_no_match_returns_an_empty_list_not_an_error(self, monkeypatch):
         _wire(monkeypatch, {"emma": [_row("v1", "Minecraft part 1", topic="minecraft")]})

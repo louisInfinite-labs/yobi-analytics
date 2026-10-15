@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { fetchVideoSearch, type VideoSearchQuery, type VideoSearchResult } from "../data/videoSearch"
 import { isQueryActive, normalizeQuery } from "../model/queryNormalization"
 import { SearchSessionCache, deriveVisibleResults, type SearchCacheIdentity } from "../model/searchSessionCache"
-import { resolveTopicIds } from "../model/topicResolution"
+import { expandSearchTerms } from "../model/topicResolution"
 import type { BackendVideoTopic } from "../../home-room/model/videoTopicCatalog"
 
 /** A small debounce since Search calls the backend (spec: ~200-350ms) -- applies ONLY when a backend
@@ -26,12 +26,11 @@ export interface VideoSearchState {
   flush: () => void
 }
 
-/** The non-query parts of a search request: current creator + the existing Filter/Sort selection,
- * which stays active during a Search (spec: Video Tag is ignored, Filter/Sort is not) -- deliberately
- * has no `topic`/tag field at all, so a caller cannot accidentally narrow Search by the selected tag.
- * `topicIds` is excluded too: it is QUERY-derived (this hook resolves it locally from `rawQuery` via
- * ../model/topicResolution.ts), never something a caller supplies directly. */
-export type VideoSearchBase = Omit<VideoSearchQuery, "rawQuery" | "topicIds">
+/** The non-query parts of a search request: current creator + the existing Filter/Sort selection, which stays active during a Search
+ * (spec: Video Tag is ignored, Filter/Sort is not) -- deliberately has no `topic`/tag field at all, so a caller cannot accidentally narrow
+ * Search by the selected tag. `terms` is excluded too: it is QUERY-derived (this hook expands it locally from `rawQuery` against the
+ * Topic Catalog via ../model/topicResolution.ts), never something a caller supplies directly. */
+export type VideoSearchBase = Omit<VideoSearchQuery, "rawQuery" | "terms">
 
 export interface UseVideoSearchOptions {
   /** True while an IME composition is in progress (compositionstart fired, compositionend has not yet)
@@ -42,7 +41,7 @@ export interface UseVideoSearchOptions {
   isComposing?: boolean
   /** The SAME already-downloaded topic catalog (GET /topics, via the caller's own existing
    * useVideoTagOptions/useVideoTopicCatalog instance -- NEVER a second fetch started here) used for
-   * local canonical-topic resolution (../model/topicResolution.ts) -- both for the `topicIds` sent
+   * local term expansion (../model/topicResolution.ts) -- both for the `terms` sent
    * alongside every backend request and for local Search-session cache narrowing. Read via a ref at
    * call-time, not a dependency of the request-scheduling effect, so a caller re-rendering with a new
    * (but equal) array identity never itself triggers a redundant resolution/request. Defaults to `[]`
@@ -108,14 +107,14 @@ export function useVideoSearch(rawQuery: string, base: VideoSearchBase | null, o
       abortRef.current = controller
       setState((prev) => (prev && prev.key === fetchKey ? { ...prev, loading: true } : { key: fetchKey, videos: [], loading: true, error: null }))
 
-      const topicIds = resolveTopicIds(fetchNormalized, topicsRef.current)
-      fetchVideoSearch({ ...fetchBase, rawQuery: fetchNormalized, topicIds }, controller.signal).then(
+      const terms = expandSearchTerms(fetchNormalized, topicsRef.current)
+      fetchVideoSearch({ ...fetchBase, rawQuery: fetchNormalized, terms }, controller.signal).then(
         (videos) => {
           if (generation !== generationRef.current) return // superseded by a newer query/identity/request
           // The backend now always returns the query's COMPLETE matching set in one response (no
           // limit/offset/hasMore at all -- see src/api/read_api.py's get_creator_video_search), so every
           // successful response is, by construction, a safe local-narrowing base.
-          cacheRef.current?.store(fetchIdentity, fetchNormalized, videos)
+          cacheRef.current?.store(fetchIdentity, fetchNormalized, videos, terms)
           setState({ key: fetchKey, videos, loading: false, error: null })
         },
         (err: unknown) => {
@@ -146,13 +145,14 @@ export function useVideoSearch(rawQuery: string, base: VideoSearchBase | null, o
     if (!identity || !identityKey || !base || isComposing) return
     const key = `${identityKey}::${normalized}`
 
-    const reusable = cacheRef.current?.findReusableBase(identity, normalized)
+    const terms = expandSearchTerms(normalized, topicsRef.current)
+    const reusable = cacheRef.current?.findReusableBase(identity, normalized, terms)
     if (reusable) {
       // A safe local derivation always wins immediately: no debounce, and it supersedes whatever
       // backend request might already be in flight for a now-abandoned branch of typing.
       generationRef.current++
       abortRef.current?.abort()
-      setState({ key, videos: deriveVisibleResults(reusable, normalized, topicsRef.current), loading: false, error: null })
+      setState({ key, videos: deriveVisibleResults(reusable, normalized, terms), loading: false, error: null })
       return
     }
 

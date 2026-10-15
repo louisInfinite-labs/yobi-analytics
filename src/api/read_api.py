@@ -31,6 +31,8 @@ before its own onboarding, rather than the less precise `pending`.
 
 from __future__ import annotations
 
+import json
+
 import os
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -851,40 +853,50 @@ def parse_video_search_metric(raw: Any) -> str:
     return raw
 
 
-def parse_video_search_topic_ids(raw: Any) -> frozenset[str]:
-    """Validate the optional `topicIds` parameter for Video Search: a comma-separated list of canonical
-    topic ids the FRONTEND has already resolved from its own downloaded copy of the authoritative
-    GET /topics catalog (see search.video_search's own module docstring -- this backend no longer
-    re-derives topic ids from query text at all). Absent/empty means no topic filter contributed by this
-    request, never "match every topic" -- direct title matching still applies on its own. An id unknown
-    to this backend's own taxonomy is harmless to pass through unvalidated: no persisted video's `topic`
-    field will ever equal it, so it simply contributes nothing (see search.video_search.
-    video_matches_query) -- there is nothing here worth validating against the real topic id set."""
+# Bounds on the SearchView's expanded title terms (the frontend sends the literal labels/aliases of the topic concepts the query
+# resolved to). Generous for any real catalog entry (the largest alias list today is ~25) but small enough to keep one request cheap.
+VIDEO_SEARCH_MAX_TERMS = 100
+VIDEO_SEARCH_MAX_TERM_LENGTH = 100
+
+
+def parse_video_search_terms(raw: Any) -> tuple[str, ...]:
+    """The optional `terms` parameter for Video Search: a JSON array of strings -- the literal, already-expanded title-search terms
+    (Topic Catalog labels and search aliases of the concepts the typed query resolved to, resolved on the FRONTEND). A JSON array rather
+    than a comma-separated list because an alias may itself contain a comma. Absent or empty means no expansion, never "match
+    everything": the raw `q` still searches titles on its own. Terms are only ever compared to video TITLES; they carry no topic id.
+    The older `topicIds` parameter is ignored (SearchView no longer matches on persisted topics), so an old client still gets a valid
+    title-only answer."""
     if raw is None or raw == "":
-        return frozenset()
+        return ()
     if not isinstance(raw, str):
-        raise ClientError(f"topicIds must be a comma-separated string, got {raw!r}")
-    return frozenset(item.strip() for item in raw.split(",") if item.strip())
+        raise ClientError(f"terms must be a JSON array of strings, got {raw!r}")
+    try:
+        parsed = json.loads(raw)
+    except ValueError as exc:
+        raise ClientError(f"terms must be a JSON array of strings: {exc}") from exc
+    if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
+        raise ClientError("terms must be a JSON array of strings")
+    if len(parsed) > VIDEO_SEARCH_MAX_TERMS:
+        raise ClientError(f"terms may hold at most {VIDEO_SEARCH_MAX_TERMS} entries, got {len(parsed)}")
+    if any(len(item) > VIDEO_SEARCH_MAX_TERM_LENGTH for item in parsed):
+        raise ClientError(f"each term may be at most {VIDEO_SEARCH_MAX_TERM_LENGTH} characters")
+    return tuple(parsed)
 
 
 def get_creator_video_search(query: dict[str, Any]) -> dict[str, Any]:
-    """`GET /creators/{creatorId}/videos/search?q=...&topicIds=...`: Video Search (Video List
-    Multilingual Search). One creator's COMPLETE video catalog (never just a recent/paginated subset --
-    the same whole, already-in-memory per-creator-per-report-date S3 result get_recent_creator_videos/
-    get_video_ranking already read, see S3VideoRankingStore), searched by DIRECT TITLE MATCH (`q`)
-    **union** TOPIC MATCH (`topicIds`) -- see search.video_search's own module docstring for the full
-    union-semantics rationale and why this backend no longer performs multilingual topic resolution
-    itself.
+    """`GET /creators/{creatorId}/videos/search?q=...&terms=[...]`: Video Search (the Home SearchView). One creator's COMPLETE video
+    catalog (never just a recent/paginated subset -- the same whole, already-in-memory per-creator-per-report-date S3 result
+    get_recent_creator_videos/get_video_ranking already read, see S3VideoRankingStore), searched by VIDEO TITLE ONLY: a row matches when
+    its normalized title contains the normalized `q` OR any normalized, de-duplicated entry of `terms`.
 
-    FINAL ARCHITECTURE: canonical multilingual topic resolution ("does this query refer to a topic, and
-    which one") is now the FRONTEND's job, done locally against the SAME authoritative catalog
-    GET /topics returns (id + labels + tracking.video_topics.Topic.search_aliases -- see
-    api.dashboard_catalog_api.get_topics and frontend/dashboard/src/features/video-search/model/
-    topicResolution.ts). The frontend sends BOTH the raw query (`q`, for direct title matching -- ALWAYS
-    required, never omitted even when topic resolution succeeds) and the topic ids it already resolved
-    from that SAME query (`topicIds`, optional -- empty is the normal "no topic resolved" case, not an
-    error). This endpoint only checks "is this row's own persisted topic in the given id set", a plain
-    membership test with no multilingual knowledge of its own.
+    SearchView and Topic Filter are separate operations. This endpoint never reads a video's persisted `topic` to decide a match -- a
+    video with a null/incorrect/unrelated topic is found when its title matches, and a video is never returned merely because its topic
+    matches. The old `topicIds` parameter is accepted-and-ignored. See search.video_search's module docstring.
+
+    `terms` is the vocabulary the FRONTEND expanded from the typed query: it resolves the query against the downloaded GET /topics
+    catalog (prefix match on id / localized labels / searchAliases) and sends the matching concepts' LITERAL labels and aliases (a JSON
+    array of strings, see parse_video_search_terms). The backend applies no topic regex and does no multilingual resolution of its own.
+    `q` is ALWAYS required and ALWAYS applied, whether or not anything resolved.
 
     Returns EVERY matching video in ONE response -- deliberately no `limit`/`offset`/`hasMore` at all
     (Search-session cache follow-up, product correction): one Creator's catalog is itself bounded, and a
@@ -896,28 +908,22 @@ def get_creator_video_search(query: dict[str, Any]) -> dict[str, Any]:
     oversight, and should be revisited (not silently re-paginated) if a creator's catalog ever grows
     enough to threaten that margin.
 
-    An empty (or whitespace-only) `q` is explicitly defended against returning the creator's whole
-    catalog: search.video_search.video_matches_query returns False unconditionally for an empty
-    normalized query -- even if `topicIds` were somehow non-empty alongside it -- so `rows` filters down
-    to nothing and this always answers with `videos: []`, never "no filter = everything" -- see
-    test_video_search_api.py's own proof of this.
+    An empty (or whitespace-only) `q` is explicitly defended against returning the creator's whole catalog:
+    search.video_search.video_matches_query returns False unconditionally for an empty normalized query -- even if `terms` were somehow
+    non-empty alongside it -- so this always answers with `videos: []`, never "no filter = everything".
 
-    Each returned video carries its own persisted `topic` (already an existing field, not new) -- the
-    frontend's Search-session cache uses `title` + `topic` + its own already-downloaded topic catalog to
-    decide, for a LATER, longer query that is a true extension of this one, whether this already-returned
-    result would still match, entirely locally and with no further backend evidence needed (see
-    frontend/dashboard/src/features/video-search/model/searchSessionCache.ts). Because every successful
-    response here is always the query's complete result set, EVERY such response is a safe
-    local-narrowing base -- there is no per-response completeness flag to check before caching one.
+    Each returned video still carries its own persisted `topic` (an existing display field; it plays no part in matching) -- the
+    frontend's Search-session cache uses each result's `title` and the term set it fetched with to decide, for a LATER, longer query that
+    is a true extension of this one, whether this already-returned result would still match, entirely locally (see
+    frontend/dashboard/src/features/video-search/model/searchSessionCache.ts). Because every successful response here is always the
+    query's complete result set, EVERY such response is a safe local-narrowing base.
 
-    Deliberately has NO Video Tag/Topic SELECTION parameter: that is a separate, UI-only concept a valid
-    Search always ignores (product rule) -- `topicIds` here is query-DERIVED (computed by the frontend
-    from `q` itself), a completely different thing from the user's separately-remembered browsing Tag,
-    which a caller must never forward into this parameter.
+    Deliberately has NO Video Tag/Topic SELECTION parameter: that is a separate, UI-only concept a valid Search always ignores (product
+    rule) -- `terms` is query-DERIVED vocabulary, a completely different thing from the user's separately-remembered browsing Tag.
 
     contentType/liveStatus/excludeShorts/sort/metric are the SAME existing Filter/Sort dimensions
     get_recent_creator_videos/get_video_ranking already expose, and keep applying to the combined
-    (title-union-topic) result exactly as they do during normal browsing (product rule: "existing
+    (title-matched) result exactly as they do during normal browsing (product rule: "existing
     Filter/Sort remains active during Search") -- this endpoint introduces no Search-specific relevance
     ranking of its own.
 
@@ -927,7 +933,7 @@ def get_creator_video_search(query: dict[str, Any]) -> dict[str, Any]:
     """
     creator_id = parse_creator_id(query.get("creatorId"))
     raw_query = parse_search_query(query.get("q"))
-    topic_ids = parse_video_search_topic_ids(query.get("topicIds"))
+    terms = parse_video_search_terms(query.get("terms"))
     content_type = parse_video_ranking_content_type(query.get("contentType"))
     live_status = parse_recent_creator_videos_live_status(query.get("liveStatus"))
     exclude_shorts = parse_video_search_exclude_shorts(query.get("excludeShorts"))
@@ -957,7 +963,7 @@ def get_creator_video_search(query: dict[str, Any]) -> dict[str, Any]:
     ordered = search_creator_video_rows(
         rows,
         raw_query=raw_query,
-        topic_ids=topic_ids,
+        terms=terms,
         content_type=content_type,
         live_status=live_status,
         exclude_shorts=exclude_shorts,
