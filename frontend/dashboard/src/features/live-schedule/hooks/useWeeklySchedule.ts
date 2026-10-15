@@ -73,15 +73,24 @@ export function useWeeklySchedule(selectedChannelIds: ReadonlySet<string> = NO_C
     [streams],
   )
 
+  const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart])
+
+  // The streams that actually land on the displayed grid: the same days, the same local timezone and the same slot rule the grid places by
+  // (slotIndexForMs), so a stream outside the displayed range is in neither the grid nor the creator filter's choices.
+  const scheduleStreams = useMemo(
+    () => rawStreams.filter((stream) => weekDays.some((date) => slotIndexForMs(stream.scheduledStartMs, date) !== null)),
+    [rawStreams, weekDays],
+  )
+
   // The creator and organization filters both apply to what is PLACED on the grid (AND-ed, client-side on the already-loaded streams, so
-  // changing either never refetches); `allStreams` stays unfiltered so the filter's own options never shrink to the current selection.
+  // changing either never refetches); `scheduleStreams` stays unfiltered by either so the filter's own choices never shrink to the current selection.
   const visibleStreams = useMemo(
-    () => filterStreamsByOrganization(filterStreamsByCreators(rawStreams, selectedChannelIds), organization),
-    [rawStreams, selectedChannelIds, organization],
+    () => filterStreamsByOrganization(filterStreamsByCreators(scheduleStreams, selectedChannelIds), organization),
+    [scheduleStreams, selectedChannelIds, organization],
   )
 
   const days = useMemo<ScheduleDay[]>(() => {
-    return getWeekDays(weekStart).map((date) => {
+    return weekDays.map((date) => {
       const slots: ScheduledStream[][] = Array.from({ length: SLOT_COUNT }, () => [])
       for (const raw of visibleStreams) {
         const slotIndex = slotIndexForMs(raw.scheduledStartMs, date)
@@ -90,7 +99,7 @@ export function useWeeklySchedule(selectedChannelIds: ReadonlySet<string> = NO_C
       }
       return { date, isToday: isSameDay(date, today), slots }
     })
-  }, [weekStart, visibleStreams, today])
+  }, [weekDays, visibleStreams, today])
 
-  return { weekStart, days, now, allStreams: rawStreams }
+  return { weekStart, days, now, scheduleStreams }
 }

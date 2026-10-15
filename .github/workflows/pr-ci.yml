@@ -247,6 +247,8 @@ jobs:
           src/features/notifications/push/pushNotifications.serviceWorkerReady.test.ts
           src/pages/about/markdown.lineEndings.test.tsx
           src/pages/schedule/LiveSchedulePage.creatorFilter.test.tsx
+          src/pages/schedule/LiveSchedulePage.creatorFilterScope.test.tsx
+          src/pages/schedule/LiveSchedulePage.organizationFilter.test.tsx
           src/pages/schedule/LiveSchedulePage.test.tsx
           src/shared/time/minuteClock.test.tsx
           src/features/live-schedule/components/ScheduleGrid.test.tsx

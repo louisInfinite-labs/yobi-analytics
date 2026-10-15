@@ -176,13 +176,17 @@ describe("scheduleCreatorFilter model", () => {
     expect(filterStreamsByCreators(streams, new Set(["ch_zzz"]))).toEqual([])
   })
 
-  it("options: one per creator, favorites first, then by name, plus any selected creator without a stream", () => {
-    const options = buildCreatorFilterOptions(streams, new Set(["ch_x"]), new Set(["ch_c"]), (id) => id.replace("ch_", "").toUpperCase())
+  it("options: one per creator that has a stream, favorites first, then by name; a selected creator without a stream is NOT offered", () => {
+    const options = buildCreatorFilterOptions(streams, new Set(["ch_c"]), (id) => id.replace("ch_", "").toUpperCase())
     expect(options.map((o) => [o.channelId, o.isFavorite])).toEqual([
       ["ch_c", true],
       ["ch_a", false],
       ["ch_b", false],
-      ["ch_x", false],
     ])
+  })
+
+  it("a favorite with no stream is not offered either (Favorites decorate choices, they never add them)", () => {
+    const options = buildCreatorFilterOptions(streams, new Set(["ch_c", "ch_favorite_without_stream"]), (id) => id)
+    expect(options.map((o) => o.channelId)).not.toContain("ch_favorite_without_stream")
   })
 })

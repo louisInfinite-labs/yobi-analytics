@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { flushSync } from "react-dom"
 import { useFavoriteCreators } from "../../features/favorites/hooks/useFavoriteCreators"
-import { buildCreatorFilterOptions, type ScheduleOrganizationFilter } from "../../features/live-schedule/model/scheduleCreatorFilter"
+import { buildCreatorFilterOptions, filterStreamsByOrganization, type ScheduleOrganizationFilter } from "../../features/live-schedule/model/scheduleCreatorFilter"
 import { ScheduleGrid } from "../../features/live-schedule/components/ScheduleGrid"
 import { ScheduleToolbar } from "../../features/live-schedule/components/ScheduleToolbar"
 import { StreamDetailModal } from "../../features/live-schedule/components/StreamDetailModal"
@@ -23,12 +23,13 @@ export function LiveSchedulePage() {
   const [selectedCreators, setSelectedCreators] = useState<string[]>([])
   const selectedSet = useMemo(() => new Set(selectedCreators), [selectedCreators])
   const [organization, setOrganization] = useState<ScheduleOrganizationFilter>("all")
-  const { weekStart, days, now, allStreams } = useWeeklySchedule(selectedSet, organization)
+  const { weekStart, days, now, scheduleStreams } = useWeeklySchedule(selectedSet, organization)
   const { favorites } = useFavoriteCreators()
+  // The filter dialog offers exactly the creators with an event on the displayed schedule, inside the chosen organization -- the same
+  // streams and the same organization rule the grid itself is built from. Stored selections and Favorites are never edited by this.
   const creatorOptions = useMemo(
-    () =>
-      buildCreatorFilterOptions(allStreams, selectedSet, favorites, getScheduleCreatorName),
-    [allStreams, selectedSet, favorites],
+    () => buildCreatorFilterOptions(filterStreamsByOrganization(scheduleStreams, organization), favorites, getScheduleCreatorName),
+    [scheduleStreams, organization, favorites],
   )
   const [selectedStream, setSelectedStream] = useState<ScheduledStream | null>(null)
   const [reminderStream, setReminderStream] = useState<ScheduledStream | null>(null)

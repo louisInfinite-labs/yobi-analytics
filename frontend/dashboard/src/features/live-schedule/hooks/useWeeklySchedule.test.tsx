@@ -164,3 +164,54 @@ describe("useWeeklySchedule real stream data", () => {
     expect(result.current.days.flatMap((day) => day.slots.flat())).toHaveLength(0)
   })
 })
+
+describe("useWeeklySchedule scheduleStreams (what the creator filter may offer)", () => {
+  const dto = (videoId: string, start: Date, creatorId = CREATOR_ID) => ({
+    videoId,
+    creatorId,
+    channelName: creatorId,
+    title: videoId,
+    status: "upcoming" as const,
+    scheduledStart: start.toISOString(),
+    actualStart: null,
+    thumbnailUrl: "",
+    topic: null,
+  })
+
+  it("holds exactly the streams on the displayed days -- local date boundaries inclusive of the last slot, exclusive of the next midnight and of the day before", () => {
+    startAt(2026, 8, 23, 10, 0, 0) // displayed: Sep 23 00:00 .. Sep 29 23:59 local
+    mockStreams([
+      dto("before", new Date(2026, 8, 22, 23, 59, 0)),
+      dto("first-slot", new Date(2026, 8, 23, 0, 0, 0)),
+      dto("last-slot", new Date(2026, 8, 29, 23, 30, 0)),
+      dto("after", new Date(2026, 8, 30, 0, 0, 0)),
+    ])
+
+    const { result } = renderHook(() => useWeeklySchedule())
+
+    expect(result.current.scheduleStreams.map((stream) => stream.videoId)).toEqual(["first-slot", "last-slot"])
+    // the grid places the very same set (nothing offered that the grid does not show)
+    expect(result.current.days.flatMap((day) => day.slots.flat()).map((stream) => stream.videoId)).toEqual(["first-slot", "last-slot"])
+  })
+
+  it("is independent of the creator / organization filters (the choices never shrink to the current selection)", () => {
+    startAt(2026, 8, 23, 10, 0, 0)
+    mockStreams([dto("ema", new Date(2026, 8, 24, 20, 0, 0)), dto("pekora", new Date(2026, 8, 24, 21, 0, 0), "usada_pekora")])
+
+    const { result } = renderHook(() => useWeeklySchedule(new Set(["ch_usada_pekora"]), "hololive"))
+
+    expect(result.current.scheduleStreams.map((stream) => stream.videoId)).toEqual(["ema", "pekora"])
+    expect(result.current.days.flatMap((day) => day.slots.flat()).map((stream) => stream.videoId)).toEqual(["pekora"])
+  })
+
+  it("is recomputed when the displayed range moves (local midnight): yesterday's stream leaves, the newly reached day's stream enters", () => {
+    startAt(2026, 8, 23, 23, 59, 40)
+    mockStreams([dto("today", new Date(2026, 8, 23, 23, 0, 0)), dto("day8", new Date(2026, 8, 30, 12, 0, 0))])
+    const { result } = renderHook(() => useWeeklySchedule())
+    expect(result.current.scheduleStreams.map((stream) => stream.videoId)).toEqual(["today"])
+
+    tick() // Thu Sep 24 00:00 -> displayed Sep 24 .. Sep 30
+
+    expect(result.current.scheduleStreams.map((stream) => stream.videoId)).toEqual(["day8"])
+  })
+})
