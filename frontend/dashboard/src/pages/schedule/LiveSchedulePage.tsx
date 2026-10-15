@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { flushSync } from "react-dom"
 import { useFavoriteCreators } from "../../features/favorites/hooks/useFavoriteCreators"
 import { buildCreatorFilterOptions, type ScheduleOrganizationFilter } from "../../features/live-schedule/model/scheduleCreatorFilter"
 import { ScheduleGrid } from "../../features/live-schedule/components/ScheduleGrid"
@@ -70,15 +71,19 @@ export function LiveSchedulePage() {
         now={now}
         onClose={() => setSelectedStream(null)}
         onOpenStream={(stream) => {
-          setSelectedStream(null)
-          setEmbed({ videoId: stream.videoId, title: stream.title })
+          // flushSync: the player mounts (and, on a touch device, asks the browser for fullscreen while mounting) INSIDE this tap. The browser
+          // only grants fullscreen from a user gesture, so it must not wait behind a batched or deferred state update.
+          flushSync(() => {
+            setSelectedStream(null)
+            setEmbed({ videoId: stream.videoId, title: stream.title })
+          })
         }}
         onSetReminder={(stream) => setReminderStream(stream)}
       />
 
       <StreamNotificationPanel stream={reminderStream} onClose={() => setReminderStream(null)} />
 
-      {embed && <VideoPlayerModal videoId={embed.videoId} title={embed.title} variant="player-only" onClose={() => setEmbed(null)} />}
+      {embed && <VideoPlayerModal videoId={embed.videoId} title={embed.title} variant="player-only" fullscreenOnOpen onClose={() => setEmbed(null)} />}
     </div>
   )
 }

@@ -9,6 +9,7 @@ import { useLiveStreamVideoPool } from "../../features/home-room/hooks/useRecent
 import { useSelectedCreator } from "../../features/oshi/hooks/useSelectedCreator"
 import { useWatchedDuringLive } from "../../features/media-player/hooks/useWatchedDuringLive"
 import { selectLiveEmbedVideo } from "../../features/media-player/utils/liveEmbed"
+import { scrollToHomePlayer } from "../../features/home-room/utils/scrollToHomePlayer"
 import { OshiStatusPanel } from "../../features/oshi-status/components/OshiStatusPanel"
 import { RecentVideosSection } from "../../features/home-room/components/RecentVideosSection"
 
@@ -62,6 +63,7 @@ export function HomePage() {
   const breakpoint = useBreakpoint()
   const liveStatusOpen = useLiveDockExpanded()
   const status = statuses[creatorId] ?? { kind: "offline" as const }
+  const streamRef = useRef<HTMLElement>(null)
   // The one shared Home selected-video path -- Oshi Videos, Recent Activity
   // AND Live Status (see useHomeSelectedVideo) all call selectHomeVideo, and
   // whichever wins overrides the auto-selected live/upcoming/latest-archive video
@@ -77,12 +79,15 @@ export function HomePage() {
       (status.kind !== "offline" && status.videoId === video.videoId) ||
       streamVideos.videos.some((entry) => entry.videoId === video.videoId && (entry.contentFormat === "live_now" || entry.contentFormat === "live_upcoming"))
     selectHomeVideo(video, creatorId, { countsAsOpened: !isCurrentStream })
+    // A deliberate pick, from the shelf or any Oshi Status title/thumbnail: take the viewer straight back to the player. Called here, in the
+    // click path, and not from an effect on the selected video, so no automatic selection or refresh can ever move the page.
+    scrollToHomePlayer(streamRef.current)
   }
 
   return (
     <div className="oshi-home" data-live-status-open={liveStatusOpen}>
       <main className="oshi-home__canvas" style={creatorThemeStyle(creatorId, resolveCreatorKey(creatorId)?.themeColor)}>
-        <section className="oshi-stream">
+        <section ref={streamRef} className="oshi-stream">
           <div className="oshi-player-frame" data-live={status.kind === "live"}>
             <div className="oshi-player-frame__stage">
               <div className="oshi-player-frame__ratio">

@@ -11,6 +11,7 @@ import { t, type Locale } from "../../../shared/i18n/translations"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
 import { formatClockTime } from "../../../shared/i18n/model/timeFormat"
 import { useBreakpoint } from "../../../shared/hooks/useBreakpoint"
+import { useDaySwipe } from "../hooks/useDaySwipe"
 
 interface ScheduleGridProps {
   locale: Locale
@@ -74,6 +75,16 @@ export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStre
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const selectedIndex = resolveSelectedDayIndex(days, selectedKey)
   const shownDays = phone && days[selectedIndex] ? [days[selectedIndex]] : days
+  // The same move the < and > buttons make, driven by a horizontal swipe (the single-day layout is the only one with a selected day). Never
+  // wraps: the first and last day simply stop. The selection is stored as the day's date key either way.
+  const selectIndex = (index: number) => setSelectedKey(dayKey(days[index].date))
+  const swipe = useDaySwipe({
+    enabled: phone && days.length > 1,
+    canPrevious: selectedIndex > 0,
+    canNext: selectedIndex < days.length - 1,
+    onPrevious: () => selectIndex(selectedIndex - 1),
+    onNext: () => selectIndex(selectedIndex + 1),
+  })
 
   // The width one slot really has, so the "+N" collapse follows the layout (resize, rotation, another day) instead of a fixed count.
   // Every day column is as wide as the others, so the first one is measured.
@@ -121,8 +132,8 @@ export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStre
 
   return (
     <section className="schedule-grid-shell">
-      {phone && <ScheduleDayNavigator locale={locale} days={days} selectedIndex={selectedIndex} onSelectIndex={(index) => setSelectedKey(dayKey(days[index].date))} />}
-      <div className="schedule-grid" ref={gridRef}>
+      {phone && <ScheduleDayNavigator locale={locale} days={days} selectedIndex={selectedIndex} onSelectIndex={selectIndex} />}
+      <div className="schedule-grid" ref={gridRef} {...swipe}>
         <div className="time-column">
           <div className="time-header">{t(locale, "liveSchedule.timeColumnHeader")}</div>
           <div className="time-body">

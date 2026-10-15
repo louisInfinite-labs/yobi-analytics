@@ -173,6 +173,15 @@ jobs:
           src/features/video-search/model/searchSessionCache.test.ts
           src/features/video-search/model/topicResolution.test.ts
           src/features/home-room/components/RecentVideosSection.searchTagClick.test.tsx
+          src/features/home-room/components/RecentVideosSection.touch.test.tsx
+          src/pages/home/HomePage.scrollToPlayer.test.tsx
+          src/features/live-schedule/components/ScheduleGrid.swipe.test.tsx
+          src/features/live-status/components/LiveScheduleDock.creatorSelection.test.tsx
+          src/features/live-status/components/LiveScheduleDock.fullSheet.test.tsx
+          src/features/media-player/utils/fullscreenPlayback.test.ts
+          src/features/media-player/components/VideoPlayerModal.fullscreen.test.tsx
+          src/features/media-player/components/VideoPlayerModal.test.tsx
+          src/pages/schedule/LiveSchedulePage.fullscreen.test.tsx
           src/features/oshi-status/data/oshiStatus.test.ts
           src/features/oshi-status/hooks/useOshiStatus.test.tsx
           src/features/oshi-status/hooks/useLastVisit.test.ts

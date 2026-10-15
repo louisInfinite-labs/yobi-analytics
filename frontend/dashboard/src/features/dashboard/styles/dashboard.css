@@ -1084,6 +1084,61 @@ button.video-table__title-cell {
   border-radius: 0;
 }
 
+/* The player while the browser has it fullscreen (a touch device after tapping Open): the panel IS the fullscreen element, so it fills the
+   screen (dynamic viewport height, no gap under a collapsing toolbar) and the 16:9 frame is centered at the largest size that fits --
+   the full width in portrait, the full height in landscape. A separate rule for the WebKit-prefixed pseudo-class: an unknown selector in a
+   list would invalidate the whole rule. */
+.video-player-modal__panel:fullscreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  padding: 0;
+  border-radius: 0;
+  background: #000;
+}
+
+.video-player-modal__panel:-webkit-full-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  padding: 0;
+  border-radius: 0;
+  background: #000;
+}
+
+.video-player-modal__panel:fullscreen .video-player-modal__frame {
+  width: min(100%, calc(100dvh * 16 / 9));
+}
+
+.video-player-modal__panel:-webkit-full-screen .video-player-modal__frame {
+  width: min(100%, calc(100vh * 16 / 9));
+}
+
+/* "Rotate your device for a larger view": a small, non-blocking pill over the bottom of the player. It takes no taps (the video underneath
+   stays fully usable) and keeps clear of a home indicator. */
+.video-player-modal__hint {
+  position: absolute;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: center;
+  pointer-events: none;
+}
+
 .video-player-modal__frame {
   position: relative;
   width: 100%;

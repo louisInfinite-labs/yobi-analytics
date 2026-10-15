@@ -652,14 +652,61 @@ describe("OshiStatusPanel thumbnails", () => {
   })
 
   describe("正在播放 (now playing)", () => {
-    it("shows the playing video's thumbnail, display-only (the title has no action, so there is nothing to mirror)", async () => {
+    it("shows the playing video's thumbnail as a real button that selects that video, exactly like the title does", async () => {
+      const user = userEvent.setup()
       const { onSelectVideo } = renderThumbs({ nowPlayingTitle: "Playing title", nowPlayingVideoId: "playing_video_1" })
 
       const thumb = document.querySelector(".oshi-status__now-playing .oshi-status__thumb") as HTMLElement
       expect(thumb.querySelector("img")?.getAttribute("src")).toBe("https://img.youtube.com/vi/playing_video_1/hqdefault.jpg")
-      expect(thumb.tagName).not.toBe("BUTTON")
-      await userEvent.setup().click(thumb)
+      expect(thumb.tagName).toBe("BUTTON")
+      expect(thumb.getAttribute("role")).toBeNull()
+
+      await user.click(thumb)
+      await user.click(screen.getByRole("button", { name: "Playing title" }))
+
+      expect(onSelectVideo).toHaveBeenCalledTimes(2)
+      expect(onSelectVideo).toHaveBeenNthCalledWith(1, { videoId: "playing_video_1", title: "Playing title" })
+      expect(onSelectVideo).toHaveBeenNthCalledWith(2, { videoId: "playing_video_1", title: "Playing title" })
+    })
+
+    it("the title and the thumbnail are keyboard-reachable buttons with distinct accessible names, and neither nests another control", async () => {
+      const user = userEvent.setup()
+      const { onSelectVideo } = renderThumbs({ nowPlayingTitle: "Playing title", nowPlayingVideoId: "playing_video_1" })
+
+      const title = screen.getByRole("button", { name: "Playing title" })
+      const thumb = screen.getByRole("button", { name: "Thumbnail: Playing title" })
+      for (const control of [title, thumb]) expect(control.querySelector("button, a, [role=button], input, select, textarea")).toBeNull()
+
+      title.focus()
+      await user.keyboard("{Enter}")
+      await user.tab()
+      expect(document.activeElement).toBe(thumb)
+      await user.keyboard(" ")
+      expect(onSelectVideo).toHaveBeenCalledTimes(2)
+    })
+
+    it("with only a title known (no videoId) there is nothing to select: plain text, no thumbnail, no dead control", () => {
+      const { onSelectVideo } = renderThumbs({ nowPlayingTitle: "Only a title" })
+
+      expect(screen.queryByRole("button", { name: "Only a title" })).toBeNull()
+      expect(document.querySelector(".oshi-status__now-playing-title")?.tagName).toBe("DIV")
       expect(onSelectVideo).not.toHaveBeenCalled()
+    })
+
+    it("no thumbnail anywhere in the panel is display-only: every one is a button that selects a video", async () => {
+      const user = userEvent.setup()
+      const { onSelectVideo } = renderThumbs({ status: LIVE, nowPlayingTitle: "Live right now", nowPlayingVideoId: LIVE.videoId })
+      await screen.findByText("Unseen upload")
+
+      const thumbs = Array.from(document.querySelectorAll<HTMLElement>(".oshi-status__thumb"))
+      expect(thumbs.length).toBeGreaterThanOrEqual(4) // now playing + live + two recent rows
+      for (const thumb of thumbs) {
+        expect(thumb.tagName).toBe("BUTTON")
+        expect(thumb.className).not.toContain("--static")
+        onSelectVideo.mockClear()
+        await user.click(thumb)
+        expect(onSelectVideo).toHaveBeenCalledTimes(1)
+      }
     })
 
     it("uses the backend thumbnail the panel already holds for that video (the live status, or a recent row)", async () => {

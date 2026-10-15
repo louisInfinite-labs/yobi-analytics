@@ -256,6 +256,7 @@ export type TranslationKey =
   | "liveSchedule.closeAria"
   | "liveSchedule.setReminderButton"
   | "liveSchedule.openStreamButton"
+  | "videoPlayer.rotateHint"
   | "liveSchedule.startsInMinutes"
   | "liveSchedule.streamReminderExplanationLine1"
   | "liveSchedule.streamReminderExplanationLine2"
@@ -515,6 +516,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.closeAria": "關閉",
     "liveSchedule.setReminderButton": "設定提醒",
     "liveSchedule.openStreamButton": "開啟直播",
+    "videoPlayer.rotateHint": "旋轉裝置以獲得更大的畫面",
     "liveSchedule.startsInMinutes": "{{minutes}} 分鐘後開始",
     "liveSchedule.streamReminderExplanationLine1": "此設定只適用於這一次直播。",
     "liveSchedule.streamReminderExplanationLine2": "儲存後，這場直播會使用此處的通知設定，取代該創作者原本的直播通知設定。",
@@ -773,6 +775,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.closeAria": "Close",
     "liveSchedule.setReminderButton": "Set Reminder",
     "liveSchedule.openStreamButton": "Open Stream",
+    "videoPlayer.rotateHint": "Rotate your device for a larger view",
     "liveSchedule.startsInMinutes": "Starts in {{minutes}}m",
     "liveSchedule.streamReminderExplanationLine1": "This setting applies only to this livestream.",
     "liveSchedule.streamReminderExplanationLine2": "Once saved, this livestream will use the notification setting here, replacing the creator's usual live notification setting for this stream only.",
@@ -1031,6 +1034,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.closeAria": "閉じる",
     "liveSchedule.setReminderButton": "リマインダーを設定",
     "liveSchedule.openStreamButton": "配信を開く",
+    "videoPlayer.rotateHint": "端末を横向きにすると大きく表示されます",
     "liveSchedule.startsInMinutes": "{{minutes}}分後に開始",
     "liveSchedule.streamReminderExplanationLine1": "この設定はこの配信にのみ適用されます。",
     "liveSchedule.streamReminderExplanationLine2": "保存すると、この配信はここでの通知設定が優先され、クリエイター本来の配信通知設定の代わりに使用されます。",

@@ -80,11 +80,9 @@
     518px
   );
   /* Live Status's own consumed variable, aliased to the shared token above
-     rather than deleted outright -- this is what lets the ≤640px mobile
-     override further down stay untouched (mobile diverges Oshi
-     Status/Live Status on purpose already; see that block's own comment)
-     while every desktop/narrow-desktop breakpoint has just one real
-     numeric source. */
+     so the desktop side panel has just one real numeric source. Below
+     1024px the drawer is a full-viewport sheet and does not read it (see
+     the Live Status block's narrow-screen rule). */
   --live-status-width: var(--home-status-width);
 
   /* Derived, not chosen: a 220px card holds a 16:9 thumbnail (123.75px) +
@@ -447,6 +445,37 @@
   text-overflow: ellipsis;
 }
 
+/* The playing video's title as a button: same look as the plain title, plus the pointer, hover and focus treatment the other Oshi Status
+ * title buttons already use. */
+.oshi-status__now-playing-title--link {
+  appearance: none;
+
+  display: block;
+  max-width: 100%;
+
+  padding: 0;
+
+  border: 0;
+  background: transparent;
+
+  font-family: inherit;
+  text-align: left;
+
+  cursor: pointer;
+}
+
+.oshi-status__now-playing-title--link:hover {
+  color: var(--creator-main);
+
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.oshi-status__now-playing-title--link:focus-visible {
+  outline: 1px solid var(--creator-main);
+  outline-offset: 2px;
+}
+
 /* DEV-only utility (see OshiStatusPanel.tsx's import.meta.env.DEV gate) --
    a developer control, not a product feature, so it's deliberately never
    bound to --creator-main. */
@@ -764,8 +793,8 @@
 }
 
 /* Video thumbnails in the four Oshi Status sections (Now Playing, Live / Next, Recent Activity): 377px wide on desktop, scaling down
-   proportionally with the panel (max-width: 100%), always 16:9 (aspect-ratio) and never stretched (object-fit: cover). A clickable one is
-   a <button> running the same handler as its title; the now-playing one is display-only. */
+   proportionally with the panel (max-width: 100%), always 16:9 (aspect-ratio) and never stretched (object-fit: cover). Every one is a
+   <button> running the same handler as its title. */
 .oshi-status__thumb {
   appearance: none;
 
@@ -789,10 +818,6 @@
   background: var(--oshi-surface-2);
 
   cursor: pointer;
-}
-
-.oshi-status__thumb--static {
-  cursor: default;
 }
 
 .oshi-status__thumb img {
@@ -1176,12 +1201,18 @@
   overflow-x: auto;
   overflow-y: hidden;
 
-  /* pan-y (not the default auto/none) keeps a touchscreen's own vertical
-     page gesture working over this row while still letting the pointer
-     handlers below (mouse only -- see VideoTrack's handlePointerDown)
-     drive horizontal movement; native touch/trackpad horizontal scrolling
-     is untouched, since neither is a mouse-button drag. */
-  touch-action: pan-y;
+  /* A finger must be able to pan this row sideways AND still pan the page
+     up and down when a gesture starts over it. `pan-y` alone allows only
+     the vertical axis, which silently disabled native horizontal touch
+     scrolling here (the shelf could not be swiped on a phone or tablet);
+     `pan-x pan-y` lets the browser pick the axis from the gesture itself,
+     so native scrolling -- momentum included -- does the work and no
+     custom touch handling is needed. The pointer handlers in VideoTrack
+     are mouse-only. `overscroll-behavior-x: contain` keeps a sideways
+     swipe at either end of the row from turning into the browser's
+     history swipe or scrolling anything behind it. */
+  touch-action: pan-x pan-y;
+  overscroll-behavior-x: contain;
 
   cursor: grab;
 
@@ -1404,8 +1435,8 @@
 
   z-index: 220;
 
-  right: 14px;
-  bottom: 14px;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
 
   min-width: 70px;
   height: 34px;
@@ -1476,14 +1507,12 @@
   z-index: 300;
 
   top: 0;
-  /* --home-gap, not 0 -- Home's own right-outer-gutter (see
-     .oshi-home__canvas's padding) applies to this drawer too, since it
-     must land exactly where Oshi Status's own right edge sits when
-     closed, not flush against the raw viewport edge. */
-  right: var(--home-gap);
+  /* Flush with the viewport's right edge (no strip of the page to the right of the panel), and widened by Home's own right gutter so its
+     LEFT edge still lands exactly where the Oshi Status column's does. */
+  right: 0;
   bottom: 0;
 
-  width: var(--live-status-width);
+  width: calc(var(--live-status-width) + var(--home-gap));
 
   min-width: 0;
 
@@ -1498,14 +1527,8 @@
 
   box-shadow: -12px 0 28px rgba(0, 0, 0, 0.28);
 
-  /* +var(--home-gap), not a bare 100% -- this box's own right edge already
-     sits --home-gap short of the viewport (see `right` above), so
-     translateX(100%) alone would only walk its LEFT edge as far as that
-     same viewport-minus-gap line, leaving a --home-gap-wide sliver of the
-     drawer (creator-list strip) still on-screen at the right edge. The
-     extra --home-gap clears that sliver so the closed drawer is fully
-     off-viewport. */
-  transform: translateX(calc(100% + var(--home-gap)));
+  /* Its right edge is the viewport's, so 100% of its own width carries it fully off-screen. */
+  transform: translateX(100%);
 
   transition: transform var(--transition-normal);
 
@@ -2290,15 +2313,48 @@
   }
 }
 
-@media (max-width: 640px) {
-  :root {
-    /* Deliberately independent of --home-status-width (the shared desktop
-       token): mobile's Live Status becomes a full-screen sheet by design,
-       which has never been mirrored onto Oshi Status's own grid column at
-       this breakpoint -- see --live-status-width's own root comment for why
-       this one override stays a real, non-aliased value here instead of
-       inheriting the shared token. */
-    --live-status-width: 100vw;
+/* ============ Live Status below 1024px: a true full-viewport sheet ============ */
+
+/* Phone (portrait AND landscape) and tablet (portrait AND landscape) -- the app's own single-column threshold (useBreakpoint), so a phone
+   turned sideways (844px wide) or an iPad (768/1024px) can never fall into the desktop side-panel layout by accident, which is what the old
+   `max-width: 640px` rule allowed (a 100vw panel anchored `right: 16px` also left a 16px strip of the page showing, and 641-1023px got the
+   desktop width). The sheet covers the whole viewport, sized in dynamic viewport units so a collapsing browser toolbar leaves no gap. The
+   safe-area insets are padding INSIDE the sheet (header and list), never margin around it. The resize control is not rendered here (the
+   sheet is always full). The list scrolls inside the sheet and its scroll never chains to the page behind (the page itself is locked by
+   useBodyScrollLock while the sheet is open). */
+@media (max-width: 1023px) {
+  .live-status-drawer,
+  .live-status-drawer[data-size="compact"] {
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: 0;
+
+    width: 100%;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+
+    border: 0;
+    border-radius: 0;
+
+    box-shadow: none;
+
+    transform: translateX(100%);
+  }
+
+  .live-status-drawer__header {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+
+  .live-status-drawer__body {
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+
+    overscroll-behavior: contain;
   }
 }
 

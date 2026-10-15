@@ -1281,6 +1281,9 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
      time rows and the day's rows aligned. */
   .schedule-grid {
     grid-template-columns: var(--schedule-time-column-width) minmax(0, 1fr);
+
+    /* Horizontal finger swipes change the day (useDaySwipe); the browser keeps the vertical page scroll and pinch-zoom. */
+    touch-action: pan-y pinch-zoom;
   }
 
   .time-header,
