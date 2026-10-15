@@ -45,8 +45,8 @@ function fallbackThumbnailUrl(videoId: string): string {
 
 /** A 16:9 video thumbnail (377px wide on desktop, scaling down with the panel, never distorted: object-fit cover). Source order: the
  * backend's own thumbnail field, then the app's videoId-keyed fallback, then a neutral 16:9 placeholder -- no other request is made.
- * With `onOpen` it is a button that runs the SAME handler as the item's title; without it (the now-playing video, which has no title
- * action) it is display-only. */
+ * Always a button that runs the SAME handler as the item's title (Now Playing, Live, Next and every Recent Activity row), so no thumbnail
+ * in the panel looks interactive while doing nothing. */
 function StatusThumbnail({
   videoId,
   thumbnailUrl,
@@ -56,7 +56,7 @@ function StatusThumbnail({
   videoId: string
   thumbnailUrl?: string | null
   label: string
-  onOpen?: () => void
+  onOpen: () => void
 }) {
   const [locale] = useLocale()
   // A distinct accessible name: the title button beside it already carries the plain title, and two controls must not share one name.
@@ -72,14 +72,10 @@ function StatusThumbnail({
     <span className="oshi-status__thumb-placeholder">{t(locale, "liveSchedule.noThumbnail")}</span>
   )
 
-  return onOpen ? (
+  return (
     <button type="button" className="oshi-status__thumb" aria-label={accessibleName} onClick={onOpen}>
       {image}
     </button>
-  ) : (
-    <div className="oshi-status__thumb oshi-status__thumb--static" role="img" aria-label={accessibleName}>
-      {image}
-    </div>
   )
 }
 
@@ -213,6 +209,7 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
   useEffect(() => {
     migrateWatchedLiveToSeen((data?.recent ?? []).filter((item) => item.kind === "livestream").map((item) => item.videoId))
   }, [data])
+  const openNowPlaying = nowPlayingVideoId && nowPlayingTitle ? () => onSelectVideo({ videoId: nowPlayingVideoId, title: nowPlayingTitle }) : undefined
   const number = (value: number | undefined) => (value === undefined ? VALUE_UNAVAILABLE : String(value))
   // 尚未觀看: counted from the SAME NEW judgement the Recent Activity rows below draw their NEW badge from (useNewContent's isNew, with the same
   // `{ videoId, publishedAt }` candidate and `now`) -- never from the last-visit time or a second unread system. Opening a row marks it seen, which
@@ -266,10 +263,18 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
         {nowPlayingTitle && (
           <div className="oshi-status__now-playing">
             <div className="oshi-status__now-playing-label">{t(locale, "oshiStatus.nowPlaying")}</div>
-            <div className="oshi-status__now-playing-title">{nowPlayingTitle}</div>
-            {nowPlayingVideoId && (
+            {/* With a videoId, the title and the thumbnail run the one shared selection path (select, then back to the player), like every
+              * other title/thumbnail pair in this panel. Without one (only a title is known) there is nothing to select: plain text. */}
+            {openNowPlaying ? (
+              <button type="button" className="oshi-status__now-playing-title oshi-status__now-playing-title--link" onClick={openNowPlaying}>
+                {nowPlayingTitle}
+              </button>
+            ) : (
+              <div className="oshi-status__now-playing-title">{nowPlayingTitle}</div>
+            )}
+            {nowPlayingVideoId && openNowPlaying && (
               <div className="oshi-status__now-playing-thumb">
-                <StatusThumbnail videoId={nowPlayingVideoId} thumbnailUrl={nowPlayingThumbnail} label={nowPlayingTitle} />
+                <StatusThumbnail videoId={nowPlayingVideoId} thumbnailUrl={nowPlayingThumbnail} label={nowPlayingTitle} onOpen={openNowPlaying} />
               </div>
             )}
           </div>

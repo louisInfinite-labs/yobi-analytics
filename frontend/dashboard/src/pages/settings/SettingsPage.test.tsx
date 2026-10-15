@@ -1,9 +1,12 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { SettingsPage } from "./SettingsPage"
 import { resetAllSharedStateForTests } from "../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../shared/theme/MemberThemeProvider"
+
+// Each render here mounts the whole ~120-creator roster; under a loaded machine (CI) the default 5s is not enough.
+vi.setConfig({ testTimeout: 20_000 })
 
 /** Mounts the whole Settings page under the theme provider its sections read. */
 function renderSettingsPage() {
@@ -27,12 +30,37 @@ beforeEach(() => {
 })
 
 describe("SettingsPage navigation", () => {
-  it("lists the four sections in the fixed order and opens Favorites List by default", () => {
+  it("lists the four sections in the fixed order and opens Oshi Settings (我推設定) by default, not Favorites List", () => {
     renderSettingsPage()
 
     const nav = screen.getByRole("navigation", { name: "Settings navigation" })
     const labels = Array.from(nav.querySelectorAll(".settings-secondary-navbar__link")).map((item) => item.textContent)
     expect(labels).toEqual(["Oshi Settings", "Favorites List", "Live/Video Notifications", "Display"])
+
+    // The highlighted item and the content agree: both are Oshi Settings.
+    expect(screen.getByRole("button", { name: "Oshi Settings" })).toHaveAttribute("aria-current", "page")
+    expect(screen.getByRole("button", { name: "Favorites List" })).not.toHaveAttribute("aria-current")
+    expect(screen.getByRole("heading", { level: 1, name: "Oshi Settings" })).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "My Favorites" })).not.toBeInTheDocument()
+  })
+
+  it("a deep link to another section (?section=) still wins over the default, and an unknown one falls back to Oshi Settings", () => {
+    window.history.pushState({}, "", "/setting?section=oshi")
+    const { unmount } = renderSettingsPage()
+    expect(screen.getByRole("button", { name: "Favorites List" })).toHaveAttribute("aria-current", "page")
+    expect(screen.getByRole("heading", { name: "My Favorites" })).toBeInTheDocument()
+    unmount()
+
+    window.history.pushState({}, "", "/setting?section=nonsense")
+    renderSettingsPage()
+    expect(screen.getByRole("button", { name: "Oshi Settings" })).toHaveAttribute("aria-current", "page")
+  })
+
+  it("Favorites List (收藏名單) can still be chosen by hand", async () => {
+    const user = userEvent.setup()
+    renderSettingsPage()
+
+    await user.click(screen.getByRole("button", { name: "Favorites List" }))
 
     expect(screen.getByRole("button", { name: "Favorites List" })).toHaveAttribute("aria-current", "page")
     expect(screen.getByRole("heading", { name: "My Favorites" })).toBeInTheDocument()
@@ -63,6 +91,7 @@ describe("SettingsPage navigation", () => {
     const user = userEvent.setup()
     renderSettingsPage()
 
+    await user.click(screen.getByRole("button", { name: "Favorites List" }))
     await user.click(screen.getByRole("checkbox", { name: "Add 藍沢エマ to favorites" }))
     await user.click(screen.getByRole("button", { name: "Display" }))
     await user.click(screen.getByRole("button", { name: "Favorites List" }))

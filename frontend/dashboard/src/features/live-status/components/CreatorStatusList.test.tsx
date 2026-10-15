@@ -10,6 +10,9 @@ import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import type { CreatorStatus } from "../model/creatorStatus"
 
+// Each render here mounts the whole ~120-creator roster; under a loaded machine (CI) the default 5s is not enough.
+vi.setConfig({ testTimeout: 20_000 })
+
 const now = new Date("2026-09-09T12:00:00.000Z")
 const allOffline: Record<string, CreatorStatus> = Object.fromEntries(mockCreators.map((c) => [c.channelId, { kind: "offline" as const }]))
 

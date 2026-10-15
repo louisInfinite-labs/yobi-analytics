@@ -14,6 +14,8 @@ export interface VideoPage {
   loadMore: () => void
   /** False once the source's history is exhausted. */
   hasMore: boolean
+  /** Refetches the current query from its first page (optional: only the paged Oshi Videos shelf offers it). */
+  refresh?: () => void
 }
 
 /** One /live-streams item as a RecentVideo -- publishedAt prefers

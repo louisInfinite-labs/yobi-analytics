@@ -57,6 +57,9 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
   const stableQuery = useMemo(() => query, [key])
 
   const [result, setResult] = useState<ShelfResult | null>(null)
+  /** Bumped by refresh(): the same query, fetched again from its first page. */
+  const [refreshToken, setRefreshToken] = useState(0)
+  const refresh = useCallback(() => setRefreshToken((token) => token + 1), [])
   const generationRef = useRef(0)
   const loadingMoreRef = useRef(false)
   /** A loadMore() that arrived while a page was in flight: run as soon as that page lands. */
@@ -82,7 +85,7 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
         if (generation !== generationRef.current) return
         setResult({ key, videos: [], pending: [], nextOffset: 0, hasMore: false, error: err instanceof Error ? err : new Error(String(err)) })
       })
-  }, [stableQuery, key])
+  }, [stableQuery, key, refreshToken])
 
   const loadMore = useCallback(() => {
     if (!stableQuery || key === null) return
@@ -135,7 +138,7 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
     fetchPage(current.nextOffset)
   }, [stableQuery, key, result])
 
-  if (key === null) return { videos: [], loading: false, error: null, loadMore, hasMore: false }
+  if (key === null) return { videos: [], loading: false, error: null, loadMore, hasMore: false, refresh }
 
   const current = result && result.key === key ? result : null
   return {
@@ -144,5 +147,6 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
     error: current ? current.error : null,
     loadMore,
     hasMore: current ? current.hasMore : false,
+    refresh,
   }
 }

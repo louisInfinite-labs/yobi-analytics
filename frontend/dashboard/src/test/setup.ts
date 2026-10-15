@@ -8,6 +8,7 @@ import { resetNotificationSaveStatusForTests } from "../features/notifications/h
 import { resetAllSharedStateForTests } from "../shared/state/sharedState"
 import { resetLiveStreamsPollingForTests } from "../shared/api/liveStreamsPollState"
 import { resetAboutContentFetchForTests } from "../pages/about/aboutContentFetchState"
+import { clearVideoSearchInput } from "../features/video-search/hooks/useVideoSearchInput"
 
 // @testing-library/react's own auto-cleanup only self-registers when
 // `afterEach` is a global (vitest's `test.globals: true`); this project
@@ -48,6 +49,8 @@ afterEach(() => {
   resetAboutContentFetchForTests()
   // The Settings "couldn't save" flag is the same kind of non-persisted module-level singleton.
   resetNotificationSaveStatusForTests()
+  // So is the shared video-search text (the desktop box and the phone header input are two views of it).
+  clearVideoSearchInput()
   // Re-initialising the shared stores above writes first-use defaults back (the NEW-content tracking baseline);
   // leave storage empty for the next test, whose own stores read their in-memory defaults.
   window.localStorage.clear()

@@ -3,7 +3,7 @@ import type { SettingsSection } from "./SettingsSecondaryNavbar"
 
 const SEARCH_PARAM = "section"
 const VALID_SECTIONS: readonly SettingsSection[] = ["myOshi", "oshi", "notification", "display"]
-const DEFAULT_SECTION: SettingsSection = "oshi"
+const DEFAULT_SECTION: SettingsSection = "myOshi"
 
 function isSettingsSection(value: string | null): value is SettingsSection {
   return value !== null && (VALID_SECTIONS as readonly string[]).includes(value)
@@ -43,10 +43,12 @@ function subscribe(listener: () => void): () => void {
  * useState (the previous implementation) resets to its hardcoded default on
  * every remount, including a full browser reload, which is exactly the bug
  * this replaces. A missing or unrecognized `section` value falls back to
- * "oshi" (Favorites List), matching the previous hardcoded default, so
- * fresh entry into Settings from MainNavbar (which clears the URL's search
- * string on every top-level page switch -- see useCurrentPage.ts's own
- * setPage) is unaffected by this change. */
+ * "myOshi" (我推設定) on every breakpoint, so a fresh entry into Settings
+ * from MainNavbar (which clears the URL's search string on every top-level
+ * page switch -- see useCurrentPage.ts's own setPage) opens on 我推設定; an
+ * explicit, valid `?section=` (a deep link, or a manual pick such as
+ * 收藏名單) always wins. The content and the highlighted navigation item
+ * both read this one value, so they cannot disagree. */
 export function useSettingsSection(): [SettingsSection, (next: SettingsSection) => void] {
   const section = useSyncExternalStore(subscribe, readSection)
   const set = useCallback((next: SettingsSection) => setSection(next), [])

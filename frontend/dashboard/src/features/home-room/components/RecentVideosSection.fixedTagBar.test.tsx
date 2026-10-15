@@ -11,6 +11,7 @@ import { fetchVideoSearch } from "../../video-search/data/videoSearch"
 import type { BackendVideoTopic } from "../model/videoTopicCatalog"
 import { getCreators, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
+import { loadGlobalCatalog } from "../../../test/globalTopicCatalog"
 
 Element.prototype.setPointerCapture ??= () => {}
 Element.prototype.releasePointerCapture ??= () => {}
@@ -25,20 +26,6 @@ const fetchTopicsMock = vi.mocked(fetchVideoTopics)
 const searchMock = vi.mocked(fetchVideoSearch)
 const [CREATOR_A] = getCreators()
 const LEGACY_A = toLegacyRosterId(CREATOR_A)
-
-/** The real production GLOBAL catalog (tests/fixtures/topic_catalog_global.json), shaped as GET /topics returns it. */
-async function loadGlobalCatalog(): Promise<BackendVideoTopic[]> {
-  const fs = await import(/* @vite-ignore */ ["node", "fs"].join(":"))
-  const { process } = globalThis as unknown as { process: { cwd(): string } }
-  const raw = JSON.parse(String(fs.readFileSync(`${process.cwd()}/../../tests/fixtures/topic_catalog_global.json`, "utf8")))
-  return (raw.items as Array<Record<string, unknown>>)
-    .sort((a, b) => Number(a.display_order) - Number(b.display_order))
-    .map((item) => ({
-      id: String(item.topic_tag),
-      labels: { "zh-TW": String(item.topic_zh), en: String(item.topic_en), ja: String(item.topic_ja) },
-      searchAliases: item.search_aliases as string[],
-    }))
-}
 
 const EXPECTED: Record<"zh-TW" | "en" | "ja", string[]> = {
   "zh-TW": ["ALL", "最新影片", "最新直播", "雜談", "歌回", "MV", "Apex", "Minecraft", "SF6", "VALO", "Short", "其他"],

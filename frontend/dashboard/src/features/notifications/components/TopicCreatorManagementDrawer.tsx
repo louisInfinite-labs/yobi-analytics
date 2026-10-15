@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react"
 import { ConfigProvider, Drawer, Switch } from "antd"
+import { useBreakpoint } from "../../../shared/hooks/useBreakpoint"
 import { Heart, Search } from "lucide-react"
 import { CreatorAvatarImage } from "../../../entities/creator/components/CreatorAvatarImage"
 import { creatorMatchesNameQuery } from "../../../entities/creator/utils/creatorNameSearch"
@@ -108,7 +109,7 @@ function ColumnHeader({ locale, notificationType }: { locale: Locale; notificati
       <span aria-hidden="true" />
       {showLive && <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.liveColumnHeader")}</span>}
       {showNewVideo && <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.newVideoColumnHeader")}</span>}
-      {showReminder && <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.reminderColumnHeader")}</span>}
+      {showReminder && <span className="topic-creator-drawer__column-header-label">{t(locale, "notificationSettings.drawerReminderColumnHeader")}</span>}
     </div>
   )
 }
@@ -121,9 +122,23 @@ async function applyWhenPushReady(apply: () => void): Promise<void> {
   if ((await ensurePushEnabled()) === "ready") apply()
 }
 
-/** What the closed select shows while this creator has no reminder time yet. It is a placeholder, NOT an option: the open list holds only the
- * real timings (whether notifications are on at all is the switch's job). */
-const UNSET_REMINDER_PLACEHOLDER = "—"
+/** A square, touch-sized checkbox for one member's Live / New Video notification -- the phone's control for what is an ON/OFF switch on
+ * larger screens. A native <input type="checkbox"> (so the keyboard, Space, and the screen reader's "checkbox, checked / not checked"
+ * come for free) inside a 44px-minimum <label> (the whole square of space is the tap target); the look is settings.css's. It carries
+ * exactly the switch's `checked` / `onChange` / accessible name, so the value, the push gate and the persistence are the same. */
+function NotificationCheckbox({ checked, onChange, ariaLabel }: { checked: boolean; onChange: (checked: boolean) => void; ariaLabel: string }) {
+  return (
+    <label className="topic-creator-drawer__checkbox">
+      <input
+        type="checkbox"
+        className="topic-creator-drawer__checkbox-input"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        aria-label={ariaLabel}
+      />
+    </label>
+  )
+}
 
 /** Live's own reminder-time cell -- only shown once Live is enabled for
  * this creator+topic (New Video has no reminder-time concept at all -- see
@@ -177,9 +192,12 @@ function ReminderCell({
         }}
         aria-label={t(locale, "notificationSettings.reminderSelectAriaLabel", { name: creator.displayName })}
       >
+        {/* No advance reminder yet: the closed select reads 開播時 (At start), not a dash -- a stream-start notification is always sent
+            (see reminderSectionHelp), so that is what "no earlier reminder" really means. Still the unset "" value, hidden from the open
+            list, which holds only the real timings (the 開播時 option among them keeps its own stored value). */}
         {memberReminder === null && (
           <option value="" disabled hidden>
-            {UNSET_REMINDER_PLACEHOLDER}
+            {t(locale, REMINDER_TIME_LABEL_KEYS.at_start)}
           </option>
         )}
         {options.map((option) => (
@@ -212,6 +230,13 @@ function CreatorRow({
   const { showLive, showNewVideo, showReminder } = drawerColumnFlags(notificationType)
   const modifier = drawerColumnModifier(notificationType)
   const className = modifier ? `topic-creator-drawer__row topic-creator-drawer__row--${modifier}` : "topic-creator-drawer__row"
+  // Phone: square checkboxes in place of the ON/OFF switches. Same values, same push gate, same stores; only the control differs.
+  const phone = useBreakpoint() === "mobile"
+  const onLiveChange = (checked: boolean) => (checked ? void applyWhenPushReady(() => setLiveEnabled(topicId, creator.creatorId, true)) : setLiveEnabled(topicId, creator.creatorId, false))
+  const onNewVideoChange = (checked: boolean) =>
+    checked ? void applyWhenPushReady(() => setNewVideoEnabled(topicId, creator.creatorId, true)) : setNewVideoEnabled(topicId, creator.creatorId, false)
+  const liveLabel = t(locale, "notificationSettings.liveSwitchAriaLabel", { name: creator.displayName })
+  const newVideoLabel = t(locale, "notificationSettings.newVideoSwitchAriaLabel", { name: creator.displayName })
 
   return (
     <div className={className} style={creatorAccentStyle(creator)}>
@@ -222,20 +247,20 @@ function CreatorRow({
       <span className="topic-creator-drawer__creator-name">{creator.displayName}</span>
       {showLive && (
         <span className="topic-creator-drawer__switch-cell">
-          <Switch
-            checked={isLiveEnabled(topicId, creator.creatorId)}
-            onChange={(checked) => (checked ? void applyWhenPushReady(() => setLiveEnabled(topicId, creator.creatorId, true)) : setLiveEnabled(topicId, creator.creatorId, false))}
-            aria-label={t(locale, "notificationSettings.liveSwitchAriaLabel", { name: creator.displayName })}
-          />
+          {phone ? (
+            <NotificationCheckbox checked={isLiveEnabled(topicId, creator.creatorId)} onChange={onLiveChange} ariaLabel={liveLabel} />
+          ) : (
+            <Switch checked={isLiveEnabled(topicId, creator.creatorId)} onChange={onLiveChange} aria-label={liveLabel} />
+          )}
         </span>
       )}
       {showNewVideo && (
         <span className="topic-creator-drawer__switch-cell">
-          <Switch
-            checked={isNewVideoEnabled(topicId, creator.creatorId)}
-            onChange={(checked) => (checked ? void applyWhenPushReady(() => setNewVideoEnabled(topicId, creator.creatorId, true)) : setNewVideoEnabled(topicId, creator.creatorId, false))}
-            aria-label={t(locale, "notificationSettings.newVideoSwitchAriaLabel", { name: creator.displayName })}
-          />
+          {phone ? (
+            <NotificationCheckbox checked={isNewVideoEnabled(topicId, creator.creatorId)} onChange={onNewVideoChange} ariaLabel={newVideoLabel} />
+          ) : (
+            <Switch checked={isNewVideoEnabled(topicId, creator.creatorId)} onChange={onNewVideoChange} aria-label={newVideoLabel} />
+          )}
         </span>
       )}
       {showReminder && (

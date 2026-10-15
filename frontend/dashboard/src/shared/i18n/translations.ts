@@ -134,6 +134,7 @@ export type TranslationKey =
   | "notificationSettings.reminder.30min"
   | "notificationSettings.reminder.1hour"
   | "notificationSettings.reminderColumnHeader"
+  | "notificationSettings.drawerReminderColumnHeader"
   | "notificationSettings.reminderSelectAriaLabel"
   | "notificationSettings.topicReminderMode.memberChoice"
   | "notificationSettings.reminderNotInEffectHint"
@@ -256,6 +257,7 @@ export type TranslationKey =
   | "liveSchedule.closeAria"
   | "liveSchedule.setReminderButton"
   | "liveSchedule.openStreamButton"
+  | "videoPlayer.rotateHint"
   | "liveSchedule.startsInMinutes"
   | "liveSchedule.streamReminderExplanationLine1"
   | "liveSchedule.streamReminderExplanationLine2"
@@ -387,6 +389,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.30min": "30 分鐘前",
     "notificationSettings.reminder.1hour": "1 小時前",
     "notificationSettings.reminderColumnHeader": "提醒時間",
+    "notificationSettings.drawerReminderColumnHeader": "直播提醒時間",
     "notificationSettings.reminderSelectAriaLabel": "{{name}} 的提醒時間",
     "notificationSettings.topicReminderMode.memberChoice": "各成員為準",
     "notificationSettings.reminderNotInEffectHint": "未生效（已被「全部」設定覆蓋）",
@@ -409,7 +412,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.1min": "1 分鐘前",
     "notificationSettings.notificationTypeLabel": "通知類型",
     "notificationSettings.notificationTypeCombinedLabel": "直播+新片",
-    "notificationSettings.notificationTypeSectionHelp": "選擇這個主題要通知直播、新片，或兩者。",
+    "notificationSettings.notificationTypeSectionHelp": "選擇要收到這個成員的直播、新片通知",
     "notificationSettings.topicListPanelTitle": "通知主題",
     "notificationSettings.topicSortAriaLabel": "主題排序方式",
     "notificationSettings.topicSortSaved": "預設順序",
@@ -515,6 +518,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.closeAria": "關閉",
     "liveSchedule.setReminderButton": "設定提醒",
     "liveSchedule.openStreamButton": "開啟直播",
+    "videoPlayer.rotateHint": "旋轉裝置以獲得更大的畫面",
     "liveSchedule.startsInMinutes": "{{minutes}} 分鐘後開始",
     "liveSchedule.streamReminderExplanationLine1": "此設定只適用於這一次直播。",
     "liveSchedule.streamReminderExplanationLine2": "儲存後，這場直播會使用此處的通知設定，取代該創作者原本的直播通知設定。",
@@ -645,6 +649,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.30min": "30 minutes before",
     "notificationSettings.reminder.1hour": "1 hour before",
     "notificationSettings.reminderColumnHeader": "Reminder time",
+    "notificationSettings.drawerReminderColumnHeader": "Live reminder time",
     "notificationSettings.reminderSelectAriaLabel": "{{name}}'s reminder time",
     "notificationSettings.topicReminderMode.memberChoice": "Member's choice",
     "notificationSettings.reminderNotInEffectHint": "Not in effect (overridden by the \"All\" setting)",
@@ -667,7 +672,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.1min": "1 minute before",
     "notificationSettings.notificationTypeLabel": "Notification type",
     "notificationSettings.notificationTypeCombinedLabel": "Live + New Video",
-    "notificationSettings.notificationTypeSectionHelp": "Choose whether this topic notifies for live streams, new videos, or both.",
+    "notificationSettings.notificationTypeSectionHelp": "Choose which live stream and new video notifications you receive for this member",
     "notificationSettings.topicListPanelTitle": "Notification topics",
     "notificationSettings.topicSortAriaLabel": "Sort topics",
     "notificationSettings.topicSortSaved": "Saved order",
@@ -773,6 +778,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.closeAria": "Close",
     "liveSchedule.setReminderButton": "Set Reminder",
     "liveSchedule.openStreamButton": "Open Stream",
+    "videoPlayer.rotateHint": "Rotate your device for a larger view",
     "liveSchedule.startsInMinutes": "Starts in {{minutes}}m",
     "liveSchedule.streamReminderExplanationLine1": "This setting applies only to this livestream.",
     "liveSchedule.streamReminderExplanationLine2": "Once saved, this livestream will use the notification setting here, replacing the creator's usual live notification setting for this stream only.",
@@ -903,6 +909,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.30min": "30分前",
     "notificationSettings.reminder.1hour": "1時間前",
     "notificationSettings.reminderColumnHeader": "リマインド時間",
+    "notificationSettings.drawerReminderColumnHeader": "配信のリマインド時間",
     "notificationSettings.reminderSelectAriaLabel": "{{name}} のリマインド時間",
     "notificationSettings.topicReminderMode.memberChoice": "各メンバーの設定",
     "notificationSettings.reminderNotInEffectHint": "現在は無効（「全部」の設定が優先）",
@@ -925,7 +932,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.1min": "1分前",
     "notificationSettings.notificationTypeLabel": "通知タイプ",
     "notificationSettings.notificationTypeCombinedLabel": "配信＋新着動画",
-    "notificationSettings.notificationTypeSectionHelp": "このトピックで通知する対象（配信・新着動画・両方）を選択します。",
+    "notificationSettings.notificationTypeSectionHelp": "このメンバーの配信・新着動画の通知を受け取るかどうかを選択します",
     "notificationSettings.topicListPanelTitle": "通知トピック",
     "notificationSettings.topicSortAriaLabel": "トピックの並び替え",
     "notificationSettings.topicSortSaved": "保存順",
@@ -1031,6 +1038,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.closeAria": "閉じる",
     "liveSchedule.setReminderButton": "リマインダーを設定",
     "liveSchedule.openStreamButton": "配信を開く",
+    "videoPlayer.rotateHint": "端末を横向きにすると大きく表示されます",
     "liveSchedule.startsInMinutes": "{{minutes}}分後に開始",
     "liveSchedule.streamReminderExplanationLine1": "この設定はこの配信にのみ適用されます。",
     "liveSchedule.streamReminderExplanationLine2": "保存すると、この配信はここでの通知設定が優先され、クリエイター本来の配信通知設定の代わりに使用されます。",

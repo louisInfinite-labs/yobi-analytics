@@ -173,8 +173,26 @@ jobs:
           src/features/video-search/model/searchSessionCache.test.ts
           src/features/video-search/model/topicResolution.test.ts
           src/features/home-room/components/RecentVideosSection.searchTagClick.test.tsx
+          src/features/home-room/components/RecentVideosSection.touch.test.tsx
+          src/pages/home/HomePage.scrollToPlayer.test.tsx
+          src/features/live-schedule/components/ScheduleGrid.swipe.test.tsx
+          src/features/live-status/components/LiveScheduleDock.creatorSelection.test.tsx
+          src/features/live-status/components/LiveScheduleDock.fullSheet.test.tsx
+          src/features/media-player/utils/fullscreenPlayback.test.ts
+          src/features/media-player/components/VideoPlayerModal.fullscreen.test.tsx
+          src/features/media-player/components/VideoPlayerModal.test.tsx
+          src/pages/schedule/LiveSchedulePage.fullscreen.test.tsx
           src/features/home-room/components/RecentVideosSection.fixedTagBar.test.tsx
           src/features/home-room/model/videoFilterCatalog.homeBar.test.ts
+          src/features/notifications/components/NotificationSettings.topicList.test.tsx
+          src/features/home-room/components/RecentVideosSection.desktopClearRestore.test.tsx
+          src/pages/home/HomePage.mobileSearch.test.tsx
+          src/features/notifications/components/NotificationSettings.memberDrawer.ui.test.tsx
+          src/app/navigation/MobileHeaderSearch.test.tsx
+          src/app/navigation/homeCreatorPreservation.test.tsx
+          src/app/navigation/creatorRouting.test.ts
+          src/app/navigation/MainNavbar.test.tsx
+          src/pages/settings/SettingsPage.test.tsx
           src/features/oshi-status/data/oshiStatus.test.ts
           src/features/oshi-status/hooks/useOshiStatus.test.tsx
           src/features/oshi-status/hooks/useLastVisit.test.ts
@@ -222,7 +240,6 @@ jobs:
           src/features/notifications/hooks/useTopicNotificationPreferences.retiredAndRemove.test.ts
           src/features/notifications/hooks/useRetiredTopicResync.test.ts
           src/features/live-status/components/CreatorStatusList.nonIndividualChannels.test.tsx
-          src/features/home-room/model/videoFilterCatalog.test.ts
           src/features/notifications/components/NotificationSettings.saveFailure.test.tsx
           src/features/notifications/components/NotificationToggle.serviceWorker.test.tsx
           src/features/notifications/hooks/useTopicNotificationPreferences.backendFirst.test.ts

@@ -8,6 +8,8 @@ import { useCreatorStatuses } from "../hooks/useCreatorStatuses"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
 import { setLiveDockExpanded } from "../hooks/useLiveDockExpanded"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
+import { useBodyScrollLock } from "../../../shared/hooks/useBodyScrollLock"
+import { useBreakpoint } from "../../../shared/hooks/useBreakpoint"
 import { usePrefersReducedMotion } from "../../../shared/hooks/usePrefersReducedMotion"
 import { useSelectedCreator } from "../../oshi/hooks/useSelectedCreator"
 import { useUpcomingDisplayMode } from "../hooks/useUpcomingDisplayMode"
@@ -24,7 +26,8 @@ type ViewMode = "all" | "favorites"
 
 /** "full" — the drawer reaches the top of the screen (the default every time
  * it opens); "compact" — the original min(70vh, 520px) size, one click away
- * via the header's resize button. Width is var(--live-status-width) either
+ * via the header's resize button (desktop only: below 1024px Live Status is
+ * always a full-viewport sheet, see home.css). Width is var(--live-status-width) either
  * way (aliased to the shared --home-status-width token -- see home.css). */
 type PanelSize = "full" | "compact"
 
@@ -92,6 +95,14 @@ export function LiveScheduleDock() {
   const [locale] = useLocale()
   const [confirmOshiSwitch, setConfirmOshiSwitch] = useConfirmOshiSwitchPreference()
   const reducedMotion = usePrefersReducedMotion()
+  // A phone (below 768px, portrait or landscape) has no resize control at all: Live Status is always a full-viewport sheet there. A tablet
+  // (768-1023px) and a desktop keep the control: "full" is the full-viewport sheet on a tablet and the tall side panel on a desktop,
+  // "compact" the small bottom-right panel on both. While it is a full-viewport sheet the page behind it must not scroll.
+  const breakpoint = useBreakpoint()
+  const phone = breakpoint === "mobile"
+  const size: PanelSize = phone ? "full" : panelSize
+  const fullSheet = phone || (breakpoint === "tablet" && size === "full")
+  useBodyScrollLock(expanded && fullSheet)
   const dockRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -187,22 +198,24 @@ export function LiveScheduleDock() {
           className="live-status-drawer"
           role="dialog"
           aria-label={t(locale, "liveScheduleDock.panelAriaLabel")}
-          data-size={panelSize}
+          data-size={size}
           inert={!expanded}
         >
           <div className="live-status-drawer__header">
             <div className="live-status-drawer__title-row">
               <span className="live-status-drawer__title">{t(locale, "liveScheduleDock.title")}</span>
-              <button
-                type="button"
-                className="live-status-drawer__resize"
-                onClick={() => setPanelSize((prev) => (prev === "full" ? "compact" : "full"))}
-                aria-label={t(locale, panelSize === "full" ? "liveScheduleDock.resize.shrinkAria" : "liveScheduleDock.resize.expandAria")}
-                aria-pressed={panelSize === "full"}
-                title={t(locale, panelSize === "full" ? "liveScheduleDock.resize.shrink" : "liveScheduleDock.resize.expand")}
-              >
-                {panelSize === "full" ? "⤡" : "⤢"}
-              </button>
+              {!phone && (
+                <button
+                  type="button"
+                  className="live-status-drawer__resize"
+                  onClick={() => setPanelSize((prev) => (prev === "full" ? "compact" : "full"))}
+                  aria-label={t(locale, panelSize === "full" ? "liveScheduleDock.resize.shrinkAria" : "liveScheduleDock.resize.expandAria")}
+                  aria-pressed={panelSize === "full"}
+                  title={t(locale, panelSize === "full" ? "liveScheduleDock.resize.shrink" : "liveScheduleDock.resize.expand")}
+                >
+                  {panelSize === "full" ? "⤡" : "⤢"}
+                </button>
+              )}
               <button type="button" className="live-status-drawer__close" onClick={closeExplicitly} aria-label={t(locale, "liveScheduleDock.close")}>
                 ×
               </button>
@@ -248,7 +261,13 @@ export function LiveScheduleDock() {
                 favoriteOnlyIds={favoriteOnlyIds}
                 favorites={favorites}
                 onToggleFavorite={toggleFavorite}
-                onSelectCreator={selectCreator}
+                onSelectCreator={(channelId) => {
+                  selectCreator(channelId)
+                  // Choosing a creator is the end of this layer's job: it is applied at once (a confirmed switch too -- a cancelled one never
+                  // reaches here) and the drawer closes by itself, with focus back on its trigger, exactly like picking a stream. An unknown
+                  // key changes nothing (selectCreator ignores it), so it must not close the drawer either.
+                  if (resolveCreatorKey(channelId)) closeExplicitly()
+                }}
                 onSelectCreatorForVideo={switchCreatorForVideo}
                 locale={locale}
                 confirmOshiSwitch={confirmOshiSwitch}

@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useLayoutEffect, useRef } from "react"
 import { resolveCreatorKey } from "../../entities/creator/data/creatorRegistry"
 import { creatorThemeStyle } from "../../shared/theme/creatorThemeStyle"
 import { useBreakpoint } from "../../shared/hooks/useBreakpoint"
@@ -9,6 +9,8 @@ import { useLiveStreamVideoPool } from "../../features/home-room/hooks/useRecent
 import { useSelectedCreator } from "../../features/oshi/hooks/useSelectedCreator"
 import { useWatchedDuringLive } from "../../features/media-player/hooks/useWatchedDuringLive"
 import { selectLiveEmbedVideo } from "../../features/media-player/utils/liveEmbed"
+import { scrollBelowTopBar } from "../../features/home-room/utils/scrollBelowTopBar"
+import { useVideoSearchInput } from "../../features/video-search/hooks/useVideoSearchInput"
 import { OshiStatusPanel } from "../../features/oshi-status/components/OshiStatusPanel"
 import { RecentVideosSection } from "../../features/home-room/components/RecentVideosSection"
 
@@ -62,6 +64,18 @@ export function HomePage() {
   const breakpoint = useBreakpoint()
   const liveStatusOpen = useLiveDockExpanded()
   const status = statuses[creatorId] ?? { kind: "offline" as const }
+  const streamRef = useRef<HTMLElement>(null)
+  // Phone: while a submitted search is showing, its results view REPLACES the player and Oshi Status (RecentVideosSection renders it in the
+  // shelf's place). They come back, in their normal order (player, Oshi Status, shelf), the moment the search is emptied.
+  const { submitted } = useVideoSearchInput()
+  const mobileSearch = breakpoint === "mobile" && submitted !== ""
+  const scrollToPlayerWhenBack = useRef(false)
+  useLayoutEffect(() => {
+    if (!mobileSearch && scrollToPlayerWhenBack.current) {
+      scrollToPlayerWhenBack.current = false
+      scrollBelowTopBar(streamRef.current)
+    }
+  }, [mobileSearch])
   // The one shared Home selected-video path -- Oshi Videos, Recent Activity
   // AND Live Status (see useHomeSelectedVideo) all call selectHomeVideo, and
   // whichever wins overrides the auto-selected live/upcoming/latest-archive video
@@ -77,38 +91,47 @@ export function HomePage() {
       (status.kind !== "offline" && status.videoId === video.videoId) ||
       streamVideos.videos.some((entry) => entry.videoId === video.videoId && (entry.contentFormat === "live_now" || entry.contentFormat === "live_upcoming"))
     selectHomeVideo(video, creatorId, { countsAsOpened: !isCurrentStream })
+    // A deliberate pick, from the shelf or any Oshi Status title/thumbnail: take the viewer straight back to the player. Called here, in the
+    // click path, and not from an effect on the selected video, so no automatic selection or refresh can ever move the page.
+    // From a search result the player is not mounted yet (Home is still being restored): scroll to it once it is.
+    if (mobileSearch) scrollToPlayerWhenBack.current = true
+    else scrollBelowTopBar(streamRef.current)
   }
 
   return (
     <div className="oshi-home" data-live-status-open={liveStatusOpen}>
       <main className="oshi-home__canvas" style={creatorThemeStyle(creatorId, resolveCreatorKey(creatorId)?.themeColor)}>
-        <section className="oshi-stream">
-          <div className="oshi-player-frame" data-live={status.kind === "live"}>
-            <div className="oshi-player-frame__stage">
-              <div className="oshi-player-frame__ratio">
-                {embed && (
-                  <LiveEmbedPlayer
-                    videoId={embed.videoId}
-                    title={embed.title}
-                    autoplay={breakpoint !== "mobile"}
-                    isLive={status.kind === "live" && status.videoId === embed.videoId}
-                  />
-                )}
+        {!mobileSearch && (
+          <section ref={streamRef} className="oshi-stream">
+            <div className="oshi-player-frame" data-live={status.kind === "live"}>
+              <div className="oshi-player-frame__stage">
+                <div className="oshi-player-frame__ratio">
+                  {embed && (
+                    <LiveEmbedPlayer
+                      videoId={embed.videoId}
+                      title={embed.title}
+                      autoplay={breakpoint !== "mobile"}
+                      isLive={status.kind === "live" && status.videoId === embed.videoId}
+                    />
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         <RecentVideosSection creatorId={creatorId} onSelectVideo={openVideo} />
 
-        <OshiStatusPanel
-          creatorId={creatorId}
-          status={status}
-          now={now}
-          onSelectVideo={openVideo}
-          nowPlayingTitle={embed?.title ?? null}
-          nowPlayingVideoId={embed?.videoId ?? null}
-        />
+        {!mobileSearch && (
+          <OshiStatusPanel
+            creatorId={creatorId}
+            status={status}
+            now={now}
+            onSelectVideo={openVideo}
+            nowPlayingTitle={embed?.title ?? null}
+            nowPlayingVideoId={embed?.videoId ?? null}
+          />
+        )}
       </main>
     </div>
   )
