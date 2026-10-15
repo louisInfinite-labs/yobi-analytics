@@ -136,7 +136,14 @@ export function useVideoSearch(rawQuery: string, base: VideoSearchBase | null, o
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
-    if (!active || !identity || !identityKey || !base || isComposing) return
+    if (!active) {
+      // The search ended (query cleared, or it fell below the activation threshold): invalidate and abort anything still in flight, so a late
+      // response can never be applied -- the caller is already showing something else (e.g. a Topic Tag's normal list).
+      generationRef.current++
+      abortRef.current?.abort()
+      return
+    }
+    if (!identity || !identityKey || !base || isComposing) return
     const key = `${identityKey}::${normalized}`
 
     const reusable = cacheRef.current?.findReusableBase(identity, normalized)

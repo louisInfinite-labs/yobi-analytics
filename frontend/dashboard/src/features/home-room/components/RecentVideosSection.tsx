@@ -343,17 +343,25 @@ function VideoSectionTagBar({
   onSelect,
   options,
   trailing,
+  onTagClick,
 }: {
   selected: VideoSectionSelection
   onSelect: (selection: VideoSectionSelection) => void
   options: { value: VideoSectionSelection; label: string }[]
   trailing?: ReactNode
+  /** Fires for EVERY click on a tag, including the already-selected one (Segmented's own onChange does not fire for that). */
+  onTagClick?: () => void
 }) {
   return (
     <div className="oshi-videos__filters">
       {/* The tag strip is its OWN scroll container, apart from the controls: a strip that cannot fit scrolls sideways inside this box
           instead of painting over the dropdowns that follow it (and, on a phone, the controls take their own row below it). */}
-      <div className="oshi-videos__tags">
+      <div
+        className="oshi-videos__tags"
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest(".ant-segmented-item")) onTagClick?.()
+        }}
+      >
         <ConfigProvider
           theme={{
             components: {
@@ -387,7 +395,7 @@ function VideoSectionTagBar({
           />
         </ConfigProvider>
       </div>
-    
+
       <div className="oshi-videos__controls">{trailing}</div>
     </div>
   )
@@ -572,6 +580,13 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   const searchTopics = topicCatalog.state.status === "success" ? topicCatalog.state.topics : []
   const search = useVideoSearch(searchQuery, searchBase, { isComposing, topics: searchTopics })
   const isSearchActive = search.active
+  // Clicking ANY Topic Tag (a different one, ALL, or the one already selected -- every selection, keyboard included, is a click) leaves the search: the query clears (the box stays visible and
+  // empty), the normal list of the selected tag returns, and content type / sort / period are untouched. Ending the query also aborts and
+  // invalidates any pending search request inside useVideoSearch, so a late response cannot overwrite the tag's list.
+  const leaveSearch = () => {
+    setSearchQuery("")
+    setIsComposing(false)
+  }
 
   // 最新直播 = LIVE, then UPCOMING, then archives. The archive endpoint is archive-only by design (liveStatus=archived),
   // so the creator's current live/upcoming streams come from the canonical GET /live-streams store and are merged in
@@ -624,6 +639,7 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
         <VideoSectionTagBar
           selected={selectedTag}
           onSelect={setSelectedTag}
+          onTagClick={leaveSearch}
           options={tagOptions}
           trailing={
             <>
