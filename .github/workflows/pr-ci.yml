@@ -173,6 +173,8 @@ jobs:
           src/features/video-search/model/searchSessionCache.test.ts
           src/features/video-search/model/topicResolution.test.ts
           src/features/home-room/components/RecentVideosSection.searchTagClick.test.tsx
+          src/features/home-room/components/RecentVideosSection.fixedTagBar.test.tsx
+          src/features/home-room/model/videoFilterCatalog.homeBar.test.ts
           src/features/oshi-status/data/oshiStatus.test.ts
           src/features/oshi-status/hooks/useOshiStatus.test.tsx
           src/features/oshi-status/hooks/useLastVisit.test.ts
