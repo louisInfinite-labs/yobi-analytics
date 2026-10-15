@@ -80,6 +80,12 @@ describe("Desktop video search box sizing (home.css)", () => {
     expect(search).not.toMatch(/(?<![a-z-])width:\s*\d/) // no separate fixed `width` declaration (min-/max-width don't count)
   })
 
+  it("lets the tag strip and its controls, not the search box, give way when many topic tags make the header too narrow", () => {
+    const desktop = mediaBlocks(css, "(min-width: 1024px)")
+    expect(declared(desktop, ".oshi-videos__filters")).toMatch(/flex:\s*0 100 auto/) // ~all of the shrinking lands here (the strip scrolls)
+    expect(declared(outsideMedia(css), ".oshi-videos__search")).toMatch(/flex:\s*1 1 clamp\(/) // the approved search sizing is untouched
+  })
+
   it("is hidden on tablet/phone (<=1023px) -- this task does not touch that layout", () => {
     expect(declared(tablet, ".oshi-videos__search")).toMatch(/display:\s*none/)
   })
