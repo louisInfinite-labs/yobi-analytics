@@ -324,3 +324,41 @@ resource "aws_dynamodb_table" "video_master" {
 
   deletion_protection_enabled = true
 }
+
+# Home Topic Catalog: the single global dictionary of every canonical video
+# topic (tracking.video_topics.TOPICS), queried by GET /topics
+# (api.dashboard_catalog_api.get_topics) instead of that endpoint iterating
+# the Python tuple directly. One partition ("GLOBAL") so the whole catalog is
+# one Query, never a YobiVideoMaster scan. Seeded and kept in sync by
+# scripts/seed_topic_catalog.py, which is idempotent (re-running upserts, never
+# duplicates) -- the taxonomy only grows when a new Topic is added to TOPICS in
+# code, so there is no runtime writer to grant this to the Lambda fleet for yet
+# (see terraform/manual-iam/policy-lambda-topic-catalog-access.json for the
+# reader grant GET /topics' yobi-analytics-api Lambda still needs manually).
+resource "aws_dynamodb_table" "topic_catalog" {
+  name         = "YobiTopicCatalog"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "catalog_id"
+  range_key    = "topic_tag"
+
+  attribute {
+    name = "catalog_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "topic_tag"
+    type = "S"
+  }
+
+  on_demand_throughput {
+    max_read_request_units  = 50
+    max_write_request_units = 10
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  deletion_protection_enabled = true
+}

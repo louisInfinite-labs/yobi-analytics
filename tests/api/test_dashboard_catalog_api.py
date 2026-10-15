@@ -1,8 +1,61 @@
 import json
 
+import boto3
+import pytest
+from moto import mock_aws
+
 from api import dashboard_catalog_api
 from api.api_handler import lambda_handler
+from stores.topic_catalog_store import TOPIC_CATALOG_TABLE, put_topic
 from tracking.video_topics import TOPICS
+
+AWS_REGION = "ap-northeast-1"
+
+# Backward compatibility only -- see api.dashboard_catalog_api.get_topics' own
+# docstring. Kept here (as the seed script also does) only to seed the mocked
+# catalog with the same historical `label` values production has.
+_LEGACY_TOPIC_LABELS: dict[str, str] = {
+    "valorant": "VALORANT",
+    "sf6": "SF6",
+    "apex": "APEX",
+    "minecraft": "Minecraft",
+    "singing": "Singing",
+    "mv": "MV",
+    "chatting": "Chatting",
+    "other": "Other",
+}
+
+
+@pytest.fixture
+def topic_catalog_table(aws_credentials):
+    """Create the production-shaped Topic Catalog table, seeded exactly like
+    scripts/migration/seed_topic_catalog_dynamodb.py seeds the real one from TOPICS,
+    so GET /topics' DynamoDB-backed response can be exercised end to end."""
+    with mock_aws():
+        client = boto3.client("dynamodb", region_name=AWS_REGION)
+        client.create_table(
+            TableName=TOPIC_CATALOG_TABLE,
+            AttributeDefinitions=[
+                {"AttributeName": "catalog_id", "AttributeType": "S"},
+                {"AttributeName": "topic_tag", "AttributeType": "S"},
+            ],
+            KeySchema=[
+                {"AttributeName": "catalog_id", "KeyType": "HASH"},
+                {"AttributeName": "topic_tag", "KeyType": "RANGE"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        for display_order, topic in enumerate(TOPICS):
+            put_topic(
+                topic_tag=topic.id,
+                topic_zh=topic.labels["zh-TW"],
+                topic_en=topic.labels["en"],
+                topic_ja=topic.labels["ja"],
+                display_order=display_order,
+                legacy_label=_LEGACY_TOPIC_LABELS.get(topic.id),
+                search_aliases=topic.search_aliases,
+            )
+        yield
 
 
 def _event(route_key, *, query=None):
@@ -62,69 +115,67 @@ def test_unsupported_method_or_path_on_the_catalog_is_a_404():
 # --- GET /topics -------------------------------------------------------------
 
 
-def test_topics_returns_the_canonical_list_in_display_order():
+def test_topics_returns_the_canonical_list_in_display_order(topic_catalog_table):
+    """Shape/order/content check against the REAL, current TOPICS (however large it has grown) --
+    deliberately not a hardcoded literal, since that would need editing every time a topic is
+    added. The original-8 byte-for-byte backward-compat pin lives in its own isolated test below,
+    independent of how large TOPICS grows."""
     response = lambda_handler(_event("GET /topics"), None)
 
     assert response["statusCode"] == 200
     assert response["headers"]["Content-Type"] == "application/json"
-    assert _body(response) == {
+    expected = {
         "topics": [
-            {"id": "valorant", "label": "VALORANT", "labels": {"zh-TW": "VALO", "en": "VALO", "ja": "VALO"}, "searchAliases": ["valorant", "valo", "バロラント", "ヴァロ", "ヴァロラント"]},
             {
-                "id": "sf6",
-                "label": "SF6",
-                "labels": {"zh-TW": "SF6", "en": "SF6", "ja": "SF6"},
-                "searchAliases": [
-                    "sf6",
-                    "streetfighter6", "streetfightervi", "streetfighter 6", "streetfighter vi",
-                    "street fighter6", "street fightervi", "street fighter 6", "street fighter vi",
-                    "ストリートファイター6", "ストリートファイターvi", "ストリートファイター 6", "ストリートファイター vi",
-                    "スト6", "スト 6",
-                ],
-            },
-            {"id": "apex", "label": "APEX", "labels": {"zh-TW": "Apex", "en": "Apex", "ja": "Apex"}, "searchAliases": ["apex", "apexlegends", "apex legends", "エーペックス", "エペ"]},
-            {
-                "id": "minecraft",
-                "label": "Minecraft",
-                "labels": {"zh-TW": "Minecraft", "en": "Minecraft", "ja": "Minecraft"},
-                "searchAliases": ["minecraft", "マインクラフト", "マイクラ"],
-            },
-            {
-                "id": "singing",
-                "label": "Singing",
-                "labels": {"zh-TW": "歌回", "en": "Singing", "ja": "歌枠"},
-                "searchAliases": ["歌枠", "歌回", "歌配信", "karaoke", "カラオケ", "singing"],
-            },
-            {
-                "id": "mv",
-                "label": "MV",
-                "labels": {"zh-TW": "MV", "en": "MV", "ja": "MV"},
-                "searchAliases": [
-                    "mv", "musicvideo", "music video", "cover", "covered", "originalsong", "original song",
-                    "歌ってみた", "オリジナル曲", "原創曲", "原創歌曲",
-                ],
-            },
-            {
-                "id": "chatting",
-                "label": "Chatting",
-                "labels": {"zh-TW": "雜談", "en": "Chatting", "ja": "雑談"},
-                "searchAliases": ["雑談", "zatsudan", "freetalk", "free talk", "chatting"],
-            },
-            {"id": "other", "label": "Other", "labels": {"zh-TW": "其他", "en": "Other", "ja": "その他"}, "searchAliases": []},
+                "id": topic.id,
+                "label": _LEGACY_TOPIC_LABELS.get(topic.id, topic.labels["en"]),
+                "labels": dict(topic.labels),
+                "searchAliases": list(topic.search_aliases),
+            }
+            for topic in TOPICS
         ]
     }
+    assert _body(response) == expected
     # Pinned against the real TOPICS source itself too, so this test cannot drift from it silently.
-    assert [t["searchAliases"] for t in _body(response)["topics"]] == [list(topic.search_aliases) for topic in TOPICS]
+    assert [t["id"] for t in _body(response)["topics"]] == [topic.id for topic in TOPICS]
 
 
-def test_topics_label_matches_the_endpoints_pre_labels_contract_byte_for_byte():
-    """`label` is additive-only backward compatibility (see
-    dashboard_catalog_api._LEGACY_TOPIC_LABELS) -- this pins it to the exact
-    strings the endpoint returned before `labels` existed, independently of
-    the display-order assertion above, so a future refactor of that assertion
-    can't accidentally stop covering this compatibility guarantee."""
-    response = lambda_handler(_event("GET /topics"), None)
-    labels_by_id = {topic["id"]: topic["label"] for topic in _body(response)["topics"]}
+def test_topics_label_matches_the_endpoints_pre_labels_contract_byte_for_byte(aws_credentials):
+    """`label` is additive-only backward compatibility (see this file's own
+    _LEGACY_TOPIC_LABELS, which the seed script also uses) -- this pins it to
+    the exact strings the endpoint returned before `labels` existed, for the
+    original 8 topics specifically. Seeds its OWN isolated table with just
+    those 8 (not the shared topic_catalog_table fixture, which seeds every
+    current TOPICS entry) so this pin stays meaningful no matter how large
+    the taxonomy grows later."""
+    original_eight = [topic for topic in TOPICS if topic.id in _LEGACY_TOPIC_LABELS]
+    with mock_aws():
+        client = boto3.client("dynamodb", region_name=AWS_REGION)
+        client.create_table(
+            TableName=TOPIC_CATALOG_TABLE,
+            AttributeDefinitions=[
+                {"AttributeName": "catalog_id", "AttributeType": "S"},
+                {"AttributeName": "topic_tag", "AttributeType": "S"},
+            ],
+            KeySchema=[
+                {"AttributeName": "catalog_id", "KeyType": "HASH"},
+                {"AttributeName": "topic_tag", "KeyType": "RANGE"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        for display_order, topic in enumerate(original_eight):
+            put_topic(
+                topic_tag=topic.id,
+                topic_zh=topic.labels["zh-TW"],
+                topic_en=topic.labels["en"],
+                topic_ja=topic.labels["ja"],
+                display_order=display_order,
+                legacy_label=_LEGACY_TOPIC_LABELS.get(topic.id),
+                search_aliases=topic.search_aliases,
+            )
+
+        response = lambda_handler(_event("GET /topics"), None)
+        labels_by_id = {topic["id"]: topic["label"] for topic in _body(response)["topics"]}
 
     assert labels_by_id == {
         "valorant": "VALORANT",
@@ -138,23 +189,36 @@ def test_topics_label_matches_the_endpoints_pre_labels_contract_byte_for_byte():
     }
 
 
-def test_topics_label_is_never_the_frontends_source_and_falls_back_safely_for_an_unmapped_future_topic(monkeypatch):
-    """A topic added after `labels` existed has no historical `label` to preserve --
+def test_topics_label_is_never_the_frontends_source_and_falls_back_safely_for_an_unmapped_future_topic(aws_credentials):
+    """A topic added after `labels` existed has no historical `legacy_label` stored for it --
     confirms the fallback (English label, else id) rather than a KeyError."""
-    import api.dashboard_catalog_api as dashboard_catalog_api
-    from tracking.video_topics import Topic
+    with mock_aws():
+        client = boto3.client("dynamodb", region_name=AWS_REGION)
+        client.create_table(
+            TableName=TOPIC_CATALOG_TABLE,
+            AttributeDefinitions=[
+                {"AttributeName": "catalog_id", "AttributeType": "S"},
+                {"AttributeName": "topic_tag", "AttributeType": "S"},
+            ],
+            KeySchema=[
+                {"AttributeName": "catalog_id", "KeyType": "HASH"},
+                {"AttributeName": "topic_tag", "KeyType": "RANGE"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        put_topic("asmr", "ASMR", "ASMR", "ASMR", display_order=0)
 
-    monkeypatch.setattr(
-        dashboard_catalog_api,
-        "TOPICS",
-        (Topic("asmr", {"zh-TW": "ASMR", "en": "ASMR", "ja": "ASMR"}, None),),
-    )
-
-    response = lambda_handler(_event("GET /topics"), None)
-    assert _body(response) == {"topics": [{"id": "asmr", "label": "ASMR", "labels": {"zh-TW": "ASMR", "en": "ASMR", "ja": "ASMR"}, "searchAliases": []}]}
+        response = lambda_handler(_event("GET /topics"), None)
+        assert _body(response) == {"topics": [{"id": "asmr", "label": "ASMR", "labels": {"zh-TW": "ASMR", "en": "ASMR", "ja": "ASMR"}, "searchAliases": []}]}
 
 
-def test_topics_needs_no_storage_and_is_stable_across_calls(monkeypatch):
-    monkeypatch.delenv("YOBI_STORAGE_BACKEND", raising=False)
-
+def test_topics_is_stable_across_calls(topic_catalog_table):
     assert dashboard_catalog_api.get_topics() == dashboard_catalog_api.get_topics({"ignored": "x"})
+
+
+def test_topics_raises_when_the_catalog_table_is_missing(aws_credentials):
+    from stores.topic_catalog_store import TopicCatalogStoreError
+
+    with mock_aws():
+        with pytest.raises(TopicCatalogStoreError):
+            dashboard_catalog_api.get_topics()
