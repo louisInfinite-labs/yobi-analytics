@@ -250,7 +250,7 @@ function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraf
       {!(hideHeader && !isDraft) && (
         <div className="notification-detail-header">
           <h2 className="notification-detail-header__title">{topicLabel}</h2>
-          <p className="notification-detail-header__description">{t(locale, "notificationSettings.detailDescription", { topic: topicLabel })}</p>
+          <p className="notification-detail-header__description">{t(locale, "notificationSettings.detailDescription")}</p>
         </div>
       )}
 

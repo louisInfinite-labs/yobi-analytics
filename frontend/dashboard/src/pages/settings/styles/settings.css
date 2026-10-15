@@ -2272,10 +2272,14 @@
 }
 
 .topic-creator-drawer__column-header-label {
+  min-width: 0;
   font-size: 11px;
   font-weight: 500;
+  line-height: 1.25;
   color: var(--drawer-text-tertiary);
   text-align: center;
+  /* A heading never clips: it wraps (a word break, else anywhere) inside its own column. */
+  overflow-wrap: anywhere;
 }
 
 .topic-creator-drawer__list {
@@ -2444,6 +2448,36 @@
   width: 100%;
 }
 
+/* A member with no reminder yet has NOTHING selected (so the open list is just the five real timings, 開播時 once); the closed select shows
+   the prompt 開播時 laid over it. It sits exactly where the select's own text would (1px border + 6px padding), leaves the chevron's room, and
+   takes no clicks -- every tap goes to the select. Same type as the select (10px / 600, Home's secondary text color). */
+.topic-creator-drawer__reminder-select-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.topic-creator-drawer__reminder-select-prompt {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  right: 20px;
+
+  display: flex;
+  align-items: center;
+
+  overflow: hidden;
+
+  color: var(--oshi-text-2);
+
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+
+  pointer-events: none;
+}
+
 .topic-creator-drawer__reminder-empty {
   color: var(--drawer-text-tertiary);
   font-size: 13px;
@@ -2478,6 +2512,21 @@
     gap: var(--space-1);
   }
 
+  /* The 直播提醒時間 heading is longer than its select is wide on a phone. Its translation carries a soft break after the first word, and
+     here the heading's box is narrower than the whole phrase, so it wraps there -- 直播 / 提醒時間 (ja: 配信の / リマインド時間) -- keeping
+     every word whole. The select below keeps its full column; the Live and New Video checkbox columns are unaffected (they are grid
+     tracks of their own). English already fits on one line and is left alone. */
+  .topic-creator-drawer__content[data-locale="zh-TW"] .topic-creator-drawer__column-header-label--reminder {
+    max-width: 5.5em;
+    margin-inline: auto;
+    word-break: keep-all;
+  }
+
+  .topic-creator-drawer__content[data-locale="ja"] .topic-creator-drawer__column-header-label--reminder {
+    max-width: 8em;
+    margin-inline: auto;
+    word-break: keep-all;
+  }
 }
 
 /* ============ Favorites Roster (My Favorites / 收藏名單): esports-style
