@@ -193,6 +193,25 @@
     background-color: #3b3b3b;
   }
 
+  /* The video search sits immediately right of the hamburger and takes the rest of the bar. min-width: 0 lets it shrink instead of pushing
+     past the edge; the 8px side margin keeps it off the hamburger and the screen edge. 16px text keeps iOS from zooming the page on focus. */
+  .main-topbar__search {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-inline: 4px 8px;
+  }
+
+  .main-topbar__search-box {
+    width: 100%;
+  }
+
+  .main-topbar__search-input.ant-input-affix-wrapper {
+    width: 100%;
+    height: 36px;
+    font-size: 16px;
+    font-weight: 500;
+  }
+
   .main-topbar__menu:focus-visible,
   .main-navbar__close:focus-visible {
     outline: 2px solid #e7f5ff;

@@ -32,6 +32,10 @@ function readPage(): Page {
   }
 }
 
+/** The page the app was on before the navigation being handled. Used only so a back/forward navigation INTO Home from another page keeps the
+ * creator the session was showing (see syncRouteWithCreator); a move between two Home routes still follows the URL. */
+let lastPage: Page = readPage()
+
 const listeners = new Set<() => void>()
 
 function notify() {
@@ -42,8 +46,13 @@ function notify() {
  *  - the root "/" is the entry Home: it ALWAYS shows the Oshi (else the default first creator) and keeps the URL "/" -- a visit is never
  *    rewritten into a creator path;
  *  - "/creator/:slug" is an explicit creator Home: that creator is shown, the URL is the source of truth, and a direct link beats the Oshi.
- * Either way the Home route is remembered for this browser session (sessionHomePath.ts), so coming back to Home returns to exactly it. */
-function syncRouteWithCreator(): void {
+ * Either way the Home route is remembered for this browser session (sessionHomePath.ts), so coming back to Home returns to exactly it.
+ *
+ * "Shows the Oshi" is what a FRESH visit does. Within a running session the active creator must not be re-derived from Settings: editing 我推設定
+ * (adding, changing or reordering Oshi) and coming back to Home leaves the creator Home was showing, as long as that creator is still a valid
+ * member of the roster (`keepValidSelection`, passed when the navigation arrives from another page). Only a genuinely invalid selection falls
+ * back to the Oshi. */
+function syncRouteWithCreator({ keepValidSelection = false }: { keepValidSelection?: boolean } = {}): void {
   const url = new URL(window.location.href)
   if (url.searchParams.has("admin")) return
   const route = parseCreatorRoute(url.pathname)
@@ -58,14 +67,21 @@ function syncRouteWithCreator(): void {
     window.history.replaceState(window.history.state, "", url)
   }
   if (url.pathname === "/") {
-    selectedCreatorStore.set(readDefaultOshiCreatorId())
+    if (!(keepValidSelection && isValidCreatorSelection())) selectedCreatorStore.set(readDefaultOshiCreatorId())
     writeSessionHomePath("/")
   }
 }
 
-syncRouteWithCreator()
+/** Whether the creator Home is currently showing still exists in the roster. Favorites / Oshi membership is deliberately NOT consulted: being
+ * removed from the favorites list does not make a creator invalid. */
+function isValidCreatorSelection(): boolean {
+  return resolveCreatorKey(selectedCreatorStore.get()) !== undefined
+}
+
+syncRouteWithCreator() // a fresh page load: the entry Home shows the Oshi
 window.addEventListener("popstate", () => {
-  syncRouteWithCreator()
+  syncRouteWithCreator({ keepValidSelection: lastPage !== "home" })
+  lastPage = readPage()
   notify()
 })
 
@@ -75,6 +91,7 @@ function navigate(pathname: string, { keepSearch = false }: { keepSearch?: boole
   if (!keepSearch) url.search = ""
   if (url.href === window.location.href) return
   window.history.pushState({}, "", url)
+  lastPage = readPage()
   notify()
 }
 
@@ -83,7 +100,8 @@ function navigate(pathname: string, { keepSearch = false }: { keepSearch?: boole
 export function goToPage(next: Page): void {
   if (next !== "home") return navigate(PAGE_PATHS[next])
   const home = readSessionHomePath()
-  if (home === "/") selectedCreatorStore.set(readDefaultOshiCreatorId())
+  // The entry Home ("/") returns to the creator already being shown; only an invalid one falls back to the Oshi (see syncRouteWithCreator).
+  if (home === "/" && !isValidCreatorSelection()) selectedCreatorStore.set(readDefaultOshiCreatorId())
   navigate(home)
 }
 

@@ -8,6 +8,9 @@ import { fetchVideoTopics } from "../../home-room/data/videoTopics"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
 
+// Each render here mounts the whole ~120-creator roster; under a loaded machine (CI) the default 5s is not enough.
+vi.setConfig({ testTimeout: 20_000 })
+
 // A device that can already deliver Web Push: the gate (pushGate.ts) lets every "turn a notification on" action through, so these
 // tests keep exercising the save behavior itself. The gate's own behavior is covered in pushGate.test.ts / pushEnableFlow.test.tsx.
 vi.mock("../push/pushGate", async (importOriginal) => ({
@@ -361,7 +364,7 @@ describe("member drawer respects the topic's own notificationType", () => {
     expect(screen.getByText("Notification type: New Video")).toBeInTheDocument()
     expect(screen.getAllByRole("switch", { name: /new video notifications/ }).length).toBeGreaterThan(0)
     expect(screen.queryByRole("switch", { name: /live notifications/ })).not.toBeInTheDocument()
-    expect(screen.queryByText("Reminder time")).not.toBeInTheDocument()
+    expect(screen.queryByText("Live reminder time")).not.toBeInTheDocument()
   })
 
   it("preserves members' reminders across a newVideo -> live round trip", async () => {
@@ -389,7 +392,7 @@ describe("member drawer respects the topic's own notificationType", () => {
 
     expect(screen.getByText("Notification type: Live")).toBeInTheDocument()
     expect(screen.getAllByRole("switch", { name: /live notifications/ }).length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Reminder time").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Live reminder time").length).toBeGreaterThan(0)
     expect(screen.queryByRole("switch", { name: /new video notifications/ })).not.toBeInTheDocument()
   })
 
@@ -403,7 +406,7 @@ describe("member drawer respects the topic's own notificationType", () => {
     expect(screen.queryByText(/Notification type: Both/)).not.toBeInTheDocument()
     expect(screen.getAllByRole("switch", { name: /live notifications/ }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole("switch", { name: /new video notifications/ }).length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Reminder time").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Live reminder time").length).toBeGreaterThan(0)
   })
 
   it("changing the topic's notification type updates the already-open drawer's columns immediately", async () => {
@@ -461,7 +464,7 @@ describe("member drawer reminders", () => {
 
     const [trigger] = await openDrawerFor(user, /^SF6/)
 
-    expect(trigger).toHaveDisplayValue("—")
+    expect(trigger).toHaveDisplayValue("At start") // the closed select reads 開播時 (At start), not a dash
     expect(storedState().topics.sf6.reminderOverrides).toEqual({}) // showing the placeholder stores nothing
   })
 
@@ -503,7 +506,7 @@ describe("member drawer reminders", () => {
     const [trigger] = await openDrawerFor(user, /^SF6/)
     expect(trigger).toHaveDisplayValue("10 minutes before")
     expect(within(trigger).queryByRole("option", { name: "No reminder", hidden: true })).toBeNull()
-    expect(within(trigger).queryByRole("option", { name: "—", hidden: true })).toBeNull() // the placeholder only exists while unset
+    expect(within(trigger).getAllByRole("option", { hidden: true })).toHaveLength(5) // no extra placeholder option once a timing is set
     await user.selectOptions(trigger, "1 hour before")
 
     expect(storedState().topics.sf6.reminderOverrides).toEqual({ aizawa_ema: "1hour" })

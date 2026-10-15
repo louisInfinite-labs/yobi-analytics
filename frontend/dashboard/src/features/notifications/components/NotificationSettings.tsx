@@ -14,8 +14,8 @@ import { PushPermissionNotice } from "./PushPermissionNotice"
 import { useTopicNotificationPreferences } from "../hooks/useTopicNotificationPreferences"
 import { getAllNotificationCreators, type NotificationCreator } from "../model/notificationCreatorGrouping"
 import { useNotificationTopicCatalog } from "../hooks/useNotificationTopicCatalog"
-import { filterDisplayRank, type VideoFilterEntry } from "../../home-room/model/videoFilterCatalog"
-import { ALL_TOPICS_ID, getSelectableTopics, isPermanentTopic, isShortCard, type TopicCatalogId } from "../model/notificationTopicCatalog"
+import type { VideoFilterEntry } from "../../home-room/model/videoFilterCatalog"
+import { ALL_TOPICS_ID, getSelectableTopics, isNotificationTopic, isPermanentTopic, isShortCard, notificationTopicRank, type TopicCatalogId } from "../model/notificationTopicCatalog"
 import type { TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { NewVideoDeliveryTimes } from "./NewVideoDeliveryTimes"
@@ -314,9 +314,11 @@ export function NotificationSettings() {
   )
 
   const orderedTopicIds = useMemo(() => {
-    // "Default order" is the shared display order (ALL, then the same category order as Home); cards the user added keep a stable place in it.
-    if (sortMode === "saved") return [...savedTopicIds].sort((a, b) => filterDisplayRank(a) - filterDisplayRank(b))
-    return [...savedTopicIds].sort((a, b) => topicLabelFor(entries, locale, a).localeCompare(topicLabelFor(entries, locale, b), locale))
+    // Only the notification list's own ten are shown (a card saved earlier for another topic keeps its stored preferences, just not displayed).
+    // "Default order" is that list's order (ALL, 雜談, 歌回, MV, Apex, Minecraft, SF6, VALO, Short, 其他); cards the user added keep a stable place in it.
+    const shownIds = savedTopicIds.filter(isNotificationTopic)
+    if (sortMode === "saved") return [...shownIds].sort((a, b) => notificationTopicRank(a) - notificationTopicRank(b))
+    return [...shownIds].sort((a, b) => topicLabelFor(entries, locale, a).localeCompare(topicLabelFor(entries, locale, b), locale))
   }, [savedTopicIds, sortMode, locale, entries])
 
   const startDraft = () => {

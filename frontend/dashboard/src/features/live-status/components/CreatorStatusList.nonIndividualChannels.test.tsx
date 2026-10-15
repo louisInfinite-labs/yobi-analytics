@@ -12,6 +12,9 @@ import { groupSelectableCreatorsForMyOshi } from "../../oshi/utils/myOshiCanonic
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import type { CreatorStatus } from "../model/creatorStatus"
 
+// Each render here mounts the whole ~120-creator roster; under a loaded machine (CI) the default 5s is not enough.
+vi.setConfig({ testTimeout: 20_000 })
+
 /** Live Status shows every displayable channel and every one of them keeps the normal Live Status click actions;
  * My Oshi eligibility (individual creators only) decides who can become a saved Oshi, never who is clickable here.
  * The affected channels are derived from the registry (displayable but not My-Oshi-eligible: group and staff

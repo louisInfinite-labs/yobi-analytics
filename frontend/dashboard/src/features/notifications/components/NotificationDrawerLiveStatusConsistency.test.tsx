@@ -131,7 +131,7 @@ describe("B: the surface and the dropdown are Home's", () => {
     expect(select.tagName).toBe("SELECT")
     expect(select).toHaveClass("oshi-videos__sort")
     expect(drawer.querySelector(".ant-btn, .ant-dropdown-trigger")).toBeNull()
-    expect(select).toHaveDisplayValue("—") // unset: a placeholder, not an option in the list
+    expect(select).toHaveDisplayValue("At start") // unset: shows 開播時, as a hidden placeholder -- not an extra option in the list
     // only the width is the drawer's own; every other look is Home's .oshi-videos__sort
     expect(ruleBody(settingsCss, ".topic-creator-drawer__reminder-select").replace(/\s+/g, " ").trim()).toBe("width: 100%;")
   })

@@ -145,13 +145,16 @@ describe("D/E/F. explicit selection, and returning Home during the same session"
     expect(app.shown()).toBe(OSHI)
   })
 
-  it("an Oshi changed in Settings is what the root Home shows when Home is next opened", async () => {
+  it("an Oshi changed in Settings does NOT replace the creator Home was showing within the session; a fresh page load shows the new Oshi", async () => {
     const app = await loadApp("/", { oshi: OSHI })
     app.goToPage("settings")
     window.localStorage.setItem("yobi.defaultOshiCreatorId", EMA)
     app.goToPage("home")
     expect(path()).toBe("/")
-    expect(app.shown()).toBe(EMA)
+    expect(app.shown()).toBe(OSHI) // still the creator that was on screen (no F5)
+
+    const reloaded = await loadApp("/", {}, true) // F5: a genuinely fresh load starts from the Oshi
+    expect(reloaded.shown()).toBe(EMA)
   })
 
   it("choosing Home while already on that Home changes nothing (no extra history entry)", async () => {

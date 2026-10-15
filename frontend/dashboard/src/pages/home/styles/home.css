@@ -2316,15 +2316,15 @@
 /* ============ Live Status below 1024px: a true full-viewport sheet ============ */
 
 /* Phone (portrait AND landscape) and tablet (portrait AND landscape) -- the app's own single-column threshold (useBreakpoint), so a phone
-   turned sideways (844px wide) or an iPad (768/1024px) can never fall into the desktop side-panel layout by accident, which is what the old
+   turned sideways (844px wide) or an iPad (768/1023px) can never fall into the desktop side-panel layout by accident, which is what the old
    `max-width: 640px` rule allowed (a 100vw panel anchored `right: 16px` also left a 16px strip of the page showing, and 641-1023px got the
    desktop width). The sheet covers the whole viewport, sized in dynamic viewport units so a collapsing browser toolbar leaves no gap. The
-   safe-area insets are padding INSIDE the sheet (header and list), never margin around it. The resize control is not rendered here (the
-   sheet is always full). The list scrolls inside the sheet and its scroll never chains to the page behind (the page itself is locked by
-   useBodyScrollLock while the sheet is open). */
+   safe-area insets are padding INSIDE the sheet (header and list), never margin around it. A phone is always "full" (no resize control is
+   rendered there); a tablet keeps the control, and its "compact" size is the small bottom-right panel the base rules above describe, so
+   only the "full" size is the sheet. The list scrolls inside the sheet and its scroll never chains to the page behind (the page itself is
+   locked by useBodyScrollLock while the sheet is open). */
 @media (max-width: 1023px) {
-  .live-status-drawer,
-  .live-status-drawer[data-size="compact"] {
+  .live-status-drawer[data-size="full"] {
     top: 0;
     right: 0;
     bottom: auto;
@@ -2343,13 +2343,13 @@
     transform: translateX(100%);
   }
 
-  .live-status-drawer__header {
+  .live-status-drawer[data-size="full"] .live-status-drawer__header {
     padding-top: max(12px, env(safe-area-inset-top));
     padding-right: max(12px, env(safe-area-inset-right));
     padding-left: max(12px, env(safe-area-inset-left));
   }
 
-  .live-status-drawer__body {
+  .live-status-drawer[data-size="full"] .live-status-drawer__body {
     padding-right: env(safe-area-inset-right);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
@@ -2433,6 +2433,65 @@
      Mobile/Tablet, so it stays out of the existing header layout here entirely. */
   .oshi-videos__search {
     display: none;
+  }
+}
+
+/* Phone search results (a submitted header search): the shelf's place is taken by a plain vertical list -- ONE video per row, rows
+   stacked, normal page scrolling, no carousel and no multi-column grid. Each row is the shelf's own card laid out as thumbnail + text. */
+@media (max-width: 767px) {
+  .oshi-videos.oshi-videos--results {
+    height: auto;
+    min-height: calc(100dvh - var(--main-topbar-height, 0px) - var(--home-gap));
+    display: block;
+    overflow: visible;
+  }
+
+  .oshi-videos__results {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+    margin: 0;
+    padding: 12px 0;
+
+    list-style: none;
+  }
+
+  .oshi-videos__results-item {
+    display: block;
+    min-width: 0;
+  }
+
+  .oshi-videos__results .oshi-video-card {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+
+    display: grid;
+    grid-template-columns: minmax(120px, 42%) minmax(0, 1fr);
+    grid-template-rows: auto;
+    align-items: start;
+    gap: 12px;
+  }
+
+  .oshi-videos__results .oshi-video-card__title {
+    font-size: 13px;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+
+  .oshi-videos__results .oshi-video-card__meta {
+    font-size: 11px;
+  }
+
+  .oshi-videos__results-skeleton {
+    display: block;
+    height: 72px;
+    border-radius: 3px;
+  }
+
+  .oshi-videos--results .oshi-empty-state {
+    padding: 32px 0;
   }
 }
 

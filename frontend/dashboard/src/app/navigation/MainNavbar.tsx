@@ -1,6 +1,7 @@
 import { CalendarClock, Gauge, Home, Info, Menu, Settings, X } from "lucide-react"
 import { useRef, useState, type ComponentType, type RefObject } from "react"
 import brandIcon from "../../assets/brand-icon.png"
+import { MobileHeaderSearch } from "./MobileHeaderSearch"
 import type { Page } from "./useCurrentPage"
 import { useCurrentPage } from "./useCurrentPage"
 import { useModalFocus } from "../../shared/hooks/useModalFocus"
@@ -66,6 +67,7 @@ export function MainNavbar() {
         >
           <Menu size={24} aria-hidden="true" />
         </button>
+        <MobileHeaderSearch />
       </header>
       {drawerOpen && <NavDrawerFocusScope drawerRef={drawerRef} onClose={closeDrawer} />}
       {drawerOpen && <div className="main-navbar-backdrop" onClick={closeDrawer} aria-hidden="true" />}

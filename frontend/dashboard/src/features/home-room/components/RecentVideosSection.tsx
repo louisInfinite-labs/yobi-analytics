@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
-import { ConfigProvider, Input, Segmented } from "antd"
-import { ChevronRight, Search } from "lucide-react"
+import { ConfigProvider, Segmented } from "antd"
+import { ChevronRight } from "lucide-react"
+import { VideoSearchBox } from "./VideoSearchBox"
 import { OshiErrorState } from "./OshiErrorState"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
@@ -27,6 +28,8 @@ import { useOshiVideos } from "../hooks/useOshiVideos"
 import { useVideoTopicCatalog } from "../hooks/useVideoTopicCatalog"
 import { fetchVideoTopics } from "../data/videoTopics"
 import { useVideoSearch } from "../../video-search/hooks/useVideoSearch"
+import { clearVideoSearchInput, useVideoSearchInput } from "../../video-search/hooks/useVideoSearchInput"
+import { useBreakpoint } from "../../../shared/hooks/useBreakpoint"
 
 interface RecentVideosSectionProps {
   creatorId: string
@@ -35,6 +38,9 @@ interface RecentVideosSectionProps {
    * modal/second player. Drag-to-scroll (see VideoTrack) never calls this. */
   onSelectVideo: (video: { videoId: string; title: string }) => void
 }
+
+/** The app's own phone/tablet boundary (useBreakpoint's tablet minimum): below it the header carries the video search input. */
+const PHONE_MIN_TABLET_WIDTH = 768
 
 /** Once the user has scrolled to roughly the 14th-16th card, the next page
  * is already worth fetching — picking the smaller end (14) means it fires
@@ -102,6 +108,45 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
         {meta && <span className="oshi-video-card__meta">{meta}</span>}
       </span>
     </button>
+  )
+}
+
+/** Phone search results: ONE video per row, stacked vertically (never a carousel or a grid), each the same card as the shelf's, so the
+ * thumbnail, title, view count / date and the LIVE badge are unchanged and opening one runs the same selection. Distinct states: still
+ * loading, the request FAILED (the shelf's own error state -- never shown as "no results"), and a genuine empty result (the same
+ * "no matching videos" state the desktop shows). */
+function SearchResultsList({
+  videos,
+  loading,
+  error,
+  emptyLabel,
+  onOpen,
+}: {
+  videos: RecentVideo[]
+  loading: boolean
+  error: Error | null
+  emptyLabel: string
+  onOpen: (video: RecentVideo) => void
+}) {
+  if (error) return <OshiErrorState error={error} />
+  if (loading) {
+    return (
+      <div className="oshi-videos__results" role="status" aria-busy="true">
+        {[0, 1, 2, 3].map((row) => (
+          <span key={row} className="oshi-loading-line oshi-videos__results-skeleton" />
+        ))}
+      </div>
+    )
+  }
+  if (videos.length === 0) return <div className="oshi-empty-state" role="status">{emptyLabel}</div>
+  return (
+    <ul className="oshi-videos__results">
+      {videos.map((video) => (
+        <li key={video.videoId} className="oshi-videos__results-item">
+          <VideoThumbCard video={video} onOpen={onOpen} />
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -253,68 +298,6 @@ function VideoTrack({
           )}
         </div>
       </div>
-    </div>
-  )
-}
-
-/** Desktop's always-visible video search box, a sibling of VideoSectionTagBar inside .oshi-videos__header
- * (never a collapsed icon the user must click to expand -- see home.css's own .oshi-videos__search for the
- * responsive width this depends on). A plain Input with the search icon as its `prefix` -- deliberately NOT
- * Input.Search: that component renders its own enterButton/search-submit affordance, and this box has no
- * submit step at all (every keystroke's onChange IS the search state; allowClear's X only clears the text,
- * it does not submit anything). Styled to match the existing dark .oshi-videos__sort control (home.css),
- * not antd's own light input skin. Its query drives the multilingual Video Search (features/video-search:
- * GET /creators/{creatorId}/videos/search, 250ms debounce, cancellation, session cache) -- see RecentVideosSection. */
-function VideoSearchBox({
-  value,
-  onChange,
-  locale,
-  onCompositionStart,
-  onCompositionEnd,
-}: {
-  value: string
-  onChange: (value: string) => void
-  locale: Locale
-  onCompositionStart: () => void
-  onCompositionEnd: () => void
-}) {
-  return (
-    <div className="oshi-videos__search">
-      {/* Same approach as VideoSectionTagBar's Segmented below: antd's own CSS-in-JS styles are
-          injected at runtime and can outrank a plain stylesheet override regardless of selector
-          specificity, so the dark colors/sizing/no-accent-focus are set through ConfigProvider's
-          actual Input tokens (authoritative, not a cascade race) rather than CSS alone. */}
-      <ConfigProvider
-        theme={{
-          components: {
-            Input: {
-              colorBgContainer: "rgba(0, 0, 0, 0.2)",
-              colorBorder: "var(--oshi-border)",
-              colorText: "var(--oshi-text-2)",
-              colorTextPlaceholder: "var(--oshi-text-3)",
-              colorIcon: "var(--oshi-text-3)",
-              colorIconHover: "var(--oshi-text-2)",
-              hoverBorderColor: "var(--oshi-border)",
-              activeBorderColor: "var(--oshi-border)",
-              activeShadow: "none",
-              borderRadius: 4,
-            },
-          },
-        }}
-      >
-        <Input
-          size="small"
-          allowClear
-          prefix={<Search size={12} aria-hidden="true" />}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onCompositionStart={onCompositionStart}
-          onCompositionEnd={onCompositionEnd}
-          placeholder={t(locale, "videoSearch.placeholder")}
-          aria-label={t(locale, "videoSearch.placeholder")}
-          className="oshi-videos__search-input"
-        />
-      </ConfigProvider>
     </div>
   )
 }
@@ -546,8 +529,22 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   // Desktop search: no separate open/close gesture and no submit step -- every keystroke's onChange IS the query. While Search is
   // active (the normalized query meets useVideoSearch's activation threshold) the shelf shows the creator's multilingual search
   // results; the header (search box, Topic Tags and the content type / sort / period controls) never changes, so nothing jumps.
-  const [searchQuery, setSearchQuery] = useState("")
-  const [isComposing, setIsComposing] = useState(false)
+  // The search lives in ONE shared store (useVideoSearchInput): this section's desktop box and the phone header's input are two views of
+  // it and feed this same search. Desktop / tablet: the box is input-driven (the typed text is the query). Phone: the header input only
+  // edits a DRAFT; the query is whatever was last submitted with the keyboard's Enter, and emptying the draft ends the search at once.
+  // On a desktop or tablet the query still ends with the section (leaving Home clears it, as the old local state did); on a phone it stays,
+  // since the header input that shows it stays on every page.
+  const { draft, submitted: searchQuery, isComposing, setLive, setComposing: setIsComposing, clear: clearSearch } = useVideoSearchInput()
+  const isPhone = useBreakpoint() === "mobile"
+  // Phone: a submitted query REPLACES Home's content (HomePage drops the player and Oshi Status; this section shows a vertical results
+  // list instead of the shelf). The section itself stays mounted, so the selected Topic Tag, content type, sort and period survive.
+  const mobileSearchView = isPhone && searchQuery !== ""
+  useEffect(
+    () => () => {
+      if (window.innerWidth >= PHONE_MIN_TABLET_WIDTH) clearVideoSearchInput()
+    },
+    [],
+  )
 
   // The bar is FIXED at twelve options -- ALL, 最新影片, 最新直播, 雜談, 歌回, MV, Apex, Minecraft, SF6, VALO, Short, 其他 -- whatever
   // GET /topics returns: the catalog supplies each topic's id and localized label, but never decides which topics Home shows (the rest of the
@@ -580,12 +577,24 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
   const searchTopics = topicCatalog.state.status === "success" ? topicCatalog.state.topics : []
   const search = useVideoSearch(searchQuery, searchBase, { isComposing, topics: searchTopics })
   const isSearchActive = search.active
+  // Emptying the search ends it at once (focus, a pending request or loaded results change nothing): the normal Topic list returns, and its
+  // data is REFRESHED -- fetched again from the first page through the normal loader -- rather than trusting whatever was mounted before the
+  // search. The late response of a search that was still pending can never land (useVideoSearch invalidates and aborts it when it ends).
+  const searchedSinceEmpty = useRef(false)
+  const refreshShelf = shelf.refresh
+  useEffect(() => {
+    if (isSearchActive || mobileSearchView) searchedSinceEmpty.current = true
+    if (searchQuery === "" && searchedSinceEmpty.current) {
+      searchedSinceEmpty.current = false
+      refreshShelf?.()
+    }
+  }, [isSearchActive, mobileSearchView, searchQuery, refreshShelf])
   // Clicking ANY Topic Tag (a different one, ALL, or the one already selected -- every selection, keyboard included, is a click) leaves the search: the query clears (the box stays visible and
   // empty), the normal list of the selected tag returns, and content type / sort / period are untouched. Ending the query also aborts and
   // invalidates any pending search request inside useVideoSearch, so a late response cannot overwrite the tag's list.
   const leaveSearch = () => {
-    setSearchQuery("")
-    setIsComposing(false)
+    searchedSinceEmpty.current = false // the clicked tag loads its own list: no extra refresh of the old one
+    clearSearch()
   }
 
   // 最新直播 = LIVE, then UPCOMING, then archives. The archive endpoint is archive-only by design (liveStatus=archived),
@@ -626,12 +635,30 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
           ? t(locale, "recentVideos.empty.latestLive")
           : t(locale, "recentVideos.empty.other")
 
+  if (mobileSearchView) {
+    return (
+      <section className="oshi-videos oshi-videos--results" aria-label={t(locale, "videoSearch.placeholder")}>
+        <SearchResultsList
+          videos={search.videos}
+          loading={search.active && search.loading}
+          error={search.error}
+          emptyLabel={t(locale, "videoSearch.empty")}
+          // Opening a result is the end of the search: the video goes to Home's player (the existing selection path) and Home returns.
+          onOpen={(video) => {
+            clearSearch()
+            onSelectVideo({ videoId: video.videoId, title: video.title })
+          }}
+        />
+      </section>
+    )
+  }
+
   return (
     <section className="oshi-videos">
       <header className="oshi-videos__header">
         <VideoSearchBox
-          value={searchQuery}
-          onChange={setSearchQuery}
+          value={draft}
+          onChange={setLive}
           locale={locale}
           onCompositionStart={() => setIsComposing(true)}
           onCompositionEnd={() => setIsComposing(false)}

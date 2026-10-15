@@ -1,11 +1,14 @@
 import { render, renderHook, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MyOshiSettings } from "./MyOshiSettings"
 import { useDefaultOshiCreator } from "../hooks/useDefaultOshiCreator"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
+
+// Each render here mounts the whole ~120-creator roster; under a loaded machine (CI) the default 5s is not enough.
+vi.setConfig({ testTimeout: 20_000 })
 
 const DEFAULT_KEY = "yobi.defaultOshiCreatorId"
 

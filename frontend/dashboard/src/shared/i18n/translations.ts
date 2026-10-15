@@ -134,6 +134,7 @@ export type TranslationKey =
   | "notificationSettings.reminder.30min"
   | "notificationSettings.reminder.1hour"
   | "notificationSettings.reminderColumnHeader"
+  | "notificationSettings.drawerReminderColumnHeader"
   | "notificationSettings.reminderSelectAriaLabel"
   | "notificationSettings.topicReminderMode.memberChoice"
   | "notificationSettings.reminderNotInEffectHint"
@@ -388,6 +389,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.30min": "30 分鐘前",
     "notificationSettings.reminder.1hour": "1 小時前",
     "notificationSettings.reminderColumnHeader": "提醒時間",
+    "notificationSettings.drawerReminderColumnHeader": "直播提醒時間",
     "notificationSettings.reminderSelectAriaLabel": "{{name}} 的提醒時間",
     "notificationSettings.topicReminderMode.memberChoice": "各成員為準",
     "notificationSettings.reminderNotInEffectHint": "未生效（已被「全部」設定覆蓋）",
@@ -410,7 +412,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.1min": "1 分鐘前",
     "notificationSettings.notificationTypeLabel": "通知類型",
     "notificationSettings.notificationTypeCombinedLabel": "直播+新片",
-    "notificationSettings.notificationTypeSectionHelp": "選擇這個主題要通知直播、新片，或兩者。",
+    "notificationSettings.notificationTypeSectionHelp": "選擇要收到這個成員的直播、新片通知",
     "notificationSettings.topicListPanelTitle": "通知主題",
     "notificationSettings.topicSortAriaLabel": "主題排序方式",
     "notificationSettings.topicSortSaved": "預設順序",
@@ -647,6 +649,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.30min": "30 minutes before",
     "notificationSettings.reminder.1hour": "1 hour before",
     "notificationSettings.reminderColumnHeader": "Reminder time",
+    "notificationSettings.drawerReminderColumnHeader": "Live reminder time",
     "notificationSettings.reminderSelectAriaLabel": "{{name}}'s reminder time",
     "notificationSettings.topicReminderMode.memberChoice": "Member's choice",
     "notificationSettings.reminderNotInEffectHint": "Not in effect (overridden by the \"All\" setting)",
@@ -669,7 +672,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.1min": "1 minute before",
     "notificationSettings.notificationTypeLabel": "Notification type",
     "notificationSettings.notificationTypeCombinedLabel": "Live + New Video",
-    "notificationSettings.notificationTypeSectionHelp": "Choose whether this topic notifies for live streams, new videos, or both.",
+    "notificationSettings.notificationTypeSectionHelp": "Choose which live stream and new video notifications you receive for this member",
     "notificationSettings.topicListPanelTitle": "Notification topics",
     "notificationSettings.topicSortAriaLabel": "Sort topics",
     "notificationSettings.topicSortSaved": "Saved order",
@@ -906,6 +909,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.30min": "30分前",
     "notificationSettings.reminder.1hour": "1時間前",
     "notificationSettings.reminderColumnHeader": "リマインド時間",
+    "notificationSettings.drawerReminderColumnHeader": "配信のリマインド時間",
     "notificationSettings.reminderSelectAriaLabel": "{{name}} のリマインド時間",
     "notificationSettings.topicReminderMode.memberChoice": "各メンバーの設定",
     "notificationSettings.reminderNotInEffectHint": "現在は無効（「全部」の設定が優先）",
@@ -928,7 +932,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.reminder.1min": "1分前",
     "notificationSettings.notificationTypeLabel": "通知タイプ",
     "notificationSettings.notificationTypeCombinedLabel": "配信＋新着動画",
-    "notificationSettings.notificationTypeSectionHelp": "このトピックで通知する対象（配信・新着動画・両方）を選択します。",
+    "notificationSettings.notificationTypeSectionHelp": "このメンバーの配信・新着動画の通知を受け取るかどうかを選択します",
     "notificationSettings.topicListPanelTitle": "通知トピック",
     "notificationSettings.topicSortAriaLabel": "トピックの並び替え",
     "notificationSettings.topicSortSaved": "保存順",

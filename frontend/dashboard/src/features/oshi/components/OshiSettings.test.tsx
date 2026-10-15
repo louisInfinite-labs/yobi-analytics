@@ -1,11 +1,14 @@
 import { render, renderHook, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { OshiSettings } from "./OshiSettings"
 import { useFavoriteCreators } from "../../favorites/hooks/useFavoriteCreators"
 import { getCreatorById, getCreators, resolveCreatorKey, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 import { MemberThemeProvider } from "../../../shared/theme/MemberThemeProvider"
+
+// Each render here mounts the whole ~120-creator roster; under a loaded machine (CI) the default 5s is not enough.
+vi.setConfig({ testTimeout: 20_000 })
 
 // OshiSettings reads useMemberTheme() (for its own ConfigProvider
 // colorPrimary/Segmented tokens) -- MemberThemeProvider is self-contained,

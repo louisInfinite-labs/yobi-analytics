@@ -2358,6 +2358,73 @@
   justify-content: center;
 }
 
+/* Phone: the Live / New Video control is a square checkbox (see NotificationCheckbox) instead of the ON/OFF switch. The <label> is the touch
+   target (44 x 44 minimum, the width of the --drawer-switch-col cell); the box itself is a clearly square 22px with a visible border when
+   unchecked and the dropdown-list highlight fill plus a white check mark when checked -- the same "ON" color the switches use here. */
+.topic-creator-drawer__checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 44px;
+  min-height: 44px;
+
+  cursor: pointer;
+
+  -webkit-tap-highlight-color: transparent;
+}
+
+.topic-creator-drawer__checkbox-input {
+  appearance: none;
+  -webkit-appearance: none;
+
+  display: grid;
+  place-content: center;
+
+  width: 22px;
+  height: 22px;
+  margin: 0;
+
+  border: 2px solid var(--drawer-text-tertiary);
+  border-radius: 3px;
+
+  background: transparent;
+
+  cursor: pointer;
+
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.topic-creator-drawer__checkbox-input::after {
+  content: "";
+
+  width: 12px;
+  height: 12px;
+
+  background: #fff;
+
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+
+  transform: scale(0);
+}
+
+.topic-creator-drawer__checkbox-input:checked {
+  border-color: var(--oshi-select-highlight);
+
+  background: var(--oshi-select-highlight);
+}
+
+.topic-creator-drawer__checkbox-input:checked::after {
+  transform: scale(1);
+}
+
+.topic-creator-drawer__checkbox-input:focus-visible {
+  outline: 2px solid var(--drawer-text-primary);
+  outline-offset: 2px;
+}
+
 /* 8px column gap + 8px here = 16px of breathing room between the New Video switch and the reminder select. */
 .topic-creator-drawer__reminder-cell {
   padding-left: var(--drawer-reminder-pad);

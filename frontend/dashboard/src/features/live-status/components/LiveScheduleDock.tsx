@@ -95,9 +95,13 @@ export function LiveScheduleDock() {
   const [locale] = useLocale()
   const [confirmOshiSwitch, setConfirmOshiSwitch] = useConfirmOshiSwitchPreference()
   const reducedMotion = usePrefersReducedMotion()
-  // Below 1024px (phone, tablet, a phone turned sideways) the expanded drawer is a full-viewport sheet: the page behind it must not scroll,
-  // and there is no compact size to switch to. Desktop keeps the side panel and its resize control.
-  const fullSheet = useBreakpoint() !== "desktop"
+  // A phone (below 768px, portrait or landscape) has no resize control at all: Live Status is always a full-viewport sheet there. A tablet
+  // (768-1023px) and a desktop keep the control: "full" is the full-viewport sheet on a tablet and the tall side panel on a desktop,
+  // "compact" the small bottom-right panel on both. While it is a full-viewport sheet the page behind it must not scroll.
+  const breakpoint = useBreakpoint()
+  const phone = breakpoint === "mobile"
+  const size: PanelSize = phone ? "full" : panelSize
+  const fullSheet = phone || (breakpoint === "tablet" && size === "full")
   useBodyScrollLock(expanded && fullSheet)
   const dockRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -194,13 +198,13 @@ export function LiveScheduleDock() {
           className="live-status-drawer"
           role="dialog"
           aria-label={t(locale, "liveScheduleDock.panelAriaLabel")}
-          data-size={fullSheet ? "full" : panelSize}
+          data-size={size}
           inert={!expanded}
         >
           <div className="live-status-drawer__header">
             <div className="live-status-drawer__title-row">
               <span className="live-status-drawer__title">{t(locale, "liveScheduleDock.title")}</span>
-              {!fullSheet && (
+              {!phone && (
                 <button
                   type="button"
                   className="live-status-drawer__resize"

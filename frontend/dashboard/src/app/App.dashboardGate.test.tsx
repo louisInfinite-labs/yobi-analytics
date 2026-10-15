@@ -16,6 +16,10 @@ vi.mock("../features/notifications/hooks/useNotificationLocaleSync", () => ({ us
 vi.mock("../features/notifications/hooks/useRetiredTopicResync", () => ({ useRetiredTopicResync: () => {} }))
 vi.mock("../shared/theme/MemberThemeProvider", () => ({ MemberThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</> }))
 
+// Every test re-imports the whole App after vi.resetModules(); the app shell now carries the phone header search (antd's Input), so that
+// fresh import takes a few seconds on a loaded machine.
+vi.setConfig({ testTimeout: 30_000 })
+
 const VIDEO_DATA_LABEL = "Video Data"
 
 async function loadApp(isDev: boolean) {

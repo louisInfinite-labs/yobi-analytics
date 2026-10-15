@@ -34,7 +34,7 @@ describe("Settings menu drawer (below 1440px)", () => {
     expect(isOpen()).toBe(false)
     expect(button).toHaveAttribute("aria-expanded", "false")
     expect(button).toHaveAttribute("aria-controls", "settings-secondary-navbar")
-    expect(button).toHaveTextContent("Favorites List") // the section Settings opens on
+    expect(button).toHaveTextContent("Oshi Settings") // the section Settings opens on
     expect(document.querySelector(".settings-drawer-backdrop")).toBeNull()
   })
 

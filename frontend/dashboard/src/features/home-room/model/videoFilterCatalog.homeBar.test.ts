@@ -1,6 +1,7 @@
 /** The Home tag bar's category part is FIXED: the catalog supplies ids and labels, never the list. */
 import { describe, expect, it } from "vitest"
-import { HOME_TAG_TOPIC_IDS, buildHomeVideoTagEntries, buildVideoFilterEntries } from "./videoFilterCatalog"
+import { HOME_TAG_TOPIC_IDS, buildHomeVideoTagEntries } from "./videoFilterCatalog"
+import { NOTIFICATION_TOPIC_IDS, buildNotificationTopicEntries } from "../../notifications/model/notificationTopicCatalog"
 import type { BackendVideoTopic } from "./videoTopicCatalog"
 
 const topic = (id: string, zh: string, en: string, ja: string): BackendVideoTopic => ({ id, labels: { "zh-TW": zh, en, ja } })
@@ -35,10 +36,13 @@ describe("buildHomeVideoTagEntries", () => {
     for (const extra of MORE) expect(ids).not.toContain(extra.id)
   })
 
-  it("the shared notification list still carries the whole catalog (only the Home bar is fixed)", () => {
-    const ids = buildVideoFilterEntries([...FIXED, ...MORE], "en").map((entry) => entry.id)
+  it("is independent of the push-notification list: each has its own explicit configuration, and neither follows the other", () => {
+    const home = buildHomeVideoTagEntries([...FIXED, ...MORE], "en").map((entry) => entry.id)
+    const push = buildNotificationTopicEntries([...FIXED, ...MORE], "en").map((entry) => entry.id)
 
-    for (const extra of MORE) expect(ids).toContain(extra.id)
+    expect(home).toEqual(push) // today the nine categories coincide...
+    expect(HOME_TAG_TOPIC_IDS).not.toBe(NOTIFICATION_TOPIC_IDS) // ...but they are two separate lists (Home adds ALL / 最新影片 / 最新直播 in the component)
+    expect(NOTIFICATION_TOPIC_IDS).toHaveLength(10) // 全部 + the nine categories
   })
 
   it("labels come from the catalog in the selected language", () => {
