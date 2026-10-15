@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from stores.topic_catalog_store import query_global_topics
+from tracking.video_topics import current_taxonomy
 
 
 @dataclass(frozen=True)
@@ -48,35 +48,26 @@ def get_chart_catalog(_query: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def get_topics(_query: dict[str, Any] | None = None) -> dict[str, Any]:
-    """`GET /topics`: the canonical video topic filter list, read from the global Topic Catalog
-    (DynamoDB table YobiTopicCatalog, via stores.topic_catalog_store) and returned in catalog
-    display order -- never a YobiVideoMaster scan and never tracking.video_topics.TOPICS directly
-    (that tuple remains the classifier's own match-pattern source and the seed script's input, but
-    GET /topics' response now comes from the catalog those entries were seeded into).
+    """`GET /topics`: the canonical video topic filter list -- the approved Topic Catalog (DynamoDB table YobiTopicCatalog, partition
+    GLOBAL) in its own display order, read through tracking.video_topics' cached, fail-safe taxonomy so that this response, topic
+    validation and classification can never disagree about which topics exist. Never a YobiVideoMaster scan and never the REVIEW
+    partition.
 
-    `labels` is every topic's zh-TW/en/ja display text -- the frontend's only source for it, so a
-    new topic needs no frontend code change to render correctly in any locale. `label` is additive,
-    backward-compat-only: `/topics` is a real, deployed, unauthenticated API Gateway route (no
-    authorizer or API key -- terraform/api_gateway.tf) that this repo has no visibility into every
-    caller of, so this field, byte-identical to what this endpoint returned before `labels` existed,
-    is never removed. A catalog item with no stored `legacy_label` (any topic added after `labels`
-    existed) falls back to its own English label, or its id if even that's missing.
+    `labels` is every topic's zh-TW/en/ja display text -- the frontend's only source for it, so a topic added to the catalog needs no
+    frontend code change. `label` is additive, backward-compat-only: `/topics` is a real, deployed, unauthenticated API Gateway route
+    (no authorizer or API key -- terraform/api_gateway.tf) that this repo has no visibility into every caller of, so this field
+    (the record's `legacy_label`, else its English label, else its id) is never removed.
 
-    `searchAliases` is every real, backend-owned literal synonym for this topic beyond its own
-    id/labels -- the frontend's Video Search feature downloads this SAME catalog once and resolves a
-    user's free-text query to canonical topic ids locally against it, rather than the backend
-    re-deriving that mapping per Search request. Always a list, empty when a topic has no alias
-    beyond its own id/labels.
-    """
-    items = sorted(query_global_topics(), key=lambda item: item["display_order"])
+    `searchAliases` is every backend-owned literal synonym for the topic beyond its own id/labels -- the frontend's Video Search
+    downloads this SAME catalog once and resolves a user's free-text query to topic ids locally against it. Always a list."""
     return {
         "topics": [
             {
-                "id": item["topic_tag"],
-                "label": item.get("legacy_label") or item.get("topic_en") or item["topic_tag"],
-                "labels": {"zh-TW": item["topic_zh"], "en": item["topic_en"], "ja": item["topic_ja"]},
-                "searchAliases": list(item.get("search_aliases") or []),
+                "id": topic.id,
+                "label": topic.legacy_label or topic.labels.get("en") or topic.id,
+                "labels": dict(topic.labels),
+                "searchAliases": list(topic.search_aliases),
             }
-            for item in items
+            for topic in current_taxonomy().topics
         ]
     }

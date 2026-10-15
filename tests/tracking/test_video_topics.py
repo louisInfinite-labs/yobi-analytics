@@ -3,22 +3,15 @@ import pytest
 from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS, TOPICS, classify_video_topic, resolve_video_topics, topics_matching_text
 
 
-def test_taxonomy_ids_and_order_are_stable():
-    assert [topic.id for topic in TOPICS] == [
-        "valorant", "sf6", "apex", "minecraft", "singing", "mv", "chatting",
-        # Topic Discovery batch 1 (scripts/analysis/proposed_topic_classification.py) --
-        # inserted strictly after the original 7, strictly before "other".
-        "dance_cover", "pokemon", "ark_survival", "watchalong", "monster_hunter", "league_of_legends",
-        "mario_kart", "grand_theft_auto", "rust", "resident_evil", "super_mario_platformer", "splatoon", "dragon_quest",
-        "elden_ring", "overwatch", "asmr", "final_fantasy", "repo_game", "among_us", "zelda", "yakuza",
-        "seven_days_to_die_survival", "holocure", "pubg", "phasmophobia", "call_of_duty", "tokkomachi", "uma_musume",
-        "mahjong", "fall_guys", "asobi_taizen", "persona", "dead_by_daylight", "superchat_reading", "tarkov",
-        "palworld", "lethal_company", "shadowverse", "animal_crossing", "tetris_puyo", "power_pro", "genshin",
-        "undertale_deltarune", "counter_strike", "raft_game", "tomodachi_life", "rainbow_six", "suika_game",
-        "geoguessr",
-        "other",
-    ]
-    assert TOPIC_IDS == {topic.id for topic in TOPICS}
+def test_taxonomy_ids_and_order_follow_the_catalog_global_partition():
+    """The Topic Catalog (tests/fixtures/topic_catalog_global.json = a snapshot of production GLOBAL) is the single source of truth: the
+    taxonomy is exactly its ids in display_order, not any list in code."""
+    from tests.conftest import load_global_topic_catalog_fixture
+
+    expected = [item["topic_tag"] for item in sorted(load_global_topic_catalog_fixture(), key=lambda item: item["display_order"])]
+    assert [topic.id for topic in TOPICS] == expected
+    assert expected[:8] == ["valorant", "sf6", "apex", "minecraft", "singing", "mv", "chatting", "other"]
+    assert len(expected) == 52 and TOPIC_IDS == set(expected)
     assert OTHER_TOPIC == "other"
 
 

@@ -1,5 +1,30 @@
+import json
+from pathlib import Path
+
 import pytest
 
+from tracking import video_topics
+
+_CATALOG_FIXTURE = Path(__file__).parent / "fixtures" / "topic_catalog_global.json"
+
+
+def load_global_topic_catalog_fixture() -> list[dict]:
+    """The production GLOBAL Topic Catalog snapshot (tests/fixtures/topic_catalog_global.json): what GET /topics, classification and
+    topic validation read in tests, so they see production-shaped data and never touch DynamoDB."""
+    return json.loads(_CATALOG_FIXTURE.read_text(encoding="utf-8"))["items"]
+
+
+# Installed at import time (before any test module is collected), because some modules read the live topic ids while parametrizing.
+video_topics.set_catalog_loader(load_global_topic_catalog_fixture)
+
+
+@pytest.fixture(autouse=True)
+def topic_catalog_fixture():
+    """Every test starts on the GLOBAL snapshot with an empty taxonomy cache; a test that needs a different catalog calls
+    video_topics.set_catalog_loader(...) itself (this fixture restores the default afterwards)."""
+    video_topics.set_catalog_loader(load_global_topic_catalog_fixture)
+    yield
+    video_topics.set_catalog_loader(load_global_topic_catalog_fixture)
 
 @pytest.fixture(autouse=True)
 def no_real_youtube_classification(monkeypatch):

@@ -7,7 +7,6 @@ from stores import topic_catalog_store
 from stores.topic_catalog_store import (
     TOPIC_CATALOG_TABLE,
     TopicCatalogStoreError,
-    put_topic,
     query_global_topics,
 )
 
@@ -38,55 +37,40 @@ def test_an_empty_catalog_has_no_topics(catalog_table):
     assert query_global_topics() == []
 
 
-def test_put_topic_makes_it_readable_with_all_four_mandatory_fields(catalog_table):
-    put_topic("singing", "歌回", "Singing", "歌枠", display_order=4)
-
-    [item] = query_global_topics()
-    assert item["topic_tag"] == "singing"
-    assert item["topic_zh"] == "歌回"
-    assert item["topic_en"] == "Singing"
-    assert item["topic_ja"] == "歌枠"
+def _put(tag, partition="GLOBAL", **extra):
+    """Insert a raw record. The store is read-only by design (the catalog is curated by hand), so tests write items directly."""
+    item = {"catalog_id": partition, "topic_tag": tag, "topic_zh": tag, "topic_en": tag, "topic_ja": tag, "display_order": 0, "search_aliases": []}
+    item.update(extra)
+    topic_catalog_store._resource().Table(TOPIC_CATALOG_TABLE).put_item(Item=item)
 
 
-def test_put_topic_stores_optional_legacy_label_and_search_aliases(catalog_table):
-    put_topic("apex", "Apex", "Apex", "Apex", display_order=2, legacy_label="APEX", search_aliases=("apex", "apex legends"))
-
-    [item] = query_global_topics()
-    assert item["legacy_label"] == "APEX"
-    assert list(item["search_aliases"]) == ["apex", "apex legends"]
+def test_the_store_exposes_no_writer():
+    assert not hasattr(topic_catalog_store, "put_topic")  # nothing in this repo may write, seed or promote catalog records
 
 
-def test_put_topic_omits_legacy_label_entirely_when_not_given(catalog_table):
-    put_topic("other", "其他", "Other", "その他", display_order=7)
-
-    [item] = query_global_topics()
-    assert "legacy_label" not in item
-    assert list(item["search_aliases"]) == []
-
-
-def test_put_topic_is_idempotent_a_second_call_overwrites_not_duplicates(catalog_table):
-    put_topic("mv", "MV", "MV", "MV", display_order=5)
-    put_topic("mv", "MV", "Music Video", "MV", display_order=5)
+def test_query_global_topics_is_scoped_to_the_global_partition_and_never_returns_review_records(catalog_table):
+    _put("apex")
+    _put("some_candidate", partition="REVIEW", review_status="pending", matched_video_count=3)
+    _put("ignored", partition="SOME_OTHER_PARTITION")
 
     items = query_global_topics()
-    assert len(items) == 1
-    assert items[0]["topic_en"] == "Music Video"
 
-
-def test_query_global_topics_is_scoped_to_the_global_partition(catalog_table):
-    put_topic("apex", "Apex", "Apex", "Apex", display_order=2)
-    table = topic_catalog_store._resource().Table(TOPIC_CATALOG_TABLE)
-    table.put_item(Item={"catalog_id": "SOME_OTHER_PARTITION", "topic_tag": "ignored", "topic_zh": "x", "topic_en": "x", "topic_ja": "x", "display_order": 0, "search_aliases": []})
-
-    items = query_global_topics()
     assert [item["topic_tag"] for item in items] == ["apex"]
 
 
+def test_query_global_topics_returns_the_optional_catalog_attributes_untouched(catalog_table):
+    _put("peak", translation_review_status="pending_review", review_note="en/zh best guess", search_aliases=["peak"])
+
+    [item] = query_global_topics()
+
+    assert item["translation_review_status"] == "pending_review" and item["search_aliases"] == ["peak"]
+
+
 def test_query_global_topics_handles_full_pagination(catalog_table, monkeypatch):
-    """Force the Query to paginate one item at a time (small Limit), so the while
-    LastEvaluatedKey loop in query_global_topics is actually exercised, not just present."""
+    """Force the Query to paginate one item at a time (small Limit), so the while LastEvaluatedKey loop in query_global_topics is
+    actually exercised, not just present."""
     for i, topic_tag in enumerate(["valorant", "sf6", "apex", "minecraft", "singing", "mv", "chatting", "other"]):
-        put_topic(topic_tag, topic_tag, topic_tag, topic_tag, display_order=i)
+        _put(topic_tag, display_order=i)
 
     table = topic_catalog_store._resource().Table(TOPIC_CATALOG_TABLE)
     original_query = type(table).query
@@ -107,21 +91,8 @@ def test_query_global_topics_raises_store_error_when_table_is_missing(aws_creden
             query_global_topics()
 
 
-def test_put_topic_raises_store_error_when_table_is_missing(aws_credentials):
-    with mock_aws():
-        with pytest.raises(TopicCatalogStoreError):
-            put_topic("other", "其他", "Other", "その他", display_order=7)
-
-
 def test_query_global_topics_converts_a_botocore_error_too(monkeypatch):
     monkeypatch.setattr(topic_catalog_store, "_resource", lambda: (_ for _ in ()).throw(EndpointConnectionError(endpoint_url="https://dynamodb.example.invalid")))
 
     with pytest.raises(TopicCatalogStoreError):
         query_global_topics()
-
-
-def test_put_topic_converts_a_botocore_error_too(monkeypatch):
-    monkeypatch.setattr(topic_catalog_store, "_resource", lambda: (_ for _ in ()).throw(EndpointConnectionError(endpoint_url="https://dynamodb.example.invalid")))
-
-    with pytest.raises(TopicCatalogStoreError):
-        put_topic("other", "其他", "Other", "その他", display_order=7)

@@ -1,0 +1,690 @@
+{
+ "_comment": "Read-only snapshot of production YobiTopicCatalog, catalog_id=GLOBAL (2026-10-15, 52 topics). Test fixture only: the table itself is the source of truth and nothing here is ever written back.",
+ "items": [
+  {
+   "legacy_label": "VALORANT",
+   "catalog_id": "GLOBAL",
+   "display_order": 0,
+   "topic_zh": "VALO",
+   "topic_ja": "VALO",
+   "search_aliases": [
+    "valorant",
+    "valo",
+    "バロラント",
+    "ヴァロ",
+    "ヴァロラント"
+   ],
+   "topic_en": "VALO",
+   "topic_tag": "valorant"
+  },
+  {
+   "legacy_label": "SF6",
+   "catalog_id": "GLOBAL",
+   "display_order": 1,
+   "topic_zh": "SF6",
+   "topic_ja": "SF6",
+   "search_aliases": [
+    "sf6",
+    "streetfighter6",
+    "streetfightervi",
+    "streetfighter 6",
+    "streetfighter vi",
+    "street fighter6",
+    "street fightervi",
+    "street fighter 6",
+    "street fighter vi",
+    "ストリートファイター6",
+    "ストリートファイターvi",
+    "ストリートファイター 6",
+    "ストリートファイター vi",
+    "スト6",
+    "スト 6"
+   ],
+   "topic_en": "SF6",
+   "topic_tag": "sf6"
+  },
+  {
+   "legacy_label": "APEX",
+   "catalog_id": "GLOBAL",
+   "display_order": 2,
+   "topic_zh": "Apex",
+   "topic_ja": "Apex",
+   "search_aliases": [
+    "apex",
+    "apexlegends",
+    "apex legends",
+    "エーペックス",
+    "エペ"
+   ],
+   "topic_en": "Apex",
+   "topic_tag": "apex"
+  },
+  {
+   "legacy_label": "Minecraft",
+   "catalog_id": "GLOBAL",
+   "display_order": 3,
+   "topic_zh": "Minecraft",
+   "topic_ja": "Minecraft",
+   "search_aliases": [
+    "minecraft",
+    "マインクラフト",
+    "マイクラ"
+   ],
+   "topic_en": "Minecraft",
+   "topic_tag": "minecraft"
+  },
+  {
+   "legacy_label": "Singing",
+   "catalog_id": "GLOBAL",
+   "display_order": 4,
+   "topic_zh": "歌回",
+   "topic_ja": "歌枠",
+   "search_aliases": [
+    "歌枠",
+    "歌回",
+    "歌配信",
+    "karaoke",
+    "カラオケ",
+    "singing"
+   ],
+   "topic_en": "Singing",
+   "topic_tag": "singing"
+  },
+  {
+   "legacy_label": "MV",
+   "catalog_id": "GLOBAL",
+   "display_order": 5,
+   "topic_zh": "MV",
+   "topic_ja": "MV",
+   "search_aliases": [
+    "mv",
+    "musicvideo",
+    "music video",
+    "cover",
+    "covered",
+    "originalsong",
+    "original song",
+    "歌ってみた",
+    "オリジナル曲",
+    "原創曲",
+    "原創歌曲"
+   ],
+   "topic_en": "MV",
+   "topic_tag": "mv"
+  },
+  {
+   "legacy_label": "Chatting",
+   "catalog_id": "GLOBAL",
+   "display_order": 6,
+   "topic_zh": "雜談",
+   "topic_ja": "雑談",
+   "search_aliases": [
+    "雑談",
+    "zatsudan",
+    "freetalk",
+    "free talk",
+    "chatting"
+   ],
+   "topic_en": "Chatting",
+   "topic_tag": "chatting"
+  },
+  {
+   "legacy_label": "Other",
+   "catalog_id": "GLOBAL",
+   "display_order": 7,
+   "topic_zh": "其他",
+   "topic_ja": "その他",
+   "search_aliases": [],
+   "topic_en": "Other",
+   "topic_tag": "other"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 8,
+   "topic_zh": "Phasmophobia",
+   "topic_ja": "Phasmophobia",
+   "search_aliases": [],
+   "topic_en": "Phasmophobia",
+   "topic_tag": "phasmophobia"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 9,
+   "topic_zh": "Gartic Phone",
+   "topic_ja": "Gartic Phone",
+   "search_aliases": [],
+   "topic_en": "Gartic Phone",
+   "topic_tag": "gartic_phone"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 10,
+   "topic_zh": "R.E.P.O.",
+   "topic_ja": "R.E.P.O.",
+   "search_aliases": [],
+   "topic_en": "R.E.P.O.",
+   "topic_tag": "repo"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 11,
+   "topic_zh": "Lethal Company",
+   "topic_ja": "Lethal Company",
+   "search_aliases": [],
+   "topic_en": "Lethal Company",
+   "topic_tag": "lethal_company"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 12,
+   "topic_zh": "Among Us",
+   "topic_ja": "Among Us",
+   "search_aliases": [],
+   "topic_en": "Among Us",
+   "topic_tag": "among_us"
+  },
+  {
+   "translation_review_status": "pending_review",
+   "catalog_id": "GLOBAL",
+   "display_order": 13,
+   "topic_zh": "PEAK",
+   "topic_ja": "PEAK",
+   "search_aliases": [],
+   "topic_en": "PEAK",
+   "topic_tag": "peak"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 14,
+   "topic_zh": "HoloCure",
+   "topic_ja": "HoloCure",
+   "search_aliases": [],
+   "topic_en": "HoloCure",
+   "topic_tag": "holocure"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 15,
+   "topic_zh": "Fall Guys",
+   "topic_ja": "Fall Guys",
+   "search_aliases": [],
+   "topic_en": "Fall Guys",
+   "topic_tag": "fall_guys"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 16,
+   "topic_zh": "TCG Card Shop Simulator",
+   "topic_ja": "TCG Card Shop Simulator",
+   "search_aliases": [],
+   "topic_en": "TCG Card Shop Simulator",
+   "topic_tag": "tcg_card_shop_simulator"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 17,
+   "topic_zh": "Palworld",
+   "topic_ja": "Palworld",
+   "search_aliases": [],
+   "topic_en": "Palworld",
+   "topic_tag": "palworld"
+  },
+  {
+   "translation_review_status": "pending_review",
+   "catalog_id": "GLOBAL",
+   "display_order": 18,
+   "topic_zh": "Suika Game",
+   "topic_ja": "スイカゲーム",
+   "search_aliases": [],
+   "topic_en": "Suika Game",
+   "topic_tag": "suika_game"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 19,
+   "topic_zh": "Rust",
+   "topic_ja": "Rust",
+   "search_aliases": [],
+   "topic_en": "Rust",
+   "topic_tag": "rust"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 20,
+   "topic_zh": "ARK",
+   "topic_ja": "ARK",
+   "search_aliases": [],
+   "topic_en": "ARK",
+   "topic_tag": "ark"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 21,
+   "topic_zh": "Chained Together",
+   "topic_ja": "Chained Together",
+   "search_aliases": [],
+   "topic_en": "Chained Together",
+   "topic_tag": "chained_together"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 22,
+   "topic_zh": "Vampire Survivors",
+   "topic_ja": "Vampire Survivors",
+   "search_aliases": [],
+   "topic_en": "Vampire Survivors",
+   "topic_tag": "vampire_survivors"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 23,
+   "topic_zh": "GeoGuessr",
+   "topic_ja": "GeoGuessr",
+   "search_aliases": [],
+   "topic_en": "GeoGuessr",
+   "topic_tag": "geoguessr"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 24,
+   "topic_zh": "Liar's Bar",
+   "topic_ja": "Liar's Bar",
+   "search_aliases": [],
+   "topic_en": "Liar's Bar",
+   "topic_tag": "liars_bar"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 25,
+   "topic_zh": "Dead by Daylight",
+   "topic_ja": "Dead by Daylight",
+   "search_aliases": [],
+   "topic_en": "Dead by Daylight",
+   "topic_tag": "dead_by_daylight"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 26,
+   "topic_zh": "Fast Food Simulator",
+   "topic_ja": "Fast Food Simulator",
+   "search_aliases": [],
+   "topic_en": "Fast Food Simulator",
+   "topic_tag": "fast_food_simulator"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 27,
+   "topic_zh": "Buckshot Roulette",
+   "topic_ja": "Buckshot Roulette",
+   "search_aliases": [],
+   "topic_en": "Buckshot Roulette",
+   "topic_tag": "buckshot_roulette"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 28,
+   "topic_zh": "Don't Scream",
+   "topic_ja": "Don't Scream",
+   "search_aliases": [],
+   "topic_en": "Don't Scream",
+   "topic_tag": "dont_scream"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 29,
+   "topic_zh": "Bombanana!",
+   "topic_ja": "Bombanana!",
+   "search_aliases": [],
+   "topic_en": "Bombanana!",
+   "topic_tag": "bombanana"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 30,
+   "topic_zh": "Unpacking",
+   "topic_ja": "Unpacking",
+   "search_aliases": [],
+   "topic_en": "Unpacking",
+   "topic_tag": "unpacking"
+  },
+  {
+   "translation_review_status": "pending_review",
+   "catalog_id": "GLOBAL",
+   "display_order": 31,
+   "topic_zh": "Mario Kart 8 Deluxe",
+   "topic_ja": "マリオカート8DX",
+   "search_aliases": [],
+   "topic_en": "Mario Kart 8 Deluxe",
+   "topic_tag": "mario_kart_8dx"
+  },
+  {
+   "translation_review_status": "pending_review",
+   "catalog_id": "GLOBAL",
+   "display_order": 32,
+   "topic_zh": "Clubhouse Games",
+   "topic_ja": "アソビ大全",
+   "search_aliases": [],
+   "topic_en": "Clubhouse Games",
+   "topic_tag": "clubhouse_games"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 33,
+   "topic_zh": "Forza Horizon 6",
+   "topic_ja": "Forza Horizon 6",
+   "search_aliases": [],
+   "topic_en": "Forza Horizon 6",
+   "topic_tag": "forza_horizon_6"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 34,
+   "topic_zh": "MIMESIS",
+   "topic_ja": "MIMESIS",
+   "search_aliases": [],
+   "topic_en": "MIMESIS",
+   "topic_tag": "mimesis"
+  },
+  {
+   "translation_review_status": "pending_review",
+   "catalog_id": "GLOBAL",
+   "display_order": 35,
+   "topic_zh": "Pokemon Scarlet/Violet",
+   "topic_ja": "ポケモンSV",
+   "search_aliases": [],
+   "topic_en": "Pokemon Scarlet/Violet",
+   "topic_tag": "pokemon_sv"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 36,
+   "topic_zh": "ASMR",
+   "topic_ja": "ASMR",
+   "search_aliases": [],
+   "topic_en": "ASMR",
+   "topic_tag": "asmr"
+  },
+  {
+   "translation_review_status": "pending_review",
+   "catalog_id": "GLOBAL",
+   "display_order": 37,
+   "topic_zh": "同步觀看",
+   "topic_ja": "同時視聴",
+   "search_aliases": [],
+   "topic_en": "Watch-along",
+   "topic_tag": "watch_along"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 38,
+   "topic_zh": "Stardew Valley",
+   "topic_ja": "Stardew Valley",
+   "search_aliases": [],
+   "topic_en": "Stardew Valley",
+   "topic_tag": "stardew_valley"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 39,
+   "topic_zh": "Undertale",
+   "topic_ja": "Undertale",
+   "search_aliases": [],
+   "topic_en": "Undertale",
+   "topic_tag": "undertale"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 40,
+   "topic_zh": "Cooking Simulator",
+   "topic_ja": "Cooking Simulator",
+   "search_aliases": [],
+   "topic_en": "Cooking Simulator",
+   "topic_tag": "cooking_simulator"
+  },
+  {
+   "translation_review_status": "pending_review",
+   "catalog_id": "GLOBAL",
+   "display_order": 41,
+   "topic_zh": "Q Remastered",
+   "topic_ja": "Q Remastered",
+   "search_aliases": [],
+   "topic_en": "Q Remastered",
+   "topic_tag": "q_remastered"
+  },
+  {
+   "translation_review_status": "verified",
+   "catalog_id": "GLOBAL",
+   "display_order": 42,
+   "topic_zh": "Elden Ring",
+   "topic_ja": "Elden Ring",
+   "search_aliases": [],
+   "topic_en": "Elden Ring",
+   "topic_tag": "elden_ring"
+  },
+  {
+   "topic_ja": "周年",
+   "translation_review_status": "pending_review",
+   "topic_zh": "周年",
+   "search_aliases": [
+    "anniversary",
+    "周年"
+   ],
+   "catalog_id": "GLOBAL",
+   "display_order": 43,
+   "topic_tag": "anniversary",
+   "topic_en": "Anniversary"
+  },
+  {
+   "topic_ja": "誕生日",
+   "topic_tag": "誕生日",
+   "translation_review_status": "pending_review",
+   "catalog_id": "GLOBAL",
+   "display_order": 44,
+   "search_aliases": [
+    "誕生日",
+    "誕生日配信",
+    "birthday",
+    "3d birthday live"
+   ],
+   "topic_en": "Birthday",
+   "topic_zh": "生日"
+  },
+  {
+   "translation_review_status": "pending_review",
+   "catalog_id": "GLOBAL",
+   "search_aliases": [
+    "3d",
+    "3D",
+    "３D",
+    "３Ｄ",
+    "3d birthday live",
+    "3d concert",
+    "3d debut",
+    "3dデビュー",
+    "3d live",
+    "3d live映像",
+    "3dlive",
+    "3dlive振り返り",
+    "3d showcase",
+    "3d stream",
+    "3dvr",
+    "3dお披露目",
+    "3dオフコラボ",
+    "3dコラボ",
+    "3dライブ",
+    "3d企画",
+    "3d全身配信",
+    "3d放送",
+    "3d生放送",
+    "3d配信",
+    "おうち3d",
+    "サマー3d",
+    "セルフ3d",
+    "セルフブース3d",
+    "ポップン3d実機プレイ/後夜祭"
+   ],
+   "display_order": 45,
+   "topic_ja": "3D",
+   "topic_en": "3D",
+   "topic_tag": "3d",
+   "topic_zh": "3D"
+  },
+  {
+   "topic_ja": "2D",
+   "topic_en": "2D",
+   "translation_review_status": "pending_review",
+   "catalog_id": "GLOBAL",
+   "display_order": 46,
+   "topic_zh": "2D",
+   "search_aliases": [
+    "2d",
+    "2D",
+    "２D",
+    "２Ｄ",
+    "live2d",
+    "Live2D",
+    "2d生放送",
+    "2dライブ",
+    "2dデビュー",
+    "live2dアニメーション",
+    "新live2dお披露目"
+   ],
+   "topic_tag": "2d"
+  },
+  {
+   "display_order": 47,
+   "topic_en": "Debut",
+   "translation_review_status": "pending_review",
+   "topic_zh": "出道",
+   "catalog_id": "GLOBAL",
+   "search_aliases": [
+    "デビュー",
+    "debut",
+    "2dデビュー",
+    "3d debut",
+    "3dデビュー"
+   ],
+   "topic_ja": "デビュー",
+   "topic_tag": "デビュー"
+  },
+  {
+   "display_order": 48,
+   "topic_en": "Live Concert",
+   "translation_review_status": "pending_review",
+   "search_aliases": [
+    "ライブ",
+    "live concert",
+    "concert",
+    "2dライブ",
+    "3d birthday live",
+    "3d concert",
+    "3d live",
+    "3d live映像",
+    "3dlive",
+    "3dlive振り返り",
+    "3D LIVE",
+    "3dライブ"
+   ],
+   "catalog_id": "GLOBAL",
+   "topic_ja": "ライブ",
+   "topic_tag": "ライブ",
+   "topic_zh": "演唱會"
+  },
+  {
+   "translation_review_status": "pending_review",
+   "display_order": 49,
+   "catalog_id": "GLOBAL",
+   "search_aliases": [
+    "生放送",
+    "live broadcast",
+    "livestream",
+    "2d生放送",
+    "3d生放送"
+   ],
+   "topic_en": "Livestream",
+   "topic_zh": "直播",
+   "topic_ja": "生放送",
+   "topic_tag": "生放送"
+  },
+  {
+   "topic_zh": "公告",
+   "translation_review_status": "pending_review",
+   "display_order": 50,
+   "search_aliases": [
+    "告知",
+    "announcement"
+   ],
+   "catalog_id": "GLOBAL",
+   "topic_ja": "告知",
+   "topic_en": "Announcement",
+   "topic_tag": "告知"
+  },
+  {
+   "topic_ja": "ペルソナ",
+   "topic_tag": "persona",
+   "translation_review_status": "pending_review",
+   "topic_zh": "女神異聞錄",
+   "catalog_id": "GLOBAL",
+   "search_aliases": [
+    "persona",
+    "ペルソナ",
+    "女神異聞錄",
+    "女神異聞録",
+    "persona 3",
+    "persona 3 portable",
+    "persona 3 reload",
+    "persona 3: reload",
+    "p3",
+    "p3p",
+    "p3r",
+    "ペルソナ3",
+    "ペルソナ3ポータブル",
+    "ペルソナ3 リロード",
+    "persona 4",
+    "persona 4 golden",
+    "p4",
+    "p4g",
+    "ペルソナ4",
+    "ペルソナ4 ザ・ゴールデン",
+    "persona 5",
+    "persona 5 royal",
+    "persona 5: the phantom x",
+    "p5",
+    "p5r",
+    "p5x",
+    "ペルソナ5",
+    "ペルソナ5 ザ・ロイヤル",
+    "ペルソナ5: the phantom x"
+   ],
+   "display_order": 51,
+   "topic_en": "Persona"
+  }
+ ]
+}

@@ -11,7 +11,7 @@ individually small, or channel-specific/agency-branded/genre-level and deliberat
 recommended -- see AMBIGUOUS_NOT_RECOMMENDED below and the full inventory this was built from,
 which a human reviewer can ask to see in full) -- into the same Topic shape
 tracking.video_topics.TOPICS already uses, so adopting any of them later is a pure data change
-(copy the entry into TOPICS, re-run scripts/migration/seed_topic_catalog_dynamodb.py), never an
+(a topic exists only once it is in the approved Topic Catalog; the pattern then lives in tracking.video_topics.PATTERN_LIBRARY), never an
 architecture change.
 
 Every regex here was counted against the REAL 97,604-title corpus and every candidate's match

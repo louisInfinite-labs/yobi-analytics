@@ -35,7 +35,7 @@ from typing import Any, Mapping
 from analytics.history_ranking import exact_gains
 from stores.history_store import EXACT_ANCHOR_DAYS, HistoryRow
 from tracking.video_master import VALID_CONTENT_TYPES, VALID_LIVE_STATUSES
-from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS
+from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS, LiveSet
 
 TOTAL_METRIC = "total"
 GROWTH_METRICS = tuple(f"{days}d" for days in EXACT_ANCHOR_DAYS)  # ("1d", "7d", "30d")
@@ -45,7 +45,8 @@ VALID_METRICS = (TOTAL_METRIC,) + GROWTH_METRICS
 # own filter keyword for "no topic filter", the same "all" + closed-enum
 # shape analytics.subscriber_ranking/read_api already use for organization.
 TOPIC_SCOPE_ALL = "all"
-VALID_TOPIC_SCOPES = frozenset({TOPIC_SCOPE_ALL}) | TOPIC_IDS
+# A live view: the valid scopes follow the Topic Catalog (tracking.video_topics), they are not frozen at import.
+VALID_TOPIC_SCOPES = LiveSet(lambda: frozenset(TOPIC_IDS) | {TOPIC_SCOPE_ALL})
 
 # Same "all" + closed-enum shape as topic above, but a genuinely separate
 # dimension: contentType ("live"/"upload", video_master.VALID_CONTENT_TYPES)
