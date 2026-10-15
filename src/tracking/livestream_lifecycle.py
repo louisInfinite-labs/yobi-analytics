@@ -1,11 +1,30 @@
-"""Livestream completion lifecycle: a centralized, periodic Holodex refresh that GET /live-streams reads from
-instead of calling Holodex itself, plus completion detection for a stream that drops out of Holodex's live/upcoming
-response.
+"""Livestream lifecycle: two independent jobs in one Lambda, plus the freshness-aware read GET /live-streams uses.
 
-Runs as its own Lambda (yobi-analytics-livestream-lifecycle) on a 5-minute EventBridge schedule
-(terraform/eventbridge.tf), with reserved_concurrent_executions=1 (terraform/lambda.tf) so two cycles can never
-overlap -- this job's own read-modify-write of the pending-candidates set below is not otherwise safe under
-concurrent execution. Each run (refresh_snapshot):
+1. DISPLAY refresh (refresh_display_snapshot, every 1 minute, event {"mode": "display"}): fetches Holodex's
+   live/upcoming list and persists it as the display snapshot GET /live-streams serves. This is what makes a newly
+   started stream (OFFLINE -> LIVE, UPCOMING -> LIVE) visible within about a minute. It knows nothing about
+   completion candidates, so the 5-minute completion cadence below never gates LIVE/UPCOMING visibility.
+2. COMPLETION lifecycle (refresh_snapshot, every 5 minutes, any other event -- unchanged): detection and
+   verification of streams that ended, described below. It keeps its own snapshot (its diff baseline) and its own
+   12-attempt / ~1 hour retry window, which are deliberately untouched by the 1-minute display job.
+
+Both run as the same Lambda (yobi-analytics-livestream-lifecycle) under two EventBridge schedules
+(terraform/eventbridge.tf), with reserved_concurrent_executions=1 (terraform/lambda.tf) so two runs can never
+overlap -- the completion job's own read-modify-write of the pending-candidates set below is not otherwise safe
+under concurrent execution (a display run that arrives mid-cycle is queued by Lambda and runs right after).
+
+The display job's upstream-request controls: one aggregate Holodex request per run (never per creator or per
+browser request), no in-run retry (the next minute is the retry), a shared cooldown persisted with the snapshot
+(HTTP 429 -> 5 minutes; three consecutive failures -> 2/4/8/10-minute exponential cooldown) so an unhealthy upstream is
+never hammered, and a ceiling of 1,440 requests/day however many tabs are open.
+
+read_serving_snapshot is what GET /live-streams reads: it picks the freshest of the two snapshots, serves it while
+it is at most MAX_SNAPSHOT_AGE_SECONDS old, and raises LiveSnapshotStaleError (HTTP 503) rather than silently serve
+arbitrarily old data if both refreshers have stopped. The direct-Holodex fallback in api.read_api exists only for
+the "nothing was ever persisted" case (fresh deploy / non-DynamoDB environments), never for a stale snapshot.
+
+COMPLETION lifecycle -- a centralized, periodic Holodex refresh plus completion detection for a stream that drops out
+of Holodex's live/upcoming response. Each run (refresh_snapshot):
 
   1. Fetches the current live/upcoming list the same way api.read_api.get_live_streams always has
      (api.read_api.fetch_live_streams_from_holodex is the single source of truth for "what does Holodex say is
@@ -50,15 +69,33 @@ from __future__ import annotations
 
 import random
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from api.holodex_client import HolodexAPIError
 from notifications.live_reminder import SYSTEM_CLIENT_ID
 from stores.remote_config_store import get_remote_config, put_remote_config
 
 # A distinct key from notifications.live_reminder.STREAM_SCHEDULE_KEY: that one backs the live-reminder dispatcher's
 # own 15-minute-gated schedule and must not be touched by this feature; this is its own independent record.
 LIVE_SNAPSHOT_KEY = "liveStreamSnapshot"
+
+# The display snapshot the 1-minute job writes and GET /live-streams prefers -- its own key, so the completion job's
+# snapshot (its diff baseline) and pending set are never touched by it.
+DISPLAY_SNAPSHOT_KEY = "liveStreamDisplaySnapshot"
+
+# GET /live-streams serves the display snapshot while it is at most this old (3 missed 1-minute runs), then falls back
+# to whichever of the two snapshots is freshest, and refuses (LiveSnapshotStaleError -> 503) once even that is older
+# than MAX_SNAPSHOT_AGE_SECONDS (3 missed 5-minute completion runs) -- bounded staleness, never an indefinite OFFLINE.
+DISPLAY_FRESH_SECONDS = 180
+MAX_SNAPSHOT_AGE_SECONDS = 900
+
+# Display-job cooldowns (see the module docstring): an HTTP 429 backs off for 5 minutes, and from the third consecutive
+# failure on the cooldown doubles from 2 minutes up to a 10-minute cap. One or two isolated failures cost nothing.
+_DISPLAY_RATE_LIMIT_COOLDOWN_SECONDS = 300
+_DISPLAY_COOLDOWN_AFTER_FAILURES = 3
+_DISPLAY_COOLDOWN_BASE_SECONDS = 120
+_DISPLAY_COOLDOWN_CAP_SECONDS = 600
 
 # Bounded retry around the one Holodex call this job makes per run -- a single transient failure must not skip a
 # whole 5-minute cycle (and, worse, spuriously treat every currently-live stream as a completion candidate).
@@ -226,6 +263,120 @@ def refresh_snapshot(*, now: datetime | None = None) -> dict[str, Any]:
     return {"refreshed": True, "streamCount": len(streams), "completionCandidates": candidates, "confirmedCompleted": confirmed}
 
 
+class LiveSnapshotStaleError(HolodexAPIError):
+    """Every persisted live snapshot is older than MAX_SNAPSHOT_AGE_SECONDS: both refreshers have stopped or are failing.
+
+    A HolodexAPIError subclass so api_handler.py's existing "live data temporarily unavailable" 503 mapping applies --
+    an explicit bounded error instead of serving an arbitrarily old (possibly all-OFFLINE) list as if it were current.
+    """
+
+
+def _parse_moment(value: Any) -> datetime | None:
+    """An ISO-8601 timestamp as an aware datetime, or None if absent/unparseable (an unusable snapshot)."""
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
+
+
+def _read_record(key: str) -> dict[str, Any] | None:
+    """The persisted record's `value` for `key`, or None if nothing was persisted under it."""
+    record = get_remote_config(SYSTEM_CLIENT_ID, key)
+    return record["value"] if record is not None else None
+
+
+def _usable(value: dict[str, Any] | None) -> tuple[list[dict[str, Any]], datetime] | None:
+    """(streams, refreshedAt) when a snapshot value carries both, else None (e.g. a display record that so far only
+    holds failure/cooldown bookkeeping, or a malformed one)."""
+    if value is None or not isinstance(value.get("streams"), list):
+        return None
+    refreshed_at = _parse_moment(value.get("refreshedAt"))
+    return (value["streams"], refreshed_at) if refreshed_at is not None else None
+
+
+def read_serving_snapshot(*, now: datetime | None = None) -> list[dict[str, Any]] | None:
+    """The streams GET /live-streams should serve, with bounded staleness.
+
+    - The display snapshot, when it is at most DISPLAY_FRESH_SECONDS old (the normal case: one DynamoDB read).
+    - Otherwise the freshest of the display and completion snapshots, when that one is at most MAX_SNAPSHOT_AGE_SECONDS
+      old (the display job is late or failing but the completion job still refreshes).
+    - Raises LiveSnapshotStaleError when snapshots exist but all are older than that: never silently serves them.
+    - None only when no usable snapshot was ever persisted (fresh deploy / non-DynamoDB environment): the caller then
+      falls back to its own one-request direct Holodex fetch, exactly as before this existed.
+
+    A store read failure propagates (never folded into the fallback), see api.read_api._read_shared_live_snapshot.
+    """
+    moment = now or datetime.now(timezone.utc)
+    display = _usable(_read_record(DISPLAY_SNAPSHOT_KEY))
+    if display is not None and (moment - display[1]).total_seconds() <= DISPLAY_FRESH_SECONDS:
+        return display[0]
+    completion = _usable(_read_record(LIVE_SNAPSHOT_KEY))
+    candidates = [snapshot for snapshot in (display, completion) if snapshot is not None]
+    if not candidates:
+        return None
+    streams, refreshed_at = max(candidates, key=lambda snapshot: snapshot[1])
+    if (moment - refreshed_at).total_seconds() > MAX_SNAPSHOT_AGE_SECONDS:
+        raise LiveSnapshotStaleError(
+            f"live stream snapshot is stale: freshest refresh was {refreshed_at.isoformat()}, "
+            f"more than {MAX_SNAPSHOT_AGE_SECONDS}s ago"
+        )
+    return streams
+
+
+def _display_cooldown_seconds(failures: int, error: Exception) -> int:
+    """How long the display job stays off Holodex after a failed run: 0 for an isolated failure, 300s for a 429, and an
+    exponential 120s..600s from the third consecutive failure."""
+    if getattr(error, "status_code", None) == 429:
+        return _DISPLAY_RATE_LIMIT_COOLDOWN_SECONDS
+    if failures < _DISPLAY_COOLDOWN_AFTER_FAILURES:
+        return 0
+    return min(_DISPLAY_COOLDOWN_CAP_SECONDS, _DISPLAY_COOLDOWN_BASE_SECONDS * 2 ** (failures - _DISPLAY_COOLDOWN_AFTER_FAILURES))
+
+
+def _put_display_record(value: dict[str, Any], moment: datetime) -> None:
+    """Persist the display snapshot record under its own key."""
+    put_remote_config({"clientId": SYSTEM_CLIENT_ID, "key": DISPLAY_SNAPSHOT_KEY, "value": value, "updatedAt": moment.isoformat()})
+
+
+def refresh_display_snapshot(*, now: datetime | None = None) -> dict[str, Any]:
+    """One display refresh: a single aggregate Holodex request, persisted as the snapshot GET /live-streams serves.
+
+    No in-run retry (the next minute is the retry) and a persisted shared cooldown (see the module docstring), so the
+    upstream request rate can never exceed one per minute. A failure never overwrites the last good streams or its
+    refreshedAt -- only the failure bookkeeping changes -- and the snapshot's age is what bounds staleness for readers.
+    Never raises on a Holodex failure; returns a summary for logging/tests.
+    """
+    moment = now or datetime.now(timezone.utc)
+    previous = _read_record(DISPLAY_SNAPSHOT_KEY) or {}
+    cooldown_until = _parse_moment(previous.get("cooldownUntil"))
+    if cooldown_until is not None and moment < cooldown_until:
+        return {"refreshed": False, "skipped": "cooldown", "cooldownUntil": cooldown_until.isoformat()}
+
+    from api.read_api import fetch_live_streams_from_holodex
+
+    try:
+        streams = fetch_live_streams_from_holodex()
+    except Exception as exc:  # noqa: BLE001 -- HolodexAPIError/MissingHolodexApiKeyError/anything else: availability first
+        failures = int(previous.get("consecutiveFailures", 0)) + 1
+        cooldown = _display_cooldown_seconds(failures, exc)
+        record = {key: value for key, value in previous.items() if key not in ("consecutiveFailures", "cooldownUntil", "lastFailureAt")}
+        record.update({"consecutiveFailures": failures, "lastFailureAt": moment.isoformat()})
+        if cooldown:
+            record["cooldownUntil"] = (moment + timedelta(seconds=cooldown)).isoformat()
+        _put_display_record(record, moment)
+        print(f"Warning: live display refresh failed ({type(exc).__name__}): {exc}; keeping the last snapshot, cooldown {cooldown}s")
+        return {"refreshed": False, "failures": failures, "cooldownSeconds": cooldown}
+
+    _put_display_record({"streams": streams, "refreshedAt": moment.isoformat(), "consecutiveFailures": 0}, moment)
+    return {"refreshed": True, "streamCount": len(streams)}
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """EventBridge Scheduler entry point (yobi-analytics-livestream-lifecycle, rate(5 minutes))."""
+    """EventBridge Scheduler entry point (yobi-analytics-livestream-lifecycle): the 1-minute schedule sends
+    {"mode": "display"}; the 5-minute completion schedule sends no input and keeps its original behavior."""
+    if isinstance(event, dict) and event.get("mode") == "display":
+        return refresh_display_snapshot()
     return refresh_snapshot()

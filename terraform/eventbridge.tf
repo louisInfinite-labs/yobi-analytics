@@ -222,3 +222,36 @@ resource "aws_scheduler_schedule" "livestream_lifecycle_refresh" {
     }
   }
 }
+
+# Livestream DISPLAY refresh: every minute, the same Lambda as above with {"mode":"display"}. This is what makes a
+# newly started stream visible within about a minute; the 5-minute completion lifecycle above is untouched (its own
+# snapshot, pending-candidate set and 12-attempt retry window are not shared with this job). One aggregate Holodex
+# request per run with a persisted shared cooldown on failure (tracking/livestream_lifecycle.py), so the upstream rate
+# is capped at 1,440 requests/day regardless of how many browser tabs are open. Re-uses the existing scheduler role
+# (it already holds lambda:InvokeFunction on this function, as the 5-minute schedule works) and the shared DLQ; a run
+# that cannot start within 2 minutes is dropped rather than retried, since the next minute's run supersedes it.
+resource "aws_scheduler_schedule" "livestream_display_refresh" {
+  name                         = "yobi-analytics-livestream-display-refresh"
+  group_name                   = "default"
+  schedule_expression          = "rate(1 minute)"
+  schedule_expression_timezone = "UTC"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.livestream_lifecycle.arn
+    role_arn = local.scheduler_role_arn
+    input    = "{\"mode\":\"display\"}"
+
+    retry_policy {
+      maximum_retry_attempts       = 1
+      maximum_event_age_in_seconds = 120
+    }
+
+    dead_letter_config {
+      arn = aws_sqs_queue.scheduler_dlq.arn
+    }
+  }
+}

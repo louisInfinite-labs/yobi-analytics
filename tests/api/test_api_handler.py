@@ -13,6 +13,7 @@ from api.holodex_normalization import HolodexNormalizationError
 from notifications import notification_dispatch
 from notifications import push_sender
 from ops.config import MissingHolodexApiKeyError
+from tracking.livestream_lifecycle import LiveSnapshotStaleError
 from api import read_api
 from api import remote_config_api
 from stores import notification_slot_store
@@ -1194,8 +1195,9 @@ def test_get_live_streams_returns_200(monkeypatch):
         HolodexAPIError("Holodex API request to '/live' timed out"),
         HolodexNormalizationError("Expected a list from Holodex's /live response, got dict"),
         MissingHolodexApiKeyError("Neither HOLODEX_SECRET_NAME nor HOLODEX_API_KEY is set."),
+        LiveSnapshotStaleError("live stream snapshot is stale"),
     ],
-    ids=["client_failure", "normalization_failure", "missing_api_key"],
+    ids=["client_failure", "normalization_failure", "missing_api_key", "stale_snapshot"],
 )
 def test_get_live_streams_maps_every_holodex_failure_to_503_not_a_fabricated_result(monkeypatch, capsys, exc):
     def _boom(query):
