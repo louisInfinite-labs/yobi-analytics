@@ -741,6 +741,9 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
     # Filter order is creator -> topic -> contentType -> liveStatus -> sort -> offset/limit, all over the
     # creator's WHOLE persisted catalog, so a matching video is never lost to an earlier truncation.
     rows = [row for row in result["videos"] if row.get("creatorId") == creator_id]
+    if not query.get("reportDate"):
+        # Only the latest report is topped up with just-completed streams; an explicitly requested reportDate is a historical view and stays exactly as persisted.
+        rows = _with_verified_completed_streams(rows, creator_id)
     if topic != VIDEO_RANKING_TOPIC_ALL:
         rows = [row for row in rows if row.get("topic") == topic]
     if content_type != VIDEO_RANKING_CONTENT_TYPE_ALL:
@@ -773,6 +776,7 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
             "thumbnailUrl": row.get("thumbnailUrl"),
             "publishedAt": row.get("publishedAt"),
             "discoveredAt": row.get("discoveredAt"),
+            **({"provisional": True} if row.get("provisional") else {}),
         }
         for row in page
     ]
@@ -1386,7 +1390,88 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     streams = _read_shared_live_snapshot()
     if streams is None:
         streams = fetch_live_streams_from_holodex()
-    return {"streams": _without_known_non_livestreams(streams)}
+    body: dict[str, Any] = {"streams": _without_known_non_livestreams(streams)}
+    recently_ended = _read_recently_ended()
+    if recently_ended is not None:
+        body["recentlyEnded"] = recently_ended
+    return body
+
+
+def _read_recently_ended() -> list[dict[str, Any]] | None:
+    """The streams the 5-minute lifecycle has confirmed ended (tracking.livestream_lifecycle.read_recently_ended), or None -- field omitted --
+    when that is not available: a non-DynamoDB backend, the feature not having run yet, or a read failure.
+
+    Best effort by design: the live/upcoming list is the endpoint's job and never depends on this. A read failure is logged and the field simply
+    omitted, which a client reads as "no end signal available" rather than as "nothing has ended"."""
+    if os.environ.get("YOBI_STORAGE_BACKEND") != "dynamodb":
+        return None
+    try:
+        from tracking.livestream_lifecycle import read_recently_ended
+
+        return read_recently_ended()
+    except Exception as exc:  # noqa: BLE001 -- the live list above must never fail because of this
+        print(f"Warning: could not read the recently-ended streams ({type(exc).__name__}): {exc}")
+        return None
+
+
+def _read_available_archives(creator_id: str) -> list[dict[str, Any]]:
+    """The creator's ended streams whose archive the lifecycle has VERIFIED available (tracking.livestream_lifecycle.read_available_archives),
+    or [] when there are none or they cannot be read. Best effort: Home's list is served from the S3 result either way."""
+    if os.environ.get("YOBI_STORAGE_BACKEND") != "dynamodb":
+        return []
+    try:
+        from tracking.livestream_lifecycle import read_available_archives
+
+        return read_available_archives(creator_id)
+    except Exception as exc:  # noqa: BLE001 -- never a reason to fail the Home list
+        print(f"Warning: could not read the verified completed streams ({type(exc).__name__}): {exc}")
+        return []
+
+
+def _with_verified_completed_streams(rows: list[dict[str, Any]], creator_id: str) -> list[dict[str, Any]]:
+    """Overlay the lifecycle's VERIFIED completed livestreams on one creator's persisted catalog, so a stream that ended after the last daily
+    ranking run is listed by Home's 最新直播 without waiting for the next 18:00 JST run.
+
+    Matched by EXACT videoId only. A verified-available stream the catalog already has as live/upcoming (stale since the last daily run) is
+    shown as completed -- every other field stays the catalog's; one the catalog lacks is added from the lifecycle's facts (title, publishedAt,
+    viewCount when YouTube shows it, else 0). A catalog row that is already completed, or is classified upload/short, is left alone. Either
+    kind of overlaid row carries `provisional: true` until the daily run replaces it. Nothing is overlaid for an archive that was not verified
+    (private, still processing, not embeddable, the creator not archiving) -- see tracking.livestream_lifecycle._evaluate_archive.
+
+    The result goes through the endpoint's normal topic -> contentType -> liveStatus -> sort -> offset/limit pipeline, so filters, ordering and
+    pagination treat these rows exactly like any other.
+    """
+    verified = _read_available_archives(creator_id)
+    if not verified:
+        return rows
+    by_video_id = {row["videoId"]: index for index, row in enumerate(rows)}
+    overlaid = list(rows)
+    for archive in verified:
+        video_id = archive["videoId"]
+        index = by_video_id.get(video_id)
+        if index is not None:
+            existing = overlaid[index]
+            if existing.get("liveStatus") == "completed" or existing.get("contentType") not in (None, "live"):
+                continue
+            overlaid[index] = {**existing, "contentType": "live", "liveStatus": "completed", "provisional": True}
+            continue
+        title = archive.get("title") or ""
+        overlaid.append(
+            {
+                "videoId": video_id,
+                "creatorId": creator_id,
+                "topic": classify_video_topic(title),
+                "contentType": "live",
+                "liveStatus": "completed",
+                "currentViewCount": archive.get("viewCount") or 0,
+                "title": title,
+                "thumbnailUrl": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                "publishedAt": archive.get("publishedAt"),
+                "discoveredAt": None,
+                "provisional": True,
+            }
+        )
+    return overlaid
 
 
 def _read_shared_live_snapshot() -> list[dict[str, Any]] | None:

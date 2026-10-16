@@ -128,6 +128,8 @@ jobs:
           tests/scripts/migration/test_backfill_notification_slots.py
           tests/tracking/test_livestream_lifecycle.py
           tests/tracking/test_livestream_display_refresh.py
+          tests/api/test_livestream_end_state_api.py
+          tests/collection/test_youtube_client_archive_probe.py
           tests/stores/test_dynamodb_video_live_status.py
           tests/test_subscriber_snapshot_wiring.py
 
