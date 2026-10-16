@@ -109,23 +109,23 @@ test.describe("overnight window held across several local midnights, released on
     await page.clock.resume()
   }
 
-  test("Oct 16 00:30 live -> Oct 17 and Oct 18 midnights while dropped/unconfirmed (also after a reload) -> Oct 18 02:00 confirmed", async ({ page }) => {
+  test("Oct 16 00:30 live -> still live across the Oct 17 and Oct 18 midnights (also after a reload) -> Oct 18 02:00 backend confirms", async ({ page }) => {
     const state: MockState = { streams: [liveStream("v-marathon", "aizawa_ema", STARTED)], recentlyEnded: [] }
     await open(page, state)
     await expect.poll(() => todayIndex(page)).toBe(1)
     expect((await headerDates(page))[0]).toBe("10/15") // LIVE: the schedule starts Oct 15
 
-    state.streams = [] // it drops out of the live list; the backend has not confirmed an end
-    await page.clock.fastForward(DAY_MS) // Sat Oct 17 00:30 AEST -- the second midnight
+    await page.clock.fastForward(DAY_MS) // Sat Oct 17 00:30 AEST -- the second midnight, still live
     await page.clock.runFor(125_000)
     await expect.poll(() => todayIndex(page)).toBe(2)
     expect(await headerDates(page)).toEqual(OCT)
 
-    await page.reload() // the tab is reloaded: the unresolved stream is remembered
+    await page.reload() // the tab is reloaded: the stream is still live and still remembered
     await page.clock.resume()
     await expect.poll(() => todayIndex(page)).toBe(2)
     expect((await headerDates(page))[0]).toBe("10/15")
 
+    state.streams = [] // it drops out of the live list on Oct 18 shortly before the backend confirms it
     await page.clock.fastForward(DAY_MS) // Sun Oct 18 00:30 AEST -- the third midnight
     await page.clock.runFor(125_000)
     await expect.poll(() => todayIndex(page)).toBe(3)
@@ -172,7 +172,7 @@ test.describe("overnight window held across several local midnights, released on
     await expect(page.locator(".day-column").nth(0).locator(".stream-avatar-button")).toHaveCount(1)
   })
 
-  test("an unconfirmed stream is held 13 and 30 hours later -- there is no age-based release", async ({ page }) => {
+  test("a dropped, unconfirmed stream is still held 13 hours on, and forgotten once 24 h have passed since it was last seen live (no confirmation can still be listed)", async ({ page }) => {
     const state: MockState = { streams: [liveStream("v-marathon", "aizawa_ema", STARTED)], recentlyEnded: [] }
     await open(page, state)
     await expect.poll(() => todayIndex(page)).toBe(1)
@@ -184,10 +184,10 @@ test.describe("overnight window held across several local midnights, released on
     await expect.poll(() => todayIndex(page)).toBe(1)
     expect((await headerDates(page))[0]).toBe("10/15")
 
-    await page.clock.fastForward(17 * 3_600_000) // Oct 17 06:30 -- 30 hours in, a midnight later
+    await page.clock.fastForward(26 * 3_600_000) // Oct 17 15:30 -- more than 24 h after the page last saw it live: no confirmation can still be listed
     await page.clock.runFor(125_000)
-    await expect.poll(() => todayIndex(page)).toBe(2)
-    expect((await headerDates(page))[0]).toBe("10/15")
+    await expect.poll(() => todayIndex(page)).toBe(0)
+    expect((await headerDates(page))[0]).toBe("10/17") // forgotten: the window starts on today again
   })
 
   test("two overnight streams: one confirmed ended and one still live keeps the date on the live one's day", async ({ page }) => {

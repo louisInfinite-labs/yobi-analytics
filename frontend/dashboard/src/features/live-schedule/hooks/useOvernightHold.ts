@@ -9,15 +9,20 @@ import { createSharedState, useSharedState } from "../../../shared/state/sharedS
 interface PendingOvernightStream {
   creatorId: string
   startMs: number
+  /** When this stream was last observed live (refreshed at most every LAST_SEEN_RESOLUTION_MS). A stream the backend never confirms is forgotten END_SIGNAL_WINDOW_MS after this. */
+  lastSeenMs?: number
 }
 
 type PendingOvernight = Record<string, PendingOvernightStream>
 
 const STORAGE_KEY = "yobi.schedule.overnightPending"
 const NONE: PendingOvernight = {}
-/** The backend keeps a confirmed end for seven days (RECENTLY_ENDED_RETENTION in tracking/livestream_lifecycle.py). A remembered stream older than that
- * can never be told "ended" again, so it is forgotten rather than holding the date forever. */
-const END_SIGNAL_HORIZON_MS = 7 * 24 * 3_600_000
+/** GET /live-streams lists a confirmed end for 24 hours (RECENTLY_ENDED_EXPOSE in tracking/livestream_lifecycle.py; the end is confirmed within minutes of the
+ * stream leaving the live list). A remembered stream not seen live for longer than that can never be told "ended" again, so it is forgotten rather than holding the
+ * date forever. Measured from the last time it was SEEN LIVE, not from its start: a stream that ran for days is not forgotten the moment it ends. */
+const END_SIGNAL_WINDOW_MS = 24 * 3_600_000
+const LAST_SEEN_RESOLUTION_MS = 30 * 60_000
+const lastSeenOf = (entry: PendingOvernightStream) => entry.lastSeenMs ?? entry.startMs
 
 function readPending(): PendingOvernight {
   try {
@@ -77,7 +82,8 @@ export function useOvernightHold({
   const [pending, setPending] = useSharedState(pendingStore)
   const supported = recentlyEnded !== undefined
   const todayMs = today.getTime()
-  const horizonMs = now.getTime() - END_SIGNAL_HORIZON_MS
+  const nowMs = now.getTime()
+  const horizonMs = nowMs - END_SIGNAL_WINDOW_MS
 
   // Live right now with a start before the viewer's local today. Derived during render (not in an effect) so the hold is already in force in the
   // very render that crosses midnight and the window never flickers to the new day and back.
@@ -102,15 +108,18 @@ export function useOvernightHold({
   useEffect(() => {
     if (!supported) return
     const next: PendingOvernight = {}
-    for (const [videoId, entry] of Object.entries(pending)) if (!resolvedIds.has(videoId) && entry.startMs >= horizonMs) next[videoId] = entry
-    for (const entry of liveOvernight) next[entry.videoId] = { creatorId: entry.creatorId, startMs: entry.startMs }
-    const same = Object.keys(next).length === Object.keys(pending).length && Object.entries(next).every(([videoId, entry]) => pending[videoId]?.startMs === entry.startMs)
+    for (const [videoId, entry] of Object.entries(pending)) if (!resolvedIds.has(videoId) && lastSeenOf(entry) >= horizonMs) next[videoId] = entry
+    for (const entry of liveOvernight) {
+      const seen = next[entry.videoId]?.lastSeenMs
+      next[entry.videoId] = { creatorId: entry.creatorId, startMs: entry.startMs, lastSeenMs: seen !== undefined && nowMs - seen < LAST_SEEN_RESOLUTION_MS ? seen : nowMs }
+    }
+    const same = Object.keys(next).length === Object.keys(pending).length && Object.entries(next).every(([videoId, entry]) => pending[videoId]?.startMs === entry.startMs && pending[videoId]?.lastSeenMs === entry.lastSeenMs)
     if (!same) setPending(next)
-  }, [supported, pending, liveOvernight, resolvedIds, horizonMs, setPending])
+  }, [supported, pending, liveOvernight, resolvedIds, horizonMs, nowMs, setPending])
 
   const earliestStartMs = useMemo(() => {
     if (!supported) return null
-    const remembered = Object.entries(pending).filter(([videoId, entry]) => !resolvedIds.has(videoId) && entry.startMs >= horizonMs).map(([, entry]) => entry.startMs)
+    const remembered = Object.entries(pending).filter(([videoId, entry]) => !resolvedIds.has(videoId) && lastSeenOf(entry) >= horizonMs).map(([, entry]) => entry.startMs)
     const starts = [...liveOvernight.map((entry) => entry.startMs), ...remembered].filter((ms) => ms < todayMs)
     return starts.length > 0 ? Math.min(...starts) : null
   }, [supported, liveOvernight, pending, resolvedIds, horizonMs, todayMs])

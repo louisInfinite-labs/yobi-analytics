@@ -221,7 +221,7 @@ describe.each(ZONES)("retention across several local midnights -- viewer timezon
   const started = () => dto("marathon", new Date(2026, 9, 15, 22, 0, 0))
   const at = (day: number, hour: number, minute: number, second = 0) => vi.setSystemTime(new Date(2026, 9, day, hour, minute, second))
 
-  it("Oct 16 00:30 live -> Oct 17 00:30 and Oct 18 00:30 unconfirmed -> Oct 18 02:00 backend confirms: starts Oct 15 until then, then Oct 18", async () => {
+  it("Oct 16 00:30 live -> still live at Oct 17 00:30 (also after a reload) and Oct 18 00:30 -> Oct 18 02:00 backend confirms: starts Oct 15 until then, then Oct 18", async () => {
     at(16, 0, 30)
     mockStreams([started()])
     const first = renderHook(() => useWeeklySchedule())
@@ -229,9 +229,8 @@ describe.each(ZONES)("retention across several local midnights -- viewer timezon
     expect(first.result.current.weekStart).toEqual(new Date(2026, 9, 15)) // Oct 16 00:30, LIVE: the schedule starts Oct 15
     expect(slotIds(first.result.current.days[0])).toEqual(["marathon"])
 
-    mockStreams([]) // it drops out of the live list sometime on Oct 16; the backend has not confirmed an end
     at(17, 0, 29, 30)
-    await tick() // Oct 17 00:30 -- the second midnight
+    await tick() // Oct 17 00:30 -- the second midnight, the stream is still live
     expect(first.result.current.weekStart).toEqual(new Date(2026, 9, 15)) // still Oct 15
     expect(dayNumbers(first.result.current.days)).toEqual([15, 16, 17, 18, 19, 20, 21])
     expect(first.result.current.days.findIndex((day) => day.isToday)).toBe(2)
@@ -243,7 +242,7 @@ describe.each(ZONES)("retention across several local midnights -- viewer timezon
     expect(second.result.current.weekStart).toEqual(new Date(2026, 9, 15))
 
     at(18, 0, 29, 30)
-    await tick() // Oct 18 00:30 -- the third midnight
+    await tick() // Oct 18 00:30 -- the third midnight, still live
     expect(second.result.current.weekStart).toEqual(new Date(2026, 9, 15))
     expect(dayNumbers(second.result.current.days)).toEqual([15, 16, 17, 18, 19, 20, 21])
     expect(second.result.current.days.findIndex((day) => day.isToday)).toBe(3)
@@ -330,18 +329,40 @@ describe.each(ZONES)("retention across several local midnights -- viewer timezon
     expect(slotIds(result.current.days[0])).toEqual(["marathon"])
   })
 
-  it("a remembered stream the backend can no longer confirm (its end record expired after seven days) is forgotten rather than holding forever", async () => {
+  it("a remembered stream the backend can no longer confirm (GET /live-streams lists an end for 24 h) is forgotten 24 h after it was last seen live, not held forever", async () => {
     at(16, 0, 30)
-    mockStreams([started()])
+    mockStreams([started()]) // seen live at Oct 16 00:30
     const { result } = renderHook(() => useWeeklySchedule())
     await flush()
     mockStreams([]) // dropped and never confirmed
 
-    at(22, 22, 29, 30) // Thu Oct 22 22:30 -- seven days and a bit after the Oct 15 22:00 start
+    at(16, 21, 59, 30) // 21.5 hours after it was last seen: still inside the window in which a confirmation could still be listed
+    await tick()
+    expect(result.current.holdPreviousDay).toBe(true)
+    expect(result.current.weekStart).toEqual(new Date(2026, 9, 15))
+
+    at(17, 0, 59, 30) // 24.5 hours after: no confirmation can be listed any more
+    await tick()
+    expect(result.current.holdPreviousDay).toBe(false)
+    expect(result.current.weekStart).toEqual(new Date(2026, 9, 17))
+  })
+
+  it("the 24 h window runs from the last time the stream was SEEN LIVE: a stream that kept running for days is not forgotten the moment it drops out", async () => {
+    at(16, 0, 30)
+    mockStreams([started()])
+    const { result } = renderHook(() => useWeeklySchedule())
+    await flush()
+    for (const day of [17, 18, 19]) {
+      at(day, 0, 29, 30) // still live on every midnight, so last-seen keeps moving
+      await tick()
+    }
+
+    mockStreams([]) // it finally drops out on Oct 19, four days after its start
+    at(19, 1, 59, 30)
     await tick()
 
-    expect(result.current.holdPreviousDay).toBe(false)
-    expect(result.current.weekStart).toEqual(new Date(2026, 9, 22))
+    expect(result.current.holdPreviousDay).toBe(true)
+    expect(result.current.weekStart).toEqual(new Date(2026, 9, 15))
   })
 })
 
@@ -406,8 +427,10 @@ describe("overnight is decided in the viewer's own timezone, never a fixed one",
     await flush()
     expect(result.current.weekStart).toEqual(new Date(2026, 9, 31))
 
-    mockStreams([]) // dropped from the live list; not confirmed ended
-    vi.setSystemTime(new Date(2026, 10, 2, 0, 29, 30)) // Mon 11-02 00:29:30 PST (after the 25-hour Sunday)
+    vi.setSystemTime(new Date(2026, 10, 1, 23, 20, 0)) // Sun 11-01 23:20 PST (after the 25-hour Sunday): still live
+    await tick()
+    mockStreams([]) // dropped from the live list shortly before midnight; not confirmed ended
+    vi.setSystemTime(new Date(2026, 10, 2, 0, 29, 30)) // Mon 11-02 00:29:30 PST, an hour later
     await tick()
 
     expect(result.current.weekStart).toEqual(new Date(2026, 9, 31))
