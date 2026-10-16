@@ -217,10 +217,13 @@ jobs:
           src/features/home-room/components/NewTagSharedState.test.tsx
           src/features/home-room/utils/latestLiveShelf.test.ts
           src/features/media-player/hooks/useWatchedDuringLive.test.tsx
+          src/features/media-player/hooks/useUpcomingStartRecovery.test.tsx
           src/features/media-player/utils/youtubeIframeApi.test.ts
+          src/features/media-player/utils/upcomingStartRecovery.test.ts
           src/shared/newContent/newContentTracking.test.ts
           src/shared/newContent/newContentWatchedLive.test.ts
           src/pages/home/HomePage.liveWatch.test.tsx
+          src/pages/home/HomePage.upcomingTransition.test.tsx
           src/features/live-status/components/LiveScheduleDock.test.tsx
           src/features/notifications/components/NotificationDrawerLiveStatusConsistency.test.tsx
           src/features/live-schedule/components/ScheduleLiveStatusConsistency.test.tsx

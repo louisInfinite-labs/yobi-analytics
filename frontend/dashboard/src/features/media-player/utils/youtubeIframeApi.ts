@@ -11,7 +11,7 @@ export interface YouTubeStateChangeEvent {
 export interface YouTubeIframeApi {
   Player: new (
     iframe: HTMLIFrameElement,
-    options: { events: { onStateChange?: (event: YouTubeStateChangeEvent) => void } },
+    options: { events: { onReady?: () => void; onStateChange?: (event: YouTubeStateChangeEvent) => void } },
   ) => unknown
   PlayerState: { PLAYING: number }
 }

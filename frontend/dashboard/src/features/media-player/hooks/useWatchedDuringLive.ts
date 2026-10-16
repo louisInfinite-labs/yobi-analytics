@@ -1,6 +1,6 @@
 import { useEffect, useState, type RefObject } from "react"
 import { markWatchedDuringLive } from "../../../shared/newContent/newContentTracking"
-import { loadYouTubeIframeApi } from "../utils/youtubeIframeApi"
+import { attachIframePlayer, YT_STATE } from "../utils/iframePlayer"
 
 /** Records "watched during the live session" for the video in `iframeRef`'s YouTube embed -- but ONLY once the
  * embedded player's own `onStateChange` callback reports PLAYING for it (the first PLAYING is enough; there is no
@@ -22,27 +22,13 @@ export function useWatchedDuringLive(iframeRef: RefObject<HTMLIFrameElement | nu
   useEffect(() => {
     const iframe = iframeRef.current
     if (!tracking || !iframe) return
-    let cancelled = false
+    // The one shared player for this iframe (iframePlayer.ts): other features observing the same embed never create a second one.
+    const { player, detach } = attachIframePlayer(iframe, (state) => setPlayingVideoId(state === YT_STATE.PLAYING ? videoId : null))
+    player.catch(() => {
+      // No IFrame API: playback can never be confirmed, so nothing is recorded.
+    })
 
-    loadYouTubeIframeApi()
-      .then((api) => {
-        if (cancelled) return
-        // Wraps the existing iframe; deliberately never destroy()ed, since that would remove an element React owns.
-        new api.Player(iframe, {
-          events: {
-            onStateChange: (event) => {
-              if (!cancelled) setPlayingVideoId(event.data === api.PlayerState.PLAYING ? videoId : null)
-            },
-          },
-        })
-      })
-      .catch(() => {
-        // No IFrame API: playback can never be confirmed, so nothing is recorded.
-      })
-
-    return () => {
-      cancelled = true
-    }
+    return detach
   }, [iframeRef, videoId, tracking])
 
   const playing = playingVideoId === videoId
