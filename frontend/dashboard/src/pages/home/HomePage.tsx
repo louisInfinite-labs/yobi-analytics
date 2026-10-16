@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react"
+import { useLayoutEffect, useMemo, useRef } from "react"
 import { resolveCreatorKey } from "../../entities/creator/data/creatorRegistry"
 import { creatorThemeStyle } from "../../shared/theme/creatorThemeStyle"
 import { useBreakpoint } from "../../shared/hooks/useBreakpoint"
@@ -7,7 +7,9 @@ import { useLiveDockExpanded } from "../../features/live-status/hooks/useLiveDoc
 import { selectHomeVideo, useHomeSelectedVideo } from "../../features/home-room/hooks/useHomeSelectedVideo"
 import { useLiveStreamVideoPool } from "../../features/home-room/hooks/useRecentVideos"
 import { useSelectedCreator } from "../../features/oshi/hooks/useSelectedCreator"
+import { useUpcomingStartRecovery } from "../../features/media-player/hooks/useUpcomingStartRecovery"
 import { useWatchedDuringLive } from "../../features/media-player/hooks/useWatchedDuringLive"
+import { useLiveStreams } from "../../shared/api/hooks/useLiveStreams"
 import { selectLiveEmbedVideo } from "../../features/media-player/utils/liveEmbed"
 import { scrollBelowTopBar } from "../../features/home-room/utils/scrollBelowTopBar"
 import { useVideoSearchInput } from "../../features/video-search/hooks/useVideoSearchInput"
@@ -24,12 +26,21 @@ import { RecentVideosSection } from "../../features/home-room/components/RecentV
  * than silently fail. Mobile never requests autoplay -- YouTube's own
  * embed already shows a thumbnail + play button when it isn't autoplaying,
  * so no separate placeholder UI is needed here. */
-function LiveEmbedPlayer({ videoId, title, autoplay, isLive }: { videoId: string; title: string; autoplay: boolean; isLive: boolean }) {
+export function LiveEmbedPlayer({ videoId, title, autoplay, isLive }: { videoId: string; title: string; autoplay: boolean; isLive: boolean }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   // The embed reports its playback state through the YouTube IFrame API (enablejsapi); a confirmed PLAYING while this
   // very videoId is live is what records "watched during live" -- the iframe merely existing or autoplay being
   // attempted records nothing (see useWatchedDuringLive).
   useWatchedDuringLive(iframeRef, videoId, isLive)
+  // The already-open embed picks up the broadcast when it begins (see useUpcomingStartRecovery): same videoId, same iframe, no remount, no extra request --
+  // the scheduled start comes from the shared /live-streams data Home already holds.
+  const { streams } = useLiveStreams()
+  const scheduledStartMs = useMemo(() => {
+    const iso = streams.find((stream) => stream.videoId === videoId)?.scheduledStart
+    const ms = iso ? new Date(iso).getTime() : Number.NaN
+    return Number.isNaN(ms) ? null : ms
+  }, [streams, videoId])
+  useUpcomingStartRecovery(iframeRef, videoId, scheduledStartMs, { autoplay })
   const params = `${autoplay ? "autoplay=1&mute=1" : "autoplay=0"}&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`
   return (
     <iframe
