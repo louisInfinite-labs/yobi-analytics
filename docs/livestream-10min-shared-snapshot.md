@@ -44,7 +44,7 @@ Measured in production before this change (35 ended streams, 29 verified archive
 (Holodex keeps listing a stream for a few minutes after it ended); `actualEnd -> archive visible` p50 10.1 min / mean 13.2 min. A cadence change alone
 would add up to one display interval on top of that. Two compensations keep it from regressing:
 
-1. **Live-end watch.** Every completion cycle also asks YouTube about the streams the snapshot lists as live (same single batched call). A stream YouTube
+1. **Live-end watch.** Every completion cycle also asks YouTube about the streams the snapshot lists as live, plus upcoming ones whose scheduled start has passed (a stream shorter than one snapshot interval is never listed live; same single batched call). A stream YouTube
    already reports with an `actualEndTime` is confirmed ended by the next cycle even while Holodex still lists it, so the end is confirmed within one
    completion interval (≤ 5 min) of YouTube's own end, independent of the Holodex cadence. `GET /live-streams` stops listing such a stream as live so the
    Schedule's overnight hold (which needs "ended **and** no longer listed") releases at the same moment.
@@ -61,12 +61,16 @@ YouTube quota: at most one `videos.list` unit per completion cycle while anythin
 - Pre-start reminders (1 / 10 / 30 / 60 min) and the topic / creator / per-stream precedence are unchanged.
 - The dispatcher re-derives its `streamSchedule` entries exactly when the shared snapshot is newer than the one they came from (`sourceRefreshedAt`),
   instead of on a fixed 15-minute clock, so a stored start is never older than the snapshot.
-- Delivery is deduplicated per **(client, stream, reminder kind, scheduled start)** with the existing atomic claim/confirm/release log: overlapping runs and
-  retries send once, a failed send is retried inside the window, a rescheduled stream is a new target (the superseded time can never fire), and the legacy
-  key (no start time) still blocks so a redeploy cannot re-send.
+- Delivery is deduplicated per **(client, stream, reminder kind, scheduled start to the minute)** with the existing atomic claim/confirm/release log:
+  overlapping runs and retries send once, a failed send is retried inside the window, a rescheduled stream is a new target (the superseded time can never
+  fire), and a legacy row (no start time) written in the last 10 minutes still blocks so the redeploy minute cannot re-send (older legacy rows do not block).
 - One shared timer for all subscribers; there is no per-user or per-stream scheduler and none is needed.
 
 ## Known limitations (inherent, not bugs)
+
+- If the heartbeat write fails right after the snapshot item was written, the dispatcher keeps its previous start times until the next successful display run
+  (up to one interval). The display cooldown cap (540 s) is kept below the interval so a backoff can never swallow the next tick.
+- `/live-streams` hides a YouTube-confirmed ended stream for as long as the ended record is exposed (24 h); a Holodex entry stuck as `live` longer than that would reappear.
 
 - A reschedule or cancellation Holodex has not reported yet is invisible until the next 10-minute snapshot.
 - A stream that goes live and ends entirely between two snapshots is never observed live (left to the daily task).

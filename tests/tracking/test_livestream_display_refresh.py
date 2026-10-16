@@ -182,7 +182,8 @@ def test_consecutive_failures_back_off_exponentially_up_to_a_cap_and_a_success_r
         cooldowns.append(summary["cooldownSeconds"])
         now += timedelta(seconds=summary["cooldownSeconds"] or 60)
 
-    assert cooldowns == [0, 0, 120, 240, 480, 600, 600]  # isolated failures are free; then 2/4/8 minutes, capped at 10
+    assert cooldowns == [0, 0, 120, 240, 480, 540, 540]  # isolated failures are free; then 2/4/8 minutes, capped at 9 (below the 10-minute cadence)
+    assert lifecycle._DISPLAY_COOLDOWN_CAP_SECONDS < lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS  # a backoff can never swallow the next tick
 
     _holodex_returns(monkeypatch, _holodex_item(video_id="v1", status="live"))
     assert lifecycle.refresh_display_snapshot(now=now)["refreshed"] is True

@@ -26,7 +26,8 @@ COMPLETION details -- what is a candidate, what confirms an end:
   - LIVE-END WATCH: the display snapshot only moves every 10 minutes and Holodex itself keeps listing a stream for a few
     minutes after it ended (measured in production: actualEnd -> confirmed end p50 5.9 min, mean 8.7 min), so waiting for a stream
     to DISAPPEAR would delay every end by up to another display interval. Every completion cycle therefore also asks YouTube about
-    the streams the snapshot currently lists as live -- the same batched call below, 1 quota unit per 50 videoIds -- and a stream
+    the streams the snapshot currently lists as live, and the upcoming ones whose scheduled start has passed (a stream shorter than one
+    snapshot interval is never listed live at all) -- the same batched call below, 1 quota unit per 50 videoIds -- and a stream
     YouTube already reports with an actualEndTime becomes a candidate at once, whether or not Holodex still lists it. End
     confirmation then costs at most one completion interval after YouTube's own actualEndTime and no longer depends on Holodex's
     cadence at all. GET /live-streams stops listing such a stream as live (api.read_api) so every client agrees with the record.
@@ -117,7 +118,9 @@ DISPLAY_CONTENT_REFRESH_SECONDS = 6 * 3600
 _DISPLAY_RATE_LIMIT_COOLDOWN_SECONDS = 300
 _DISPLAY_COOLDOWN_AFTER_FAILURES = 3
 _DISPLAY_COOLDOWN_BASE_SECONDS = 120
-_DISPLAY_COOLDOWN_CAP_SECONDS = 600
+# Kept strictly below DISPLAY_REFRESH_INTERVAL_SECONDS: a cooldown as long as the interval would make the next tick (which starts a few seconds
+# before the failed run's own cooldownUntil) skip, turning one backoff into a missed run and a 20-minute gap.
+_DISPLAY_COOLDOWN_CAP_SECONDS = 540
 
 # Bounded retry around the one Holodex call the completion FALLBACK makes -- a single transient failure must not skip a
 # whole 5-minute cycle (and, worse, spuriously treat every currently-live stream as a completion candidate).
@@ -445,6 +448,12 @@ def _probe(video_ids: list[str]) -> tuple[dict[str, dict[str, Any]], set[str]]:
         return {}, set()
 
 
+def _start_has_passed(stream: dict[str, Any], moment: datetime) -> bool:
+    """Whether the stream's scheduledStart is a valid instant at or before `moment`."""
+    start = _parse_moment(stream.get("scheduledStart"))
+    return start is not None and start <= moment
+
+
 def _creator_channel_id(creator_id: str | None) -> str | None:
     """The creator's YouTube channel id from Creator Master, or None when unknown (then only the other archive checks apply)."""
     if not creator_id:
@@ -665,7 +674,13 @@ def refresh_snapshot(*, now: datetime | None = None) -> dict[str, Any]:
     # LIVE-END WATCH (module docstring): the streams the snapshot lists as live ride in the same batched YouTube call as the candidates and
     # the archive watch -- one videos.list unit per 50 ids -- so an end is confirmed within a completion interval of YouTube's actualEndTime
     # rather than after Holodex's own lag plus the next display refresh.
-    listed_live = {stream["videoId"]: stream for stream in streams if stream.get("status") == "live"}
+    # Also watched: an UPCOMING stream whose scheduled start has already passed. With a 10-minute snapshot a short stream can go live AND end
+    # between two polls and so never be listed as live at all; YouTube still knows it ended. (One that never started has no actualEndTime and is left alone.)
+    listed_live = {
+        stream["videoId"]: stream
+        for stream in streams
+        if stream.get("status") == "live" or (stream.get("status") == "upcoming" and _start_has_passed(stream, moment))
+    }
     probe_ids = sorted(set(pending) | set(listed_live) | {video_id for video_id in previous_watch if video_id in ended})
     probes, answered = _probe(probe_ids)
     for video_id, stream in listed_live.items():

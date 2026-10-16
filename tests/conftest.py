@@ -47,8 +47,11 @@ def unknown_live_snapshot_freshness_for_the_dispatcher(monkeypatch):
     schedule is current. Its tests stub the stores at module level, so that read would reach for a real table: default it to "unknown", which
     selects the time-based fallback rule. A test of the snapshot-following behaviour overrides _read_source_refreshed_at itself."""
     from notifications import notification_dispatcher
+    from stores import notification_delivery_log_store
 
     monkeypatch.setattr(notification_dispatcher, "_read_source_refreshed_at", lambda: None)
+    # Same reason for the legacy-row check (a delivery-log read): default "no recent legacy row"; a test about it overrides handled_within.
+    monkeypatch.setattr(notification_delivery_log_store, "handled_within", lambda *args, **kwargs: False)
 
 
 @pytest.fixture(autouse=True)

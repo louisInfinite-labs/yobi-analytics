@@ -91,6 +91,10 @@ _PUSH_SUBSCRIPTION_KEY = "pushSubscription"
 # "1min"/"10min" at their configured offset rather than merely eventually.
 _REMINDER_WINDOW = timedelta(minutes=1)
 
+# How long a LEGACY delivery row (keyed without a scheduled start, written by the previous version) still counts as "already sent for this start".
+# A few reminder windows: it only has to cover the minutes around a redeploy; older rows belong to a start the stream may have moved away from.
+_LEGACY_DEDUPE_WINDOW = timedelta(minutes=10)
+
 # FALLBACK only: how old the persisted "streamSchedule" entries may get before this run re-derives them when the shared snapshot's own
 # freshness cannot be read (a store hiccup, a non-DynamoDB environment). Normally the entries are re-derived exactly when the shared snapshot is
 # newer than the one they came from, so this never decides anything. Equal to the display job's 10-minute cadence
@@ -367,13 +371,15 @@ def _suppressed_at(preference: notification_dispatch.NotificationPreference, cre
 def _reminder_dedupe_ids(video_id: str, kind: str, scheduled_start_ms: int) -> tuple[str, str]:
     """(the id one reminder TARGET is deduped under, the legacy id older deployments used).
 
-    A target is a reminder kind for one specific scheduled start: a stream rescheduled to another time is a NEW target, so a delivery made for the
-    superseded time neither blocks the new one nor can ever fire again (the old start is never due once the stored schedule has moved), while
-    retries, overlapping runs and a redeploy of the SAME target still collapse into one delivery. The legacy id (no start time) is still honoured as
-    "already delivered" so the key change can never make a redeploy re-send a reminder that an older version already sent.
+    A target is a reminder kind for one specific scheduled start, to the MINUTE (the dispatcher's own resolution, so a few seconds of jitter in a
+    reported start can never mint a new target): a stream rescheduled to another time is a NEW target, so a delivery made for the superseded time
+    neither blocks the new one nor can ever fire again (the old start is never due once the stored schedule has moved), while retries, overlapping
+    runs and a redeploy of the SAME target still collapse into one delivery. The legacy id (no start time) is honoured only while its row is
+    fresh (_LEGACY_DEDUPE_WINDOW): that is exactly "an older version just sent this for the current start" -- the redeploy minute -- and never a
+    stale row that would wrongly block a reschedule.
     """
     legacy_id = f"{video_id}:reminder:{kind}"
-    return f"{legacy_id}@{scheduled_start_ms}", legacy_id
+    return f"{legacy_id}@{scheduled_start_ms // 60_000}", legacy_id
 
 
 def _send_reminder(
@@ -407,7 +413,7 @@ def _send_reminder(
     window can still deliver, and a confirmed delivery is permanent.
     """
     dedupe_id, legacy_id = _reminder_dedupe_ids(video_id, kind, scheduled_start_ms)
-    if notification_delivery_log_store.already_delivered(client_id, legacy_id):
+    if notification_delivery_log_store.handled_within(client_id, legacy_id, _LEGACY_DEDUPE_WINDOW, now=now):
         return False
     if notification_delivery_log_store.already_delivered(client_id, dedupe_id):
         return False

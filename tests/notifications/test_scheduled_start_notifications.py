@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 
 from api import read_api
+
+read_api_real_get_live_streams = read_api.get_live_streams  # captured before any test patches it
 from notifications import live_reminder, notification_dispatcher, notification_text, push_sender
 from notifications.push_sender import PushResult
 from stores import notification_delivery_log_store, remote_config_store
@@ -79,6 +81,7 @@ class Harness:
         monkeypatch.setattr(remote_config_store, "list_by_key", self._list_by_key)
         monkeypatch.setattr(remote_config_store, "list_remote_config_by_prefix", self._list_by_prefix)
         monkeypatch.setattr(notification_delivery_log_store, "already_delivered", self._already_delivered)
+        monkeypatch.setattr(notification_delivery_log_store, "handled_within", self._handled_within)
         monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", self._mark_delivered)
         monkeypatch.setattr(notification_delivery_log_store, "confirm_delivered", self._confirm_delivered)
         monkeypatch.setattr(notification_delivery_log_store, "release_claim", self._release_claim)
@@ -121,6 +124,11 @@ class Harness:
         if self.blind_precheck:
             return False
         return (client_id, video_id) in self.delivery
+
+    def _handled_within(self, client_id, video_id, within, *, now=None):
+        """The delivery log's bounded legacy check: a row counts only while its timestamp is within `within` of `now`."""
+        row = self.delivery.get((client_id, video_id))
+        return row is not None and now - datetime.fromisoformat(row["at"]) <= within
 
     def _mark_delivered(self, client_id, video_id, claimed_at, *, now=None):
         """The atomic claim: a conditional put that only the first caller wins."""
@@ -494,18 +502,54 @@ def test_an_expired_subscription_is_not_counted_as_delivered_and_does_not_raise(
     assert harness.delivery == {}
 
 
-def test_a_redeploy_cannot_resend_what_an_older_version_already_delivered(harness):
-    """Older versions deduped under {videoId}:reminder:{kind} (no start time); that row still blocks, so changing the key never re-sends."""
-    harness.delivery[("c1", "v1:reminder:start")] = {"status": "delivered", "at": START.isoformat()}
+def test_a_redeploy_cannot_resend_what_an_older_version_just_delivered(harness):
+    """The previous version deduped under {videoId}:reminder:{kind} (no start time). A row it wrote moments ago, for this very start, still blocks:
+    switching the key at the redeploy minute can never send the same reminder twice."""
+    harness.delivery[("c1", "v1:reminder:start")] = {"status": "delivered", "at": (START + timedelta(seconds=5)).isoformat()}
 
     assert harness.run(START + timedelta(seconds=10))["delivered"] == 0
     assert harness.pushes == []
 
 
+def test_an_old_legacy_row_never_blocks_a_rescheduled_stream(harness):
+    """A legacy row from hours ago was for a start the stream has since moved away from: it must not suppress the new target (a pre-deploy
+    delivery of v1's start for 18:15, then v1 moved to 21:15 -- the new start is still notified)."""
+    harness.delivery[("c1", "v1:reminder:start")] = {"status": "delivered", "at": (START - timedelta(hours=3)).isoformat()}
+
+    assert harness.run(START + timedelta(seconds=10))["delivered"] == 1
+
+
+def test_seconds_of_jitter_in_a_reported_start_never_create_a_second_target(harness):
+    """Targets are per MINUTE: a snapshot that restates the same start a few seconds off is the same target, so nothing is sent twice."""
+    harness.run(START + timedelta(seconds=10))
+    assert len(harness.pushes) == 1
+    harness.refresh_snapshot([_stream(start=START + timedelta(seconds=40))], SNAPSHOT_AT + timedelta(minutes=10))  # same minute, other seconds
+
+    harness.run(START + timedelta(seconds=50))
+
+    assert len(harness.pushes) == 1
+
+
+def test_the_dispatcher_through_the_real_read_path_never_reaches_holodex(monkeypatch):
+    """The Harness replaces get_live_streams, so on its own it cannot prove the claim. Here the REAL read_api.get_live_streams runs over a persisted
+    shared snapshot (the DynamoDB backend), with the Holodex boundary a tripwire: the whole dispatcher run makes zero upstream requests."""
+    world = Harness(monkeypatch)  # stores, push sender and the Holodex tripwire ...
+    world.add_client("c1", creator_reminders={"aizawa_ema": AT_START})
+    monkeypatch.setattr(read_api, "get_live_streams", read_api_real_get_live_streams)  # ... but the REAL read path instead of the harness' stub
+    monkeypatch.setenv("YOBI_STORAGE_BACKEND", "dynamodb")
+    monkeypatch.setattr(read_api, "_read_shared_live_snapshot", lambda: [_stream()])  # the persisted shared snapshot
+    monkeypatch.setattr(read_api, "_read_recently_ended", lambda: None)
+    monkeypatch.setattr(read_api, "_without_known_non_livestreams", lambda streams: streams)
+
+    summary = world.run(START + timedelta(seconds=10))
+
+    assert summary["delivered"] == 1  # the stored schedule came through the real read path
+
+
 def test_the_dedupe_key_names_the_reminder_kind_and_the_scheduled_start_it_is_for():
-    """The pure key shape: new (kind + target) and legacy (kind only)."""
-    assert notification_dispatcher._reminder_dedupe_ids("v1", notification_text.KIND_START, 123) == ("v1:reminder:start@123", "v1:reminder:start")
-    assert notification_dispatcher._reminder_dedupe_ids("v1", notification_text.KIND_ADVANCE, 123) == ("v1:reminder:advance@123", "v1:reminder:advance")
+    """The pure key shape: new (kind + target minute) and legacy (kind only)."""
+    assert notification_dispatcher._reminder_dedupe_ids("v1", notification_text.KIND_START, 120_000) == ("v1:reminder:start@2", "v1:reminder:start")
+    assert notification_dispatcher._reminder_dedupe_ids("v1", notification_text.KIND_ADVANCE, 179_999) == ("v1:reminder:advance@2", "v1:reminder:advance")  # to the minute
 
 
 def test_the_dispatcher_survives_a_run_with_no_streams_no_subscribers_and_no_snapshot_at_all(harness):

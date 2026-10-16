@@ -204,6 +204,45 @@ def test_a_failed_video_master_write_for_a_still_listed_ended_stream_is_retried_
     assert len(world.ended()) == 1
 
 
+# ============ a stream shorter than one snapshot interval ============
+
+
+def test_a_stream_that_went_live_and_ended_between_two_snapshots_is_still_confirmed_ended(world):
+    """Listed only as UPCOMING (its start has passed) in the last snapshot; YouTube knows the broadcast already ended. With the old 1-minute poll this
+    stream would have been seen live; with 10 minutes it never is, so the watch also covers past-start upcoming streams."""
+    world.items = [_holodex_item(video_id="v1", status="upcoming", start_scheduled="2026-10-15T12:50:00Z")]  # start passed before T0 (13:00)
+    world.probes = {"v1": _probe(actualEndTime="2026-10-15T12:58:00Z")}
+    world.display()
+
+    summary = world.completion()
+
+    assert summary["confirmedCompleted"] == ["v1"]
+    assert world.ended()["v1"]["actualEnd"] == "2026-10-15T12:58:00Z"
+
+
+def test_an_upcoming_stream_whose_start_is_still_ahead_is_not_asked_about(world):
+    """Nothing to learn yet: no YouTube quota is spent on streams that cannot have started."""
+    world.items = [_holodex_item(video_id="v1", status="upcoming", start_scheduled="2026-10-16T01:00:00Z")]
+    world.probes = {"v1": _probe(actualEndTime="2026-10-15T12:58:00Z")}
+    world.display()
+
+    world.completion()
+
+    assert world.probe_calls == [] and world.ended() == {}
+
+
+def test_a_past_start_upcoming_stream_that_never_started_is_left_alone(world):
+    """Late or cancelled: YouTube has no actualEndTime, so nothing is concluded (an unstarted stream is not an end)."""
+    world.items = [_holodex_item(video_id="v1", status="upcoming", start_scheduled="2026-10-15T12:50:00Z")]
+    world.probes = {"v1": _probe(actualEndTime=None)}
+    world.display()
+
+    summary = world.completion()
+
+    assert summary["confirmedCompleted"] == [] and world.ended() == {}
+    assert lifecycle._read_snapshot_record()["pendingCandidates"] == {}
+
+
 # ============ the archive lookup window is anchored to the END ============
 
 
