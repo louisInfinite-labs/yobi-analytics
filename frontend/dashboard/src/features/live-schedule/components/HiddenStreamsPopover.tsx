@@ -66,6 +66,10 @@ export function HiddenStreamsPopover({ streams, locale, onSelectStream }: { stre
   const closeTimer = useRef<number | null>(null)
   // Escape hands focus back to the trigger; that programmatic focus must not reopen the list it just closed.
   const skipNextFocusOpen = useRef(false)
+  // A finger / stylus is "hover-less": the browser fires pointerenter and pointerleave around the tap itself (and on release), and the trigger
+  // takes focus then loses it when the finger lands elsewhere. None of that may open or close the list -- a tap opens it through `click` and
+  // only Escape, an outside tap or an outside click closes it. Cleared by the keyboard so Tab-away still closes it.
+  const touchOwned = useRef(false)
   const panelId = useId()
   const now = useMinuteClock()
 
@@ -109,6 +113,7 @@ export function HiddenStreamsPopover({ streams, locale, onSelectStream }: { stre
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
+      touchOwned.current = false
       if (event.key !== "Escape") return
       closeNow()
       skipNextFocusOpen.current = true
@@ -136,7 +141,23 @@ export function HiddenStreamsPopover({ streams, locale, onSelectStream }: { stre
     onSelectStream(stream)
   }
 
+  // Hover (open on enter, close shortly after leaving) is for a mouse / trackpad only; a finger or stylus never hovers.
+  const hoverless = (event: React.PointerEvent) => event.pointerType === "touch" || event.pointerType === "pen"
+  const hoverEnter = (event: React.PointerEvent) => {
+    if (hoverless(event)) return
+    touchOwned.current = false
+    show()
+  }
+  const hoverLeave = (event: React.PointerEvent) => {
+    if (hoverless(event)) return
+    scheduleClose()
+  }
+  const notePointerDown = (event: React.PointerEvent) => {
+    touchOwned.current = hoverless(event)
+  }
+
   const focusLeftBoth = (event: React.FocusEvent) => {
+    if (touchOwned.current) return
     const next = event.relatedTarget as Node | null
     if (next && (panelRef.current?.contains(next) || triggerRef.current?.contains(next))) return
     scheduleClose()
@@ -152,8 +173,9 @@ export function HiddenStreamsPopover({ streams, locale, onSelectStream }: { stre
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         aria-label={t(locale, "liveSchedule.moreStreamsAria", { count: String(streams.length) })}
-        onPointerEnter={show}
-        onPointerLeave={scheduleClose}
+        onPointerEnter={hoverEnter}
+        onPointerLeave={hoverLeave}
+        onPointerDown={notePointerDown}
         onFocus={() => {
           if (skipNextFocusOpen.current) return
           show()
@@ -177,8 +199,9 @@ export function HiddenStreamsPopover({ streams, locale, onSelectStream }: { stre
             aria-label={t(locale, "liveSchedule.moreStreamsAria", { count: String(streams.length) })}
             className="hidden-streams-popover"
             style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? "visible" : "hidden" }}
-            onPointerEnter={cancelClose}
-            onPointerLeave={scheduleClose}
+            onPointerEnter={(event) => !hoverless(event) && cancelClose()}
+            onPointerLeave={hoverLeave}
+            onPointerDown={notePointerDown}
             onBlur={focusLeftBoth}
           >
             {streams.map((stream) => (

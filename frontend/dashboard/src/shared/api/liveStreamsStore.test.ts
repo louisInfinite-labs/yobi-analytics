@@ -26,6 +26,34 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe("liveStreamsStore recentlyEnded", () => {
+  it("puts the backend's confirmed-ended list in the shared state, and omits it when the response had none", async () => {
+    const recentlyEnded = [{ videoId: "v0", confirmedEndedAt: "2026-10-16T03:00:00Z" }]
+    vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue(Object.assign([STREAM], { recentlyEnded }))
+    const release = acquireLiveStreamsPolling()
+    await vi.waitFor(() => expect(liveStreamsStore.get().isLoading).toBe(false))
+    expect(liveStreamsStore.get()).toEqual({ streams: [STREAM], recentlyEnded, isLoading: false, error: null })
+
+    vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue([STREAM])
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(liveStreamsStore.get()).toEqual({ streams: [STREAM], isLoading: false, error: null }) // unknown again, not "none ended"
+
+    release()
+  })
+
+  it("keeps the last confirmed-ended list when a refresh fails", async () => {
+    const recentlyEnded = [{ videoId: "v0", confirmedEndedAt: "2026-10-16T03:00:00Z" }]
+    vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValueOnce(Object.assign([STREAM], { recentlyEnded })).mockRejectedValue(new Error("offline"))
+    const release = acquireLiveStreamsPolling()
+    await vi.waitFor(() => expect(liveStreamsStore.get().isLoading).toBe(false))
+
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(liveStreamsStore.get().error).toBe("offline")
+    expect(liveStreamsStore.get().recentlyEnded).toEqual(recentlyEnded)
+    release()
+  })
+})
 describe("liveStreamsStore polling", () => {
   it("fetches once on first subscriber and updates the shared store", async () => {
     const release = acquireLiveStreamsPolling()

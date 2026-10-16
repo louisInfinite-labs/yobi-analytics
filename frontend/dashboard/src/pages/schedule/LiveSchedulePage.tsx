@@ -23,7 +23,7 @@ export function LiveSchedulePage() {
   const [selectedCreators, setSelectedCreators] = useState<string[]>([])
   const selectedSet = useMemo(() => new Set(selectedCreators), [selectedCreators])
   const [organization, setOrganization] = useState<ScheduleOrganizationFilter>("all")
-  const { weekStart, days, now, scheduleStreams } = useWeeklySchedule(selectedSet, organization)
+  const { weekStart, days, now, scheduleStreams, holdPreviousDay } = useWeeklySchedule(selectedSet, organization)
   const { favorites } = useFavoriteCreators()
   // The filter dialog offers exactly the creators with an event on the displayed schedule, inside the chosen organization -- the same
   // streams and the same organization rule the grid itself is built from. Stored selections and Favorites are never edited by this.
@@ -64,7 +64,14 @@ export function LiveSchedulePage() {
         />
       </header>
 
-      <ScheduleGrid locale={locale} days={days} now={now} selectedStreamId={selectedStream?.id ?? null} onSelectStream={setSelectedStream} />
+      <ScheduleGrid
+        locale={locale}
+        days={days}
+        now={now}
+        selectedStreamId={selectedStream?.id ?? null}
+        onSelectStream={setSelectedStream}
+        holdPreviousDay={holdPreviousDay}
+      />
 
       <StreamDetailModal
         stream={selectedStream}

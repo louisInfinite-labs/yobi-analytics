@@ -19,6 +19,8 @@ interface ScheduleGridProps {
   now: Date
   selectedStreamId: string | null
   onSelectStream: (stream: ScheduledStream) => void
+  /** The window starts before today (an overnight stream is unresolved): the single-day phone layout opens on its first day, not today. */
+  holdPreviousDay?: boolean
 }
 
 interface AvatarCapacity {
@@ -64,7 +66,7 @@ function StreamAvatarGroup({
   )
 }
 
-export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStream }: ScheduleGridProps) {
+export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStream, holdPreviousDay = false }: ScheduleGridProps) {
   const gridRef = useRef<HTMLDivElement>(null)
   const hasScrolledRef = useRef(false)
   const [timeFormat] = useTimeFormat()
@@ -73,7 +75,7 @@ export function ScheduleGrid({ locale, days, now, selectedStreamId, onSelectStre
   // Tablet and desktop keep the multi-day grid. The selection is the day's date (not an index), so it survives the day window rolling over.
   const phone = useBreakpoint() === "mobile"
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
-  const selectedIndex = resolveSelectedDayIndex(days, selectedKey)
+  const selectedIndex = selectedKey === null && holdPreviousDay ? 0 : resolveSelectedDayIndex(days, selectedKey)
   const shownDays = phone && days[selectedIndex] ? [days[selectedIndex]] : days
   // The same move the < and > buttons make, driven by a horizontal swipe (the single-day layout is the only one with a selected day). Never
   // wraps: the first and last day simply stop. The selection is stored as the day's date key either way.

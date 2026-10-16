@@ -207,6 +207,7 @@ jobs:
           src/shared/api/liveStreamsStore.test.ts
           src/shared/api/hooks/useLiveStreams.test.ts
           src/features/live-schedule/hooks/useWeeklySchedule.test.tsx
+          src/features/live-schedule/hooks/useWeeklySchedule.overnight.test.tsx
           src/shared/i18n/translations.test.ts
           src/entities/creator/data/creatorRegistry.test.ts
           src/features/live-status/components/CreatorStatusList.completeRoster.test.tsx
@@ -255,6 +256,8 @@ jobs:
           src/shared/time/minuteClock.test.tsx
           src/features/live-schedule/components/ScheduleGrid.test.tsx
           src/features/live-schedule/components/ScheduleGrid.responsive.test.tsx
+          src/features/live-schedule/components/ScheduleGrid.holdPreviousDay.test.tsx
+          src/features/live-schedule/components/HiddenStreamsPopover.touch.test.tsx
           src/features/live-schedule/model/scheduleAvatarOverflow.test.ts
           src/features/live-schedule/model/scheduleGrid.selectedDay.test.ts
           src/pages/schedule/scheduleResponsive.css.test.ts
