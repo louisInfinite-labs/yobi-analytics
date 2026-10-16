@@ -18,6 +18,10 @@ Element.prototype.hasPointerCapture ??= () => false
 vi.mock("../data/oshiVideos", () => ({ fetchOshiVideos: vi.fn() }))
 vi.mock("../data/videoTopics", () => ({ fetchVideoTopics: vi.fn() }))
 vi.mock("../../video-search/data/videoSearch", () => ({ fetchVideoSearch: vi.fn() }))
+// RecentVideosSection also reads the shared /live-streams store (最新直播 / ALL lead with the creator's current stream). Unmocked it polls the REAL API
+// (VITE_API_BASE_URL from .env.local), so a production stream that happens to be live puts its own title first and these tests depended on production data.
+const noLiveStreams = vi.hoisted(() => ({ streams: [], isLoading: false, error: null }))
+vi.mock("../../../shared/api/hooks/useLiveStreams", () => ({ useLiveStreams: () => noLiveStreams }))
 
 const shelfMock = vi.mocked(fetchOshiVideos)
 const topicsMock = vi.mocked(fetchVideoTopics)

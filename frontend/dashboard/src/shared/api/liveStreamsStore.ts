@@ -1,9 +1,11 @@
 import { createSharedState } from "../state/sharedState"
 import { acquirePolling } from "./liveStreamsPollState"
-import { fetchLiveStreams, type LiveStreamDto } from "./liveStreams"
+import { fetchLiveStreams, type LiveStreamDto, type RecentlyEndedStreamDto } from "./liveStreams"
 
 export interface LiveStreamsState {
   streams: LiveStreamDto[]
+  /** The backend-confirmed ended streams from the latest response; undefined = the backend did not supply the list (unknown, not "none"). */
+  recentlyEnded?: RecentlyEndedStreamDto[]
   isLoading: boolean
   error: string | null
 }
@@ -40,8 +42,9 @@ export const liveStreamsStore = createSharedState<LiveStreamsState>(STORAGE_KEY,
 
 async function refresh(): Promise<void> {
   try {
-    const streams = await fetchLiveStreams()
-    liveStreamsStore.set({ streams, isLoading: false, error: null })
+    const result = await fetchLiveStreams()
+    const { recentlyEnded } = result
+    liveStreamsStore.set({ streams: [...result], ...(recentlyEnded ? { recentlyEnded } : {}), isLoading: false, error: null })
   } catch (err) {
     liveStreamsStore.set({ ...liveStreamsStore.get(), isLoading: false, error: err instanceof Error ? err.message : "Unknown error" })
   }
