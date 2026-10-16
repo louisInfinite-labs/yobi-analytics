@@ -40,7 +40,7 @@ from .test_notification_dispatcher import (  # noqa: F401  (autouse fixtures mus
 START = datetime.fromtimestamp(_START_MS / 1000, tz=timezone.utc)
 TIMINGS = {"1hour": 60, "30min": 30, "10min": 10, "1min": 1}
 ALL_TIMINGS = [*TIMINGS, "start"]
-TITLE_SUFFIX = {"start": "is live now", "1min": "goes live in 1 minute", "10min": "goes live in 10 minutes", "30min": "goes live in 30 minutes", "1hour": "goes live in 1 hour"}
+TITLE_SUFFIX = {"start": "is scheduled to go live now", "1min": "goes live in 1 minute", "10min": "goes live in 10 minutes", "30min": "goes live in 30 minutes", "1hour": "goes live in 1 hour"}
 
 
 def fire_at(timing: str) -> datetime:

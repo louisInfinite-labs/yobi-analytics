@@ -1286,6 +1286,14 @@ def get_oshi_status(query: dict[str, Any], *, now: datetime | None = None) -> di
 # here -- nothing within the 7-day window is ever missing from the response.
 _HOLODEX_MAX_UPCOMING_HOURS = 24 * 7
 
+# The shared snapshot is refreshed only every tracking.livestream_lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS (10 minutes) and may be served up
+# to MAX_SNAPSHOT_AGE_SECONDS (30 minutes) old, so the lookahead cannot be cut at FETCH time alone. The Schedule's last calendar day ends at
+# the viewer's local midnight + 7 days, which a viewer whose local day rolled over AFTER the fetch reaches past `fetch time + 7 days`: the
+# final minutes of that day would silently be missing. So the snapshot keeps upcoming streams this much further out than the window, and
+# get_live_streams cuts the lookahead at REQUEST time -- the window every client sees is always exactly now + 7 days, however old the
+# snapshot is. Must stay at least MAX_SNAPSHOT_AGE_SECONDS (a test pins it).
+_LOOKAHEAD_STORAGE_BUFFER = timedelta(hours=1)
+
 
 def _live_stream_topic(title: str | None) -> str | None:
     """The stream's canonical topic id (tracking.video_topics), or None when the title matches no topic.
@@ -1297,8 +1305,9 @@ def _live_stream_topic(title: str | None) -> str | None:
     return None if topic == OTHER_TOPIC else topic
 
 
-def _is_within_lookahead(scheduled_start: str | None, *, now: datetime) -> bool:
-    """Whether an "upcoming" stream's scheduled_start falls within Yobi's lookahead window.
+def _is_within_lookahead(scheduled_start: str | None, *, now: datetime, extra: timedelta = timedelta(0)) -> bool:
+    """Whether an "upcoming" stream's scheduled_start falls within Yobi's lookahead window (widened by `extra`, which only the snapshot's
+    own storage cut uses -- see _LOOKAHEAD_STORAGE_BUFFER).
 
     scheduled_start is already an absolute, offset-aware UTC ISO-8601 string
     when present (holodex_normalization._parse_utc_timestamp's contract) --
@@ -1315,7 +1324,7 @@ def _is_within_lookahead(scheduled_start: str | None, *, now: datetime) -> bool:
         scheduled_at = datetime.fromisoformat(scheduled_start)
     except ValueError:
         return False
-    return scheduled_at <= now + timedelta(hours=_HOLODEX_MAX_UPCOMING_HOURS)
+    return scheduled_at <= now + timedelta(hours=_HOLODEX_MAX_UPCOMING_HOURS) + extra
 
 
 def _persist_inferred_classification(video_id: str, classification: tuple[str, str | None]) -> None:
@@ -1371,10 +1380,11 @@ def _without_known_non_livestreams(streams: list[dict[str, Any]]) -> list[dict[s
 def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     """`GET /live-streams`: current live/upcoming streams for Yobi's supported creators, sourced from Holodex.
 
-    Snapshot-first (DynamoDB backend only): tracking.livestream_lifecycle refreshes a shared snapshot
-    (stores.remote_config_store) every minute -- the display refresh, independent of its 5-minute completion cycle --
-    specifically so this endpoint's latency/availability stop depending on a synchronous Holodex round-trip per
-    request, and so a stream that just went LIVE is visible within about a minute. The snapshot is served only while
+    Snapshot-first (DynamoDB backend only): tracking.livestream_lifecycle refreshes ONE shared snapshot
+    (stores.remote_config_store) every 10 minutes -- the display refresh, independent of its 5-minute completion cycle --
+    and every visitor of Home, Schedule and Live Status reads that same snapshot, so a page view never costs a Holodex request
+    and this endpoint's latency/availability do not depend on a synchronous Holodex round-trip. A stream that just went LIVE, or a
+    schedule change Holodex reported, is therefore visible within one display interval. The snapshot is served only while
     bounded-fresh (see tracking.livestream_lifecycle.read_serving_snapshot): beyond that it raises
     LiveSnapshotStaleError, a HolodexAPIError, so api_handler.py answers 503 instead of an arbitrarily old list.
     _read_shared_live_snapshot returns None -- and this function falls back to fetch_live_streams_from_holodex below,
@@ -1390,11 +1400,30 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     streams = _read_shared_live_snapshot()
     if streams is None:
         streams = fetch_live_streams_from_holodex()
-    body: dict[str, Any] = {"streams": _without_known_non_livestreams(streams)}
     recently_ended = _read_recently_ended()
+    # The window every client sees is cut here, at request time, from the snapshot's slightly wider storage window (see
+    # _LOOKAHEAD_STORAGE_BUFFER); a live stream is always kept by it. A stream YouTube has CONFIRMED ended is no longer listed as live even
+    # though a snapshot up to one display interval old (and Holodex's own lag) may still say so: the record and the list must agree, and the
+    # Schedule only releases an overnight hold once the stream is gone from this list as well as present in recentlyEnded.
+    now = datetime.now(timezone.utc)
+    streams = [stream for stream in streams if stream.get("status") != "upcoming" or _is_within_lookahead(stream.get("scheduledStart"), now=now)]
+    streams = _without_confirmed_ended_live_streams(streams, recently_ended)
+    body: dict[str, Any] = {"streams": _without_known_non_livestreams(streams)}
     if recently_ended is not None:
         body["recentlyEnded"] = recently_ended
     return body
+
+
+def _without_confirmed_ended_live_streams(streams: list[dict[str, Any]], recently_ended: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Drop every stream listed as live whose end the lifecycle has CONFIRMED against YouTube (endState "ended", i.e. YouTube returned an
+    actualEndTime). Only "ended" counts -- an "unavailable" record (YouTube never returned the video) is not proof the broadcast is over -- and
+    only a LIVE listing is dropped: a confirmed end can never make a stream upcoming. No end signal (None) or nothing ended changes nothing."""
+    if not recently_ended:
+        return streams
+    confirmed = {entry["videoId"] for entry in recently_ended if entry.get("endState") == "ended" and entry.get("videoId")}
+    if not confirmed:
+        return streams
+    return [stream for stream in streams if not (stream.get("status") == "live" and stream.get("videoId") in confirmed)]
 
 
 def _read_recently_ended() -> list[dict[str, Any]] | None:
@@ -1535,10 +1564,12 @@ def fetch_live_streams_from_holodex() -> list[dict[str, Any]]:
     normalize_holodex_stream itself already takes per-field.
 
     An "upcoming" stream is additionally kept only when _is_within_lookahead
-    says its scheduled_start is within _HOLODEX_MAX_UPCOMING_HOURS from now
-    -- see that function's own docstring for why this must be enforced
-    locally rather than requested from Holodex. A "live" stream is always
-    kept regardless of scheduled_start; it's already happening.
+    says its scheduled_start is within _HOLODEX_MAX_UPCOMING_HOURS (plus
+    _LOOKAHEAD_STORAGE_BUFFER, which get_live_streams removes again at
+    request time) from now -- see that function's own docstring for why this
+    must be enforced locally rather than requested from Holodex. A "live"
+    stream is always kept regardless of scheduled_start; it's already
+    happening.
 
     Raises HolodexAPIError/HolodexNormalizationError/MissingHolodexApiKeyError on any Holodex failure rather than
     returning a fabricated empty result -- the caller decides what that means for its own availability.
@@ -1557,7 +1588,7 @@ def fetch_live_streams_from_holodex() -> list[dict[str, Any]]:
         creator = channel_index.get(stream.youtube_channel_id)
         if creator is None:
             continue
-        if stream.status == "upcoming" and not _is_within_lookahead(stream.scheduled_start, now=now):
+        if stream.status == "upcoming" and not _is_within_lookahead(stream.scheduled_start, now=now, extra=_LOOKAHEAD_STORAGE_BUFFER):
             continue
         streams.append(
             {

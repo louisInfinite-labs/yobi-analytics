@@ -182,7 +182,8 @@ def test_consecutive_failures_back_off_exponentially_up_to_a_cap_and_a_success_r
         cooldowns.append(summary["cooldownSeconds"])
         now += timedelta(seconds=summary["cooldownSeconds"] or 60)
 
-    assert cooldowns == [0, 0, 120, 240, 480, 600, 600]  # isolated failures are free; then 2/4/8 minutes, capped at 10
+    assert cooldowns == [0, 0, 120, 240, 480, 540, 540]  # isolated failures are free; then 2/4/8 minutes, capped at 9 (below the 10-minute cadence)
+    assert lifecycle._DISPLAY_COOLDOWN_CAP_SECONDS < lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS  # a backoff can never swallow the next tick
 
     _holodex_returns(monkeypatch, _holodex_item(video_id="v1", status="live"))
     assert lifecycle.refresh_display_snapshot(now=now)["refreshed"] is True
@@ -244,13 +245,14 @@ def test_a_fresh_display_snapshot_is_preferred_over_the_completion_snapshot(dyna
 
 
 def test_when_the_display_job_is_late_the_fresher_completion_snapshot_is_served(dynamo, monkeypatch):
-    """When the display job is late the fresher completion snapshot is served."""
+    """When the display job is late (past DISPLAY_FRESH_SECONDS) the completion job's own fresher fetch is served."""
     _holodex_returns(monkeypatch, _holodex_item(video_id="old_display", status="live"))
     lifecycle.refresh_display_snapshot(now=T0)
     _holodex_returns(monkeypatch, _holodex_item(video_id="completion", status="live"))
-    lifecycle.refresh_snapshot(now=T0 + timedelta(minutes=4))
+    late = T0 + timedelta(seconds=lifecycle.DISPLAY_FRESH_SECONDS + 60)
+    lifecycle.refresh_snapshot(now=late)  # the shared snapshot is too old, so this cycle fetched for itself
 
-    assert _ids(lifecycle.read_serving_snapshot(now=T0 + timedelta(minutes=4, seconds=30))) == ["completion"]
+    assert _ids(lifecycle.read_serving_snapshot(now=late + timedelta(seconds=30))) == ["completion"]
 
 
 def test_a_late_display_snapshot_is_still_served_within_the_bounded_age_if_it_is_the_freshest(dynamo, monkeypatch):
@@ -297,18 +299,60 @@ def test_holodex_api_error_carries_the_upstream_status_and_defaults_to_none():
 # ============ infrastructure (static) ============
 
 
-def test_the_display_schedule_runs_every_minute_against_the_lifecycle_lambda_in_display_mode():
-    """The display schedule runs every minute against the lifecycle lambda in display mode."""
+def _display_schedule_block() -> str:
+    """The text of the livestream_display_refresh schedule resource in terraform/eventbridge.tf."""
     terraform = (REPO_ROOT / "terraform" / "eventbridge.tf").read_text(encoding="utf-8")
     start = terraform.index('resource "aws_scheduler_schedule" "livestream_display_refresh"')
     following = re.search(r"\nresource ", terraform[start + 10 :])
-    block = terraform[start : start + 10 + following.start()] if following else terraform[start:]
+    return terraform[start : start + 10 + following.start()] if following else terraform[start:]
 
-    assert 'schedule_expression          = "rate(1 minute)"' in block
+
+def test_the_display_schedule_runs_every_ten_minutes_on_the_ten_minute_marks_against_the_lifecycle_lambda_in_display_mode():
+    """The display schedule polls Holodex at :00/:10/:20/:30/:40/:50 UTC against the lifecycle lambda in display mode."""
+    block = _display_schedule_block()
+
+    assert 'schedule_expression          = "cron(0/10 * * * ? *)"' in block
+    assert 'schedule_expression_timezone = "UTC"' in block
+    assert 'mode = "OFF"' in block  # no flexible window: the tick is the tick
     assert "aws_lambda_function.livestream_lifecycle.arn" in block
     assert '\\"mode\\":\\"display\\"' in block
     assert "dead_letter_config" in block
     assert "for_each" not in block
+
+
+def test_the_terraform_cadence_and_the_freshness_constants_stay_in_step():
+    """DISPLAY_REFRESH_INTERVAL_SECONDS mirrors the schedule, and every freshness threshold is derived from it, so a threshold can never be
+    shorter than one interval (which would make the completion job's stale-snapshot fallback poll Holodex on every cycle)."""
+    minutes = int(re.search(r'schedule_expression\s*=\s*"cron\(0/(\d+) \* \* \* \? \*\)"', _display_schedule_block()).group(1))
+
+    assert lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS == minutes * 60 == 600
+    assert 60 * 60 % (minutes * 60) == 0  # the marks line up with the hour: 00, 10, 20, 30, 40, 50
+    assert lifecycle.DISPLAY_FRESH_SECONDS > lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS  # one normal interval is never "stale"
+    assert lifecycle.DISPLAY_FRESH_SECONDS >= 2 * lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS  # nor is one MISSED run
+    assert lifecycle.MAX_SNAPSHOT_AGE_SECONDS > lifecycle.DISPLAY_FRESH_SECONDS  # the 503 bound sits beyond the fallback threshold
+    assert lifecycle.MAX_SNAPSHOT_AGE_SECONDS >= 3 * lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS
+
+
+def test_the_completion_job_never_polls_holodex_while_the_display_job_runs_on_its_normal_ten_minute_cadence(dynamo, monkeypatch):
+    """Two hours of the real schedule (display every 10 minutes, completion every 5): the ONLY routine Holodex requests are the display
+    job's -- the completion cycles, including the ones that fall just before the next display tick, never fall back to their own fetch."""
+    calls = _holodex_returns(monkeypatch, _holodex_item(video_id="v1", status="live"))
+    monkeypatch.setattr("collection.youtube_client.build_youtube_client", lambda api_key: object())
+    monkeypatch.setattr("ops.config.get_api_key", lambda: "fake-key")
+    monkeypatch.setattr("collection.youtube_client.get_archive_probe", lambda youtube, video_ids: {})  # YouTube is not what this test counts
+    interval = lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS
+    display_ticks = completion_ticks = 0
+    for second in range(0, 2 * 3600, 30):
+        now = T0 + timedelta(seconds=second)
+        if second % interval == 0:
+            lifecycle.refresh_display_snapshot(now=now)
+            display_ticks += 1
+        if second % 300 == 150:  # completion cycles sit between display ticks, including 8 minutes after the last one
+            lifecycle.refresh_snapshot(now=now)
+            completion_ticks += 1
+
+    assert display_ticks == 12 and completion_ticks == 24
+    assert calls["n"] == display_ticks  # 12 requests in two hours, not 120 and not 12 + a fallback per completion cycle
 
 # ============ write-on-change: a quiet minute must not rewrite the large item ============
 
@@ -392,18 +436,22 @@ def test_any_meaningful_change_rewrites_the_snapshot(dynamo, monkeypatch, second
     assert _ids(lifecycle.read_serving_snapshot(now=T0 + timedelta(minutes=1))) == sorted(item["video_id"] for item in second)
 
 
-def test_the_large_item_is_still_rewritten_at_least_every_ten_minutes_so_older_readers_stay_fresh(dynamo, monkeypatch):
-    """The large item is still rewritten at least every ten minutes so older readers stay fresh."""
+def test_an_unchanged_snapshot_is_only_rewritten_at_the_self_heal_interval_never_on_every_ten_minute_run(dynamo, monkeypatch):
+    """An unchanged snapshot is only rewritten at the self-heal interval, never on every 10-minute run."""
     _holodex_returns(monkeypatch, _holodex_item(video_id="v1", status="live"))
     lifecycle.refresh_display_snapshot(now=T0)
     writes = _Writes(monkeypatch)
+    interval = timedelta(seconds=lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS)
+    crossing = lifecycle.DISPLAY_CONTENT_REFRESH_SECONDS // lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS  # the tick at which the item is exactly that old
+    runs = crossing + 1  # and one more run after it
 
-    summaries = [lifecycle.refresh_display_snapshot(now=T0 + timedelta(minutes=minute)) for minute in range(1, 12)]
+    summaries = [lifecycle.refresh_display_snapshot(now=T0 + interval * tick) for tick in range(1, runs + 1)]
 
-    assert [s["snapshotWritten"] for s in summaries].count(True) == 1
-    assert summaries[9]["snapshotWritten"] is True  # minute 10
-    snapshot_age = (T0 + timedelta(minutes=11) - lifecycle._parse_moment(lifecycle._read_record(lifecycle.DISPLAY_SNAPSHOT_KEY)["refreshedAt"])).total_seconds()
-    assert snapshot_age <= lifecycle.DISPLAY_CONTENT_REFRESH_SECONDS + 60 < lifecycle.MAX_SNAPSHOT_AGE_SECONDS  # a pre-heartbeat reader never sees it stale
+    assert [s["snapshotWritten"] for s in summaries].count(True) == 1  # one self-heal rewrite, not one per run
+    assert summaries[crossing - 1]["snapshotWritten"] is True  # the run that reached the self-heal age
+    assert writes.count(lifecycle.DISPLAY_HEARTBEAT_KEY) == runs  # while every run still kept freshness current
+    last = T0 + interval * runs
+    assert _ids(lifecycle.read_serving_snapshot(now=last + timedelta(seconds=30))) == ["v1"]
 
 
 def test_freshness_follows_the_heartbeat_not_the_age_of_the_large_item(dynamo, monkeypatch):

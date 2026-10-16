@@ -197,6 +197,37 @@ def test_parse_stream_schedule_snapshot_rejects_a_refreshed_at_without_a_utc_off
         parse_stream_schedule_snapshot({"entries": {}, "refreshedAt": "2026-01-01T00:00:00"})
 
 
+def test_parse_stream_schedule_snapshot_reads_the_source_refreshed_at_the_entries_were_derived_from():
+    """sourceRefreshedAt is the refresh time of the shared snapshot the entries came from."""
+    snapshot = parse_stream_schedule_snapshot(
+        {"entries": {}, "refreshedAt": "2026-01-01T00:00:00+00:00", "sourceRefreshedAt": "2025-12-31T23:50:00+00:00"}
+    )
+    assert snapshot.source_refreshed_at == datetime(2025, 12, 31, 23, 50, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("raw", [None, "", "not-a-date", "2025-12-31T23:50:00", 12345, ["2025-12-31T23:50:00+00:00"]])
+def test_parse_stream_schedule_snapshot_treats_a_missing_or_unusable_source_refreshed_at_as_unknown_never_invalid(raw):
+    """It is only a hint that saves re-deriving: a bad value must never invalidate the schedule (which would silence every reminder) --
+    the record is simply re-derived by the next dispatcher run."""
+    value = {"entries": {"v1": {"creatorId": "ema", "scheduledStartMs": 1}}, "refreshedAt": "2026-01-01T00:00:00+00:00"}
+    if raw is not None:
+        value["sourceRefreshedAt"] = raw
+    snapshot = parse_stream_schedule_snapshot(value)
+    assert snapshot.source_refreshed_at is None
+    assert "v1" in snapshot.entries
+
+
+def test_the_start_reminder_is_a_pure_clock_comparison_against_the_stored_start_with_no_live_state_anywhere():
+    """開播時通知 fires in [scheduledStart, scheduledStart + window) and nowhere else -- there is no input that could carry a live confirmation."""
+    start_ms, window_ms = 1_000_000_000_000, 60_000
+    setting = _setting(None, start=True)
+    assert not is_start_reminder_due(setting, start_ms, now_ms=start_ms - 1, window_ms=window_ms)
+    assert is_start_reminder_due(setting, start_ms, now_ms=start_ms, window_ms=window_ms)
+    assert is_start_reminder_due(setting, start_ms, now_ms=start_ms + window_ms - 1, window_ms=window_ms)
+    assert not is_start_reminder_due(setting, start_ms, now_ms=start_ms + window_ms, window_ms=window_ms)
+    assert not is_start_reminder_due(_setting(None, start=False), start_ms, now_ms=start_ms, window_ms=window_ms)
+
+
 # --- resolve_effective_setting: stream override > 全部 > creator+topic > unset ---
 
 

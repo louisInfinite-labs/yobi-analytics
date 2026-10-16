@@ -176,10 +176,17 @@ def world(dynamo, monkeypatch):
 
 
 def _live_then_vanish(world, *, status="live", extra_minutes=0):
-    """v1 is observed in `status` by a completion cycle, then is gone from Holodex by the next one. Returns that next cycle's summary."""
+    """v1 is observed in `status` by a completion cycle, then is gone from Holodex by the next one. Returns that next cycle's summary.
+
+    While v1 is still listed, YouTube agrees it is on air (the answers the test configured only apply once it has vanished): an "already
+    ended" answer for a stream still listed live is the live-end watch, which has its own tests below.
+    """
+    final_probes = world.probes
+    world.probes = {video_id: {**probe, "actualEndTime": None} for video_id, probe in final_probes.items()}
     world.items = [_holodex_item(video_id="v1", status=status)]
     world.display()
     world.completion()
+    world.probes = final_probes
     world.items = []
     world.clock += timedelta(minutes=5)
     world.display(minutes=0)
@@ -233,7 +240,7 @@ def test_the_fallback_retries_are_bounded_and_a_total_failure_changes_nothing(wo
     world.display()
     world.completion()
     before = lifecycle._read_snapshot_record()
-    world.clock += timedelta(minutes=10)  # display stale
+    world.clock += timedelta(seconds=lifecycle.DISPLAY_FRESH_SECONDS + 60)  # display stale
     world.holodex_error = lifecycle.HolodexAPIError("persistent outage")
     calls_before = world.holodex_calls
 
@@ -251,6 +258,7 @@ def test_during_a_display_cooldown_the_completion_cycle_skips_without_calling_ho
     world.display()
     world.completion()
     before = lifecycle._read_snapshot_record()
+    probes_before = len(world.probe_calls)
     world.holodex_error = lifecycle.HolodexAPIError("rate limited", status_code=429)
     world.display(minutes=6)  # a 429 -> shared 5-minute cooldown
     calls_before = world.holodex_calls
@@ -261,7 +269,7 @@ def test_during_a_display_cooldown_the_completion_cycle_skips_without_calling_ho
     assert world.holodex_calls == calls_before  # the cooldown keeps Holodex alone
     assert summary["skipped"] == "display_cooldown"
     assert lifecycle._read_snapshot_record() == before
-    assert world.ended() == {} and world.probe_calls == []
+    assert world.ended() == {} and len(world.probe_calls) == probes_before  # a skipped cycle asks YouTube nothing either
 
 
 def test_a_re_delivered_completion_invocation_is_ignored_and_never_double_counts(world):
@@ -577,7 +585,7 @@ def test_the_first_lookup_is_the_cycle_that_confirms_the_end_and_a_playable_arch
 
     _live_then_vanish(world)
 
-    assert world.probe_calls == [["v1"]]  # one batched call in the confirming cycle itself (no extra delay)
+    assert world.probe_calls == [["v1"], ["v1"]]  # the live-end watch while it was on air, then one batched call in the confirming cycle itself
     archive = world.ended()["v1"]["archive"]
     assert archive["status"] == lifecycle.ARCHIVE_AVAILABLE
     assert archive["attempts"] == 1

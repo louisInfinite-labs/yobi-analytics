@@ -9,6 +9,7 @@ from stores.notification_delivery_log_store import (
     NotificationDeliveryLogStoreError,
     already_delivered,
     confirm_delivered,
+    handled_within,
     mark_delivered,
     mark_suppressed,
     release_claim,
@@ -181,3 +182,28 @@ def test_mark_suppressed_raises_store_error_when_table_is_missing(aws_credential
     with mock_aws():
         with pytest.raises(NotificationDeliveryLogStoreError):
             mark_suppressed("c1", "v1", NOW.isoformat())
+
+
+def test_handled_within_reports_only_recent_deliveries(delivery_log_table):
+    """A legacy row is "just sent" only while it is fresh; an older delivery belongs to a time the stream may since have left."""
+    assert handled_within("c1", "v1", timedelta(minutes=10), now=NOW) is False  # no row
+    mark_delivered("c1", "v1", NOW.isoformat(), now=NOW)
+    confirm_delivered("c1", "v1", (NOW - timedelta(minutes=3)).isoformat())
+
+    assert handled_within("c1", "v1", timedelta(minutes=10), now=NOW) is True
+    assert handled_within("c1", "v1", timedelta(minutes=2), now=NOW) is False
+    assert handled_within("c1", "other", timedelta(minutes=10), now=NOW) is False  # scoped per video
+
+
+def test_handled_within_counts_a_live_claim_but_not_an_expired_one(delivery_log_table):
+    """A send in flight blocks a concurrent run; an abandoned claim does not."""
+    mark_delivered("c1", "v1", (NOW - timedelta(minutes=1)).isoformat(), now=NOW)
+    assert handled_within("c1", "v1", timedelta(minutes=10), now=NOW) is True
+    assert handled_within("c1", "v1", timedelta(minutes=10), now=NOW + timedelta(minutes=30)) is False
+
+
+def test_handled_within_raises_store_error_when_table_is_missing(aws_credentials):
+    """Same error contract as the other reads."""
+    with mock_aws():
+        with pytest.raises(NotificationDeliveryLogStoreError):
+            handled_within("c1", "v1", timedelta(minutes=10), now=NOW)

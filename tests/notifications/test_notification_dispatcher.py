@@ -275,7 +275,7 @@ def test_sends_a_due_start_and_advance_reminder_independently_in_the_same_run(mo
     # the staleness check (this round's item 2) doesn't itself trigger an
     # (unstubbed) Holodex call mid-test.
     assert response["delivered"] == 1
-    assert "is live now" in sent_titles[0]
+    assert "is scheduled to go live now" in sent_titles[0]
 
     advance_now = datetime.fromtimestamp(advance_fire_at_ms / 1000, tz=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(advance_now))
@@ -343,7 +343,7 @@ def test_reminder_dedupe_prevents_resending_the_same_reminder_kind(monkeypatch):
             schedule=_schedule_value({"v1": {"creatorId": "aizawa_ema", "scheduledStartMs": scheduled_start_ms}}, refreshed_at=now),
         ),
     )
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: video_id == "v1:reminder:start")
+    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: video_id == "v1:reminder:start@16666666")
 
     def _boom(*a, **kw):
         raise AssertionError("should not resend an already-delivered reminder kind")
@@ -395,7 +395,7 @@ def test_reminder_uses_the_system_schedules_scheduled_start_not_the_unrelated_di
     response = lambda_handler({}, None)
 
     assert response["delivered"] == 1
-    assert delivered_video_ids == ["v1:reminder:start"]
+    assert delivered_video_ids == ["v1:reminder:start@16666666"]  # deduped per reminder kind AND the scheduled start (to the minute) it is for
 
 
 def test_rescheduling_a_stream_after_its_override_was_saved_moves_the_reminder_with_it(monkeypatch):
@@ -711,7 +711,7 @@ def test_reminder_dedupe_prevents_duplicate_send_for_a_normal_stream_with_no_ove
         "get_remote_config",
         _remote_config_stub(subscription=_subscription_value(), creator_reminders={"aizawa_ema": _creator_reminder_value()}),
     )
-    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: video_id == "v2:reminder:start")
+    monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: video_id == "v2:reminder:start@16666666")
 
     def _boom(*a, **kw):
         raise AssertionError("should not resend an already-delivered reminder for a normal stream")

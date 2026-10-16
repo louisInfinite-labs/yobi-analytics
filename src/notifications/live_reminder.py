@@ -23,13 +23,19 @@ setting never falls back to any default reminder.
 Plus one system-wide record, NOT scoped to any one client (stored under
 SYSTEM_CLIENT_ID):
 
-    "streamSchedule"  -- {entries: videoId -> StreamScheduleEntry, refreshedAt}
+    "streamSchedule"  -- {entries: videoId -> StreamScheduleEntry, refreshedAt,
+                         sourceRefreshedAt}
                          -- the SOLE source of scheduledStartMs (and of a
-                         stream's topic) at dispatch time. refreshedAt backs
-                         the staleness check that decouples how often
-                         reminders are EVALUATED (every dispatcher run) from
-                         how often Holodex is actually QUERIED (see
-                         notification_dispatcher.py's _SCHEDULE_REFRESH_INTERVAL).
+                         stream's topic) at dispatch time, derived from the
+                         shared live/upcoming snapshot. sourceRefreshedAt is
+                         the refresh time of the snapshot it was derived from:
+                         the dispatcher re-derives it as soon as the shared
+                         snapshot is newer, so a stored start time is never
+                         older than the snapshot itself (see
+                         notification_dispatcher.py's
+                         _refresh_and_load_stream_schedule; refreshedAt and
+                         _SCHEDULE_REFRESH_INTERVAL are only the fallback when
+                         the snapshot's own freshness is unknown).
 
 Precedence, highest first (the first two live outside this module, in
 notification_dispatch.should_notify_now / the dispatcher):
@@ -147,6 +153,9 @@ class StreamScheduleSnapshot:
 
     entries: dict[str, StreamScheduleEntry]
     refreshed_at: datetime
+    # When the shared live/upcoming snapshot these entries were derived from was itself last refreshed; None for a record written before this
+    # was tracked (it is then re-derived once) or whenever that freshness was unknown.
+    source_refreshed_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -326,7 +335,19 @@ def parse_stream_schedule_snapshot(raw: Any) -> StreamScheduleSnapshot:
         # The dispatcher compares this against a timezone-aware "now"; a naive
         # value would raise TypeError there and fail every dispatcher run.
         raise ClientError(f"streamSchedule.refreshedAt must include a UTC offset: {refreshed_at_raw!r}")
-    return StreamScheduleSnapshot(entries=entries, refreshed_at=refreshed_at)
+    return StreamScheduleSnapshot(entries=entries, refreshed_at=refreshed_at, source_refreshed_at=_parse_source_refreshed_at(raw.get("sourceRefreshedAt")))
+
+
+def _parse_source_refreshed_at(raw: Any) -> datetime | None:
+    """The optional sourceRefreshedAt as an aware datetime. Lenient on purpose: it is only a hint that avoids needless re-derivation, so a missing,
+    malformed or offset-less value means "unknown" (the record is simply re-derived), never an invalid schedule that would stop every reminder."""
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        moment = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
 
 
 def resolve_effective_setting(
@@ -381,6 +402,13 @@ def is_start_reminder_due(setting: LiveReminderSetting, scheduled_start_ms: int,
     Uses the stream's own scheduledStartMs, not any discovery timestamp --
     discoveredAt (notification_events_store.py) can be recorded well before
     or independent of a stream's actual scheduled start time.
+
+    The product's 開播時通知 means "at the stored scheduled start time": this
+    is purely a clock comparison against the stored schedule. It does NOT wait
+    for, and never needs, a Holodex or YouTube confirmation that the stream is
+    actually live (the notification wording says so -- see notification_text).
+    A creator who starts late, or never, still gets the reminder at the time
+    that was announced.
     """
     if not setting.notify_at_start:
         return False

@@ -27,9 +27,9 @@ from .test_reminder_timing_matrix import ALL_TIMINGS, START, STREAM, fire_at, re
 JA_STREAM_TITLE = "【APEX】ランクマ！ 深夜ソロ配信 #ぶいすぽ"
 NAME = "藍沢エマ"  # the stubbed creator's display name
 EXPECTED_TITLE = {
-    "zh-TW": {"1hour": "藍沢エマ 將於 1 小時後開播", "30min": "藍沢エマ 將於 30 分鐘後開播", "10min": "藍沢エマ 將於 10 分鐘後開播", "1min": "藍沢エマ 將於 1 分鐘後開播", "start": "藍沢エマ 已開始直播", "new_video": "藍沢エマ 發布了新影片"},
-    "ja": {"1hour": "藍沢エマ は1時間後に配信開始", "30min": "藍沢エマ は30分後に配信開始", "10min": "藍沢エマ は10分後に配信開始", "1min": "藍沢エマ は1分後に配信開始", "start": "藍沢エマ が配信を開始しました", "new_video": "藍沢エマ が新しい動画を公開しました"},
-    "en": {"1hour": "藍沢エマ goes live in 1 hour", "30min": "藍沢エマ goes live in 30 minutes", "10min": "藍沢エマ goes live in 10 minutes", "1min": "藍沢エマ goes live in 1 minute", "start": "藍沢エマ is live now", "new_video": "藍沢エマ posted a new video"},
+    "zh-TW": {"1hour": "藍沢エマ 將於 1 小時後開播", "30min": "藍沢エマ 將於 30 分鐘後開播", "10min": "藍沢エマ 將於 10 分鐘後開播", "1min": "藍沢エマ 將於 1 分鐘後開播", "start": "藍沢エマ 預定現在開播", "new_video": "藍沢エマ 發布了新影片"},
+    "ja": {"1hour": "藍沢エマ は1時間後に配信開始", "30min": "藍沢エマ は30分後に配信開始", "10min": "藍沢エマ は10分後に配信開始", "1min": "藍沢エマ は1分後に配信開始", "start": "藍沢エマ の配信開始予定時刻です", "new_video": "藍沢エマ が新しい動画を公開しました"},
+    "en": {"1hour": "藍沢エマ goes live in 1 hour", "30min": "藍沢エマ goes live in 30 minutes", "10min": "藍沢エマ goes live in 10 minutes", "1min": "藍沢エマ goes live in 1 minute", "start": "藍沢エマ is scheduled to go live now", "new_video": "藍沢エマ posted a new video"},
 }
 
 
@@ -102,7 +102,7 @@ def test_an_unknown_creator_uses_the_localized_fallback_name(monkeypatch):
 
     [payload] = reminder_payloads(monkeypatch, timing="start", preference=_preference_value(notificationLocale="zh-TW"))
 
-    assert payload["title"] == "你追蹤的創作者 已開始直播"
+    assert payload["title"] == "你追蹤的創作者 預定現在開播"
 
 
 def test_the_stream_title_is_stored_in_the_schedule_snapshot_and_read_back_for_the_notification(monkeypatch):

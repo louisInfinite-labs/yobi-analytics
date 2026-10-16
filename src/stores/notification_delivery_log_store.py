@@ -106,6 +106,30 @@ def already_delivered(client_id: str, video_id: str, *, now: datetime | None = N
     return not _is_expired(item["claimedAt"], now=now)
 
 
+def handled_within(client_id: str, video_id: str, within: timedelta, *, now: datetime | None = None) -> bool:
+    """Whether (client_id, video_id) was delivered, suppressed or claimed (a live claim) no longer than `within` ago.
+
+    Used for the LEGACY reminder rows (keyed without a start time) a previous version wrote: such a row only means "this was just sent for the
+    current start" while it is fresh -- an old one belongs to a time the stream may since have been moved away from. A row without a usable
+    timestamp, or an expired claim, is not "handled" here.
+    """
+    table = _resource().Table(NOTIFICATION_DELIVERY_LOG_TABLE)
+    try:
+        item = table.get_item(Key={"clientId": client_id, "videoId": video_id}).get("Item")
+    except ClientError as exc:
+        raise NotificationDeliveryLogStoreError(f"Failed to read {NOTIFICATION_DELIVERY_LOG_TABLE}: {exc}") from exc
+    if item is None:
+        return False
+    stamp = item.get("deliveredAt") or item.get("suppressedAt") or item.get("claimedAt")
+    try:
+        handled_at = datetime.fromisoformat(stamp)
+    except (TypeError, ValueError):
+        return False
+    if item["status"] == _STATUS_CLAIMED and _is_expired(item["claimedAt"], now=now):
+        return False
+    return (now or datetime.now(timezone.utc)) - handled_at <= within
+
+
 def delivered_video_ids(client_id: str, video_ids: Iterable[str], *, now: datetime | None = None) -> set[str]:
     """The subset of video_ids for which already_delivered(client_id, video_id) would be True, read in bulk.
 

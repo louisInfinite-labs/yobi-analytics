@@ -27,7 +27,7 @@ TITLES = {
         "30min": "{name} 將於 30 分鐘後開播",
         "10min": "{name} 將於 10 分鐘後開播",
         "1min": "{name} 將於 1 分鐘後開播",
-        "start": "{name} 已開始直播",
+        "start": "{name} 預定現在開播",
     },
     "ja": {
         "new_video": "{name} が新しい動画を公開しました",
@@ -35,7 +35,7 @@ TITLES = {
         "30min": "{name} は30分後に配信開始",
         "10min": "{name} は10分後に配信開始",
         "1min": "{name} は1分後に配信開始",
-        "start": "{name} が配信を開始しました",
+        "start": "{name} の配信開始予定時刻です",
     },
     "en": {
         "new_video": "{name} posted a new video",
@@ -43,7 +43,7 @@ TITLES = {
         "30min": "{name} goes live in 30 minutes",
         "10min": "{name} goes live in 10 minutes",
         "1min": "{name} goes live in 1 minute",
-        "start": "{name} is live now",
+        "start": "{name} is scheduled to go live now",
     },
 }
 FALLBACKS = {
@@ -88,7 +88,7 @@ def test_the_original_japanese_title_is_never_translated_or_altered_under_zh_tw_
 @pytest.mark.parametrize("raw", [None, "", "fr", "zh-CN", "ZH-TW", "zh_TW", 7, ["ja"], {"locale": "ja"}, True])
 def test_a_missing_or_unsupported_locale_falls_back_to_english(raw):
     assert normalize_locale(raw) == "en"
-    assert build(raw, "start").title == "藍沢エマ is live now"
+    assert build(raw, "start").title == "藍沢エマ is scheduled to go live now"
     assert build(raw, "new_video").title == "藍沢エマ posted a new video"
 
 
