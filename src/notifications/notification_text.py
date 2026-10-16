@@ -2,7 +2,9 @@
 
 Three locales are supported (zh-TW, ja, en); an unknown, missing or non-string locale means en. A notification is a (title, body) pair:
 
-- the TITLE is a localized template around the creator's display name (new video / 1 hour / 30 minutes / 10 minutes / 1 minute / started);
+- the TITLE is a localized template around the creator's display name (new video / 1 hour / 30 minutes / 10 minutes / 1 minute / scheduled start);
+  the start title only says the SCHEDULED start has arrived -- it is sent when the stored start time comes, before (and without) any confirmation
+  that the broadcast is actually live, so it never claims the stream "is live" or "has started";
 - the BODY is the original YouTube video or stream title, passed through untouched -- it is never translated, trimmed or rewritten -- or a
   short localized fallback when that title is missing or blank.
 
@@ -50,7 +52,7 @@ _STRINGS: dict[str, _LocaleStrings] = {
             "10min": "{name} 將於 10 分鐘後開播",
             "1min": "{name} 將於 1 分鐘後開播",
         },
-        start_title="{name} 已開始直播",
+        start_title="{name} 預定現在開播",
         fallback_video_body="新影片",
         fallback_stream_body="直播",
         fallback_creator_name="你追蹤的創作者",
@@ -63,7 +65,7 @@ _STRINGS: dict[str, _LocaleStrings] = {
             "10min": "{name} は10分後に配信開始",
             "1min": "{name} は1分後に配信開始",
         },
-        start_title="{name} が配信を開始しました",
+        start_title="{name} の配信開始予定時刻です",
         fallback_video_body="新しい動画",
         fallback_stream_body="配信",
         fallback_creator_name="フォロー中の配信者",
@@ -76,7 +78,7 @@ _STRINGS: dict[str, _LocaleStrings] = {
             "10min": "{name} goes live in 10 minutes",
             "1min": "{name} goes live in 1 minute",
         },
-        start_title="{name} is live now",
+        start_title="{name} is scheduled to go live now",
         fallback_video_body="New video",
         fallback_stream_body="Live stream",
         fallback_creator_name="A creator you follow",
@@ -107,7 +109,8 @@ def new_video_notification(*, locale: Any, creator_name: Any, video_title: Any) 
 
 
 def reminder_notification(*, locale: Any, kind: str, advance: str | None, creator_name: Any, stream_title: Any) -> NotificationText:
-    """The notification for a live reminder: kind "start" (the stream has started), or kind "advance" with one of ADVANCE_KEYS.
+    """The notification for a live reminder: kind "start" (the stream's SCHEDULED start has arrived -- not a claim that it is live), or kind
+    "advance" with one of ADVANCE_KEYS.
 
     `stream_title` is shown exactly as given. Raises ValueError for a kind / advance value this module does not know -- a programming error,
     never user data (the dispatcher only passes values it validated).

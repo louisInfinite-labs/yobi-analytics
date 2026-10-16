@@ -132,15 +132,20 @@ resource "aws_scheduler_schedule" "discovery_window" {
 # YobiTrendingCache's real production writer, and analytics/trending_
 # precompute.py (the code they targeted) was deleted in the same pass.
 
-# Single-stream/creator live-reminder spec section 8/10 (prepared, NOT applied):
-# the product's own reminder options include "1min"/"10min" -- the previous
-# rate(15 minutes) could only ever honour those roughly (up to ~14 minutes
-# late). Lowered to rate(1 minute) so notification_dispatcher.py's own
-# _REMINDER_WINDOW (now 1 minute, kept equal to this rate -- see that
-# module's docstring) can actually catch a reminder at its configured
-# offset instead of merely eventually. Cost/frequency tradeoff, deliberately
-# not evaluated further here (out of this change's scope): this is a 15x
-# increase in invocations/Holodex /users/live calls per day.
+# Single-stream/creator live-reminder spec section 8/10 (APPLIED to production 2026-10-10):
+# the product's own reminder options include "at start"/"1min"/"10min" -- the
+# previous rate(15 minutes) could only ever honour those roughly (up to ~14
+# minutes late). rate(1 minute) lets notification_dispatcher.py's own
+# _REMINDER_WINDOW (1 minute, kept equal to this rate -- see that module's
+# docstring) catch a reminder at its configured offset, including the
+# scheduled-start notification, which therefore goes out in the minute the
+# stored scheduledStart arrives. This is the ONE shared timer for every
+# subscriber: there is deliberately no per-user or per-stream scheduler.
+# It makes NO Holodex request: each run reads the shared snapshot that
+# livestream_display_refresh below keeps (an invocation is a few DynamoDB
+# reads, not an upstream call), and a stream's start time is whatever that
+# snapshot last stored -- a reschedule Holodex has not reported yet cannot be
+# known here.
 resource "aws_scheduler_schedule" "notification_dispatch" {
   name                         = "yobi-analytics-notification-dispatch"
   group_name                   = "default"
@@ -195,14 +200,14 @@ resource "aws_scheduler_schedule" "new_video_dispatch" {
   }
 }
 
-# Livestream completion lifecycle (SOURCE IMPLEMENTATION CHECKPOINT -- not yet applied, see
-# tracking/livestream_lifecycle.py): every 5 minutes is this feature's own refresh cadence, independent of
-# notification_dispatch's 1-minute/15-minute cadence above, which serves a different concern (reminder timing) and
-# is not touched by this schedule. AWS-aware verification (2026-10-13) confirmed no schedule of this name exists
-# yet (`aws scheduler list-schedules --group-name default`) -- no collision, no duplicate poller introduced. The
-# scheduler role additionally needs lambda:InvokeFunction on the new function's ARN below -- out of this Terraform
-# project's scope (manual IAM console grant, same precedent as the DLQ grant's own comment above) -- this genuinely
-# cannot be granted or verified until this is applied, since the function doesn't exist yet to name in that grant.
+# Livestream completion lifecycle (APPLIED to production, see tracking/livestream_lifecycle.py): every 5 minutes is
+# this feature's own cadence, independent of notification_dispatch's 1-minute cadence above, which serves a different
+# concern (reminder timing), and of the 10-minute display refresh below. It decides which streams ENDED: it reads the
+# shared display snapshot (no Holodex request while that is fresh), asks YouTube about the streams that snapshot lists as
+# live plus the pending candidates and archive watch in ONE batched videos.list call (1 quota unit per 50 ids), and
+# records YouTube-confirmed ends and verified archives. Because that probe goes to YouTube directly, an end is confirmed
+# within about one interval of YouTube's own actualEndTime however slowly Holodex is polled. The scheduler role's
+# lambda:InvokeFunction grant on this function was a manual IAM console step (same precedent as the DLQ grant above).
 resource "aws_scheduler_schedule" "livestream_lifecycle_refresh" {
   name                         = "yobi-analytics-livestream-lifecycle-refresh"
   group_name                   = "default"
@@ -223,17 +228,21 @@ resource "aws_scheduler_schedule" "livestream_lifecycle_refresh" {
   }
 }
 
-# Livestream DISPLAY refresh: every minute, the same Lambda as above with {"mode":"display"}. This is what makes a
-# newly started stream visible within about a minute; the 5-minute completion lifecycle above is untouched (its own
-# snapshot, pending-candidate set and 12-attempt retry window are not shared with this job). One aggregate Holodex
-# request per run with a persisted shared cooldown on failure (tracking/livestream_lifecycle.py), so the upstream rate
-# is capped at 1,440 requests/day regardless of how many browser tabs are open. Re-uses the existing scheduler role
-# (it already holds lambda:InvokeFunction on this function, as the 5-minute schedule works) and the shared DLQ; a run
-# that cannot start within 2 minutes is dropped rather than retried, since the next minute's run supersedes it.
+# Livestream DISPLAY refresh: every 10 minutes at :00/:10/:20/:30/:40/:50 UTC, the same Lambda as above with
+# {"mode":"display"}. This is the ONLY routine Holodex poller: ONE aggregate /users/live request per run returns both LIVE
+# and upcoming streams for every tracked channel, and every visitor of Home, Schedule and Live Status shares the snapshot
+# it writes -- opening or refreshing a page never reaches Holodex. 144 requests/day regardless of how many browser tabs
+# are open (it was 1,440/day at rate(1 minute)), with a persisted shared cooldown on failure
+# (tracking/livestream_lifecycle.py). The cadence is mirrored by livestream_lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS and
+# everything freshness-related in that module is derived from it: change one without the other and the completion job's
+# stale-snapshot fallback would start polling Holodex itself (a test pins the two together). Deploy the code BEFORE moving
+# this expression. Re-uses the existing scheduler role (it already holds lambda:InvokeFunction on this function, as the
+# 5-minute schedule works) and the shared DLQ; a run that cannot start within 5 minutes is dropped rather than retried,
+# since it would only land next to the following tick.
 resource "aws_scheduler_schedule" "livestream_display_refresh" {
   name                         = "yobi-analytics-livestream-display-refresh"
   group_name                   = "default"
-  schedule_expression          = "rate(1 minute)"
+  schedule_expression          = "cron(0/10 * * * ? *)"
   schedule_expression_timezone = "UTC"
 
   flexible_time_window {
@@ -247,7 +256,7 @@ resource "aws_scheduler_schedule" "livestream_display_refresh" {
 
     retry_policy {
       maximum_retry_attempts       = 1
-      maximum_event_age_in_seconds = 120
+      maximum_event_age_in_seconds = 300
     }
 
     dead_letter_config {

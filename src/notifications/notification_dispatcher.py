@@ -26,24 +26,35 @@ trigger: a stream's own scheduledStartMs, never discoveredAt). A reminder
 is skipped -- never delayed or replayed -- if the client is muted or in
 quiet hours at the moment it was meant to fire, or at the moment this run
 would send it. This reuses this cadence as-is rather than a second schedule
--- now rate(1 minute), prepared in terraform/eventbridge.tf (not yet
-applied) so _REMINDER_WINDOW can shrink to match and actually honour
-"1min"/"10min" precisely, not just "30min"/"1hour".
+-- rate(1 minute), applied to production since 2026-10-10, so _REMINDER_WINDOW
+matches it and "at start"/"1min"/"10min" are honoured precisely, not just
+"30min"/"1hour". It is the ONE shared timer for every subscriber: no per-user
+or per-stream scheduler exists, and none is needed -- every run just compares
+the clock with the stored schedule.
+
+A stream's START reminder (開播時通知) is due when its stored scheduledStart
+arrives, nothing else: no Holodex request is made at that minute and no
+Holodex/YouTube confirmation that the stream is live is awaited (see
+live_reminder.is_start_reminder_due); the pre-start reminders (1/10/30/60
+minutes) work the same way from the same stored start. A reschedule or
+cancellation Holodex has reported is picked up as soon as the shared snapshot
+carries it; one it has NOT reported yet cannot be known here -- the shared
+snapshot is refreshed every 10 minutes (tracking/livestream_lifecycle.py), so
+that is an inherent freshness limit of the data source, not of this timer.
 
 Reminder EVALUATION (every dispatcher run) is deliberately decoupled from
-how often Holodex is actually QUERIED: _refresh_and_load_stream_schedule
-only calls read_api.get_live_streams() when the persisted snapshot's own
-refreshedAt is older than _SCHEDULE_REFRESH_INTERVAL (15 minutes, this
-Lambda's own rate(15 minutes) cadence before this change lowered the
-*dispatch* schedule to rate(1 minute) for reminder evaluation -- see
-_SCHEDULE_REFRESH_INTERVAL) -- a 1-minute dispatcher cadence does not mean a
-1-minute Holodex cadence. One aggregate refresh per dispatcher run at most,
-never per client, never per stream.
+how often Holodex is actually QUERIED: this module never queries Holodex.
+_refresh_and_load_stream_schedule re-derives its "streamSchedule" entries from
+read_api.get_live_streams() -- a read of the shared snapshot, which only the
+10-minute display job refreshes from Holodex -- exactly when that snapshot is
+newer than the one the stored entries were derived from (a tiny heartbeat read
+per run, see live_reminder's streamSchedule note). One derivation per dispatcher
+run at most, never per client, never per stream.
 
-The "streamSchedule" snapshot is a full-replace write each successful
-refresh (never merged), so a stream Holodex no longer returns (ended, or
-beyond its own upcoming window) naturally ages out on the next refresh --
-no separate expiry/TTL bookkeeping needed. A failed Holodex fetch leaves the
+The "streamSchedule" snapshot is a full-replace write each derivation
+(never merged), so a stream Holodex no longer returns (ended, cancelled, or
+beyond its own upcoming window) naturally ages out on the next one --
+no separate expiry/TTL bookkeeping needed. A failed derivation leaves the
 previously stored snapshot untouched rather than wiping it (see
 _refresh_and_load_stream_schedule), so a transient outage degrades to
 "slightly stale schedule data", never "no reminders at all".
@@ -66,6 +77,7 @@ from api import read_api
 from api.holodex_client import HolodexAPIError
 from api.holodex_normalization import HolodexNormalizationError
 from ops.config import get_vapid_credentials, MissingHolodexApiKeyError
+from tracking import livestream_lifecycle
 from tracking.creator_master import load_creators
 from tracking.video_topics import OTHER_TOPIC, classify_video_topic
 
@@ -73,25 +85,18 @@ _NOTIFICATION_PREFERENCE_KEY = "notificationPreference"
 _PUSH_SUBSCRIPTION_KEY = "pushSubscription"
 
 # Matches this Lambda's own EventBridge rate (terraform/eventbridge.tf,
-# rate(1 minute), prepared not yet applied) -- a reminder's fire window is
+# rate(1 minute)) -- a reminder's fire window is
 # [fire_at, fire_at + this), so it's always caught by the next run rather
 # than skipped between two polls, while staying tight enough to honour
 # "1min"/"10min" at their configured offset rather than merely eventually.
 _REMINDER_WINDOW = timedelta(minutes=1)
 
-# How stale the persisted "streamSchedule" snapshot may get before this run
-# actually queries Holodex again -- reused, not invented: this Lambda's own
-# EventBridge schedule (terraform/eventbridge.tf's notification_dispatch)
-# ran at rate(15 minutes) before this change lowered it to rate(1 minute) so
-# reminder EVALUATION could honour "1min"/"10min" precisely (see
-# _REMINDER_WINDOW above). That pre-existing rate(15 minutes) is the
-# product's own already-chosen cadence for how often this backend queries
-# Holodex's /users/live for schedule data -- kept here as the Holodex QUERY
-# interval, decoupled from the now-faster dispatch/evaluation cadence,
-# rather than reusing the frontend's unrelated 60-second UI polling interval
-# (shared/api/liveStreamsStore.ts's POLL_INTERVAL_MS) or inventing a new
-# number.
-_SCHEDULE_REFRESH_INTERVAL = timedelta(minutes=15)
+# FALLBACK only: how old the persisted "streamSchedule" entries may get before this run re-derives them when the shared snapshot's own
+# freshness cannot be read (a store hiccup, a non-DynamoDB environment). Normally the entries are re-derived exactly when the shared snapshot is
+# newer than the one they came from, so this never decides anything. Equal to the display job's 10-minute cadence
+# (tracking.livestream_lifecycle.DISPLAY_REFRESH_INTERVAL_SECONDS): re-deriving more often than the snapshot changes would find nothing new, and
+# less often would let a start time lag the snapshot it should follow.
+_SCHEDULE_REFRESH_INTERVAL = timedelta(minutes=10)
 
 
 class UnsupportedModeError(ValueError):
@@ -147,15 +152,42 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     return {"statusCode": 200, "checked": checked, "delivered": delivered}
 
 
+def _read_source_refreshed_at() -> datetime | None:
+    """When the shared live/upcoming snapshot was last refreshed (livestream_lifecycle.read_display_refreshed_at -- one tiny heartbeat read), or None
+    when that cannot be known: nothing persisted yet, or the store failed. A failure here must never stop reminders, so it only means "unknown",
+    and the caller falls back to the time-based rule."""
+    try:
+        return livestream_lifecycle.read_display_refreshed_at()
+    except Exception as exc:  # noqa: BLE001 -- a freshness hint; every failure mode degrades to the interval rule
+        print(f"Warning: could not read the live snapshot's freshness ({type(exc).__name__}): {exc}; using the time-based schedule refresh")
+        return None
+
+
+def _stream_schedule_is_current(
+    existing: live_reminder.StreamScheduleSnapshot, source_refreshed_at: datetime | None, *, now: datetime
+) -> bool:
+    """Whether the stored entries still reflect the shared snapshot, so this run can reuse them without re-deriving.
+
+    With the snapshot's freshness known: current exactly when the entries were derived from that very refresh or a later one (a record written
+    before the source was tracked is re-derived once). Unknown: the time-based fallback, _SCHEDULE_REFRESH_INTERVAL since the last derivation.
+    """
+    if source_refreshed_at is None:
+        return (now - existing.refreshed_at) < _SCHEDULE_REFRESH_INTERVAL
+    if existing.source_refreshed_at is None:
+        return False
+    return existing.source_refreshed_at >= source_refreshed_at
+
+
 def _refresh_and_load_stream_schedule(*, now: datetime) -> dict[str, live_reminder.StreamScheduleEntry]:
-    """Return the system-wide "streamSchedule" snapshot's entries, refreshing
-    them from the existing Holodex-backed live/upcoming read path ONLY when
-    the persisted snapshot's own refreshedAt is stale (_SCHEDULE_REFRESH_INTERVAL)
-    -- a 1-minute reminder-evaluation cadence does not mean a 1-minute
-    Holodex cadence. One aggregate read_api.get_live_streams() call per
+    """Return the system-wide "streamSchedule" snapshot's entries, re-deriving
+    them from the existing live/upcoming read path (read_api.get_live_streams,
+    which reads the SHARED snapshot -- never Holodex) ONLY when that shared
+    snapshot is newer than the one the stored entries came from -- a
+    1-minute reminder-evaluation cadence does not mean a 1-minute derivation,
+    let alone a 1-minute Holodex cadence. One get_live_streams() call per
     dispatcher run AT MOST, never per client, never per stream.
 
-    A failed Holodex fetch is NOT treated as "no streams": that would wipe
+    A failed read is NOT treated as "no streams": that would wipe
     every stream's reminder capability (overridden and normal alike) on a
     transient outage. Instead it reuses whatever was last successfully
     persisted, same "degrade the item, never take down the batch" posture
@@ -169,7 +201,10 @@ def _refresh_and_load_stream_schedule(*, now: datetime) -> dict[str, live_remind
         except live_reminder.ClientError as exc:
             print(f"Warning: stored stream schedule is invalid ({exc}); treating as absent")
 
-    if existing_snapshot is not None and (now - existing_snapshot.refreshed_at) < _SCHEDULE_REFRESH_INTERVAL:
+    # Read BEFORE deriving: if the shared snapshot is refreshed while this run derives, the entries are recorded as coming from the OLDER one
+    # and the next run re-derives -- never the reverse (claiming newer data than was actually read).
+    source_refreshed_at = _read_source_refreshed_at()
+    if existing_snapshot is not None and _stream_schedule_is_current(existing_snapshot, source_refreshed_at, now=now):
         return existing_snapshot.entries
 
     try:
@@ -198,7 +233,9 @@ def _refresh_and_load_stream_schedule(*, now: datetime) -> dict[str, live_remind
         if isinstance(stream.get("title"), str) and stream["title"].strip():
             fresh_entries[stream["videoId"]]["title"] = stream["title"]  # the original title, shown as the notification body
 
-    fresh_value = {"entries": fresh_entries, "refreshedAt": now.isoformat()}
+    fresh_value: dict[str, Any] = {"entries": fresh_entries, "refreshedAt": now.isoformat()}
+    if source_refreshed_at is not None:
+        fresh_value["sourceRefreshedAt"] = source_refreshed_at.isoformat()
     record = remote_config_api.write_remote_config(
         {"clientId": live_reminder.SYSTEM_CLIENT_ID, "key": live_reminder.STREAM_SCHEDULE_KEY, "value": fresh_value}
     )
@@ -284,6 +321,7 @@ def _deliver_reminders_if_due(
         if _send_reminder(
             video_id,
             notification_text.KIND_ADVANCE,
+            scheduled_start_ms=start_ms,
             advance=setting.advance_reminder,
             stream_title=override.stream_title,
             locale=preference.locale,
@@ -302,6 +340,7 @@ def _deliver_reminders_if_due(
         if _send_reminder(
             video_id,
             notification_text.KIND_START,
+            scheduled_start_ms=start_ms,
             advance=None,
             stream_title=override.stream_title,
             locale=preference.locale,
@@ -325,10 +364,23 @@ def _suppressed_at(preference: notification_dispatch.NotificationPreference, cre
     return not notification_dispatch.should_notify_now(preference, creator_id, now=instant)
 
 
+def _reminder_dedupe_ids(video_id: str, kind: str, scheduled_start_ms: int) -> tuple[str, str]:
+    """(the id one reminder TARGET is deduped under, the legacy id older deployments used).
+
+    A target is a reminder kind for one specific scheduled start: a stream rescheduled to another time is a NEW target, so a delivery made for the
+    superseded time neither blocks the new one nor can ever fire again (the old start is never due once the stored schedule has moved), while
+    retries, overlapping runs and a redeploy of the SAME target still collapse into one delivery. The legacy id (no start time) is still honoured as
+    "already delivered" so the key change can never make a redeploy re-send a reminder that an older version already sent.
+    """
+    legacy_id = f"{video_id}:reminder:{kind}"
+    return f"{legacy_id}@{scheduled_start_ms}", legacy_id
+
+
 def _send_reminder(
     video_id: str,
     kind: str,
     *,
+    scheduled_start_ms: int,
     advance: str | None,
     stream_title: str | None,
     locale: str,
@@ -341,14 +393,22 @@ def _send_reminder(
     vapid_claims: dict[str, str],
 ) -> bool:
     """Send one (start or advance) reminder moment, deduped independently of
-    every other reminder kind/video pair (spec section 9: clientId + videoId
-    + reminder kind) by reusing notification_delivery_log_store's existing
+    every other reminder kind/video/target (spec section 9: clientId + videoId
+    + reminder kind, here also the scheduled start the reminder is for -- see
+    _reminder_dedupe_ids) by reusing notification_delivery_log_store's existing
     claimed/delivered state machine against a composite dedupe id, rather
     than a second delivery-history table -- this can never collide with that
     same store's real videoId-only rows (the discovery-notification dedupe
     above), since a real videoId never contains ":reminder:".
+
+    The claim is an atomic conditional write made BEFORE the push is sent, so
+    two overlapping dispatcher runs (or an EventBridge retry) can never both
+    send; a send that fails releases the claim so a retry inside the reminder
+    window can still deliver, and a confirmed delivery is permanent.
     """
-    dedupe_id = f"{video_id}:reminder:{kind}"
+    dedupe_id, legacy_id = _reminder_dedupe_ids(video_id, kind, scheduled_start_ms)
+    if notification_delivery_log_store.already_delivered(client_id, legacy_id):
+        return False
     if notification_delivery_log_store.already_delivered(client_id, dedupe_id):
         return False
     if not notification_delivery_log_store.mark_delivered(client_id, dedupe_id, now.isoformat()):

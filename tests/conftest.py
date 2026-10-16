@@ -42,6 +42,16 @@ def no_real_youtube_classification(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def unknown_live_snapshot_freshness_for_the_dispatcher(monkeypatch):
+    """The notification dispatcher asks the shared live snapshot how fresh it is (one small DynamoDB read) to decide whether its derived stream
+    schedule is current. Its tests stub the stores at module level, so that read would reach for a real table: default it to "unknown", which
+    selects the time-based fallback rule. A test of the snapshot-following behaviour overrides _read_source_refreshed_at itself."""
+    from notifications import notification_dispatcher
+
+    monkeypatch.setattr(notification_dispatcher, "_read_source_refreshed_at", lambda: None)
+
+
+@pytest.fixture(autouse=True)
 def aws_credentials(monkeypatch):
     """moto still requires boto3 to resolve *some* credentials; these never reach real AWS.
 

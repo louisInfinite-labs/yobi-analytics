@@ -132,6 +132,11 @@ jobs:
           tests/collection/test_youtube_client_archive_probe.py
           tests/stores/test_dynamodb_video_live_status.py
           tests/test_subscriber_snapshot_wiring.py
+          tests/tracking/test_livestream_live_end_watch.py
+          tests/api/test_live_streams_shared_snapshot.py
+          tests/notifications/test_scheduled_start_notifications.py
+          tests/notifications/test_live_reminder.py
+          tests/test_notification_dispatch_schedule.py
 
   frontend-focused-tests:
     needs: detect-scope
