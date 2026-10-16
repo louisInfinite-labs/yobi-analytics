@@ -237,6 +237,58 @@ def get_video_statistics(youtube: Resource, video_ids: list[str]) -> tuple[list[
     return results, skip_reasons
 
 
+def get_archive_probe(youtube: Resource, video_ids: list[str]) -> dict[str, dict]:
+    """What YouTube says about each video RIGHT NOW: whether the broadcast has ended (and when), its title and creator channel, and whether the
+    recording can be played -- one videos.list call per MAX_IDS_PER_REQUEST ids (1 quota unit each), asking for snippet, liveStreamingDetails, status
+    and statistics in that single request.
+
+    Returns videoId -> {"title", "channelId", "publishedAt", "actualEndTime", "privacyStatus", "uploadStatus", "embeddable", "viewCount"}. An id
+    YouTube does not return (deleted, private or otherwise unavailable -- the API cannot tell these apart) is simply ABSENT from the result; the
+    caller decides what that means. `viewCount` is None when the channel hides it, and nothing here depends on it: a missing count never makes an
+    item unreadable. Deliberately separate from get_video_statistics/_parse_video_item, which the daily collection and the ranking rows depend on.
+
+    Any API failure propagates (YouTubeAPIError). QuotaExhaustedError carries what the earlier batches answered (partial_results, a list of the
+    same dicts plus "videoId") and the ids never asked (remaining_video_ids), so a caller concludes nothing about those.
+    """
+    probes: dict[str, dict] = {}
+    for start in range(0, len(video_ids), MAX_IDS_PER_REQUEST):
+        batch = video_ids[start : start + MAX_IDS_PER_REQUEST]
+        try:
+            response = call_youtube_api(
+                lambda ids=",".join(batch): youtube.videos().list(part="snippet,liveStreamingDetails,status,statistics", id=ids).execute()
+            )
+        except QuotaExhaustedError as exc:
+            raise QuotaExhaustedError(
+                str(exc),
+                partial_results=[{"videoId": video_id, **facts} for video_id, facts in probes.items()],
+                remaining_video_ids=video_ids[start:],
+            ) from exc
+        items = response.get("items")
+        if not isinstance(items, list):
+            raise YouTubeAPIError("Malformed response from YouTube API: missing 'items'")
+        for item in items:
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                continue
+            snippet = item.get("snippet") if isinstance(item.get("snippet"), dict) else {}
+            live_details = item.get("liveStreamingDetails") if isinstance(item.get("liveStreamingDetails"), dict) else {}
+            status = item.get("status") if isinstance(item.get("status"), dict) else {}
+            statistics = item.get("statistics") if isinstance(item.get("statistics"), dict) else {}
+            try:
+                view_count = int(statistics["viewCount"])
+            except (KeyError, TypeError, ValueError):
+                view_count = None
+            probes[item["id"]] = {
+                "title": snippet.get("title"),
+                "channelId": snippet.get("channelId"),
+                "publishedAt": snippet.get("publishedAt"),
+                "actualEndTime": live_details.get("actualEndTime"),
+                "privacyStatus": status.get("privacyStatus"),
+                "uploadStatus": status.get("uploadStatus"),
+                "embeddable": status.get("embeddable"),
+                "viewCount": view_count,
+            }
+    return probes
+
 def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[str, str]]:
     """Fetch and parse one videos.list batch, skipping missing/malformed items with a reason."""
     response = call_youtube_api(
