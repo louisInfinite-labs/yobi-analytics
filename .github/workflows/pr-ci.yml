@@ -208,6 +208,7 @@ jobs:
           src/shared/api/hooks/useLiveStreams.test.ts
           src/features/live-schedule/hooks/useWeeklySchedule.test.tsx
           src/features/live-schedule/hooks/useWeeklySchedule.overnight.test.tsx
+          src/features/live-schedule/hooks/useWeeklySchedule.overnightMemberOnly.test.tsx
           src/shared/i18n/translations.test.ts
           src/entities/creator/data/creatorRegistry.test.ts
           src/features/live-status/components/CreatorStatusList.completeRoster.test.tsx

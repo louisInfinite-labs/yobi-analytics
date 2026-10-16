@@ -49,6 +49,10 @@ function placementMs(dto: LiveStreamDto): number | null {
   return Number.isNaN(ms) ? null : ms
 }
 
+/** Only a MEMBER creator's channel can hold the Schedule date. A group or staff channel (hololive FLOW GLOW, vspo_official, ...) can stay live for
+ * days -- a 24/7 station or a long-running event -- so it must never pin the window to its start day. Its streams are still shown, by the normal rule. */
+const holdsDate = (creatorId: string) => getCreatorById(creatorId)?.channelType === "member"
+
 /** The viewer's local midnight of the day `ms` falls on. */
 function localDayStart(ms: number): Date {
   const at = new Date(ms)
@@ -91,7 +95,7 @@ export function useOvernightHold({
     () =>
       streams.flatMap((dto) => {
         const startMs = placementMs(dto)
-        return dto.status === "live" && getCreatorById(dto.creatorId) !== undefined && startMs !== null && startMs < todayMs
+        return dto.status === "live" && holdsDate(dto.creatorId) && startMs !== null && startMs < todayMs
           ? [{ videoId: dto.videoId, creatorId: dto.creatorId, startMs }]
           : []
       }),
@@ -108,7 +112,7 @@ export function useOvernightHold({
   useEffect(() => {
     if (!supported) return
     const next: PendingOvernight = {}
-    for (const [videoId, entry] of Object.entries(pending)) if (!resolvedIds.has(videoId) && lastSeenOf(entry) >= horizonMs) next[videoId] = entry
+    for (const [videoId, entry] of Object.entries(pending)) if (!resolvedIds.has(videoId) && holdsDate(entry.creatorId) && lastSeenOf(entry) >= horizonMs) next[videoId] = entry
     for (const entry of liveOvernight) {
       const seen = next[entry.videoId]?.lastSeenMs
       next[entry.videoId] = { creatorId: entry.creatorId, startMs: entry.startMs, lastSeenMs: seen !== undefined && nowMs - seen < LAST_SEEN_RESOLUTION_MS ? seen : nowMs }
@@ -119,7 +123,7 @@ export function useOvernightHold({
 
   const earliestStartMs = useMemo(() => {
     if (!supported) return null
-    const remembered = Object.entries(pending).filter(([videoId, entry]) => !resolvedIds.has(videoId) && lastSeenOf(entry) >= horizonMs).map(([, entry]) => entry.startMs)
+    const remembered = Object.entries(pending).filter(([videoId, entry]) => !resolvedIds.has(videoId) && holdsDate(entry.creatorId) && lastSeenOf(entry) >= horizonMs).map(([, entry]) => entry.startMs)
     const starts = [...liveOvernight.map((entry) => entry.startMs), ...remembered].filter((ms) => ms < todayMs)
     return starts.length > 0 ? Math.min(...starts) : null
   }, [supported, liveOvernight, pending, resolvedIds, horizonMs, todayMs])
