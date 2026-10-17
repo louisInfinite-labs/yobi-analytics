@@ -518,6 +518,9 @@
   overflow-y: auto;
 
   scrollbar-width: thin;
+  /* Reserve the scrollbar's lane so the panel's content width never jumps when the scrollbar appears or the list grows (no-op where the
+     body does not scroll: tablet/mobile set overflow: visible below). */
+  scrollbar-gutter: stable;
 }
 
 .oshi-status__section {
@@ -536,6 +539,112 @@
 
 .oshi-status__section--recent {
   flex: 0 0 auto;
+}
+
+/* The 最近動態 heading row: the title, and on mobile/tablet the 查看全部 button beside it (see OshiStatusPanel). */
+.oshi-status__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.oshi-status__section-head > .oshi-status__section-title {
+  margin: 0;
+}
+
+.oshi-status__view-all {
+  flex: 0 0 auto;
+
+  appearance: none;
+
+  min-height: 28px;
+  padding: 0 10px;
+
+  border: 1px solid var(--oshi-border);
+  border-radius: 3px;
+
+  background: transparent;
+  color: var(--oshi-text-2);
+
+  font-size: 12px;
+  line-height: 26px;
+
+  cursor: pointer;
+}
+
+.oshi-status__view-all:hover,
+.oshi-status__view-all:focus-visible {
+  color: var(--oshi-text-1);
+  border-color: var(--oshi-text-3);
+}
+
+/* The dedicated full-screen Latest Activity view (mobile/tablet 查看全部): fixed over the whole viewport, its own scroll container, so Home
+   underneath keeps its scroll position untouched while it is open. */
+.oshi-activity-view {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+
+  display: flex;
+  flex-direction: column;
+
+  background: var(--oshi-bg);
+  color: var(--oshi-text-1);
+}
+
+.oshi-activity-view__header {
+  flex: 0 0 auto;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 8px;
+
+  border-bottom: 1px solid var(--oshi-border);
+  background: var(--oshi-surface-1);
+}
+
+.oshi-activity-view__close {
+  appearance: none;
+
+  width: 40px;
+  height: 40px;
+
+  border: 0;
+  border-radius: 4px;
+
+  background: transparent;
+  color: var(--oshi-text-1);
+
+  font-size: 20px;
+  line-height: 40px;
+
+  cursor: pointer;
+}
+
+.oshi-activity-view__title {
+  margin: 0;
+
+  color: var(--oshi-text-1);
+
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.oshi-activity-view__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+
+  padding: 8px 12px calc(env(safe-area-inset-bottom, 0px) + 16px);
+
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .oshi-status__section-title {

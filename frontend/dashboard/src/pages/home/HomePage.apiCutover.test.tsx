@@ -394,7 +394,7 @@ describe("Home theme color is the canonical creator color", () => {
   })
 })
 
-describe("Home -> real API: Latest Activity is the first 6 of the SAME dataset as Video List ALL", () => {
+describe("Home -> real API: Latest Activity is the SAME dataset as Video List ALL (6 rows to start, desktop panel scrolls on)", () => {
   type ObserverRecord = { callback: IntersectionObserverCallback; target: Element | null }
   let observers: ObserverRecord[] = []
 
@@ -422,10 +422,18 @@ describe("Home -> real API: Latest Activity is the first 6 of the SAME dataset a
     )
   })
 
-  const activityTitles = () => Array.from(document.querySelectorAll(".oshi-status__recent-video-link")).map((node) => node.textContent ?? "")
+  const activityTitles = () => Array.from(document.querySelectorAll("aside.oshi-status .oshi-status__recent-video-link")).map((node) => node.textContent ?? "")
+  /** Scroll the Latest Activity panel's row at `index` into view (the desktop panel observes its last row and its prefetch row). */
+  const scrollPanelRowIntoView = (index: number) =>
+    act(() => {
+      const row = document.querySelectorAll("aside.oshi-status .oshi-status__recent-list > .oshi-status__recent-row")[index]
+      for (const { callback, target } of observers) {
+        if (target === row) callback([{ isIntersecting: true, target } as IntersectionObserverEntry], {} as IntersectionObserver)
+      }
+    })
 
-  it("shares the ONE first-page request, shows only the first 6 rows in the list's order, and never pages from Home's panel", async () => {
-    api.catalogs[CREATOR_A.creatorId] = { all: catalog(CREATOR_A.creatorId, "all", 2 * PAGE + 5) }
+  it("shares the ONE first-page request and starts with the first 6 rows in the list's order, with no request of its own", async () => {
+    api.catalogs[CREATOR_A.creatorId] = { all: catalog(CREATOR_A.creatorId, "all", 3 * PAGE) }
     render(<HomePage />)
     await waitFor(() => expect(cards()).toHaveLength(PAGE))
     await waitFor(() => expect(activityTitles()).toHaveLength(6))
@@ -436,18 +444,32 @@ describe("Home -> real API: Latest Activity is the first 6 of the SAME dataset a
     expect(api.requests.filter((path) => path.includes("/videos/recent?"))).toHaveLength(2) // ALL + the player's completed-archive pool
     expect(api.requests.filter((path) => path.includes("/oshi-status"))).toHaveLength(1)
     expect(activityTitles()).toEqual(cardTitles().slice(0, 6))
-
-    // Nothing in Home's panel pages: no observer is watching a row, and nothing the panel does can request another page.
-    expect(observers.filter(({ target }) => target?.closest(".oshi-status"))).toHaveLength(0)
     await act(async () => {})
     expect(shelfRequests()).toHaveLength(1)
+  })
 
-    // The Video List keeps its own 20-per-page scrolling; Latest Activity stays at the first 6 of the same data.
-    scrollShelfTo(PAGE - 7)
-    await waitFor(() => expect(cards()).toHaveLength(2 * PAGE))
-    expect(shelfRequests()).toHaveLength(2)
+  it("the desktop panel scrolls on through the same feed: it reveals loaded rows without a request, pages 20 at a time at row 14, never duplicates, and the Video List is unaffected", async () => {
+    api.catalogs[CREATOR_A.creatorId] = { all: catalog(CREATOR_A.creatorId, "all", 2 * PAGE + 5) }
+    render(<HomePage />)
+    await waitFor(() => expect(activityTitles()).toHaveLength(6))
+
+    scrollPanelRowIntoView(5)
+    expect(activityTitles()).toHaveLength(12)
+    scrollPanelRowIntoView(11)
+    expect(activityTitles()).toHaveLength(18)
+    expect(shelfRequests()).toHaveLength(1) // revealing already-loaded rows asks for nothing
+    scrollPanelRowIntoView(13) // the prefetch point
+    await waitFor(() => expect(shelfRequests()).toHaveLength(2))
     expect(paramOf(shelfRequests()[1], "offset")).toBe(String(PAGE))
-    expect(paramOf(shelfRequests()[1], "newSince")).toBeNull() // later pages never repeat it
-    expect(activityTitles()).toEqual(cardTitles().slice(0, 6))
+    expect(paramOf(shelfRequests()[1], "newSince")).toBeNull()
+    scrollPanelRowIntoView(13) // still on screen: not asked twice
+    await act(async () => {})
+    expect(shelfRequests()).toHaveLength(2)
+
+    await waitFor(() => expect(cards()).toHaveLength(2 * PAGE))
+    scrollPanelRowIntoView(17)
+    expect(activityTitles()).toHaveLength(24)
+    expect(new Set(activityTitles()).size).toBe(24)
+    expect(activityTitles()).toEqual(cardTitles().slice(0, 24)) // same videos, same order as Video List ALL
   })
 })
