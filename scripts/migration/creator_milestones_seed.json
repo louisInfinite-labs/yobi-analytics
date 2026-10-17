@@ -1,0 +1,666 @@
+{
+  "schemaVersion": 1,
+  "description": "Birthday (MM-DD, no year) and ORIGINAL debut date (YYYY-MM-DD) per Creator Master creatorId. Source: oshiyobi_member_birthdays_debuts.md (reconstructed, not verified against the live site). Graduated creators keep their original debut date.",
+  "records": [
+    {
+      "creatorId": "kaga_sumire",
+      "displayName": "花芽すみれ",
+      "birthday": "04-02",
+      "debutDate": "2018-10-20"
+    },
+    {
+      "creatorId": "kaga_nazuna",
+      "displayName": "花芽なずな",
+      "birthday": "04-02",
+      "debutDate": "2018-10-20"
+    },
+    {
+      "creatorId": "kosuzume_toto",
+      "displayName": "小雀とと",
+      "birthday": "10-10",
+      "debutDate": "2019-04-17"
+    },
+    {
+      "creatorId": "ichinose_uruha",
+      "displayName": "一ノ瀬うるは",
+      "birthday": "12-23",
+      "debutDate": "2019-04-19"
+    },
+    {
+      "creatorId": "kurumi_noa",
+      "displayName": "胡桃のあ",
+      "birthday": "02-13",
+      "debutDate": "2020-03-14"
+    },
+    {
+      "creatorId": "usaki_mimi",
+      "displayName": "兎咲ミミ",
+      "birthday": "03-03",
+      "debutDate": "2020-07-04"
+    },
+    {
+      "creatorId": "sorasumi_sena",
+      "displayName": "空澄セナ",
+      "birthday": "01-18",
+      "debutDate": "2020-07-19"
+    },
+    {
+      "creatorId": "tachibana_hinano",
+      "displayName": "橘ひなの",
+      "birthday": "11-11",
+      "debutDate": "2020-08-14"
+    },
+    {
+      "creatorId": "hanabusa_risa",
+      "displayName": "英リサ",
+      "birthday": "06-03",
+      "debutDate": "2020-08-15"
+    },
+    {
+      "creatorId": "kisaragi_ren",
+      "displayName": "如月れん",
+      "birthday": "05-05",
+      "debutDate": "2020-10-18"
+    },
+    {
+      "creatorId": "kanari_kyupi",
+      "displayName": "神成きゅぴ",
+      "birthday": "05-18",
+      "debutDate": "2020-07-10"
+    },
+    {
+      "creatorId": "yakumo_beni",
+      "displayName": "八雲べに",
+      "birthday": "09-25",
+      "debutDate": "2021-04-16"
+    },
+    {
+      "creatorId": "aizawa_ema",
+      "displayName": "藍沢エマ",
+      "birthday": "01-31",
+      "debutDate": "2021-09-18"
+    },
+    {
+      "creatorId": "shinomiya_runa",
+      "displayName": "紫宮るな",
+      "birthday": "02-22",
+      "debutDate": "2021-09-26"
+    },
+    {
+      "creatorId": "nekota_tsuna",
+      "displayName": "猫汰つな",
+      "birthday": "11-27",
+      "debutDate": "2022-06-24"
+    },
+    {
+      "creatorId": "shiranami_ramune",
+      "displayName": "白波らむね",
+      "birthday": "03-21",
+      "debutDate": "2022-08-25"
+    },
+    {
+      "creatorId": "komori_meto",
+      "displayName": "小森めと",
+      "birthday": "12-10",
+      "debutDate": "2020-05-30"
+    },
+    {
+      "creatorId": "yumeno_akari",
+      "displayName": "夢野あかり",
+      "birthday": "05-05",
+      "debutDate": "2023-06-21"
+    },
+    {
+      "creatorId": "yano_kuromu",
+      "displayName": "夜乃くろむ",
+      "birthday": "06-16",
+      "debutDate": "2023-11-24"
+    },
+    {
+      "creatorId": "tsumugi_kokage",
+      "displayName": "紡木こかげ",
+      "birthday": "10-26",
+      "debutDate": "2024-03-19"
+    },
+    {
+      "creatorId": "sendo_yuuhi",
+      "displayName": "千燈ゆうひ",
+      "birthday": "12-03",
+      "debutDate": "2024-05-02"
+    },
+    {
+      "creatorId": "choya_hanabi",
+      "displayName": "蝶屋はなび",
+      "birthday": "04-09",
+      "debutDate": "2024-11-02"
+    },
+    {
+      "creatorId": "amayui_moka",
+      "displayName": "甘結もか",
+      "birthday": "02-26",
+      "debutDate": "2024-11-02"
+    },
+    {
+      "creatorId": "ginjo_saine",
+      "displayName": "銀城サイネ",
+      "birthday": "09-12",
+      "debutDate": "2026-01-14"
+    },
+    {
+      "creatorId": "tatsumaki_chise",
+      "displayName": "龍巻ちせ",
+      "birthday": "07-30",
+      "debutDate": "2026-01-14"
+    },
+    {
+      "creatorId": "remia_aotsuki",
+      "displayName": "青月レミア",
+      "birthday": "02-03",
+      "debutDate": "2024-06-30"
+    },
+    {
+      "creatorId": "arya_kuroha",
+      "displayName": "黒刃アリヤ",
+      "birthday": "09-22",
+      "debutDate": "2024-06-30"
+    },
+    {
+      "creatorId": "jira_jisaki",
+      "displayName": "地崎ジラ",
+      "birthday": "11-04",
+      "debutDate": "2024-06-30"
+    },
+    {
+      "creatorId": "narin_mikure",
+      "displayName": "美暮ナリン",
+      "birthday": "12-09",
+      "debutDate": "2024-08-25"
+    },
+    {
+      "creatorId": "riko_solari",
+      "displayName": "ソラリリコ",
+      "birthday": "03-24",
+      "debutDate": "2024-08-25"
+    },
+    {
+      "creatorId": "eris_suzukami",
+      "displayName": "涼上エリス",
+      "birthday": "07-12",
+      "debutDate": "2025-11-16"
+    },
+    {
+      "creatorId": "juno_umezono",
+      "displayName": "梅園ジュノ",
+      "birthday": "08-10",
+      "debutDate": "2026-03-29"
+    },
+    {
+      "creatorId": "tokino_sora",
+      "displayName": "ときのそら",
+      "birthday": "05-15",
+      "debutDate": "2017-09-07"
+    },
+    {
+      "creatorId": "robocosan",
+      "displayName": "ロボ子さん",
+      "birthday": "05-23",
+      "debutDate": "2018-03-09"
+    },
+    {
+      "creatorId": "azki",
+      "displayName": "AZKi",
+      "birthday": "07-01",
+      "debutDate": "2018-11-15"
+    },
+    {
+      "creatorId": "sakura_miko",
+      "displayName": "さくらみこ",
+      "birthday": "03-05",
+      "debutDate": "2018-08-01"
+    },
+    {
+      "creatorId": "hoshimachi_suisei",
+      "displayName": "星街すいせい",
+      "birthday": "03-22",
+      "debutDate": "2018-03-22"
+    },
+    {
+      "creatorId": "yozora_mel",
+      "displayName": "夜空メル",
+      "birthday": "10-31",
+      "debutDate": "2018-05-13"
+    },
+    {
+      "creatorId": "aki_rosenthal",
+      "displayName": "アキ・ローゼンタール",
+      "birthday": "02-17",
+      "debutDate": "2018-06-01"
+    },
+    {
+      "creatorId": "akai_haato",
+      "displayName": "赤井はあと",
+      "birthday": "08-10",
+      "debutDate": "2018-06-02"
+    },
+    {
+      "creatorId": "shirakami_fubuki",
+      "displayName": "白上フブキ",
+      "birthday": "10-05",
+      "debutDate": "2018-06-01"
+    },
+    {
+      "creatorId": "natsuiro_matsuri",
+      "displayName": "夏色まつり",
+      "birthday": "07-22",
+      "debutDate": "2018-06-01"
+    },
+    {
+      "creatorId": "minato_aqua",
+      "displayName": "湊あくあ",
+      "birthday": "12-01",
+      "debutDate": "2018-08-08"
+    },
+    {
+      "creatorId": "murasaki_shion",
+      "displayName": "紫咲シオン",
+      "birthday": "12-08",
+      "debutDate": "2018-08-17"
+    },
+    {
+      "creatorId": "nakiri_ayame",
+      "displayName": "百鬼あやめ",
+      "birthday": "12-13",
+      "debutDate": "2018-09-03"
+    },
+    {
+      "creatorId": "yuzuki_choco",
+      "displayName": "癒月ちょこ",
+      "birthday": "02-14",
+      "debutDate": "2018-09-04"
+    },
+    {
+      "creatorId": "oozora_subaru",
+      "displayName": "大空スバル",
+      "birthday": "07-02",
+      "debutDate": "2018-09-16"
+    },
+    {
+      "creatorId": "ookami_mio",
+      "displayName": "大神ミオ",
+      "birthday": "08-20",
+      "debutDate": "2018-12-07"
+    },
+    {
+      "creatorId": "nekomata_okayu",
+      "displayName": "猫又おかゆ",
+      "birthday": "02-22",
+      "debutDate": "2019-04-06"
+    },
+    {
+      "creatorId": "inugami_korone",
+      "displayName": "戌神ころね",
+      "birthday": "10-01",
+      "debutDate": "2019-04-13"
+    },
+    {
+      "creatorId": "usada_pekora",
+      "displayName": "兎田ぺこら",
+      "birthday": "01-12",
+      "debutDate": "2019-07-17"
+    },
+    {
+      "creatorId": "uruha_rushia",
+      "displayName": "潤羽るしあ",
+      "birthday": "01-22",
+      "debutDate": "2019-07-18"
+    },
+    {
+      "creatorId": "shiranui_flare",
+      "displayName": "不知火フレア",
+      "birthday": "04-02",
+      "debutDate": "2019-08-07"
+    },
+    {
+      "creatorId": "shirogane_noel",
+      "displayName": "白銀ノエル",
+      "birthday": "11-24",
+      "debutDate": "2019-08-08"
+    },
+    {
+      "creatorId": "houshou_marine",
+      "displayName": "宝鐘マリン",
+      "birthday": "07-30",
+      "debutDate": "2019-08-11"
+    },
+    {
+      "creatorId": "amane_kanata",
+      "displayName": "天音かなた",
+      "birthday": "04-22",
+      "debutDate": "2019-12-27"
+    },
+    {
+      "creatorId": "kiryu_coco",
+      "displayName": "桐生ココ",
+      "birthday": "06-17",
+      "debutDate": "2019-12-28"
+    },
+    {
+      "creatorId": "tsunomaki_watame",
+      "displayName": "角巻わため",
+      "birthday": "06-06",
+      "debutDate": "2019-12-29"
+    },
+    {
+      "creatorId": "tokoyami_towa",
+      "displayName": "常闇トワ",
+      "birthday": "08-08",
+      "debutDate": "2020-01-03"
+    },
+    {
+      "creatorId": "himemori_luna",
+      "displayName": "姫森ルーナ",
+      "birthday": "10-10",
+      "debutDate": "2020-01-04"
+    },
+    {
+      "creatorId": "yukihana_lamy",
+      "displayName": "雪花ラミィ",
+      "birthday": "11-15",
+      "debutDate": "2020-08-12"
+    },
+    {
+      "creatorId": "momosuzu_nene",
+      "displayName": "桃鈴ねね",
+      "birthday": "03-02",
+      "debutDate": "2020-08-13"
+    },
+    {
+      "creatorId": "shishiro_botan",
+      "displayName": "獅白ぼたん",
+      "birthday": "09-08",
+      "debutDate": "2020-08-14"
+    },
+    {
+      "creatorId": "mano_aloe",
+      "displayName": "魔乃アロエ",
+      "birthday": "10-28",
+      "debutDate": "2020-08-15"
+    },
+    {
+      "creatorId": "omaru_polka",
+      "displayName": "尾丸ポルカ",
+      "birthday": "01-30",
+      "debutDate": "2020-08-16"
+    },
+    {
+      "creatorId": "laplus_darkness",
+      "displayName": "ラプラス・ダークネス",
+      "birthday": "05-25",
+      "debutDate": "2021-11-26"
+    },
+    {
+      "creatorId": "takane_lui",
+      "displayName": "鷹嶺ルイ",
+      "birthday": "06-11",
+      "debutDate": "2021-11-27"
+    },
+    {
+      "creatorId": "hakui_koyori",
+      "displayName": "博衣こより",
+      "birthday": "03-15",
+      "debutDate": "2021-11-28"
+    },
+    {
+      "creatorId": "sakamata_chloe",
+      "displayName": "沙花叉クロヱ",
+      "birthday": "05-18",
+      "debutDate": "2021-11-29"
+    },
+    {
+      "creatorId": "kazama_iroha",
+      "displayName": "風真いろは",
+      "birthday": "06-18",
+      "debutDate": "2021-11-30"
+    },
+    {
+      "creatorId": "hiodoshi_ao",
+      "displayName": "火威青",
+      "birthday": "02-27",
+      "debutDate": "2023-09-09"
+    },
+    {
+      "creatorId": "otonose_kanade",
+      "displayName": "音乃瀬奏",
+      "birthday": "04-20",
+      "debutDate": "2023-09-09"
+    },
+    {
+      "creatorId": "ichijou_ririka",
+      "displayName": "一条莉々華",
+      "birthday": "05-12",
+      "debutDate": "2023-09-09"
+    },
+    {
+      "creatorId": "juufuutei_raden",
+      "displayName": "儒烏風亭らでん",
+      "birthday": "02-04",
+      "debutDate": "2023-09-10"
+    },
+    {
+      "creatorId": "todoroki_hajime",
+      "displayName": "轟はじめ",
+      "birthday": "06-07",
+      "debutDate": "2023-09-10"
+    },
+    {
+      "creatorId": "isaki_riona",
+      "displayName": "響咲リオナ",
+      "birthday": "05-29",
+      "debutDate": "2024-11-09"
+    },
+    {
+      "creatorId": "koganei_niko",
+      "displayName": "虎金妃笑虎",
+      "birthday": "07-25",
+      "debutDate": "2024-11-09"
+    },
+    {
+      "creatorId": "mizumiya_su",
+      "displayName": "水宮枢",
+      "birthday": "06-16",
+      "debutDate": "2024-11-09"
+    },
+    {
+      "creatorId": "rindo_chihaya",
+      "displayName": "輪堂千速",
+      "birthday": "07-08",
+      "debutDate": "2024-11-09"
+    },
+    {
+      "creatorId": "kikirara_vivi",
+      "displayName": "綺々羅々ヴィヴィ",
+      "birthday": "08-27",
+      "debutDate": "2024-11-09"
+    },
+    {
+      "creatorId": "achichi_mela",
+      "displayName": "熱千めら",
+      "birthday": "04-16",
+      "debutDate": "2026-09-24"
+    },
+    {
+      "creatorId": "sorashina_sopia",
+      "displayName": "宙科そぴあ",
+      "birthday": "06-13",
+      "debutDate": "2026-09-24"
+    },
+    {
+      "creatorId": "suzuna_tsuzuri",
+      "displayName": "鈴鳴つづり",
+      "birthday": "06-28",
+      "debutDate": "2026-09-25"
+    },
+    {
+      "creatorId": "hyakuto_kyoko",
+      "displayName": "百灯キョーコ",
+      "birthday": "05-08",
+      "debutDate": "2026-09-25"
+    },
+    {
+      "creatorId": "mori_calliope",
+      "displayName": "Mori Calliope",
+      "birthday": "04-04",
+      "debutDate": "2020-09-12"
+    },
+    {
+      "creatorId": "takanashi_kiara",
+      "displayName": "Takanashi Kiara",
+      "birthday": "07-06",
+      "debutDate": "2020-09-12"
+    },
+    {
+      "creatorId": "ninomae_inanis",
+      "displayName": "Ninomae Ina'nis",
+      "birthday": "05-20",
+      "debutDate": "2020-09-13"
+    },
+    {
+      "creatorId": "gawr_gura",
+      "displayName": "Gawr Gura",
+      "birthday": "06-20",
+      "debutDate": "2020-09-13"
+    },
+    {
+      "creatorId": "watson_amelia",
+      "displayName": "Watson Amelia",
+      "birthday": "01-06",
+      "debutDate": "2020-09-13"
+    },
+    {
+      "creatorId": "irys",
+      "displayName": "IRyS",
+      "birthday": "03-07",
+      "debutDate": "2021-07-11"
+    },
+    {
+      "creatorId": "ceres_fauna",
+      "displayName": "Ceres Fauna",
+      "birthday": "03-21",
+      "debutDate": "2021-08-23"
+    },
+    {
+      "creatorId": "ouro_kronii",
+      "displayName": "Ouro Kronii",
+      "birthday": "03-14",
+      "debutDate": "2021-08-23"
+    },
+    {
+      "creatorId": "nanashi_mumei",
+      "displayName": "Nanashi Mumei",
+      "birthday": "08-04",
+      "debutDate": "2021-08-23"
+    },
+    {
+      "creatorId": "hakos_baelz",
+      "displayName": "Hakos Baelz",
+      "birthday": "02-29",
+      "debutDate": "2021-08-23"
+    },
+    {
+      "creatorId": "shiori_novella",
+      "displayName": "Shiori Novella",
+      "birthday": "05-02",
+      "debutDate": "2023-07-30"
+    },
+    {
+      "creatorId": "koseki_bijou",
+      "displayName": "Koseki Bijou",
+      "birthday": "04-14",
+      "debutDate": "2023-07-30"
+    },
+    {
+      "creatorId": "nerissa_ravencroft",
+      "displayName": "Nerissa Ravencroft",
+      "birthday": "11-21",
+      "debutDate": "2023-07-31"
+    },
+    {
+      "creatorId": "elizabeth_rose_bloodflame",
+      "displayName": "Elizabeth Rose Bloodflame",
+      "birthday": "04-25",
+      "debutDate": "2024-06-22"
+    },
+    {
+      "creatorId": "gigi_murin",
+      "displayName": "Gigi Murin",
+      "birthday": "10-18",
+      "debutDate": "2024-06-22"
+    },
+    {
+      "creatorId": "cecilia_immergreen",
+      "displayName": "Cecilia Immergreen",
+      "birthday": "11-11",
+      "debutDate": "2024-06-23"
+    },
+    {
+      "creatorId": "raora_panthera",
+      "displayName": "Raora Panthera",
+      "birthday": "05-11",
+      "debutDate": "2024-06-23"
+    },
+    {
+      "creatorId": "ayunda_risu",
+      "displayName": "Ayunda Risu",
+      "birthday": "01-15",
+      "debutDate": "2020-04-10"
+    },
+    {
+      "creatorId": "moona_hoshinova",
+      "displayName": "Moona Hoshinova",
+      "birthday": "02-15",
+      "debutDate": "2020-04-11"
+    },
+    {
+      "creatorId": "airani_iofifteen",
+      "displayName": "Airani Iofifteen",
+      "birthday": "07-15",
+      "debutDate": "2020-04-12"
+    },
+    {
+      "creatorId": "kureiji_ollie",
+      "displayName": "Kureiji Ollie",
+      "birthday": "10-13",
+      "debutDate": "2020-12-04"
+    },
+    {
+      "creatorId": "anya_melfissa",
+      "displayName": "Anya Melfissa",
+      "birthday": "03-12",
+      "debutDate": "2020-12-05"
+    },
+    {
+      "creatorId": "pavolia_reine",
+      "displayName": "Pavolia Reine",
+      "birthday": "09-09",
+      "debutDate": "2020-12-06"
+    },
+    {
+      "creatorId": "vestia_zeta",
+      "displayName": "Vestia Zeta",
+      "birthday": "11-07",
+      "debutDate": "2022-03-25"
+    },
+    {
+      "creatorId": "kaela_kovalskia",
+      "displayName": "Kaela Kovalskia",
+      "birthday": "08-30",
+      "debutDate": "2022-03-26"
+    },
+    {
+      "creatorId": "kobo_kanaeru",
+      "displayName": "Kobo Kanaeru",
+      "birthday": "12-12",
+      "debutDate": "2022-03-27"
+    }
+  ]
+}
