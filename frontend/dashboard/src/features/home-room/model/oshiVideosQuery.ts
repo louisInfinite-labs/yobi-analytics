@@ -102,9 +102,17 @@ export interface OshiVideosRequest {
   paged: boolean
 }
 
+/** The controls Home's Video List starts with, so ALL with them is THE one default dataset (Latest Activity pages the same one). */
+export const HOME_ALL_DEFAULT_CONTROLS: OshiVideosControls = { contentType: "all", sort: "newest", viewWindow: "total" }
+
+/** True while the Video List shows ALL with its default content type and newest-first sort -- the dataset Latest Activity shares. */
+export function isHomeAllDefault(selection: VideoSectionSelection, controls: OshiVideosControls): boolean {
+  return selection === "all" && controls.contentType === "all" && controls.sort === "newest"
+}
+
 /** Home's shelf is the archive: plain uploads and COMPLETED livestreams, never the
  * creator's still-upcoming/live-now stream (liveStatus=archived). */
-export function buildOshiVideosRequest(query: OshiVideosQuery, offset = 0): OshiVideosRequest {
+export function buildOshiVideosRequest(query: OshiVideosQuery, offset = 0, options: { newSince?: string } = {}): OshiVideosRequest {
   const creatorPath = `/creators/${encodeURIComponent(query.creatorId)}/videos`
   const contentType = query.contentType
 
@@ -129,5 +137,7 @@ export function buildOshiVideosRequest(query: OshiVideosQuery, offset = 0): Oshi
     offset: String(offset),
   })
   if (query.excludeShorts) params.set("excludeShorts", "true")
+  // Only the first page asks for the unwatched eligibility of the WHOLE set; later pages never repeat it.
+  if (options.newSince && offset === 0) params.set("newSince", options.newSince)
   return { path: `${creatorPath}/recent?${params}`, paged: true }
 }

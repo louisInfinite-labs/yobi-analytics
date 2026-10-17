@@ -261,3 +261,53 @@ def test_the_view_count_ranking_endpoint_and_a_non_dynamodb_backend_are_unaffect
 
     monkeypatch.delenv("YOBI_STORAGE_BACKEND")
     assert _ids() == ["old"]
+
+# ============ the overlay's own rows carry the ORIGINAL discovery time (so a just-ended stream can be NEW) ============
+
+
+class _Record:
+    """The one Video Master field this overlay reads."""
+
+    def __init__(self, discovered_at):
+        self.discovered_at = discovered_at
+
+
+def _video_master_has(monkeypatch, records: dict) -> None:
+    """Serve the given videoId -> record map as Video Master (tests/conftest.py stubs the overlay's record read to {} by default)."""
+    from api import provisional_discoveries
+
+    monkeypatch.setattr(provisional_discoveries, "_records_for", lambda video_ids, moment: {video_id: records[video_id] for video_id in video_ids if video_id in records})
+
+
+def test_an_added_archive_row_takes_its_original_discovery_time_from_video_master_never_publishedat(dynamo, monkeypatch):
+    """An added archive row takes its original discovery time from Video Master never publishedAt."""
+    _wire(monkeypatch, [])
+    _seed(_ended("e1"))
+    _video_master_has(monkeypatch, {"e1": _Record("2026-10-15T20:30:00+09:00")})
+
+    [video] = read_api.get_recent_creator_videos({**HOME})["videos"]
+
+    assert video["discoveredAt"] == "2026-10-15T20:30:00+09:00" and video["publishedAt"] == "2026-10-15T17:00:00Z"
+
+
+def test_an_added_archive_row_with_no_recorded_discovery_time_stays_unknown(dynamo, monkeypatch):
+    """An added archive row with no recorded discovery time stays unknown (None), not publishedAt."""
+    _wire(monkeypatch, [])
+    _seed(_ended("e1"), _ended("e2"))
+    _video_master_has(monkeypatch, {"e2": _Record(None)})  # e1 has no record at all, e2 has one without a time
+
+    videos = {video["videoId"]: video for video in read_api.get_recent_creator_videos({**HOME})["videos"]}
+
+    assert videos["e1"]["discoveredAt"] is None and videos["e2"]["discoveredAt"] is None
+
+
+def test_a_just_ended_stream_is_counted_as_new_once_through_its_discovery_time(dynamo, monkeypatch):
+    """A just ended stream is counted as new once through its discovery time (a livestream, exactly once)."""
+    _wire(monkeypatch, [])
+    _seed(_ended("e1"))
+    _video_master_has(monkeypatch, {"e1": _Record("2026-10-15T20:30:00+09:00")})
+
+    response = read_api.get_recent_creator_videos({**HOME, "newSince": "2026-10-15T00:00:00Z"}, now=NOW)
+
+    assert response["newContent"]["counts"] == {"videos": 0, "livestreams": 1, "unclassified": 0}
+    assert response["newContent"]["livestreamIds"] == "e1"

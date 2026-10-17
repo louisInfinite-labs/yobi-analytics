@@ -1,7 +1,7 @@
 /** Home acceptance for B19 (最新直播 = LIVE, then UPCOMING, then archives), B20 (the Oshi Status LIVE title opens the
  * stream) and watched-during-live (only a confirmed player PLAYING records it). The real HomePage runs against a stubbed
  * `fetch` and a faked YouTube IFrame API; nothing else is faked. */
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { HomePage } from "./HomePage"
@@ -66,14 +66,12 @@ interface FakeApi {
   uploads: Record<string, ShelfRow[]>
   /** Completed livestreams the PLAYER's own pool (liveStatus=completed) returns per creator, newest first. */
   playerArchives: Record<string, ShelfRow[]>
-  /** The Oshi Status panel's recent rows (uploads and COMPLETED streams). */
-  statusRecent: unknown[]
   requests: string[]
 }
 let api: FakeApi
 
 function installApi() {
-  api = { streams: [], archives: {}, uploads: {}, playerArchives: {}, statusRecent: [], requests: [] }
+  api = { streams: [], archives: {}, uploads: {}, playerArchives: {}, requests: [] }
   vi.stubEnv("VITE_API_BASE_URL", "https://api.test")
   vi.stubGlobal(
     "fetch",
@@ -92,7 +90,6 @@ function installApi() {
           latestVideo: null,
           thisWeek: { newUploads: 0, newStreams: 0 },
           growth: { "1d": { absoluteGrowth: 0, videoCount: 0 }, "7d": { absoluteGrowth: 0, videoCount: 0 }, "30d": { absoluteGrowth: 0, videoCount: 0 } },
-          recent: api.statusRecent,
           sinceLastVisit: null,
         })
       }
@@ -357,7 +354,7 @@ describe("B20: the Oshi Status LIVE title opens that stream", () => {
   it("clicking it selects the exact live videoId in the existing player, with no trip through 最近直播", async () => {
     const user = userEvent.setup()
     render(<HomePage />)
-    await user.click(await screen.findByRole("button", { name: /UPLOAD-1/ }))
+    await user.click(await within(document.querySelector(".oshi-videos") as HTMLElement).findByRole("button", { name: /UPLOAD-1/ }))
     expect(playerSrc()).toContain("/embed/UPLOAD-1")
     const shelfRequestsBefore = api.requests.filter((path) => path.includes("contentType=live")).length
 
@@ -371,7 +368,7 @@ describe("B20: the Oshi Status LIVE title opens that stream", () => {
   it("is keyboard accessible: focus, then Enter or Space activates it", async () => {
     const user = userEvent.setup()
     render(<HomePage />)
-    await user.click(await screen.findByRole("button", { name: /UPLOAD-1/ }))
+    await user.click(await within(document.querySelector(".oshi-videos") as HTMLElement).findByRole("button", { name: /UPLOAD-1/ }))
     expect(playerSrc()).toContain("/embed/UPLOAD-1")
 
     await waitFor(() => expect(liveTitleButton()).not.toBeNull())
@@ -380,7 +377,7 @@ describe("B20: the Oshi Status LIVE title opens that stream", () => {
     await user.keyboard("{Enter}")
     expect(playerSrc()).toContain("/embed/LIVE-NOW")
 
-    await user.click(await screen.findByRole("button", { name: /UPLOAD-1/ }))
+    await user.click(await within(document.querySelector(".oshi-videos") as HTMLElement).findByRole("button", { name: /UPLOAD-1/ }))
     expect(playerSrc()).toContain("/embed/UPLOAD-1")
     liveTitleButton()!.focus()
     await user.keyboard(" ")
@@ -390,7 +387,7 @@ describe("B20: the Oshi Status LIVE title opens that stream", () => {
   it("renders no link for a creator with no current live stream", async () => {
     api.streams = []
     render(<HomePage />)
-    await screen.findByRole("button", { name: /UPLOAD-1/ })
+    await within(document.querySelector(".oshi-videos") as HTMLElement).findByRole("button", { name: /UPLOAD-1/ })
 
     expect(liveTitleButton()).toBeNull()
   })
@@ -399,7 +396,7 @@ describe("B20: the Oshi Status LIVE title opens that stream", () => {
     api.streams = [stream("UP-1", "upcoming", { title: "Upcoming soon", scheduledStart: inHours(5) })]
     const user = userEvent.setup()
     render(<HomePage />)
-    await user.click(await screen.findByRole("button", { name: /UPLOAD-1/ }))
+    await user.click(await within(document.querySelector(".oshi-videos") as HTMLElement).findByRole("button", { name: /UPLOAD-1/ }))
     expect(playerSrc()).toContain("/embed/UPLOAD-1")
 
     await waitFor(() => expect(liveTitleButton()).not.toBeNull())
@@ -409,7 +406,7 @@ describe("B20: the Oshi Status LIVE title opens that stream", () => {
     expect(playerSrc()).toContain("/embed/UP-1")
     expect(document.querySelectorAll(".oshi-player-frame iframe")).toHaveLength(1)
 
-    await user.click(await screen.findByRole("button", { name: /UPLOAD-1/ }))
+    await user.click(await within(document.querySelector(".oshi-videos") as HTMLElement).findByRole("button", { name: /UPLOAD-1/ }))
     expect(playerSrc()).toContain("/embed/UPLOAD-1")
     liveTitleButton()!.focus()
     await user.keyboard("{Enter}")
@@ -500,14 +497,12 @@ describe("ALL = the union of 最新直播 and 最新影片 content", () => {
   })
 })
 
-describe("watched live -> archive: Oshi Status migrates too", () => {
+describe("watched live -> archive: the shared ALL feed (Video List and Latest Activity) migrates too", () => {
   it("a completed livestream row for a stream watched while live moves it into seen and removes the marker", async () => {
     markWatchedDuringLive("DONE-STREAM")
     markWatchedDuringLive("STILL-LIVE")
-    api.statusRecent = [
-      { videoId: "DONE-STREAM", kind: "livestream", title: "Finished stream", thumbnailUrl: null, publishedAt: "2026-10-01T10:00:00Z", currentViewCount: 1 },
-      { videoId: "UPLOAD-X", kind: "upload", title: "An upload", thumbnailUrl: null, publishedAt: "2026-10-01T11:00:00Z", currentViewCount: 1 },
-    ]
+    api.archives[CREATOR_A.creatorId] = [row("DONE-STREAM", "2026-10-01T10:00:00Z", "live")]
+    api.uploads[CREATOR_A.creatorId] = [row("UPLOAD-X", "2026-10-01T11:00:00Z", "upload")]
     render(<HomePage />)
 
     await waitFor(() => expect(watched()).toEqual(["STILL-LIVE"]))

@@ -88,6 +88,18 @@ def _records_for(video_ids: list[str], moment: float) -> dict[str, Any]:
     return records
 
 
+def discovery_times_for(video_ids: list[str]) -> dict[str, str]:
+    """videoId -> the persisted Video Master record's ORIGINAL `discovered_at`, for the ids that have a record with one; {} when unreadable.
+
+    The same batched, briefly cached read the provisional overlay makes (`_records_for`), so ids that overlay also needs cost no extra read.
+    A video with no record or no discovery time is simply absent -- callers must leave it unknown, never stand in another timestamp for it.
+    """
+    if not video_ids:
+        return {}
+    records = _records_for(video_ids, time.monotonic())
+    return {video_id: record.discovered_at for video_id, record in records.items() if record is not None and record.discovered_at}
+
+
 def _provisional_row(event: dict[str, Any], record: Any, creator_id: str) -> dict[str, Any]:
     """One provisional row: the persisted record's facts when it exists, else the discovery event's. A missing/unknown contentType stays None."""
     video_id = event["videoId"]

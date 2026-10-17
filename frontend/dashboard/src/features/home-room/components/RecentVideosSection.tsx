@@ -19,12 +19,14 @@ import {
   VIDEO_CONTENT_TYPES,
   VIDEO_VIEW_WINDOWS,
   buildShelfQuery,
+  isHomeAllDefault,
   isQuickFilterSelection,
   oshiVideosQueryKey,
   type VideoContentType,
   type VideoViewWindow,
 } from "../model/oshiVideosQuery"
 import { useOshiVideos } from "../hooks/useOshiVideos"
+import type { HomeAllFeed } from "../hooks/useHomeAllFeed"
 import { useVideoTopicCatalog } from "../hooks/useVideoTopicCatalog"
 import { fetchVideoTopics } from "../data/videoTopics"
 import { useVideoSearch } from "../../video-search/hooks/useVideoSearch"
@@ -37,6 +39,9 @@ interface RecentVideosSectionProps {
    * card click switches the central Oshi Stream player directly, never a
    * modal/second player. Drag-to-scroll (see VideoTrack) never calls this. */
   onSelectVideo: (video: { videoId: string; title: string }) => void
+  /** Home's shared ALL dataset (see useHomeAllFeed): while ALL is showing with its default controls this section reads it instead of fetching
+   * the same pages a second time, so Video List ALL and Latest Activity can never diverge. Without it the section fetches its own. */
+  allFeed?: HomeAllFeed
 }
 
 /** The app's own phone/tablet boundary (useBreakpoint's tablet minimum): below it the header carries the video search input. */
@@ -519,7 +524,7 @@ function ViewAllButton({ locale }: { locale: Locale }) {
  * Every tag is a backend query for the CURRENT creator (see oshiVideosQuery.ts): the topic tags
  * use the content type / sort / period controls, and the two quick filters are fixed shortcuts
  * (最新影片 = uploads, 最新直播 = completed livestream archives, both newest first). */
-export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSectionProps) {
+export function RecentVideosSection({ creatorId, onSelectVideo, allFeed }: RecentVideosSectionProps) {
   const [locale] = useLocale()
   const [selectedTag, setSelectedTag] = useState<VideoSectionSelection>("all")
   const [sortOption, setSortOption] = useState<VideoSortOption>("newest")
@@ -566,7 +571,9 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
     () => buildShelfQuery(selectedTag, canonicalCreatorId, { contentType, sort: sortOption, viewWindow }),
     [selectedTag, canonicalCreatorId, contentType, sortOption, viewWindow],
   )
-  const shelf = useOshiVideos(shelfQuery)
+  const usesSharedAll = allFeed !== undefined && isHomeAllDefault(selectedTag, { contentType, sort: sortOption, viewWindow })
+  const ownShelf = useOshiVideos(usesSharedAll ? null : shelfQuery)
+  const shelf = usesSharedAll ? allFeed.page : ownShelf
   // Existing content type / sort / period stay active during a Search, but there is deliberately no topic / tag field here: Search is
   // creator-scoped over the creator's indexed catalog and can never be narrowed by the selected Topic Tag (the endpoint has none).
   const searchBase = useMemo(
@@ -607,10 +614,11 @@ export function RecentVideosSection({ creatorId, onSelectVideo }: RecentVideosSe
     (selectedTag === "latestLive" || (selectedTag === "all" && sortOption === "newest" && (contentType === "all" || contentType === "live")))
   const shelfVideos = useMemo(() => {
     if (isSearchActive) return search.videos
+    if (usesSharedAll) return allFeed.videos
     if (!showsCurrentStreams) return shelf.videos
     const current = canonicalCreatorId ? streams.filter((stream) => stream.creatorId === canonicalCreatorId).map(toRecentVideo) : []
     return composeLatestLiveShelf(current, shelf.videos)
-  }, [isSearchActive, search.videos, showsCurrentStreams, canonicalCreatorId, streams, shelf.videos])
+  }, [isSearchActive, search.videos, usesSharedAll, allFeed, showsCurrentStreams, canonicalCreatorId, streams, shelf.videos])
 
   // A stream the user watched while it was live is now observed as a completed archive: turn that marker into a
   // permanent seen entry (never NEW). Only completed archives count -- a live/upcoming row is skipped.

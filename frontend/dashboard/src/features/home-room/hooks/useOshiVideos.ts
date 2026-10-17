@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { fetchOshiVideos } from "../data/oshiVideos"
+import { fetchOshiVideos, type NewContentEligibility } from "../data/oshiVideos"
 import { OSHI_VIDEOS_RANKING_REVEAL_BATCH, oshiVideosQueryKey, type OshiVideosQuery } from "../model/oshiVideosQuery"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import type { VideoPage } from "./useRecentVideos"
@@ -13,6 +13,8 @@ interface ShelfResult {
   nextOffset: number
   hasMore: boolean
   error: Error | null
+  /** The first page's unwatched eligibility for the WHOLE list, when it was requested and answered. */
+  newContent?: NewContentEligibility
 }
 
 /** `incoming` rows whose videoId is not already shown (nor repeated within the page itself): an offset
@@ -49,7 +51,7 @@ function appendUnique(shown: RecentVideo[], incoming: RecentVideo[]): RecentVide
  * connection cannot hammer the API; the first call after it retries the SAME offset. */
 export const LOAD_MORE_RETRY_COOLDOWN_MS = 1500
 
-export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
+export function useOshiVideos(query: OshiVideosQuery | null, options: { newSince?: string } = {}): VideoPage {
   const key = query ? oshiVideosQueryKey(query) : null
   // The effect/loadMore below depend on the key alone (the query is fully
   // described by it), so re-creating an equal query object never refetches.
@@ -60,6 +62,9 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
   /** Bumped by refresh(): the same query, fetched again from its first page. */
   const [refreshToken, setRefreshToken] = useState(0)
   const refresh = useCallback(() => setRefreshToken((token) => token + 1), [])
+  // Read when a first page is fetched, never a dependency: the baseline is fixed per browser, so it must not refetch the list.
+  const newSinceRef = useRef(options.newSince)
+  newSinceRef.current = options.newSince
   const generationRef = useRef(0)
   const loadingMoreRef = useRef(false)
   /** A loadMore() that arrived while a page was in flight: run as soon as that page lands. */
@@ -73,13 +78,15 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
     retryNotBeforeRef.current = 0
     if (!stableQuery || key === null) return
 
-    fetchOshiVideos(stableQuery, 0)
+    const newSince = newSinceRef.current
+    const firstPage = newSince ? fetchOshiVideos(stableQuery, 0, { newSince }) : fetchOshiVideos(stableQuery, 0)
+    firstPage
       .then((page) => {
         if (generation !== generationRef.current) return
         const unique = appendUnique([], page.videos)
         const revealed = stableQuery.sort === "mostViews" ? unique.slice(0, OSHI_VIDEOS_RANKING_REVEAL_BATCH) : unique
         const pending = unique.slice(revealed.length)
-        setResult({ key, videos: revealed, pending, nextOffset: page.nextOffset, hasMore: page.hasMore || pending.length > 0, error: null })
+        setResult({ key, videos: revealed, pending, nextOffset: page.nextOffset, hasMore: page.hasMore || pending.length > 0, error: null, newContent: page.newContent })
       })
       .catch((err: unknown) => {
         if (generation !== generationRef.current) return
@@ -148,5 +155,6 @@ export function useOshiVideos(query: OshiVideosQuery | null): VideoPage {
     loadMore,
     hasMore: current ? current.hasMore : false,
     refresh,
+    newContent: current?.newContent,
   }
 }

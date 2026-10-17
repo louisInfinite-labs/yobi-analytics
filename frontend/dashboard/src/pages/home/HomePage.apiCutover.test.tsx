@@ -393,3 +393,61 @@ describe("Home theme color is the canonical creator color", () => {
     await waitFor(() => expect(accentOnCanvas()).toBe("#2dcde4"))
   })
 })
+
+describe("Home -> real API: Latest Activity is the first 6 of the SAME dataset as Video List ALL", () => {
+  type ObserverRecord = { callback: IntersectionObserverCallback; target: Element | null }
+  let observers: ObserverRecord[] = []
+
+  beforeEach(() => {
+    observers = []
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        record: ObserverRecord
+        constructor(callback: IntersectionObserverCallback) {
+          this.record = { callback, target: null }
+          observers.push(this.record)
+        }
+        observe(target: Element) {
+          this.record.target = target
+        }
+        disconnect() {
+          this.record.target = null
+        }
+        unobserve() {}
+        takeRecords() {
+          return []
+        }
+      },
+    )
+  })
+
+  const activityTitles = () => Array.from(document.querySelectorAll(".oshi-status__recent-video-link")).map((node) => node.textContent ?? "")
+
+  it("shares the ONE first-page request, shows only the first 6 rows in the list's order, and never pages from Home's panel", async () => {
+    api.catalogs[CREATOR_A.creatorId] = { all: catalog(CREATOR_A.creatorId, "all", 2 * PAGE + 5) }
+    render(<HomePage />)
+    await waitFor(() => expect(cards()).toHaveLength(PAGE))
+    await waitFor(() => expect(activityTitles()).toHaveLength(6))
+
+    // One ALL request in total (Video List + Latest Activity), carrying newSince; nothing else was added to Home's initial load.
+    expect(shelfRequests()).toHaveLength(1)
+    expect(paramOf(shelfRequests()[0], "newSince")).not.toBeNull()
+    expect(api.requests.filter((path) => path.includes("/videos/recent?"))).toHaveLength(2) // ALL + the player's completed-archive pool
+    expect(api.requests.filter((path) => path.includes("/oshi-status"))).toHaveLength(1)
+    expect(activityTitles()).toEqual(cardTitles().slice(0, 6))
+
+    // Nothing in Home's panel pages: no observer is watching a row, and nothing the panel does can request another page.
+    expect(observers.filter(({ target }) => target?.closest(".oshi-status"))).toHaveLength(0)
+    await act(async () => {})
+    expect(shelfRequests()).toHaveLength(1)
+
+    // The Video List keeps its own 20-per-page scrolling; Latest Activity stays at the first 6 of the same data.
+    scrollShelfTo(PAGE - 7)
+    await waitFor(() => expect(cards()).toHaveLength(2 * PAGE))
+    expect(shelfRequests()).toHaveLength(2)
+    expect(paramOf(shelfRequests()[1], "offset")).toBe(String(PAGE))
+    expect(paramOf(shelfRequests()[1], "newSince")).toBeNull() // later pages never repeat it
+    expect(activityTitles()).toEqual(cardTitles().slice(0, 6))
+  })
+})

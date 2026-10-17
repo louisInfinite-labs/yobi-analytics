@@ -6,6 +6,7 @@ import { useCreatorStatuses } from "../../features/live-status/hooks/useCreatorS
 import { useLiveDockExpanded } from "../../features/live-status/hooks/useLiveDockExpanded"
 import { selectHomeVideo, useHomeSelectedVideo } from "../../features/home-room/hooks/useHomeSelectedVideo"
 import { useLiveStreamVideoPool } from "../../features/home-room/hooks/useRecentVideos"
+import { useHomeAllFeed } from "../../features/home-room/hooks/useHomeAllFeed"
 import { useSelectedCreator } from "../../features/oshi/hooks/useSelectedCreator"
 import { useUpcomingStartRecovery } from "../../features/media-player/hooks/useUpcomingStartRecovery"
 import { useWatchedDuringLive } from "../../features/media-player/hooks/useWatchedDuringLive"
@@ -72,6 +73,8 @@ export function HomePage() {
   // Only the player's auto-selected video (live now / upcoming / the latest completed archive) reads this pool. The Oshi Videos
   // shelf and Oshi Status fetch their own backend data for the current creator.
   const streamVideos = useLiveStreamVideoPool(creatorId)
+  // ONE ALL dataset for Video List ALL and Latest Activity: a single first-page request, paged further only by scrolling.
+  const allFeed = useHomeAllFeed(creatorId)
   const breakpoint = useBreakpoint()
   const liveStatusOpen = useLiveDockExpanded()
   const status = statuses[creatorId] ?? { kind: "offline" as const }
@@ -131,12 +134,13 @@ export function HomePage() {
           </section>
         )}
 
-        <RecentVideosSection creatorId={creatorId} onSelectVideo={openVideo} />
+        <RecentVideosSection creatorId={creatorId} onSelectVideo={openVideo} allFeed={allFeed} />
 
         {!mobileSearch && (
           <OshiStatusPanel
             creatorId={creatorId}
             status={status}
+            feed={allFeed}
             now={now}
             onSelectVideo={openVideo}
             nowPlayingTitle={embed?.title ?? null}

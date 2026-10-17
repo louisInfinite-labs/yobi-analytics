@@ -33,12 +33,12 @@ function parse(path: string) {
 }
 
 describe("buildOshiStatusPath", () => {
-  it("scopes the path to the creator and always asks for the 6 recent rows", () => {
+  it("scopes the path to the creator and asks for the minimum recent list (Latest Activity pages Video List ALL instead)", () => {
     const { pathname, params } = parse(buildOshiStatusPath("aizawa_ema", null))
 
     expect(pathname).toBe("/creators/aizawa_ema/oshi-status")
-    expect(params).toEqual({ recentLimit: "6" })
-    expect(OSHI_STATUS_RECENT_LIMIT).toBe(6)
+    expect(params).toEqual({ recentLimit: "1" })
+    expect(OSHI_STATUS_RECENT_LIMIT).toBe(1)
   })
 
   it("a first visit (no stored last visit) omits `since`", () => {
@@ -67,10 +67,7 @@ describe("fetchOshiStatus", () => {
     expect(status.thisWeek).toEqual({ newUploads: 2, newStreams: 3 })
     expect(status.growth["7d"]).toEqual({ absoluteGrowth: 700, videoCount: 40 })
     expect(status.sinceLastVisit).toEqual({ newUploads: 4, newStreams: 1, clamped: false })
-    expect(status.recent.map((row) => [row.videoId, row.kind, row.thumbnailUrl])).toEqual([
-      ["u1", "upload", "https://img/u1.jpg"],
-      ["s1", "livestream", null],
-    ])
+    expect(status).not.toHaveProperty("recent") // the Latest Activity rows come from the shared ALL feed, never from here
     // latestVideo carries no growth fields (they were removed from the backend contract on purpose)
     expect(Object.keys(status.latestVideo!).sort()).toEqual(["currentViewCount", "publishedAt", "thumbnailUrl", "title", "videoId"])
     expect(JSON.stringify(status)).not.toContain("anchor")
@@ -88,19 +85,10 @@ describe("fetchOshiStatus", () => {
     expect((await fetchOshiStatus("aizawa_ema", null)).sinceLastVisit).toBeNull()
   })
 
-  it("handles an empty creator: no latest video and no recent rows", async () => {
+  it("handles an empty creator: no latest video", async () => {
     vi.mocked(apiRequest).mockResolvedValue({ ...FULL_RESPONSE, latestVideo: null, recent: [] })
 
-    const status = await fetchOshiStatus("aizawa_ema", null)
-
-    expect(status.latestVideo).toBeNull()
-    expect(status.recent).toEqual([])
-  })
-
-  it("skips a malformed recent row instead of failing the whole panel", async () => {
-    vi.mocked(apiRequest).mockResolvedValue({ ...FULL_RESPONSE, recent: [{ title: "no id" }, FULL_RESPONSE.recent[0]] })
-
-    expect((await fetchOshiStatus("aizawa_ema", null)).recent.map((row) => row.videoId)).toEqual(["u1"])
+    expect((await fetchOshiStatus("aizawa_ema", null)).latestVideo).toBeNull()
   })
 
   it("propagates a request failure (no fallback data)", async () => {
