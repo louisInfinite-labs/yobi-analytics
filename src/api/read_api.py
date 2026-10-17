@@ -41,7 +41,7 @@ from zoneinfo import ZoneInfo
 from api.holodex_client import holodex_get
 from api.holodex_normalization import normalize_holodex_live_response
 from api.livestream_classification import classify_unclassified_upcoming
-from api.provisional_discoveries import row_matches_content_type, with_provisional_discoveries
+from api.provisional_discoveries import is_unclassified_provisional, with_provisional_discoveries
 from tracking.creator_master import (
     Creator,
     is_historical_data_unavailable,
@@ -746,9 +746,10 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
         rows = _with_verified_completed_streams(rows, creator_id)
         rows = _with_provisional_discoveries(rows, creator_id, result.get("generatedAt"))
     if topic != VIDEO_RANKING_TOPIC_ALL:
-        rows = [row for row in rows if row.get("topic") == topic]
+        # A provisional row with no contentType yet belongs in ALL only: never in a topic tag (including 其他).
+        rows = [row for row in rows if row.get("topic") == topic and not is_unclassified_provisional(row)]
     if content_type != VIDEO_RANKING_CONTENT_TYPE_ALL:
-        rows = [row for row in rows if row_matches_content_type(row, content_type)]
+        rows = [row for row in rows if row.get("contentType") == content_type]
     if exclude_shorts:
         rows = [row for row in rows if row.get("contentType") != VIDEO_RANKING_CONTENT_TYPE_SHORT]
     if live_status != LIVE_STATUS_SCOPE_ALL:
