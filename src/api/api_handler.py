@@ -208,10 +208,6 @@ def _handle_get_live_streams(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_live_streams(_merged_params(event))
 
 
-def _handle_get_recent_streams(event: dict[str, Any]) -> dict[str, Any]:
-    return read_api.get_recent_streams(_merged_params(event))
-
-
 def _handle_post_heartbeat(event: dict[str, Any]) -> dict[str, Any]:
     """Validate and record one heartbeat, returning the record actually stored."""
     record = heartbeat_api.record_heartbeat(_json_body(event))
@@ -434,7 +430,7 @@ def _handle_get_admin_heartbeat_stats(event: dict[str, Any]) -> dict[str, Any]:
     return {"totalClients": len(records), "onlineNow": online_count}
 
 
-# Routes retired by the ranking simplification (R7/R8B/R9): their data (YobiTrendingCache) is no longer produced, so
+# Routes retired by the ranking simplification (R7/R8B/R9) -- and GET /recent-streams, see its entry: their data (YobiTrendingCache) is no longer produced, so
 # there is nothing left to serve. Their API Gateway routes are deliberately KEPT (terraform/api_gateway.tf), so a client
 # that still calls one gets a deterministic, machine-readable answer from this Lambda instead of API Gateway's own bare
 # 404 (which carries no CORS headers, so a browser reports it only as "Failed to fetch") or the generic "No such route"
@@ -446,6 +442,9 @@ _RETIRED_ROUTES: dict[str, str | None] = {
     "GET /leaderboard": None,
     "GET /organizations/{organization}/leaderboard": None,
     "GET /topics/{topic}/leaderboard": None,
+    # A public per-request proxy of Holodex /videos: it bypassed the 10-minute shared live snapshot (every call was an upstream request) and nothing in
+    # the app calls it any more (Home's latest-live row reads GET /creators/{creatorId}/videos/recent, live/upcoming data comes from GET /live-streams).
+    "GET /recent-streams": "GET /creators/{creatorId}/videos/recent",
 }
 
 
@@ -472,7 +471,6 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /creators/{creatorId}/videos/search": _handle_get_creator_video_search,
     "GET /creators/{creatorId}/oshi-status": _handle_get_oshi_status,
     "GET /live-streams": _handle_get_live_streams,
-    "GET /recent-streams": _handle_get_recent_streams,
     "POST /heartbeat": _handle_post_heartbeat,
     "GET /heartbeat/{clientId}/status": _handle_get_heartbeat_status,
     "POST /clients/{clientId}/credential": _handle_post_client_credential,

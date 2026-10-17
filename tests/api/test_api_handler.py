@@ -1254,75 +1254,20 @@ def test_get_live_streams_calls_read_api_rather_than_duplicating_http_logic(monk
     assert captured["query"] == {"foo": "bar"}
 
 
-def test_get_recent_streams_returns_200(monkeypatch):
-    monkeypatch.setattr(read_api, "get_recent_streams", lambda query: {"creatorId": "aizawa_ema", "streams": [], "hasMore": False})
+def test_get_recent_streams_route_is_retired_with_410_and_never_reaches_holodex(monkeypatch):
+    """GET /recent-streams was a public per-request Holodex proxy; it now answers the standard 410 and no request can make Holodex calls."""
 
-    response = lambda_handler(_event("GET /recent-streams", query={"creatorId": "aizawa_ema"}), None)
+    def _boom(*args, **kwargs):
+        raise AssertionError("a retired route must never reach Holodex or any store")
 
-    assert response["statusCode"] == 200
-    assert _body(response) == {"creatorId": "aizawa_ema", "streams": [], "hasMore": False}
-
-
-def test_get_recent_streams_calls_read_api_rather_than_duplicating_http_logic(monkeypatch):
-    captured = {}
-
-    def fake_get_recent_streams(query):
-        captured["query"] = query
-        return {"creatorId": "aizawa_ema", "streams": [], "hasMore": False}
-
-    monkeypatch.setattr(read_api, "get_recent_streams", fake_get_recent_streams)
+    monkeypatch.setattr(read_api, "holodex_get", _boom)
+    assert not hasattr(read_api, "get_recent_streams")
 
     response = lambda_handler(_event("GET /recent-streams", query={"creatorId": "aizawa_ema", "limit": "2"}), None)
 
-    assert response["statusCode"] == 200
-    assert captured["query"] == {"creatorId": "aizawa_ema", "limit": "2"}
-
-
-def test_get_recent_streams_unknown_creator_returns_404(monkeypatch):
-    def _boom(query):
-        raise read_api.ScopeNotFoundError("No creator found for creatorId 'does_not_exist'")
-
-    monkeypatch.setattr(read_api, "get_recent_streams", _boom)
-
-    response = lambda_handler(_event("GET /recent-streams", query={"creatorId": "does_not_exist"}), None)
-
-    assert response["statusCode"] == 404
-
-
-def test_get_recent_streams_bad_limit_returns_400(monkeypatch):
-    def _boom(query):
-        raise read_api.ClientError("limit must be at most 20, got 999")
-
-    monkeypatch.setattr(read_api, "get_recent_streams", _boom)
-
-    response = lambda_handler(_event("GET /recent-streams", query={"creatorId": "aizawa_ema", "limit": "999"}), None)
-
-    assert response["statusCode"] == 400
-
-
-@pytest.mark.parametrize(
-    "exc",
-    [
-        HolodexAPIError("Holodex API request to '/videos' timed out"),
-        HolodexNormalizationError("Expected a list from Holodex's /videos response, got dict"),
-        MissingHolodexApiKeyError("Neither HOLODEX_SECRET_NAME nor HOLODEX_API_KEY is set."),
-    ],
-    ids=["client_failure", "normalization_failure", "missing_api_key"],
-)
-def test_get_recent_streams_maps_every_holodex_failure_to_a_safe_503(monkeypatch, capsys, exc):
-    """Reuses the exact same dispatch-level Holodex exception handling
-    get_live_streams already goes through -- no separate error path was
-    added for this route. str(exc) must never reach the client."""
-
-    def _boom(query):
-        raise exc
-
-    monkeypatch.setattr(read_api, "get_recent_streams", _boom)
-
-    response = lambda_handler(_event("GET /recent-streams", query={"creatorId": "aizawa_ema"}), None)
-
-    assert response["statusCode"] == 503
-    assert _body(response)["code"] == "HOLODEX_UNAVAILABLE"
-    assert _body(response)["error"] == "Live stream data is temporarily unavailable"
-    assert str(exc) not in response["body"]
-    assert str(exc) in capsys.readouterr().out
+    assert response["statusCode"] == 410
+    assert _body(response) == {
+        "error": "GET /recent-streams was retired and no longer returns data",
+        "code": "ENDPOINT_RETIRED",
+        "replacement": "GET /creators/{creatorId}/videos/recent",
+    }

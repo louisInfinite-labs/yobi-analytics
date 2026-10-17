@@ -59,6 +59,17 @@ def _wire(monkeypatch, rows: list[dict]) -> None:
     monkeypatch.setenv("YOBI_STORAGE_BACKEND", "dynamodb")
     monkeypatch.setattr(lifecycle, "ENDED_CACHE_SECONDS", 0)  # always read the record fresh in tests
 
+    class _PinnedClock(datetime):
+        """A datetime whose now() is the tests' own NOW: the seeded ended records are stamped at NOW, and read_recently_ended only exposes the last 24 h
+        of the REAL clock otherwise -- these tests would silently start failing one day after NOW (they did, at 2026-10-17 03:00 UTC)."""
+
+        @classmethod
+        def now(cls, tz=None):
+            """The pinned instant."""
+            return NOW + timedelta(minutes=1)
+
+    monkeypatch.setattr(lifecycle, "datetime", _PinnedClock)
+
 
 def _ended(video_id: str, *, creator_id=CREATOR, archive: dict | None = None, end_state="ended", title="Ended Stream", confirmed=NOW) -> dict:
     """Ended."""

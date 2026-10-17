@@ -1,4 +1,4 @@
-"""Compatibility tests for the five routes retired by the ranking simplification (R7/R8B/R9).
+"""Compatibility tests for the retired routes: the five of the ranking simplification (R7/R8B/R9) plus GET /recent-streams (a per-request Holodex proxy).
 
 The API Gateway routes stay, so deploying the new API Lambda must not turn them into 404s: each answers a
 deterministic 410 `ENDPOINT_RETIRED` with a `replacement` hint, touches no store, and never echoes request input.
@@ -16,6 +16,7 @@ RETIRED = {
     "GET /leaderboard": None,
     "GET /organizations/{organization}/leaderboard": None,
     "GET /topics/{topic}/leaderboard": None,
+    "GET /recent-streams": "GET /creators/{creatorId}/videos/recent",
 }
 
 
@@ -35,7 +36,7 @@ def test_each_retired_route_answers_410_with_a_stable_machine_readable_body(rout
     assert route_key in body["error"]
 
 
-def test_the_retired_set_matches_exactly_the_five_legacy_gateway_routes():
+def test_the_retired_set_matches_exactly_the_legacy_gateway_routes():
     assert api_handler._RETIRED_ROUTES == RETIRED
 
 
