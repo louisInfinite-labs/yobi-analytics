@@ -30,6 +30,34 @@ resource "aws_dynamodb_table" "client_credentials" {
   deletion_protection_enabled = true
 }
 
+# Creator Milestones: one item per Creator Master creatorId holding the creator's birthday (birthday, "MM-DD", no year) and ORIGINAL
+# debut date (debutDate, "YYYY-MM-DD"), both plain strings. Every creator is seeded, graduated ones included, and graduation never changes
+# a debut date. Seeded once from scripts/migration/creator_milestones_seed.json by
+# scripts/migration/seed_creator_milestones_dynamodb.py (dry run by default; writing needs --target production --apply). Nothing reads
+# this table yet -- no Lambda, API route or IAM policy references it -- so it needs no Lambda environment or role change. Only the key
+# attribute is declared, and there is no GSI: lookups are by creatorId (GetItem) or a 110-item scan.
+resource "aws_dynamodb_table" "creator_milestones" {
+  name         = "YobiCreatorMilestones"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "creatorId"
+
+  attribute {
+    name = "creatorId"
+    type = "S"
+  }
+
+  on_demand_throughput {
+    max_read_request_units  = 200
+    max_write_request_units = 100
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  deletion_protection_enabled = true
+}
+
 resource "aws_dynamodb_table" "heartbeat" {
   name         = "YobiHeartbeat"
   billing_mode = "PAY_PER_REQUEST"
