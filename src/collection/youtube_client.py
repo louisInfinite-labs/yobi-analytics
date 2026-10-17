@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import re
 import time
 from datetime import datetime
 from typing import Callable, TypeVar
@@ -235,6 +236,49 @@ def get_video_statistics(youtube: Resource, video_ids: list[str]) -> tuple[list[
             for video_id in batch:
                 skip_reasons[video_id] = f"{SKIP_REASON_API_ERROR_PREFIX}{exc}"
     return results, skip_reasons
+
+
+_ISO_8601_DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
+
+
+def parse_iso8601_duration_seconds(value: object) -> int | None:
+    """Whole seconds of a YouTube `contentDetails.duration` ("PT3M57S", "PT45S", "P0D"), or None when absent or not a duration."""
+    if not isinstance(value, str) or value in ("P", "PT"):
+        return None
+    match = _ISO_8601_DURATION.match(value)
+    if match is None or value.endswith("T"):
+        return None
+    days, hours, minutes, seconds = (int(part) if part else 0 for part in match.groups())
+    return days * 86400 + hours * 3600 + minutes * 60 + seconds
+
+
+def get_video_facts(youtube: Resource, video_ids: list[str]) -> dict[str, dict]:
+    """videoId -> {"contentType", "liveStatus", "durationSeconds"} for the ids YouTube returns, one videos.list call per MAX_IDS_PER_REQUEST ids.
+
+    contentType/liveStatus come from the collector's own classifier (_parse_video_item), so a provisional answer can never disagree with the
+    one the daily run later persists. `durationSeconds` is None when YouTube sends no usable duration. An id YouTube does not return, or an item
+    that cannot be classified, is simply ABSENT (the caller treats that as unknown). Any API failure propagates.
+    """
+    facts: dict[str, dict] = {}
+    for start in range(0, len(video_ids), MAX_IDS_PER_REQUEST):
+        batch = video_ids[start : start + MAX_IDS_PER_REQUEST]
+        response = call_youtube_api(
+            lambda ids=",".join(batch): youtube.videos().list(part="snippet,statistics,liveStreamingDetails,contentDetails", id=ids).execute()
+        )
+        items = response.get("items")
+        if not isinstance(items, list):
+            raise YouTubeAPIError("Malformed response from YouTube API: missing 'items'")
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                parsed = _parse_video_item(item)
+            except YouTubeAPIError:
+                continue
+            content_details = item.get("contentDetails")
+            duration = parse_iso8601_duration_seconds(content_details.get("duration") if isinstance(content_details, dict) else None)
+            facts[parsed["videoId"]] = {"contentType": parsed["contentType"], "liveStatus": parsed["liveStatus"], "durationSeconds": duration}
+    return facts
 
 
 def get_archive_probe(youtube: Resource, video_ids: list[str]) -> dict[str, dict]:
