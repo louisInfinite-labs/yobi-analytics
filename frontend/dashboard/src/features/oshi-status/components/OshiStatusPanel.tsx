@@ -1,36 +1,35 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Avatar } from "antd"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { OshiErrorState } from "../../home-room/components/OshiErrorState"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { useTimeFormat } from "../../../shared/i18n/hooks/useTimeFormat"
-import { t, type Locale } from "../../../shared/i18n/translations"
-import type { TimeFormat } from "../../../shared/i18n/model/timeFormat"
+import { t } from "../../../shared/i18n/translations"
 import { formatUpcomingStart } from "../../live-status/model/creatorStatusFormat"
 import { useUpcomingDisplayMode } from "../../live-status/hooks/useUpcomingDisplayMode"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { resetPreviousVisit, usePreviousVisit } from "../hooks/useLastVisit"
 import { useOshiStatus } from "../hooks/useOshiStatus"
+import { useLatestActivityRows } from "../hooks/useLatestActivityRows"
+import { useBreakpoint } from "../../../shared/hooks/useBreakpoint"
 import type { HomeAllFeed } from "../../home-room/hooks/useHomeAllFeed"
-import type { RecentVideo } from "../../../shared/media/model/recentVideo"
-import { countUnwatched, formatActivityTime, formatCompactCount } from "../utils/oshiActivity"
-import { markContentSeen, migrateWatchedLiveToSeen, resetNewContentTracking, useNewContent } from "../../../shared/newContent/newContentTracking"
+import { countUnwatched, formatCompactCount } from "../utils/oshiActivity"
+import { migrateWatchedLiveToSeen, resetNewContentTracking, useNewContent } from "../../../shared/newContent/newContentTracking"
+import { RecentActivityRow, StatusThumbnail } from "./RecentActivityRow"
+import { LatestActivityView } from "./LatestActivityView"
 import type { CreatorStatus } from "../../live-status/model/creatorStatus"
 
 /** Shown for any number the backend has not provided (still loading, the request failed, or no
  * value exists for it) -- never a fabricated 0. */
 const VALUE_UNAVAILABLE = "—"
 
-/** Home's Latest Activity shows only the FIRST 6 items of the shared ALL dataset -- a preview, never paged. The Video List is where the full
- * list (and its 20-per-page infinite scroll) lives. The 尚未觀看 counts below are NOT limited by this. */
-export const LATEST_ACTIVITY_ROW_LIMIT = 6
-
 interface OshiStatusPanelProps {
   creatorId: string
   status: CreatorStatus
-  /** Home's ONE shared ALL dataset (see useHomeAllFeed): Latest Activity shows its FIRST 6 items in the order Video List ALL lists
-   * them, and the 尚未觀看 counts cover the whole list -- it owns no data of its own, makes no request of its own and never pages. */
+  /** Home's ONE shared ALL dataset (see useHomeAllFeed): Latest Activity shows its FIRST 6 items in the order Video List ALL lists them
+   * (on desktop the panel scrolls on through the rest, paging the SAME feed), and the 尚未觀看 counts cover the whole list -- it owns no
+   * data of its own and makes no request of its own. */
   feed: HomeAllFeed
   now: Date
   /** The one shared Home selected-video path (see HomePage.tsx) -- switches
@@ -43,101 +42,6 @@ interface OshiStatusPanelProps {
   nowPlayingTitle: string | null
   /** The videoId of that same player video, so its thumbnail can be shown. Optional: without it no thumbnail is shown. */
   nowPlayingVideoId?: string | null
-}
-
-/** The existing app-wide thumbnail path for a video with no backend `thumbnailUrl` (Home's cards, the Schedule modal and the old Recent
- * Activity thumbnail all key YouTube's own JPG endpoint by the real videoId) -- never a substituted video. */
-function fallbackThumbnailUrl(videoId: string): string {
-  return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-}
-
-/** A 16:9 video thumbnail (377px wide on desktop, scaling down with the panel, never distorted: object-fit cover). Source order: the
- * backend's own thumbnail field, then the app's videoId-keyed fallback, then a neutral 16:9 placeholder -- no other request is made.
- * Always a button that runs the SAME handler as the item's title (Now Playing, Live, Next and every Recent Activity row), so no thumbnail
- * in the panel looks interactive while doing nothing. */
-function StatusThumbnail({
-  videoId,
-  thumbnailUrl,
-  label,
-  onOpen,
-}: {
-  videoId: string
-  thumbnailUrl?: string | null
-  label: string
-  onOpen: () => void
-}) {
-  const [locale] = useLocale()
-  // A distinct accessible name: the title button beside it already carries the plain title, and two controls must not share one name.
-  const accessibleName = t(locale, "oshiStatus.thumbnailLabel", { title: label })
-  const sources = [thumbnailUrl || null, fallbackThumbnailUrl(videoId)].filter((url): url is string => Boolean(url))
-  // How many of this video's sources have failed to load; past the end -> the placeholder.
-  const [failed, setFailed] = useState<{ videoId: string; count: number }>({ videoId, count: 0 })
-  const attempt = failed.videoId === videoId ? failed.count : 0
-  const src = sources[attempt]
-  const image = src ? (
-    <img key={src} src={src} alt="" draggable={false} onError={() => setFailed({ videoId, count: attempt + 1 })} />
-  ) : (
-    <span className="oshi-status__thumb-placeholder">{t(locale, "liveSchedule.noThumbnail")}</span>
-  )
-
-  return (
-    <button type="button" className="oshi-status__thumb" aria-label={accessibleName} onClick={onOpen}>
-      {image}
-    </button>
-  )
-}
-
-/** One Recent Activity row: [time + NEW] [clickable title] on the first line, the full-width thumbnail below
- * -- see home.css's own .oshi-status__recent-row. NEW lives under the timestamp specifically so
- * it can never eat into the title's own width; every entry here is a real backend video with a videoId,
- * so the title and the thumbnail are always clickable. */
-function RecentActivityRow({
-  entry,
-  now,
-  locale,
-  timeFormat,
-  onOpen,
-}: {
-  entry: RecentVideo
-  now: Date
-  locale: Locale
-  timeFormat: TimeFormat
-  onOpen: (video: { videoId: string; title: string }) => void
-}) {
-  // NEW is displayed only here. The seen state (keyed by videoId) is shared with Home's Video List, which shows no badge: opening an
-  // eligible archive or upload in either list calls markContentSeen; live/upcoming clicks do not. A confirmed PLAYING of a live stream
-  // also keeps its later archive from being NEW (see newContentTracking.ts).
-  const { isNew: isNewContent } = useNewContent()
-  const isNew = isNewContent(
-    { videoId: entry.videoId, publishedAt: entry.publishedAt, eventAt: entry.eventAt, discoveredAt: entry.discoveredAt, contentFormat: entry.contentFormat },
-    now,
-  )
-  const isCurrentStream = entry.contentFormat === "live_now" || entry.contentFormat === "live_upcoming"
-  // One handler for the title AND the thumbnail, so they can never diverge (same seen-marking, same selected video). A live/upcoming
-  // row never counts as opened by itself (HomePage's openVideo decides), exactly like the same stream in the Video List.
-  const open = () => {
-    if (!isCurrentStream) markContentSeen(entry.videoId)
-    onOpen({ videoId: entry.videoId, title: entry.title })
-  }
-
-  return (
-    <div className="oshi-status__recent-row">
-      <div className="oshi-status__recent-time-column">
-        <span className="oshi-status__recent-time">{formatActivityTime(entry.eventAt ?? entry.publishedAt, now, timeFormat)}</span>
-        {isNew && <span className="oshi-status__recent-new-badge">{t(locale, "oshiStatus.newBadge")}</span>}
-      </div>
-      <div className="oshi-status__recent-content">
-        <button
-          type="button"
-          className="oshi-status__recent-video-link"
-          onClick={open}
-        >
-          {entry.title}
-        </button>
-      </div>
-      <StatusThumbnail videoId={entry.videoId} thumbnailUrl={entry.thumbnailUrl} label={entry.title} onOpen={open} />
-    </div>
-  )
 }
 
 /** One value/label pair in the compact 3-column metric rows -- `value` is a
@@ -210,7 +114,18 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
   const [timeFormat] = useTimeFormat()
   const { data } = useOshiStatus(resolveCreatorKey(creatorId)?.creatorId, previousVisit)
   const { videos: recent, loading, error } = feed
-  const latestRows = recent.slice(0, LATEST_ACTIVITY_ROW_LIMIT)
+  // Latest Activity is the shared ALL feed's first 6 items. On DESKTOP (the layout where this panel scrolls inside its own fixed box) it
+  // also scrolls on through the rest of the feed, paging it 20 at a time. On mobile/tablet the page scrolls instead: the panel stays a
+  // 6-row preview and 查看全部 opens the dedicated full-screen view (LatestActivityView) over the same shared feed.
+  const isDesktop = useBreakpoint() === "desktop"
+  const { rows: latestRows, listRef } = useLatestActivityRows(creatorId, feed, isDesktop ? "scroll" : "preview")
+  const [activityOpen, setActivityOpen] = useState(false)
+  const viewAllRef = useRef<HTMLButtonElement | null>(null)
+  const activityViewOpen = activityOpen && !isDesktop
+  const closeActivityView = useCallback(() => {
+    setActivityOpen(false)
+    viewAllRef.current?.focus({ preventScroll: true }) // back where the user was: no scroll jump
+  }, [setActivityOpen])
   // The now-playing video's backend thumbnail, when this panel already holds one for that videoId (the live/upcoming status or a recent row).
   const nowPlayingThumbnail =
     nowPlayingVideoId === null
@@ -319,7 +234,14 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
         </section>
 
         <section className="oshi-status__section oshi-status__section--recent">
-          <div className="oshi-status__section-title">{t(locale, "oshiStatus.recent")}</div>
+          <div className="oshi-status__section-head">
+            <div className="oshi-status__section-title">{t(locale, "oshiStatus.recent")}</div>
+            {!isDesktop && (
+              <button ref={viewAllRef} type="button" className="oshi-status__view-all" onClick={() => setActivityOpen(true)}>
+                {t(locale, "oshiStatus.viewAll")}
+              </button>
+            )}
+          </div>
           {loading ? (
             <div className="oshi-status__recent-list">
               {[0, 1, 2, 3].map((row) => (
@@ -335,7 +257,7 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
           ) : latestRows.length === 0 ? (
             <div className="oshi-empty-state">{t(locale, "oshiStatus.noRecentActivity")}</div>
           ) : (
-            <div className="oshi-status__recent-list">
+            <div className="oshi-status__recent-list" ref={listRef}>
               {latestRows.map((entry) => (
                 <RecentActivityRow
                   key={entry.videoId}
@@ -350,6 +272,19 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
           )}
         </section>
       </div>
+      {activityViewOpen && (
+        <LatestActivityView
+          creatorId={creatorId}
+          feed={feed}
+          now={now}
+          onClose={closeActivityView}
+          onOpen={(video) => {
+            // Opening a row ends the view: the video goes to Home's player (the one shared selection path) and Home returns.
+            setActivityOpen(false)
+            onSelectVideo(video)
+          }}
+        />
+      )}
     </aside>
   )
 }

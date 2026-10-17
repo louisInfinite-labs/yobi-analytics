@@ -67,6 +67,8 @@ export type TranslationKey =
   | "oshiStatus.thisWeek"
   | "oshiStatus.recent"
   | "oshiStatus.noRecentActivity"
+  | "oshiStatus.viewAll"
+  | "oshiStatus.closeActivity"
   | "oshiStatus.newBadge"
   | "oshiStatus.subscribers"
   | "oshiStatus.nowPlaying"
@@ -328,6 +330,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.thisWeek": "本週",
     "oshiStatus.recent": "最近動態",
     "oshiStatus.noRecentActivity": "尚無最近動態",
+    "oshiStatus.viewAll": "查看全部",
+    "oshiStatus.closeActivity": "關閉",
     "oshiStatus.newBadge": "NEW",
     "oshiStatus.subscribers": "訂閱者",
     "oshiStatus.nowPlaying": "正在播放",
@@ -589,6 +593,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.thisWeek": "This week",
     "oshiStatus.recent": "Recent",
     "oshiStatus.noRecentActivity": "No recent activity",
+    "oshiStatus.viewAll": "View all",
+    "oshiStatus.closeActivity": "Close",
     "oshiStatus.newBadge": "NEW",
     "oshiStatus.subscribers": "subscribers",
     "oshiStatus.nowPlaying": "Now Playing",
@@ -849,6 +855,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.thisWeek": "今週",
     "oshiStatus.recent": "最近の動き",
     "oshiStatus.noRecentActivity": "最近の動きはありません",
+    "oshiStatus.viewAll": "すべて見る",
+    "oshiStatus.closeActivity": "閉じる",
     "oshiStatus.newBadge": "NEW",
     "oshiStatus.subscribers": "登録者数",
     "oshiStatus.nowPlaying": "再生中",

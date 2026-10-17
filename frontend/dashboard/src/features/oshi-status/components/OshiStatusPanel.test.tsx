@@ -1,7 +1,7 @@
 import { getCreatorById } from "../../../entities/creator/data/creatorRegistry"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { OshiStatusPanel } from "./OshiStatusPanel"
@@ -827,7 +827,7 @@ describe("the Oshi Status 'live / next' section title (display text only)", () =
   })
 })
 
-describe("OshiStatusPanel Latest Activity is capped at 6 rows and never pages", () => {
+describe("OshiStatusPanel Latest Activity starts at 6 rows (and stays there on mobile/tablet)", () => {
   const manyItems = (count: number): OshiStatusRecentItem[] =>
     Array.from({ length: count }, (_unused, index) => ({ ...unseenItem, videoId: `many_${index}`, title: `Many ${index}`, publishedAt: new Date(2026, 8, 10, 11, 0, 0).toISOString() }))
 
@@ -847,7 +847,9 @@ describe("OshiStatusPanel Latest Activity is capped at 6 rows and never pages", 
     expect(metrics("Not watched yet")).toEqual({ Videos: "9", Livestreams: "0" })
   })
 
-  it("never asks the feed for another page, even where IntersectionObserver exists", async () => {
+  it("on mobile/tablet it never reveals more or asks the feed for another page, even where IntersectionObserver exists", async () => {
+    const desktopWidth = window.innerWidth
+    window.innerWidth = 800 // tablet: the page scrolls here, so the panel stays at 6 and watches nothing
     const observe = vi.fn()
     vi.stubGlobal("IntersectionObserver", class { observe = observe; disconnect() {}; unobserve() {}; takeRecords() { return [] } })
     fetchMock.mockResolvedValue(status({ recent: manyItems(9) }))
@@ -858,6 +860,117 @@ describe("OshiStatusPanel Latest Activity is capped at 6 rows and never pages", 
     await screen.findByText("Many 0")
     expect(observe).not.toHaveBeenCalled()
     expect(loadMore).not.toHaveBeenCalled()
+    expect(document.querySelectorAll(".oshi-status__recent-video-link")).toHaveLength(6)
     vi.unstubAllGlobals()
+    window.innerWidth = desktopWidth
   })
 })
+
+describe("OshiStatusPanel 查看全部: the dedicated full-screen Latest Activity view (mobile/tablet)", () => {
+  const items = (count: number): OshiStatusRecentItem[] =>
+    Array.from({ length: count }, (_unused, index) => ({ ...unseenItem, videoId: `item_${index}`, title: `Item ${index}`, publishedAt: new Date(2026, 8, 10, 11, 0, 0).toISOString() }))
+  const desktopWidth = window.innerWidth
+  const homeTitles = () => Array.from(document.querySelectorAll(".oshi-status__recent-video-link")).map((node) => node.textContent)
+  const dialog = () => screen.getByRole("dialog")
+  const dialogTitles = () => Array.from(dialog().querySelectorAll(".oshi-status__recent-video-link")).map((node) => node.textContent)
+
+  beforeEach(() => {
+    window.innerWidth = 800 // tablet/mobile: the page scrolls, the panel is a 6-row preview
+    fetchMock.mockResolvedValue(status({ recent: items(9) }))
+  })
+  afterEach(() => {
+    window.innerWidth = desktopWidth
+  })
+
+  it("shows the 查看全部 button beside the heading on mobile/tablet, and not on desktop", async () => {
+    renderPanel()
+    await screen.findByText("Item 0")
+
+    expect(screen.getByRole("button", { name: "View all" })).toBeInTheDocument()
+    expect(homeTitles()).toHaveLength(6)
+  })
+
+  it("has no 查看全部 button on desktop, where the panel scrolls on its own", async () => {
+    window.innerWidth = desktopWidth
+    renderPanel()
+    await screen.findByText("Item 0")
+
+    expect(screen.queryByRole("button", { name: "View all" })).toBeNull()
+  })
+
+  it("opens a separate full-screen view with every loaded row, never scrolls Home or the Video List, and closes back to Home", async () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {})
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    const user = userEvent.setup()
+    renderPanel()
+    await screen.findByText("Item 0")
+
+    await user.click(screen.getByRole("button", { name: "View all" }))
+
+    expect(dialog()).toBeInTheDocument()
+    expect(dialogTitles()).toHaveLength(9)
+    expect(homeTitles()).toHaveLength(15) // Home's own 6 rows are still there underneath, plus the view's 9
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(scrollIntoView).not.toHaveBeenCalled()
+
+    await user.click(within(dialog()).getByRole("button", { name: "Close" }))
+
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(homeTitles()).toHaveLength(6)
+    expect(screen.getByRole("button", { name: "View all" })).toHaveFocus()
+    scrollTo.mockRestore()
+  })
+
+  it("opening a NEW row from the view selects it, closes the view, marks it seen once, and updates Home's badge and 尚未觀看 count with it", async () => {
+    const user = userEvent.setup()
+    const { onSelectVideo } = renderPanel()
+    await screen.findByText("Item 0")
+    expect(metrics("Not watched yet")).toEqual({ Videos: "9", Livestreams: "0" })
+    expect(within(rowOfTitle("Item 2")).queryByText("NEW")).not.toBeNull()
+
+    await user.click(screen.getByRole("button", { name: "View all" }))
+    await user.click(within(dialog()).getByRole("button", { name: "Item 2" }))
+
+    expect(onSelectVideo).toHaveBeenCalledWith({ videoId: "item_2", title: "Item 2" })
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(JSON.parse(localStorage.getItem(SEEN_KEY) ?? "[]")).toEqual(["item_2"])
+    expect(metrics("Not watched yet")).toEqual({ Videos: "8", Livestreams: "0" })
+    expect(within(rowOfTitle("Item 2")).queryByText("NEW")).toBeNull()
+    expect(within(rowOfTitle("Item 3")).queryByText("NEW")).not.toBeNull()
+
+    await user.click(screen.getByRole("button", { name: "View all" })) // reopened: the same state, nothing resurrected
+    expect(within(within(dialog()).getByRole("button", { name: "Item 2" }).closest(".oshi-status__recent-row") as HTMLElement).queryByText("NEW")).toBeNull()
+    expect(within(within(dialog()).getByRole("button", { name: "Item 8" }).closest(".oshi-status__recent-row") as HTMLElement).queryByText("NEW")).not.toBeNull() // beyond Home's 6
+  })
+
+  it("opening a NEW item beyond Home's six rows lowers the count by exactly one", async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await screen.findByText("Item 0")
+    await user.click(screen.getByRole("button", { name: "View all" }))
+
+    await user.click(within(dialog()).getByRole("button", { name: "Item 8" }))
+
+    expect(metrics("Not watched yet")).toEqual({ Videos: "8", Livestreams: "0" })
+    expect(homeTitles()).not.toContain("Item 8") // it was never one of Home's six rows
+  })
+
+  it("rendering the view and scrolling through it marks nothing seen", async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await screen.findByText("Item 0")
+
+    await user.click(screen.getByRole("button", { name: "View all" }))
+
+    expect(localStorage.getItem(SEEN_KEY)).toBeNull()
+    expect(metrics("Not watched yet")).toEqual({ Videos: "9", Livestreams: "0" })
+  })
+})
+
+/** The Home panel's row element for a title (outside any open dialog). */
+function rowOfTitle(title: string): HTMLElement {
+  const aside = document.querySelector("aside.oshi-status") as HTMLElement
+  const buttons = within(aside).getAllByRole("button", { name: title })
+  return buttons[0].closest(".oshi-status__recent-row") as HTMLElement
+}
