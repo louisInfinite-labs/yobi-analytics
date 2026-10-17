@@ -41,7 +41,7 @@ from zoneinfo import ZoneInfo
 from api.holodex_client import holodex_get
 from api.holodex_normalization import normalize_holodex_live_response
 from api.livestream_classification import classify_unclassified_upcoming
-from api.provisional_discoveries import is_unclassified_provisional, with_provisional_discoveries
+from api.provisional_discoveries import discovery_times_for, is_unclassified_provisional, with_provisional_discoveries
 from tracking.creator_master import (
     Creator,
     is_historical_data_unavailable,
@@ -652,7 +652,50 @@ def parse_recent_creator_videos_live_status(raw: Any) -> str:
     )
 
 
-def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
+_NEW_CONTENT_GROUP_BY_CONTENT_TYPE = {"upload": "videos", "live": "livestreams"}
+
+
+def parse_recent_creator_videos_new_since(raw: Any) -> datetime | None:
+    """Validate the optional newSince parameter: the client's exact first-visit instant (ISO 8601 with a UTC offset), else None when absent."""
+    if raw is None or raw == "":
+        return None
+    since = _parse_utc_timestamp(raw)
+    if since is None:
+        raise ClientError("newSince must be an ISO 8601 timestamp with a UTC offset, e.g. 2026-09-30T12:00:00Z")
+    return since
+
+
+def _recent_creator_videos_new_content(ordered: list[dict[str, Any]], since: datetime, now: datetime) -> dict[str, Any]:
+    """The NEW-eligible part of the FULL filtered+ordered set, exact and uncapped, as counts plus compact id lists.
+
+    Eligible = AWS first discovered (the row's `discoveredAt`, never `publishedAt`) in [since, now], so a long-published video discovered
+    after the user's first visit is NEW, and one discovered before it is not. A row with no usable `discoveredAt` is not eligible: that
+    time is never invented. Each videoId is counted once. `contentType` is only read, never changed: upload -> videos, live -> livestreams,
+    anything else (no contentType yet) -> unclassified.
+
+    Work is in memory over rows this request already loaded -- no extra S3 or DynamoDB read, no per-user write. The ids go out as one
+    comma-joined string per group (about 12 bytes each, bounded by the catalog size that was already read) instead of video objects: the
+    browser's own seen set decides which of them are still unwatched, so the unwatched count stays exact with no cap.
+    """
+    groups: dict[str, list[str]] = {"videos": [], "livestreams": [], "unclassified": []}
+    seen: set[str] = set()
+    for row in ordered:
+        video_id = row["videoId"]
+        discovered = _parse_utc_timestamp(row.get("discoveredAt"))
+        if video_id in seen or "," in video_id or discovered is None or discovered < since or discovered > now:
+            continue
+        seen.add(video_id)
+        groups[_NEW_CONTENT_GROUP_BY_CONTENT_TYPE.get(row.get("contentType"), "unclassified")].append(video_id)
+    return {
+        "since": since.isoformat(),
+        "counts": {name: len(ids) for name, ids in groups.items()},
+        "videoIds": ",".join(groups["videos"]),
+        "livestreamIds": ",".join(groups["livestreams"]),
+        "unclassifiedIds": ",".join(groups["unclassified"]),
+    }
+
+
+def get_recent_creator_videos(query: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
     """`GET /creators/{creatorId}/videos/recent`: one creator's own videos,
     newest-published first (or oldest first with `sort=oldest`), optionally filtered by
     `topic`, contentType and liveStatus -- the Home Oshi Videos archive source. Query
@@ -710,6 +753,10 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
     one more row after this page, computed directly rather than guessed from
     len(page) >= limit, which would be wrong whenever limit doesn't evenly
     divide the true remaining count).
+
+    Optional `newSince` (the client's exact first-visit instant, ISO 8601 with a UTC offset) adds `newContent` to the response: exact
+    counts and compact ids of ALL rows of the same filtered+ordered set first discovered between newSince and now (see
+    _recent_creator_videos_new_content), so a client can count unwatched items beyond the page it loaded without another request.
     """
     creator_id = parse_creator_id(query.get("creatorId"))
     content_type = parse_video_ranking_content_type(query.get("contentType"))
@@ -719,6 +766,7 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
     sort = parse_recent_creator_videos_sort(query.get("sort"))
     limit = parse_recent_creator_videos_limit(query.get("limit"))
     offset = parse_offset(query.get("offset"))
+    new_since = parse_recent_creator_videos_new_since(query.get("newSince"))
     report_dates = _leaderboard_report_dates(query.get("reportDate"))
 
     creator = _find_creator(creator_id)
@@ -783,7 +831,7 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
         for row in page
     ]
 
-    return {
+    response = {
         "reportDate": result["reportDate"],
         "generatedAt": result["generatedAt"],
         "creatorId": creator_id,
@@ -794,6 +842,9 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
         "videos": videos,
         "hasMore": offset + limit < len(ordered),
     }
+    if new_since is not None:
+        response["newContent"] = _recent_creator_videos_new_content(ordered, new_since, now or datetime.now(timezone.utc))
+    return response
 
 
 def parse_search_query(raw: Any) -> str:
@@ -1510,6 +1561,12 @@ def _with_verified_completed_streams(rows: list[dict[str, Any]], creator_id: str
                 "provisional": True,
             }
         )
+    # An added row has no catalog entry, so its ORIGINAL AWS first-discovery time comes from its Video Master record (when discovery has recorded
+    # one). Without it the stream could never count as NEW; with none on file it stays unknown (None) -- publishedAt is never substituted.
+    added = [row for row in overlaid[len(rows) :] if row.get("discoveredAt") is None]
+    discovered = discovery_times_for([row["videoId"] for row in added])
+    for row in added:
+        row["discoveredAt"] = discovered.get(row["videoId"])
     return overlaid
 
 

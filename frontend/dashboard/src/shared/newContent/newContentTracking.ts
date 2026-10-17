@@ -7,14 +7,16 @@ import { createSharedState, useSharedState } from "../state/sharedState"
  * its later archive's NEW.
  *
  * Semantics (browser/device-local; there is no login or sync):
- * - Tracking starts on the first ever use on this browser. The baseline is 00:00 LOCAL time of that first-use
- *   day (the browser's actual time zone, never a hardcoded one) and is written once -- it is never rewritten on
- *   later loads, so a reload, a navigation or a new day cannot move it.
- * - An item is NEW while its event time is at or after the baseline (and not in the future) and it has not been
+ * - Tracking starts on the first ever use on this browser. The baseline is that first use's EXACT instant (e.g. 08:00:12 JST,
+ *   not midnight) and is written once -- it is never rewritten on later loads, so a reload, a navigation or a new day cannot move it.
+ *   A baseline stored by an earlier version is local midnight of the first-use day: the true instant was never recorded, so it is
+ *   kept as it is (inventing a later time could hide real NEW items) -- at worst it counts items found earlier that day.
+ * - An item is NEW while it was first DISCOVERED by AWS at or after the baseline (and not in the future) and it has not been
  *   explicitly opened. Visiting a page never clears NEW; only markContentSeen(videoId) does, keyed by videoId.
  *
- * Event-time precedence (see newContentEventTime): the stream's real start (`eventAt`, from /live-streams'
- * actualStart, else scheduledStart) when the source exposes it, otherwise YouTube's `publishedAt`.
+ * Event-time precedence (see newContentEventTime): AWS's first-discovery time (`discoveredAt`) whenever the source reports the field
+ * (an unknown one, null, is never NEW -- that time is not invented), otherwise -- for sources without the field -- the stream's real
+ * start (`eventAt`) and then YouTube's `publishedAt`.
  *
  * A livestream is never NEW while it is upcoming or live; it can only become NEW once it is an archive. If the user
  * already watched it DURING the live session (the embedded player reported PLAYING for that videoId, see
@@ -28,8 +30,10 @@ const BASELINE_STORAGE_KEY = "yobi.newContent.trackingBaselineAt"
 const SEEN_STORAGE_KEY = "yobi.newContent.seenVideoIds"
 const WATCHED_LIVE_STORAGE_KEY = "yobi.newContent.watchedDuringLive"
 
-/** Upper bound on remembered opened ids so localStorage stays small; the oldest ids are dropped first. */
-const MAX_SEEN_IDS = 2000
+/** Upper bound on remembered opened ids so localStorage stays small (about 14 bytes each: 20,000 ids is ~280 KB); the oldest ids are dropped
+ * first. It is generous on purpose: the tracking baseline never moves, so a dropped id whose video is still inside the tracking window would
+ * become NEW (and counted as unwatched) again. It was 2,000, which a regular viewer reaches within about a year. */
+const MAX_SEEN_IDS = 20_000
 
 /** A watched-during-live marker has NO expiry: it stays until the stream is observed as a completed archive (then it
  * migrates into `seen`). Only a hard cap keeps storage bounded -- 500 live streams watched and never yet seen as an
@@ -41,7 +45,7 @@ export function startOfLocalDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
 }
 
-/** The stored baseline as an ISO instant, or the first-use baseline (today's local midnight) -- written to
+/** The stored baseline as an ISO instant, or the first-use baseline (this exact instant) -- written to
  * storage so it survives every later load. A storage failure just means the baseline is recomputed next load. */
 function readOrInitBaseline(): string {
   try {
@@ -50,7 +54,7 @@ function readOrInitBaseline(): string {
   } catch {
     // Unreadable storage: fall through to a first-use baseline for this session.
   }
-  const baseline = startOfLocalDay(new Date()).toISOString()
+  const baseline = new Date().toISOString()
   try {
     window.localStorage.setItem(BASELINE_STORAGE_KEY, baseline)
   } catch {
@@ -102,15 +106,22 @@ export interface NewContentCandidate {
   publishedAt: string
   /** The stream's real start (actualStart, else scheduledStart) when the data source exposes it. */
   eventAt?: string | null
+  /** When AWS first discovered this video. Present (a string, or null when unknown) on every archive/list row; undefined only for sources
+   * that do not carry the field. When present it alone decides NEW -- see newContentEventTime. */
+  discoveredAt?: string | null
   /** An upcoming stream has not happened yet, so it is never NEW. */
   contentFormat?: string
 }
 
-/** The moment the content event happened, in epoch ms, or null when unknown/unparseable.
- * Precedence: `eventAt` (the stream's actual start, else its scheduled start) over `publishedAt`. Only the
+/** The moment the content counts from, in epoch ms, or null when unknown/unparseable.
+ * Precedence: `discoveredAt` when the source reports the field, else `eventAt` (the stream's actual start, else its scheduled start), else `publishedAt`. Only the
  * livestream sources that expose a real start time (GET /live-streams) can supply `eventAt`; the archive and
  * oshi-status read models carry `publishedAt` alone. */
 export function newContentEventTime(candidate: NewContentCandidate): number | null {
+  if (candidate.discoveredAt !== undefined) {
+    const discovered = candidate.discoveredAt ? new Date(candidate.discoveredAt).getTime() : Number.NaN
+    return Number.isFinite(discovered) ? discovered : null
+  }
   for (const value of [candidate.eventAt, candidate.publishedAt]) {
     if (!value) continue
     const time = new Date(value).getTime()
@@ -132,6 +143,12 @@ export function isNewContent(
   const eventTime = newContentEventTime(candidate)
   if (!Number.isFinite(baseline) || eventTime === null) return false
   return eventTime >= baseline && eventTime <= state.now.getTime()
+}
+
+/** Not opened and not watched while live: the part of the NEW judgement that does not depend on time (the baseline/discovery window is the
+ * backend's, for counts, and isNewContent's, for badges). */
+export function isUnseenContent(videoId: string, state: { seen: ReadonlySet<string>; watchedDuringLive?: ReadonlySet<string> }): boolean {
+  return !state.seen.has(videoId) && !state.watchedDuringLive?.has(videoId)
 }
 
 /** Explicitly opening an item clears its NEW state everywhere. Idempotent; other items are untouched. */
@@ -181,7 +198,7 @@ export function resetNewContentTracking(): void {
   watchedLiveStore.set(new Map())
 }
 
-/** Reactive NEW judgement for list rows. Every consumer shares the same stores, so opening an item in one list
+/** Reactive NEW judgement for list rows (`baseline` = the stored tracking baseline, an ISO instant, for requests that need it). Every consumer shares the same stores, so opening an item in one list
  * re-renders the others immediately. `now` defaults to the render time. */
 export function useNewContent() {
   const [baseline] = useSharedState(baselineStore)
@@ -192,5 +209,6 @@ export function useNewContent() {
     (candidate: NewContentCandidate, now: Date = new Date()) => isNewContent(candidate, { baseline, seen, watchedDuringLive, now }),
     [baseline, seen, watchedDuringLive],
   )
-  return useMemo(() => ({ isNew, markSeen: markContentSeen }), [isNew])
+  const isUnseen = useCallback((videoId: string) => isUnseenContent(videoId, { seen, watchedDuringLive }), [seen, watchedDuringLive])
+  return useMemo(() => ({ isNew, isUnseen, markSeen: markContentSeen, baseline }), [isNew, isUnseen, baseline])
 }

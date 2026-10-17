@@ -2,7 +2,7 @@
  * vertical results list (one video per row), and emptying the input restores the complete Home -- player, Oshi Status, then the SAME Topic's
  * video list, fetched again -- immediately, whatever the focus, and whatever the search request is doing (pending, loaded, empty or failed).
  * The real HomePage and header input run against a stubbed `fetch`; only the YouTube IFrame API is faked. */
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { HomePage } from "./HomePage"
@@ -73,6 +73,8 @@ const headerInput = () => document.querySelector<HTMLInputElement>(".main-topbar
 const searchRequests = () => requests.filter((request) => request.includes("/videos/search"))
 const listRequests = (topic: string) => requests.filter((request) => request.includes("/videos/recent") && request.includes(`topic=${topic}`))
 const resultRows = () => Array.from(document.querySelectorAll(".oshi-videos__results > li"))
+/** A video title inside the Video List shelf (Latest Activity shows the same first rows, so a bare screen query would find two). */
+const findInShelf = (text: string) => within(document.querySelector(".oshi-videos") as HTMLElement).findByText(text)
 const homeIsNormal = () => !!document.querySelector(".oshi-stream") && !!document.querySelector(".oshi-status") && !!document.querySelector(".oshi-videos__header") && !document.querySelector(".oshi-videos--results")
 const searchViewIsOpen = () => !!document.querySelector(".oshi-videos--results") && !document.querySelector(".oshi-stream") && !document.querySelector(".oshi-status") && !document.querySelector(".oshi-videos__header")
 
@@ -89,7 +91,7 @@ async function renderPhoneHome() {
       <HomePage />
     </>,
   )
-  await screen.findByText("LIST all")
+  await findInShelf("LIST all")
 }
 
 /** What the keyboard does on Enter in a one-field form: the form submits. */
@@ -448,14 +450,14 @@ describe("emptying the input restores the complete Home immediately", () => {
     const user = userEvent.setup()
     await renderPhoneHome()
     await user.click(await screen.findByText("Singing"))
-    await screen.findByText("LIST singing")
+    await findInShelf("LIST singing")
     const before = listRequests("singing").length
     await submit(user)
     await screen.findByText("Search hit one")
 
     fireEvent.change(headerInput(), { target: { value: "" } })
 
-    await screen.findByText("LIST singing") // Singing is still the selected Topic (ALL is never picked by clearing)
+    await findInShelf("LIST singing") // Singing is still the selected Topic (ALL is never picked by clearing)
     await waitFor(() => expect(listRequests("singing").length).toBeGreaterThan(before)) // refreshed, not left as it was
     expect(listRequests("all").length).toBe(1) // ALL was only the initial load; nothing re-selected it
   })
@@ -470,7 +472,7 @@ describe("emptying the input restores the complete Home immediately", () => {
     fireEvent.change(headerInput(), { target: { value: "" } })
 
     await waitFor(() => expect(listRequests("all").length).toBeGreaterThan(before))
-    expect(await screen.findByText("LIST all")).toBeInTheDocument()
+    expect(await findInShelf("LIST all")).toBeInTheDocument()
   })
 
   it("searching again after clearing still works", async () => {
@@ -495,7 +497,7 @@ describe("the header search belongs to the phone only", () => {
   it("on a desktop width the desktop box is input-driven as before: typing searches with no Enter", async () => {
     setViewport(1366)
     render(<HomePage />)
-    await screen.findByText("LIST all")
+    await findInShelf("LIST all")
     const desktopBox = document.querySelector<HTMLInputElement>(".oshi-videos__search input")!
 
     fireEvent.change(desktopBox, { target: { value: "apex" } })

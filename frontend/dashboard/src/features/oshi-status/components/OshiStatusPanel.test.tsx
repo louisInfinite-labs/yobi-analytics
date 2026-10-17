@@ -6,7 +6,8 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { OshiStatusPanel } from "./OshiStatusPanel"
 import * as useLastVisit from "../hooks/useLastVisit"
-import { fetchOshiStatus, type OshiStatusData, type OshiStatusRecentItem } from "../data/oshiStatus"
+import { fetchOshiStatus, type OshiStatusData } from "../data/oshiStatus"
+import type { HomeAllFeed } from "../../home-room/hooks/useHomeAllFeed"
 import { ApiError } from "../../../shared/api/apiClient"
 import { startOfLocalDay } from "../../../shared/newContent/newContentTracking"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
@@ -25,6 +26,16 @@ const now = new Date(2026, 8, 10, 12, 0, 0)
 const BASELINE_KEY = "yobi.newContent.trackingBaselineAt"
 const SEEN_KEY = "yobi.newContent.seenVideoIds"
 
+/** One Latest Activity row as these fixtures describe it; the panel itself reads the shared ALL feed (see feedFor below). */
+interface OshiStatusRecentItem {
+  videoId: string
+  kind: "upload" | "livestream"
+  title: string
+  thumbnailUrl: string | null
+  publishedAt: string
+  currentViewCount: number | null
+}
+
 const seenItem: OshiStatusRecentItem = {
   videoId: "seen_video_1",
   kind: "upload",
@@ -41,7 +52,45 @@ const unseenItem: OshiStatusRecentItem = {
   publishedAt: new Date(2026, 8, 10, 9, 0, 0).toISOString(),
 }
 
-function status(overrides: Partial<OshiStatusData> = {}): OshiStatusData {
+/** The rows the shared feed currently serves (set by status(), like the old backend `recent` list) and a per-test feed override. */
+let feedItems: OshiStatusRecentItem[] = []
+let feedOverride: Partial<HomeAllFeed> = {}
+
+/** The backend's eligibility rule in these fixtures: at/after the stored tracking baseline and not in the future. */
+function inTrackingWindow(item: OshiStatusRecentItem): boolean {
+  const baseline = new Date(localStorage.getItem(BASELINE_KEY) ?? 0).getTime()
+  const time = new Date(item.publishedAt).getTime()
+  return time >= baseline && time <= now.getTime()
+}
+
+/** The ALL feed the panel receives: every fixture row is a loaded record AND a NEW-eligible one, in the order given. */
+function feedFor(items: OshiStatusRecentItem[]): HomeAllFeed {
+  const videos = items.map((item) => ({
+    videoId: item.videoId,
+    title: item.title,
+    publishedAt: item.publishedAt,
+    thumbnailUrl: item.thumbnailUrl,
+    contentFormat: item.kind === "livestream" ? ("live_archive" as const) : ("normal_video" as const),
+  }))
+  const page = {
+    videos,
+    loading: false,
+    error: null,
+    loadMore: vi.fn(),
+    hasMore: false,
+    // What the backend would report: every row first discovered inside the tracking window, whether or not it is loaded.
+    newContent: {
+      videoIds: items.filter((item) => item.kind === "upload" && inTrackingWindow(item)).map((item) => item.videoId),
+      livestreamIds: items.filter((item) => item.kind === "livestream" && inTrackingWindow(item)).map((item) => item.videoId),
+      unclassifiedIds: [],
+    },
+  }
+  return { ...page, page, ...feedOverride }
+}
+
+function status(overrides: Partial<OshiStatusData> & { recent?: OshiStatusRecentItem[] } = {}): OshiStatusData {
+  const { recent = [unseenItem, seenItem], ...rest } = overrides
+  feedItems = recent
   return {
     subscriberCount: 123_456,
     latestVideo: null,
@@ -51,15 +100,14 @@ function status(overrides: Partial<OshiStatusData> = {}): OshiStatusData {
       "7d": { absoluteGrowth: 12_300, videoCount: 40 },
       "30d": { absoluteGrowth: 99_000, videoCount: 90 },
     },
-    recent: [unseenItem, seenItem],
     sinceLastVisit: { newUploads: 4, newStreams: 1, clamped: false },
-    ...overrides,
+    ...rest,
   }
 }
 
 function renderPanel(creatorId = "ch_aizawa_ema", onSelectVideo = vi.fn()) {
   const ui = (id: string) => (
-    <OshiStatusPanel creatorId={id} status={{ kind: "offline" }} now={now} onSelectVideo={onSelectVideo} nowPlayingTitle={null} />
+    <OshiStatusPanel creatorId={id} status={{ kind: "offline" }} feed={feedFor(feedItems)} now={now} onSelectVideo={onSelectVideo} nowPlayingTitle={null} />
   )
   const view = render(ui(creatorId))
   return { onSelectVideo, unmount: view.unmount, switchCreator: (id: string) => view.rerender(ui(id)) }
@@ -76,6 +124,7 @@ function metrics(sectionTitle: string): Record<string, string> {
 }
 
 beforeEach(() => {
+  feedOverride = {}
   fetchMock.mockReset()
   fetchMock.mockResolvedValue(status())
   vi.mocked(useLastVisit.usePreviousVisit).mockReturnValue(PREVIOUS_VISIT)
@@ -107,6 +156,7 @@ describe("OshiStatusPanel: backend request", () => {
     const { switchCreator } = renderPanel("ch_aizawa_ema")
     await screen.findByText("Unseen upload")
     fetchMock.mockImplementation(() => new Promise(() => {})) // the new creator's request stays pending
+    feedOverride = { videos: [], loading: true, newContent: undefined } // ...and so does Home's shared feed for the new creator
 
     switchCreator("ch_gawr_gura")
 
@@ -117,6 +167,7 @@ describe("OshiStatusPanel: backend request", () => {
   })
 
   it("requests nothing for a creator with no canonical id and shows the empty states", async () => {
+    feedOverride = { videos: [], newContent: undefined } // no canonical id: the shared feed has no query and stays empty
     renderPanel("ch_hololive_staff")
 
     expect(fetchMock).not.toHaveBeenCalled()
@@ -184,6 +235,7 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
 
   it("shows placeholders, never a fabricated 0, while the data is not available", () => {
     fetchMock.mockImplementation(() => new Promise(() => {}))
+    feedOverride = { videos: [], loading: true, newContent: undefined }
     renderPanel()
 
     expect(metrics("Not watched yet")).toEqual({ Videos: "—", Livestreams: "—" })
@@ -192,6 +244,7 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
 
   it("a failed request shows the normal error state with its code and the placeholders, never old or mock data", async () => {
     fetchMock.mockRejectedValue(new ApiError(503, "Service Unavailable", "RANKING_NOT_READY"))
+    feedOverride = { videos: [], error: new ApiError(503, "Service Unavailable", "RANKING_NOT_READY"), newContent: undefined }
     renderPanel()
 
     const alert = await screen.findByRole("alert")
@@ -204,6 +257,7 @@ describe("OshiStatusPanel: header, metrics and recent rows come from the backend
 
   it("a network failure shows the network error state, not the server one", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"))
+    feedOverride = { videos: [], error: new TypeError("Failed to fetch"), newContent: undefined }
     renderPanel()
 
     expect(await screen.findByRole("alert")).toHaveTextContent("(Code: NETWORK)")
@@ -349,7 +403,7 @@ describe("OshiStatusPanel Recent Activity", () => {
     const nextDay = new Date(2026, 8, 11, 8, 0, 0)
 
     const { unmount } = render(
-      <OshiStatusPanel creatorId="ch_aizawa_ema" status={{ kind: "offline" }} now={nextDay} onSelectVideo={vi.fn()} nowPlayingTitle={null} />,
+      <OshiStatusPanel creatorId="ch_aizawa_ema" status={{ kind: "offline" }} feed={feedFor(feedItems)} now={nextDay} onSelectVideo={vi.fn()} nowPlayingTitle={null} />,
     )
     await waitFor(() => expect(document.querySelectorAll(".oshi-status__recent-new-badge").length).toBeGreaterThan(0))
     unmount()
@@ -540,7 +594,7 @@ describe("OshiStatusPanel thumbnails", () => {
 
   function renderThumbs(props: Partial<React.ComponentProps<typeof OshiStatusPanel>> = {}) {
     const onSelectVideo = vi.fn()
-    render(<OshiStatusPanel creatorId="ch_aizawa_ema" status={{ kind: "offline" }} now={now} onSelectVideo={onSelectVideo} nowPlayingTitle={null} {...props} />)
+    render(<OshiStatusPanel creatorId="ch_aizawa_ema" status={{ kind: "offline" }} feed={feedFor(feedItems)} now={now} onSelectVideo={onSelectVideo} nowPlayingTitle={null} {...props} />)
     return { onSelectVideo }
   }
   const thumbImg = (scope: string) => document.querySelector<HTMLImageElement>(`${scope} .oshi-status__thumb img`)
@@ -761,7 +815,7 @@ describe("the Oshi Status 'live / next' section title (display text only)", () =
   ] as const)("%s reads %s", async (locale, expected) => {
     localStorage.setItem("yobi.locale", locale)
     resetAllSharedStateForTests()
-    render(<OshiStatusPanel creatorId="ch_aizawa_ema" status={{ kind: "offline" }} now={now} onSelectVideo={vi.fn()} nowPlayingTitle={null} />)
+    render(<OshiStatusPanel creatorId="ch_aizawa_ema" status={{ kind: "offline" }} feed={feedFor(feedItems)} now={now} onSelectVideo={vi.fn()} nowPlayingTitle={null} />)
 
     const titles = Array.from(document.querySelectorAll(".oshi-status__section-title")).map((element) => element.textContent)
     expect(titles).toContain(expected)
@@ -770,5 +824,40 @@ describe("the Oshi Status 'live / next' section title (display text only)", () =
   it("is the only place that wording is used: Schedule's own strings do not carry it", () => {
     const schedule = readFileSync(resolve(process.cwd(), "src/pages/schedule/LiveSchedulePage.tsx"), "utf-8")
     expect(schedule).not.toContain("oshiStatus.liveNext")
+  })
+})
+
+describe("OshiStatusPanel Latest Activity is capped at 6 rows and never pages", () => {
+  const manyItems = (count: number): OshiStatusRecentItem[] =>
+    Array.from({ length: count }, (_unused, index) => ({ ...unseenItem, videoId: `many_${index}`, title: `Many ${index}`, publishedAt: new Date(2026, 8, 10, 11, 0, 0).toISOString() }))
+
+  it("renders only the first 6 rows of the feed, in order, but counts every eligible unwatched item (more than 6)", async () => {
+    fetchMock.mockResolvedValue(status({ recent: manyItems(9) }))
+    renderPanel()
+
+    await screen.findByText("Many 0")
+    expect(Array.from(document.querySelectorAll(".oshi-status__recent-video-link")).map((node) => node.textContent)).toEqual([
+      "Many 0",
+      "Many 1",
+      "Many 2",
+      "Many 3",
+      "Many 4",
+      "Many 5",
+    ])
+    expect(metrics("Not watched yet")).toEqual({ Videos: "9", Livestreams: "0" })
+  })
+
+  it("never asks the feed for another page, even where IntersectionObserver exists", async () => {
+    const observe = vi.fn()
+    vi.stubGlobal("IntersectionObserver", class { observe = observe; disconnect() {}; unobserve() {}; takeRecords() { return [] } })
+    fetchMock.mockResolvedValue(status({ recent: manyItems(9) }))
+    const loadMore = vi.fn()
+    feedOverride = { hasMore: true, loadMore }
+    renderPanel()
+
+    await screen.findByText("Many 0")
+    expect(observe).not.toHaveBeenCalled()
+    expect(loadMore).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 })

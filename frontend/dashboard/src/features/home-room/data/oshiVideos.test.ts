@@ -31,8 +31,8 @@ describe("fetchOshiVideos", () => {
     expect(page.nextOffset).toBe(22)
     expect(page.hasMore).toBe(true)
     expect(page.videos).toEqual([
-      { videoId: "s1", title: "stream", publishedAt: "2026-09-02T00:00:00Z", contentFormat: "live_archive", viewCount: 1200 },
-      { videoId: "u1", title: "upload", publishedAt: "2026-09-01T00:00:00Z", contentFormat: "normal_video", viewCount: 50 },
+      { videoId: "s1", title: "stream", publishedAt: "2026-09-02T00:00:00Z", contentFormat: "live_archive", viewCount: 1200, thumbnailUrl: null, discoveredAt: null },
+      { videoId: "u1", title: "upload", publishedAt: "2026-09-01T00:00:00Z", contentFormat: "normal_video", viewCount: 50, thumbnailUrl: null, discoveredAt: null },
     ])
   })
 

@@ -4,6 +4,7 @@ import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistr
 import { useLiveStreams } from "../../../shared/api/hooks/useLiveStreams"
 import type { LiveStreamDto } from "../../../shared/api/liveStreams"
 import { fetchArchivedLivestreams } from "../data/recentArchivedLivestreams"
+import type { NewContentEligibility } from "../data/oshiVideos"
 
 export interface VideoPage {
   videos: RecentVideo[]
@@ -16,6 +17,8 @@ export interface VideoPage {
   hasMore: boolean
   /** Refetches the current query from its first page (optional: only the paged Oshi Videos shelf offers it). */
   refresh?: () => void
+  /** Unwatched eligibility over the WHOLE list (not just the loaded pages); only the first-page response of a `newSince` request carries it. */
+  newContent?: NewContentEligibility
 }
 
 /** One /live-streams item as a RecentVideo -- publishedAt prefers
@@ -34,6 +37,7 @@ export function toRecentVideo(dto: LiveStreamDto): RecentVideo {
     publishedAt: dto.actualStart ?? dto.scheduledStart ?? new Date(0).toISOString(),
     ...((dto.actualStart ?? dto.scheduledStart) ? { eventAt: (dto.actualStart ?? dto.scheduledStart) as string } : {}),
     contentFormat: dto.status === "live" ? "live_now" : "live_upcoming",
+    thumbnailUrl: dto.thumbnailUrl || null,
   }
 }
 

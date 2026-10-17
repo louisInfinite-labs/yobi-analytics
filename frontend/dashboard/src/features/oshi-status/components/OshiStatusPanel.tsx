@@ -12,8 +12,9 @@ import { useUpcomingDisplayMode } from "../../live-status/hooks/useUpcomingDispl
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { resetPreviousVisit, usePreviousVisit } from "../hooks/useLastVisit"
 import { useOshiStatus } from "../hooks/useOshiStatus"
-import type { OshiStatusRecentItem } from "../data/oshiStatus"
-import { formatActivityTime, formatCompactCount } from "../utils/oshiActivity"
+import type { HomeAllFeed } from "../../home-room/hooks/useHomeAllFeed"
+import type { RecentVideo } from "../../../shared/media/model/recentVideo"
+import { countUnwatched, formatActivityTime, formatCompactCount } from "../utils/oshiActivity"
 import { markContentSeen, migrateWatchedLiveToSeen, resetNewContentTracking, useNewContent } from "../../../shared/newContent/newContentTracking"
 import type { CreatorStatus } from "../../live-status/model/creatorStatus"
 
@@ -21,9 +22,16 @@ import type { CreatorStatus } from "../../live-status/model/creatorStatus"
  * value exists for it) -- never a fabricated 0. */
 const VALUE_UNAVAILABLE = "—"
 
+/** Home's Latest Activity shows only the FIRST 6 items of the shared ALL dataset -- a preview, never paged. The Video List is where the full
+ * list (and its 20-per-page infinite scroll) lives. The 尚未觀看 counts below are NOT limited by this. */
+export const LATEST_ACTIVITY_ROW_LIMIT = 6
+
 interface OshiStatusPanelProps {
   creatorId: string
   status: CreatorStatus
+  /** Home's ONE shared ALL dataset (see useHomeAllFeed): Latest Activity shows its FIRST 6 items in the order Video List ALL lists
+   * them, and the 尚未觀看 counts cover the whole list -- it owns no data of its own, makes no request of its own and never pages. */
+  feed: HomeAllFeed
   now: Date
   /** The one shared Home selected-video path (see HomePage.tsx) -- switches
    * the central Oshi Stream player directly, never a modal/second player. */
@@ -90,7 +98,7 @@ function RecentActivityRow({
   timeFormat,
   onOpen,
 }: {
-  entry: OshiStatusRecentItem
+  entry: RecentVideo
   now: Date
   locale: Locale
   timeFormat: TimeFormat
@@ -100,17 +108,22 @@ function RecentActivityRow({
   // eligible archive or upload in either list calls markContentSeen; live/upcoming clicks do not. A confirmed PLAYING of a live stream
   // also keeps its later archive from being NEW (see newContentTracking.ts).
   const { isNew: isNewContent } = useNewContent()
-  const isNew = isNewContent({ videoId: entry.videoId, publishedAt: entry.publishedAt }, now)
-  // One handler for the title AND the thumbnail, so they can never diverge (same seen-marking, same selected video).
+  const isNew = isNewContent(
+    { videoId: entry.videoId, publishedAt: entry.publishedAt, eventAt: entry.eventAt, discoveredAt: entry.discoveredAt, contentFormat: entry.contentFormat },
+    now,
+  )
+  const isCurrentStream = entry.contentFormat === "live_now" || entry.contentFormat === "live_upcoming"
+  // One handler for the title AND the thumbnail, so they can never diverge (same seen-marking, same selected video). A live/upcoming
+  // row never counts as opened by itself (HomePage's openVideo decides), exactly like the same stream in the Video List.
   const open = () => {
-    markContentSeen(entry.videoId)
+    if (!isCurrentStream) markContentSeen(entry.videoId)
     onOpen({ videoId: entry.videoId, title: entry.title })
   }
 
   return (
     <div className="oshi-status__recent-row">
       <div className="oshi-status__recent-time-column">
-        <span className="oshi-status__recent-time">{formatActivityTime(entry.publishedAt, now, timeFormat)}</span>
+        <span className="oshi-status__recent-time">{formatActivityTime(entry.eventAt ?? entry.publishedAt, now, timeFormat)}</span>
         {isNew && <span className="oshi-status__recent-new-badge">{t(locale, "oshiStatus.newBadge")}</span>}
       </div>
       <div className="oshi-status__recent-content">
@@ -183,7 +196,7 @@ function LiveOrNext({ status, now, onOpen }: { status: CreatorStatus; now: Date;
  * Live/Next comes from the shared Holodex status; everything else (subscriber count,
  * since-last-visit and this-week counts, view growth, the recent rows) is the backend's
  * GET /creators/{creatorId}/oshi-status read model for the CURRENT creator. */
-export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlayingTitle, nowPlayingVideoId = null }: OshiStatusPanelProps) {
+export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, nowPlayingTitle, nowPlayingVideoId = null }: OshiStatusPanelProps) {
   const creator = mockCreators.find((entry) => entry.channelId === creatorId)
   // The channel icon is the canonical Creator Registry's `avatarUrl` (the backend Creator Master's YouTube channel icon); the mock roster
   // above never carries one, so reading it from there always fell back to the initial.
@@ -195,8 +208,9 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
   const previousVisit = usePreviousVisit()
   const [locale] = useLocale()
   const [timeFormat] = useTimeFormat()
-  const { data, loading, error } = useOshiStatus(resolveCreatorKey(creatorId)?.creatorId, previousVisit)
-  const recent = data?.recent ?? []
+  const { data } = useOshiStatus(resolveCreatorKey(creatorId)?.creatorId, previousVisit)
+  const { videos: recent, loading, error } = feed
+  const latestRows = recent.slice(0, LATEST_ACTIVITY_ROW_LIMIT)
   // The now-playing video's backend thumbnail, when this panel already holds one for that videoId (the live/upcoming status or a recent row).
   const nowPlayingThumbnail =
     nowPlayingVideoId === null
@@ -204,20 +218,21 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
       : status.kind !== "offline" && status.videoId === nowPlayingVideoId
         ? status.thumbnailUrl
         : recent.find((entry) => entry.videoId === nowPlayingVideoId)?.thumbnailUrl
-  // The backend's recent rows are uploads and COMPLETED livestreams only: a stream watched while live that shows up
-  // here as a "livestream" row is now an archive, so its marker becomes a permanent seen entry.
+  // A stream watched while live that shows up here as a COMPLETED archive row is now an archive, so its marker becomes a permanent seen entry.
   useEffect(() => {
-    migrateWatchedLiveToSeen((data?.recent ?? []).filter((item) => item.kind === "livestream").map((item) => item.videoId))
-  }, [data])
+    migrateWatchedLiveToSeen(recent.filter((item) => item.contentFormat === "live_archive").map((item) => item.videoId))
+  }, [recent])
   const openNowPlaying = nowPlayingVideoId && nowPlayingTitle ? () => onSelectVideo({ videoId: nowPlayingVideoId, title: nowPlayingTitle }) : undefined
   const number = (value: number | undefined) => (value === undefined ? VALUE_UNAVAILABLE : String(value))
-  // 尚未觀看: counted from the SAME NEW judgement the Recent Activity rows below draw their NEW badge from (useNewContent's isNew, with the same
-  // `{ videoId, publishedAt }` candidate and `now`) -- never from the last-visit time or a second unread system. Opening a row marks it seen, which
-  // re-renders both the badge and this count. Uploads count as videos, completed livestreams as livestreams. Unavailable (not 0) until the rows load.
-  const { isNew: isNewContent } = useNewContent()
-  const rowsAvailable = !loading && !error && data !== null
-  const unseenVideos = recent.filter((item) => item.kind !== "livestream" && isNewContent({ videoId: item.videoId, publishedAt: item.publishedAt }, now)).length
-  const unseenLive = recent.filter((item) => item.kind === "livestream" && isNewContent({ videoId: item.videoId, publishedAt: item.publishedAt }, now)).length
+  // 尚未觀看: the SAME NEW judgement the Recent Activity rows draw their NEW badge from (the shared seen/baseline state, never the last-visit
+  // time or a second unread system), over EVERY eligible record of the whole ALL list -- not the 6 rows shown here, not the pages loaded in the
+  // Video List. Opening an item anywhere marks it seen in the shared store, which re-renders every badge and this count at once.
+  // Unavailable (not 0) until the list loads or when the backend did not supply the eligibility. The backend's eligibility is exact and uncapped.
+  const { isNew: isNewContent, isUnseen } = useNewContent()
+  const eligibility = feed.newContent
+  const rowsAvailable = !loading && !error && eligibility !== undefined
+  const unwatched = countUnwatched(eligibility, recent, { isNew: isNewContent, isUnseen }, now)
+  const countLabel = (value: number) => String(value)
 
   return (
     <aside className="oshi-status">
@@ -290,8 +305,8 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
         <section className="oshi-status__section">
           <div className="oshi-status__section-title">{t(locale, "oshiStatus.unseen")}</div>
           <div className="oshi-status__metrics">
-            <Metric value={rowsAvailable ? String(unseenVideos) : VALUE_UNAVAILABLE} label={t(locale, "oshiStatus.unseenVideos")} />
-            <Metric value={rowsAvailable ? String(unseenLive) : VALUE_UNAVAILABLE} label={t(locale, "oshiStatus.unseenLive")} />
+            <Metric value={rowsAvailable ? countLabel(unwatched.videos) : VALUE_UNAVAILABLE} label={t(locale, "oshiStatus.unseenVideos")} />
+            <Metric value={rowsAvailable ? countLabel(unwatched.livestreams) : VALUE_UNAVAILABLE} label={t(locale, "oshiStatus.unseenLive")} />
           </div>
         </section>
 
@@ -317,11 +332,11 @@ export function OshiStatusPanel({ creatorId, status, now, onSelectVideo, nowPlay
             </div>
           ) : error ? (
             <OshiErrorState error={error} />
-          ) : recent.length === 0 ? (
+          ) : latestRows.length === 0 ? (
             <div className="oshi-empty-state">{t(locale, "oshiStatus.noRecentActivity")}</div>
           ) : (
             <div className="oshi-status__recent-list">
-              {recent.map((entry) => (
+              {latestRows.map((entry) => (
                 <RecentActivityRow
                   key={entry.videoId}
                   entry={entry}

@@ -43,6 +43,7 @@ def _row(
     current: int = 1000,
     anchors: tuple[int | None, int | None, int | None] = (None, None, None),
     published: str | None = "2026-09-01T00:00:00Z",
+    discovered: str | None = None,
 ) -> dict:
     content_type, live_status = {
         "upload": ("upload", None),
@@ -64,7 +65,7 @@ def _row(
         "title": f"title {video_id}",
         "thumbnailUrl": None,
         "publishedAt": published,
-        "discoveredAt": None,
+        "discoveredAt": discovered,
     }
 
 
@@ -527,3 +528,108 @@ def test_through_the_lambda_handler_topic_content_type_live_status_and_sort_reac
 
     bad = api_handler.lambda_handler(_handler_event("recent", sort="sideways"), None)
     assert bad["statusCode"] == 400
+
+
+# ============ newSince: exact unwatched eligibility beyond the loaded page ============
+
+NEW_SINCE_NOW = datetime(2026, 10, 17, 3, 0, tzinfo=timezone.utc)
+FIRST_VISIT = "2026-10-17T00:00:00.500Z"  # an exact instant, not a midnight
+
+
+def _recent_new_since(**query) -> dict:
+    """The ALL query Home sends (archived, no Shorts) with newSince, at a pinned clock."""
+    base = {"creatorId": "emma", "reportDate": REPORT_DATE, "limit": "2", "liveStatus": "archived", "excludeShorts": "true"}
+    base.update(query)
+    return read_api.get_recent_creator_videos(base, now=NEW_SINCE_NOW)
+
+
+def _new_ids(response: dict) -> dict[str, list[str]]:
+    content = response["newContent"]
+    return {name: [i for i in content[key].split(",") if i] for name, key in (("videos", "videoIds"), ("livestreams", "livestreamIds"), ("unclassified", "unclassifiedIds"))}
+
+
+def test_new_content_uses_discovery_time_at_exact_first_visit_boundaries(monkeypatch):
+    """New content uses discovery time at exact first visit boundaries (not midnight, not publishedAt)."""
+    _wire(
+        monkeypatch,
+        {
+            "emma": [
+                _row("at-boundary", "chatting", published="2026-01-01T00:00:00Z", discovered="2026-10-17T00:00:00.500Z"),  # old video, discovered AT the first visit
+                _row("one-ms-before", "chatting", published="2026-10-17T00:00:00Z", discovered="2026-10-17T00:00:00.499Z"),  # new publish, discovered before the visit
+                _row("after-09-jst", "chatting", published="2020-05-05T00:00:00Z", discovered="2026-10-17T00:00:00.501Z"),  # previously published, newly discovered
+                _row("midnight-only", "chatting", published="2026-10-17T00:00:00Z", discovered="2026-10-16T15:00:00Z"),  # discovered after JST midnight but before the visit
+                _row("no-discovery-time", "chatting", published="2026-10-17T01:00:00Z"),  # unknown discovery time is never invented
+                _row("future", "chatting", discovered="2026-10-17T03:00:00.001Z"),
+            ]
+        },
+    )
+
+    content = _new_ids(_recent_new_since(newSince=FIRST_VISIT))
+
+    assert sorted(content["videos"]) == ["after-09-jst", "at-boundary"]
+    assert content["livestreams"] == [] and content["unclassified"] == []
+
+
+def test_new_content_counts_every_eligible_item_exactly_with_no_cap_and_no_double_count(monkeypatch):
+    """New content counts every eligible item exactly with no cap (more than 6, 20 and 2,000) and no double counting."""
+    discovered = "2026-10-17T01:00:00Z"
+    rows = (
+        [_row(f"u{index:04d}", "chatting", discovered=discovered) for index in range(2300)]
+        + [_row(f"s{index:04d}", "chatting", kind="stream", discovered=discovered) for index in range(450)]
+        + [_row(f"x{index:04d}", "chatting", kind="unclassified", discovered=discovered) for index in range(25)]
+        + [_row("u0000", "chatting", discovered=discovered)]  # the same videoId twice
+        + [_row("upcoming", "chatting", kind="upcoming", discovered=discovered), _row("live-now", "chatting", kind="live", discovered=discovered)]
+    )
+    _wire(monkeypatch, {"emma": rows})
+
+    response = _recent_new_since(newSince=FIRST_VISIT, limit="20")
+    content = response["newContent"]
+    ids = _new_ids(response)
+
+    assert content["counts"] == {"videos": 2300, "livestreams": 450, "unclassified": 25}
+    assert [len(ids["videos"]), len(ids["livestreams"]), len(ids["unclassified"])] == [2300, 450, 25]
+    assert len(set(ids["videos"]) | set(ids["livestreams"]) | set(ids["unclassified"])) == 2775  # each videoId once, across every group
+    assert "upcoming" not in ids["videos"] + ids["unclassified"] and "live-now" not in ids["videos"] + ids["unclassified"]  # not archived yet
+    assert len(response["videos"]) == 20  # the video page itself is unchanged and still paginated
+    assert "truncated" not in content
+
+
+def test_unclassified_new_content_is_counted_without_changing_its_content_type(monkeypatch):
+    """Unclassified new content is counted without changing its contentType."""
+    _wire(monkeypatch, {"emma": [_row("x1", "chatting", kind="unclassified", discovered="2026-10-17T01:00:00Z")]})
+
+    response = _recent_new_since(newSince=FIRST_VISIT)
+
+    assert response["newContent"]["counts"] == {"videos": 0, "livestreams": 0, "unclassified": 1}
+    assert response["videos"][0]["videoId"] == "x1" and response["videos"][0]["contentType"] is None
+
+
+def test_new_content_is_absent_without_the_parameter_and_malformed_input_is_rejected(monkeypatch):
+    """New content is absent without the parameter and malformed input is rejected."""
+    _wire(monkeypatch, {"emma": [_row("u1", "chatting")]})
+
+    assert "newContent" not in _recent_new_since()
+    for bad in ("yesterday", "2026-10-15T00:00:00"):  # not a timestamp / no UTC offset
+        with pytest.raises(read_api.ClientError):
+            _recent_new_since(newSince=bad)
+
+
+def test_new_content_adds_no_aws_reads_or_writes(monkeypatch):
+    """New content adds no AWS reads or writes: the same single S3 read and the same overlay calls, one pass over rows already in memory."""
+    store = _wire(monkeypatch, {"emma": [_row("u1", "chatting", discovered="2026-10-17T01:00:00Z")]})
+    payload = next(iter(store.payloads.values()))
+    store.payloads = type("_AnyDate", (), {"get": lambda self, key, default=None: payload})()  # whatever "latest" date the call resolves to
+    calls = {"provisional": 0, "completed": 0}
+    monkeypatch.setattr(read_api, "_with_provisional_discoveries", lambda rows, *_a: calls.__setitem__("provisional", calls["provisional"] + 1) or rows)
+    monkeypatch.setattr(read_api, "_with_verified_completed_streams", lambda rows, *_a: calls.__setitem__("completed", calls["completed"] + 1) or rows)
+    base = {"creatorId": "emma", "limit": "20", "liveStatus": "archived", "excludeShorts": "true"}
+
+    read_api.get_recent_creator_videos(base, now=NEW_SINCE_NOW)
+    reads_without = len(store.reads)
+    plain = dict(calls)
+    calls.update(provisional=0, completed=0)
+    store.reads.clear()
+    read_api.get_recent_creator_videos({**base, "newSince": FIRST_VISIT}, now=NEW_SINCE_NOW)
+
+    assert len(store.reads) == 1 and reads_without == 1
+    assert calls == plain == {"provisional": 1, "completed": 1}  # newSince does not add a single overlay (DynamoDB) call

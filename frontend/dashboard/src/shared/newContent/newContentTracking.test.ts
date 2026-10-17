@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   isNewContent,
+  isUnseenContent,
   markContentSeen,
   newContentEventTime,
   resetNewContentTracking,
@@ -55,19 +56,31 @@ afterEach(() => {
 })
 
 describe("tracking baseline (first use)", () => {
-  it("first ever use at 18:30 sets the baseline to 00:00 of that same local day", () => {
-    firstUseAt(local(10, 7, 18, 30))
+  it("first ever use at 18:30:12 sets the baseline to that exact instant, not midnight", () => {
+    const instant = local(10, 7, 18, 30, 12, 345)
+    firstUseAt(instant)
 
-    expect(storedBaseline()).toBe(local(10, 7, 0, 0).toISOString())
+    expect(storedBaseline()).toBe(instant.toISOString())
   })
 
   it("is written once: a reload on a later day does not move it", () => {
-    firstUseAt(local(10, 7, 18, 30))
+    const instant = local(10, 7, 18, 30)
+    firstUseAt(instant)
 
     vi.setSystemTime(local(10, 9, 9, 0))
     reload()
 
-    expect(storedBaseline()).toBe(local(10, 7, 0, 0).toISOString())
+    expect(storedBaseline()).toBe(instant.toISOString())
+  })
+
+  it("keeps a baseline stored by an earlier version (local midnight) untouched -- the real first-use time was never recorded", () => {
+    const legacyMidnight = local(10, 7, 0, 0).toISOString()
+    window.localStorage.setItem(BASELINE_KEY, legacyMidnight)
+    vi.setSystemTime(local(10, 9, 9, 0))
+
+    reload()
+
+    expect(storedBaseline()).toBe(legacyMidnight)
   })
 
   it("is not rewritten by a second load on the same day or by many reloads", () => {
@@ -88,7 +101,7 @@ describe("tracking baseline (first use)", () => {
 
     reload()
 
-    expect(storedBaseline()).toBe(local(10, 7, 0, 0).toISOString())
+    expect(storedBaseline()).toBe(local(10, 7, 18, 30).toISOString())
   })
 })
 
@@ -109,12 +122,12 @@ describe("local midnight is the browser's own, not a hardcoded zone", () => {
     expect(startOfLocalDay(new Date("2026-10-07T09:30:00Z")).toISOString()).toBe(expectedUtc)
   })
 
-  it("first use in Los Angeles at 02:30 local anchors the baseline to that LA day's midnight", () => {
+  it("the first-use baseline is the same absolute instant in every zone (it is not a local-midnight construct any more)", () => {
     vi.stubEnv("TZ", "America/Los_Angeles")
 
     firstUseAt(new Date("2026-10-07T09:30:00Z"))
 
-    expect(storedBaseline()).toBe("2026-10-07T07:00:00.000Z")
+    expect(storedBaseline()).toBe("2026-10-07T09:30:00.000Z")
   })
 })
 
@@ -262,15 +275,29 @@ describe("seen state", () => {
     expect(storedSeen()).toEqual(["a"])
   })
 
-  it("keeps the remembered ids bounded, dropping the oldest first", () => {
+  it("keeps the remembered ids bounded (20,000), dropping the oldest first", () => {
     firstUseAt(local(10, 7, 8, 0))
+    window.localStorage.setItem(SEEN_KEY, JSON.stringify(Array.from({ length: 19_998 }, (_unused, index) => `id${index}`)))
+    reload()
 
-    for (let index = 0; index < 2005; index += 1) markContentSeen(`id${index}`)
+    for (let index = 19_998; index < 20_003; index += 1) markContentSeen(`id${index}`)
 
     const seen = storedSeen()
-    expect(seen).toHaveLength(2000)
-    expect(seen[0]).toBe("id5")
-    expect(seen.at(-1)).toBe("id2004")
+    expect(seen).toHaveLength(20_000)
+    expect(seen[0]).toBe("id3")
+    expect(seen.at(-1)).toBe("id20002")
+  })
+
+  it("no longer forgets a viewed video after 2,000 opens, and keeps every id an earlier version stored", () => {
+    firstUseAt(local(10, 7, 8, 0))
+    const stored = Array.from({ length: 2000 }, (_unused, index) => `old${index}`)
+    window.localStorage.setItem(SEEN_KEY, JSON.stringify(stored))
+    reload()
+
+    markContentSeen("the-2001st")
+
+    expect(storedSeen()).toEqual([...stored, "the-2001st"]) // the first id used to be dropped here and could turn NEW again
+    expect(isNewContent({ videoId: "old0", publishedAt: "2026-10-07T09:00:00Z", discoveredAt: "2026-10-07T09:00:00Z" }, { baseline: local(10, 7, 8, 0).toISOString(), seen: new Set(storedSeen()), now: local(10, 7, 20, 0) })).toBe(false)
   })
 
   it("selecting a video through Home's canonical player path counts as opening it", () => {
@@ -310,5 +337,43 @@ describe("dev reset (simulate first use today)", () => {
 
     expect(result.current.isNew(today, local(10, 7, 20, 0))).toBe(true)
     expect(result.current.isNew(yesterday, local(10, 7, 20, 0))).toBe(false)
+  })
+})
+
+describe("NEW counts from AWS's first-discovery time (discoveredAt), at the exact first-visit instant", () => {
+  // First visit 08:00:00.500 JST on 10/07; everything below is judged at 20:00 the same day.
+  const firstVisit = new Date("2026-10-06T23:00:00.500Z")
+  const state = (seen: string[] = []) => ({ baseline: firstVisit.toISOString(), seen: new Set(seen), now: new Date("2026-10-07T11:00:00Z") })
+  const candidate = (discoveredAt: string | null | undefined, publishedAt = "2020-01-01T00:00:00Z") => ({ videoId: "v", publishedAt, discoveredAt })
+
+  it("a video discovered at 09:00 JST (after the 08:00 visit) is NEW even though it was published long ago", () => {
+    expect(isNewContent(candidate("2026-10-07T00:00:00Z"), state())).toBe(true)
+  })
+
+  it("discovered exactly at the first-visit instant is NEW; one millisecond before is not", () => {
+    expect(isNewContent(candidate("2026-10-06T23:00:00.500Z"), state())).toBe(true)
+    expect(isNewContent(candidate("2026-10-06T23:00:00.499Z"), state())).toBe(false)
+  })
+
+  it("published after the first visit but discovered before it is not NEW: discovery time wins over publishedAt", () => {
+    expect(isNewContent(candidate("2026-10-06T22:59:59Z", "2026-10-07T01:00:00Z"), state())).toBe(false)
+  })
+
+  it("an unknown discovery time (null) is never NEW -- it is not replaced by publishedAt -- while a source without the field keeps the old rule", () => {
+    expect(isNewContent(candidate(null, "2026-10-07T01:00:00Z"), state())).toBe(false)
+    expect(isNewContent(candidate(undefined, "2026-10-07T01:00:00Z"), state())).toBe(true)
+  })
+
+  it("is not NEW once opened, or while in the future, and stays NEW across reclassification (it keys on videoId alone)", () => {
+    expect(isNewContent(candidate("2026-10-07T00:00:00Z"), state(["v"]))).toBe(false)
+    expect(isNewContent(candidate("2026-10-07T11:00:00.001Z"), state())).toBe(false)
+    expect(isNewContent({ ...candidate("2026-10-07T00:00:00Z"), contentFormat: "live_archive" }, state())).toBe(true)
+    expect(isNewContent({ ...candidate("2026-10-07T00:00:00Z"), contentFormat: "normal_video" }, state())).toBe(true)
+  })
+
+  it("isUnseenContent ignores time: not opened and not watched while live", () => {
+    expect(isUnseenContent("v", { seen: new Set(), watchedDuringLive: new Set() })).toBe(true)
+    expect(isUnseenContent("v", { seen: new Set(["v"]) })).toBe(false)
+    expect(isUnseenContent("v", { seen: new Set(), watchedDuringLive: new Set(["v"]) })).toBe(false)
   })
 })

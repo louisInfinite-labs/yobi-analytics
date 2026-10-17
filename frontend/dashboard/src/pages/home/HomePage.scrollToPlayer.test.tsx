@@ -47,12 +47,11 @@ function installApi() {
           latestVideo: null,
           thisWeek: { newUploads: 0, newStreams: 0 },
           growth: { "1d": { absoluteGrowth: 0, videoCount: 0 }, "7d": { absoluteGrowth: 0, videoCount: 0 }, "30d": { absoluteGrowth: 0, videoCount: 0 } },
-          recent: [{ videoId: "R1", kind: "upload", title: "Recent One", thumbnailUrl: null, publishedAt: "2026-10-01T11:00:00Z", currentViewCount: 1 }],
           sinceLastVisit: null,
         })
       }
       if (url.searchParams.get("liveStatus") === "completed") return json({ videos: [], hasMore: false })
-      return json({ videos: [{ videoId: "U1", title: "Shelf Upload", publishedAt: "2026-10-01T00:00:00Z", contentType: "upload", currentViewCount: 1 }], hasMore: false })
+      return json({ videos: [{ videoId: "R1", title: "Recent One", publishedAt: "2026-10-01T11:00:00Z", contentType: "upload", currentViewCount: 1 }], hasMore: false }) // the ONE ALL feed: Latest Activity and the shelf both show it
     }),
   )
 }
@@ -66,7 +65,7 @@ const playerSrc = () => document.querySelector<HTMLIFrameElement>(".oshi-player-
 const query = (selector: string) => () => document.querySelector<HTMLElement>(selector)!
 
 const ENTRY_POINTS: [string, () => HTMLElement][] = [
-  ["a shelf card", () => screen.getByText("Shelf Upload").closest("button") as HTMLElement],
+  ["a shelf card", () => document.querySelector(".oshi-videos .oshi-video-card") as HTMLElement],
   ["a Recent Activity title", () => screen.getByRole("button", { name: "Recent One" })],
   ["a Recent Activity thumbnail", () => screen.getByRole("button", { name: "Thumbnail: Recent One" })],
   ["the Now Playing title", query(".oshi-status__now-playing-title--link")],
@@ -99,7 +98,7 @@ afterEach(() => {
 async function renderHome() {
   render(<HomePage />)
   await screen.findByRole("button", { name: "Recent One" })
-  await screen.findByText("Shelf Upload")
+  await waitFor(() => expect(document.querySelector(".oshi-videos .oshi-video-card")).not.toBeNull())
   await waitFor(() => expect(document.querySelector(".oshi-status__next-title--link")).not.toBeNull())
 }
 

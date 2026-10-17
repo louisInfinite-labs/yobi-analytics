@@ -287,3 +287,14 @@ describe("buildShelfQuery: quick filters and backend topic ids, always for the c
     expect(isQuickFilterSelection("sf6")).toBe(false)
   })
 })
+
+describe("buildOshiVideosRequest newSince", () => {
+  const all = buildShelfQuery("all", CREATOR, { contentType: "all", sort: "newest", viewWindow: "total" })!
+  const param = (path: string, name: string) => new URL(`https://x${path}`).searchParams.get(name)
+
+  it("rides on the first page only and is absent when not asked for", () => {
+    expect(param(buildOshiVideosRequest(all, 0, { newSince: "2026-10-16T15:00:00.000Z" }).path, "newSince")).toBe("2026-10-16T15:00:00.000Z")
+    expect(param(buildOshiVideosRequest(all, 20, { newSince: "2026-10-16T15:00:00.000Z" }).path, "newSince")).toBeNull()
+    expect(param(buildOshiVideosRequest(all, 0).path, "newSince")).toBeNull()
+  })
+})

@@ -15,7 +15,6 @@ function status(subscriberCount: number): OshiStatusData {
     latestVideo: null,
     thisWeek: { newUploads: 0, newStreams: 0 },
     growth: { "1d": { absoluteGrowth: 0, videoCount: 0 }, "7d": { absoluteGrowth: 0, videoCount: 0 }, "30d": { absoluteGrowth: 0, videoCount: 0 } },
-    recent: [],
     sinceLastVisit: null,
   }
 }
