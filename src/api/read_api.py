@@ -41,6 +41,7 @@ from zoneinfo import ZoneInfo
 from api.holodex_client import holodex_get
 from api.holodex_normalization import normalize_holodex_live_response
 from api.livestream_classification import classify_unclassified_upcoming
+from api.provisional_discoveries import is_unclassified_provisional, with_provisional_discoveries
 from tracking.creator_master import (
     Creator,
     is_historical_data_unavailable,
@@ -743,8 +744,10 @@ def get_recent_creator_videos(query: dict[str, Any]) -> dict[str, Any]:
     if not query.get("reportDate"):
         # Only the latest report is topped up with just-completed streams; an explicitly requested reportDate is a historical view and stays exactly as persisted.
         rows = _with_verified_completed_streams(rows, creator_id)
+        rows = _with_provisional_discoveries(rows, creator_id, result.get("generatedAt"))
     if topic != VIDEO_RANKING_TOPIC_ALL:
-        rows = [row for row in rows if row.get("topic") == topic]
+        # A provisional row with no contentType yet belongs in ALL only: never in a topic tag (including 其他).
+        rows = [row for row in rows if row.get("topic") == topic and not is_unclassified_provisional(row)]
     if content_type != VIDEO_RANKING_CONTENT_TYPE_ALL:
         rows = [row for row in rows if row.get("contentType") == content_type]
     if exclude_shorts:
@@ -1454,6 +1457,14 @@ def _read_available_archives(creator_id: str) -> list[dict[str, Any]]:
     except Exception as exc:  # noqa: BLE001 -- never a reason to fail the Home list
         print(f"Warning: could not read the verified completed streams ({type(exc).__name__}): {exc}")
         return []
+
+
+def _with_provisional_discoveries(rows: list[dict[str, Any]], creator_id: str, generated_at: Any) -> list[dict[str, Any]]:
+    """Overlay the videos discovery found after the persisted ranking was generated, so Home lists them before the next 18:00 JST run
+    (see api.provisional_discoveries). Only the DynamoDB-backed deployment records discovery events; everywhere else the list is untouched."""
+    if os.environ.get("YOBI_STORAGE_BACKEND") != "dynamodb":
+        return rows
+    return with_provisional_discoveries(rows, creator_id, generated_at)
 
 
 def _with_verified_completed_streams(rows: list[dict[str, Any]], creator_id: str) -> list[dict[str, Any]]:

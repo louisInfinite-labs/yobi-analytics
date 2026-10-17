@@ -42,6 +42,19 @@ def no_real_youtube_classification(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_real_provisional_discovery_sources(monkeypatch):
+    """Home's provisional new-video overlay reads discovery events and Video Master records; no test may reach DynamoDB through it. A test
+    that exercises the overlay patches api.provisional_discoveries._events_for_date / _records_for itself."""
+    from api import provisional_discoveries
+
+    provisional_discoveries.clear_cache()
+    monkeypatch.setattr(provisional_discoveries, "_events_for_date", lambda event_date, moment: [])
+    monkeypatch.setattr(provisional_discoveries, "_records_for", lambda video_ids, moment: {})
+    yield
+    provisional_discoveries.clear_cache()
+
+
+@pytest.fixture(autouse=True)
 def unknown_live_snapshot_freshness_for_the_dispatcher(monkeypatch):
     """The notification dispatcher asks the shared live snapshot how fresh it is (one small DynamoDB read) to decide whether its derived stream
     schedule is current. Its tests stub the stores at module level, so that read would reach for a real table: default it to "unknown", which
