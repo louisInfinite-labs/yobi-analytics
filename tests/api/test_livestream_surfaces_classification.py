@@ -243,26 +243,6 @@ def test_the_reminder_schedule_is_built_from_the_same_filtered_list(monkeypatch,
     assert {"true-upcoming", "true-live"} <= set(entries)
 
 
-# --- GET /recent-streams (the livestream archive) ---
-
-
-def test_a_completed_premiere_is_not_in_the_livestream_archive_but_a_completed_true_stream_is(monkeypatch):
-    monkeypatch.setattr(read_api, "load_creators", lambda: [_creator()])
-    raw = [
-        {"id": "true-archive", "channel": {"id": CHANNEL, "name": "Emma"}, "title": "【雑談】おつ", "available_at": "2026-10-02T10:00:00Z"},
-        {"id": "cover-premiere-done", "channel": {"id": CHANNEL, "name": "Emma"}, "title": "【Cover】Song", "available_at": "2026-10-01T10:00:00Z"},
-    ]
-    monkeypatch.setattr(read_api, "holodex_get", lambda path, params=None: list(raw))
-    monkeypatch.setattr(
-        read_api, "get_videos", lambda ids: {"true-archive": _video("true-archive", "live", "completed"), "cover-premiere-done": _video("cover-premiere-done", "upload")}
-    )
-
-    result = read_api.get_recent_streams({"creatorId": CREATOR, "limit": "2"})
-
-    assert [stream["videoId"] for stream in result["streams"]] == ["true-archive"]
-    assert result["hasMore"] is True  # still derived from the RAW page, so a dropped Premiere never ends paging early
-
-
 # --- the video side reads the SAME stored classification ---
 
 REPORT_DATE = "2026-10-01"

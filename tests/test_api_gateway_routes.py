@@ -62,6 +62,7 @@ def test_retired_routes_have_no_data_handler_and_the_removed_summary_route_is_fu
         "GET /leaderboard",
         "GET /organizations/{organization}/leaderboard",
         "GET /topics/{topic}/leaderboard",
+        "GET /recent-streams",  # a per-request Holodex proxy, retired: it bypassed the shared 10-minute live snapshot
     }
     assert not set(api_handler._RETIRED_ROUTES) & set(api_handler._ROUTES)
     assert "GET /creators/{creatorId}/summary" not in routes

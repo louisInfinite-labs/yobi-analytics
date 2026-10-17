@@ -588,7 +588,6 @@ GET /videos/{videoId}/growth
 GET /topics
 GET /dashboard/chart-catalog
 GET /live-streams
-GET /recent-streams
 ```
 
 **Retired endpoints.** The original trending and leaderboard endpoints were retired by the ranking simplification. Their API Gateway routes are kept so existing clients get a stable answer instead of a bare gateway 404 (which a browser reports only as "Failed to fetch"). Each now returns `410 Gone` with a fixed JSON body, `{"error": "...", "code": "ENDPOINT_RETIRED", "replacement": ...}`, where `replacement` is the closest successor route or `null` when there is none. They never read any store and never return data:
@@ -599,7 +598,10 @@ GET /organizations/{organization}/trending        -> 410 ENDPOINT_RETIRED, repla
 GET /leaderboard                                  -> 410 ENDPOINT_RETIRED, replacement: null
 GET /organizations/{organization}/leaderboard     -> 410 ENDPOINT_RETIRED, replacement: null
 GET /topics/{topic}/leaderboard                   -> 410 ENDPOINT_RETIRED, replacement: null
+GET /recent-streams                               -> 410 ENDPOINT_RETIRED, replacement: GET /creators/{creatorId}/videos/recent
 ```
+
+`GET /recent-streams` was a public per-request proxy of Holodex `/videos`; it is retired so no visitor or bot can cause an upstream Holodex request (Holodex is polled once per 10 minutes into the shared snapshot behind `GET /live-streams`).
 
 The history bucket the read endpoints serve from is `yobi-analytics-history`. The `YOBI_HISTORY_BUCKET` environment variable is only an optional override (tests, staging); the API Lambda does not need it. The collector, history worker and ranking reducer still require it explicitly.
 

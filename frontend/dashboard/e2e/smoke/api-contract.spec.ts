@@ -37,12 +37,11 @@ test.describe("V1 smoke: API contract", () => {
     }
   })
 
-  test("GET /recent-streams without a creatorId is a clean 4xx, never a 500 or a fabricated 200", async ({ request }) => {
-    // creatorId is required (resolved against Creator Master before any
-    // Holodex call) -- omitting it must fail validation cleanly, not crash.
-    const response = await request.get(`${smokeApiBaseURL()}/recent-streams`)
-    expect(response.status()).toBeGreaterThanOrEqual(400)
-    expect(response.status()).toBeLessThan(500)
+  test("GET /recent-streams is retired: a stable 410, never data and never an upstream Holodex call", async ({ request }) => {
+    const response = await request.get(`${smokeApiBaseURL()}/recent-streams?creatorId=aizawa_ema`)
+    expect(response.status()).toBe(410)
+    const body = await response.json()
+    expect(body.code).toBe("ENDPOINT_RETIRED")
   })
 
   test("GET /topics returns 200 with a list", async ({ request }) => {

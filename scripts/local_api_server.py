@@ -9,7 +9,7 @@ every other route answers 404.
 `--enable-smoke-routes` additionally serves a small, hand-picked allowlist of
 routes used by the V1 production-smoke API-contract spec
 (`e2e/smoke/api-contract.spec.ts`, via its own `playwright.smoke.config.ts`):
-`GET /live-streams`, `GET /recent-streams`, `GET /topics`,
+`GET /live-streams`, `GET /recent-streams` (retired: answers 410), `GET /topics`,
 `GET /videos/{videoId}/growth`, `GET /about-content` -- each independently
 confirmed to only ever touch the local JSON storage backend, read a
 module-level static constant (no I/O at all), fail closed with a clean 503
