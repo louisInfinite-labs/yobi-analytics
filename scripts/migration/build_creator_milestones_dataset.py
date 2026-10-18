@@ -33,6 +33,8 @@ from seed_creator_milestones_dynamodb import DEFAULT_DATASET_PATH, valid_birthda
 
 DEFAULT_REPORT_PATH = Path(__file__).parent.parent.parent / "docs" / "creator-milestones-mapping-report.md"
 _ROW = re.compile(r"^\|\s*(?P<name>.+?)\s*\|\s*(?P<birthday>\d{2}/\d{2})\s*\|\s*(?P<debut>\d{4}/\d{2}/\d{2})\s*\|\s*$")
+# The header row ("成員 | 生日 ...") and the "|---|---|" separator are table scaffolding, not data rows.
+_TABLE_SCAFFOLD = re.compile(r"^\|\s*(成員\s*\||[-:| ]+$)")
 _SECTION = re.compile(r"^##\s+(?P<title>.+?)（(?P<count>\d+) 人）\s*$")
 _SECTION_BRANCH = {"VSPO! JP": "vspo_jp", "VSPO! EN": "vspo_en", "hololive JP": "holo_jp", "hololive EN": "holo_en", "hololive ID": "holo_id"}
 EXPECTED_TOTAL = 110
@@ -75,6 +77,18 @@ def parse_markdown(text: str) -> list[MarkdownRecord]:
                 MarkdownRecord(section, declared, row["name"], row["birthday"].replace("/", "-"), row["debut"].replace("/", "-"), number)
             )
     return records
+
+
+def find_malformed_rows(text: str) -> list[str]:
+    """Table rows under a section that did not parse (e.g. a mistyped date), so they are reported instead of silently skipped."""
+    malformed: list[str] = []
+    in_section = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if _SECTION.match(line):
+            in_section = True
+        elif in_section and line.startswith("|") and not _ROW.match(line) and not _TABLE_SCAFFOLD.match(line):
+            malformed.append(f"line {number}: {line}")
+    return malformed
 
 
 def _fold(name: str) -> str:
@@ -237,10 +251,11 @@ def main(argv: list[str] | None = None) -> int:
     today = date.today()
     mappings = map_records(parse_markdown(text), load_creators(args.creators))
     issues = find_issues(mappings, load_creators(args.creators), today=today)
+    issues["malformed Markdown table rows"] = find_malformed_rows(text)
     args.report_out.write_text(render_report(mappings, issues, today), encoding="utf-8", newline="\n")
     print(f"Report written: {args.report_out}")
 
-    blocking = ("unmatched or ambiguous rows", "creatorId used by more than one row", "invalid date format or calendar date")
+    blocking = ("unmatched or ambiguous rows", "creatorId used by more than one row", "invalid date format or calendar date", "malformed Markdown table rows")
     if len(mappings) != EXPECTED_TOTAL or any(issues[key] for key in blocking):
         print("Dataset NOT written: rows are unmatched/ambiguous/duplicated/invalid, or the row count is not 110. See the report.", file=sys.stderr)
         return 1

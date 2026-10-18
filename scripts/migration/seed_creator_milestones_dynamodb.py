@@ -42,8 +42,9 @@ PRODUCTION_TARGET = "production"
 
 # displayName is a human-readable label in the dataset; it is never written to DynamoDB.
 _ALLOWED_RECORD_KEYS = frozenset({"creatorId", "birthday", "debutDate", "displayName"})
-_BIRTHDAY_PATTERN = re.compile(r"^(\d{2})-(\d{2})$")
-_DEBUT_PATTERN = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+# ASCII digits and \Z only: \d also matches non-ASCII digits, and $ also matches before a trailing newline.
+_BIRTHDAY_PATTERN = re.compile(r"^([0-9]{2})-([0-9]{2})\Z")
+_DEBUT_PATTERN = re.compile(r"^([0-9]{4})-([0-9]{2})-([0-9]{2})\Z")
 # 2000 is a leap year, so a Feb 29 birthday is accepted while Feb 30 / Apr 31 / month 13 are not.
 _LEAP_YEAR = 2000
 
@@ -222,10 +223,13 @@ def run(
         wanted = {"birthday": record.birthday, "debutDate": record.debut_date}
         item = table.get_item(Key={"creatorId": record.creator_id}, ConsistentRead=True).get("Item")
         if item is None:
-            report.inserted.append(record.creator_id)
-            if apply:
-                _insert(table, record)
-            continue
+            if not apply or _insert(table, record):
+                report.inserted.append(record.creator_id)
+                continue
+            # Another writer created the item after the read above: classify what is stored now instead of reporting an insert.
+            item = table.get_item(Key={"creatorId": record.creator_id}, ConsistentRead=True).get("Item")
+            if item is None:
+                raise RuntimeError(f"Insert of {record.creator_id} was refused but the item is not readable")
         stored = {key: item.get(key) for key in wanted}
         if stored == wanted:
             report.unchanged.append(record.creator_id)
@@ -238,8 +242,8 @@ def run(
     return report
 
 
-def _insert(table, record: MilestoneRecord) -> None:
-    """Create the item only if absent; a concurrent insert of the same id is skipped, never duplicated or overwritten."""
+def _insert(table, record: MilestoneRecord) -> bool:
+    """Create the item only if absent. True when created; False when it already existed (never duplicated or overwritten)."""
     from botocore.exceptions import ClientError
 
     try:
@@ -252,6 +256,8 @@ def _insert(table, record: MilestoneRecord) -> None:
     except ClientError as exc:
         if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
             raise
+        return False
+    return True
 
 
 def _set_values(table, record: MilestoneRecord) -> None:

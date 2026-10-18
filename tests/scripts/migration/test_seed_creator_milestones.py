@@ -143,6 +143,24 @@ def test_mapping_reports_unmatched_rows_instead_of_inventing_ids():
     ]
 
 
+def test_malformed_table_row_is_reported_not_skipped():
+    """A row with a mistyped date is listed by find_malformed_rows; the header and separator rows are not."""
+    text = _SAMPLE_MARKDOWN + "| Broken Row | 1/01 | 2021/08/23 |\n"
+    found = builder.find_malformed_rows(text)
+    assert len(found) == 1 and "Broken Row" in found[0]
+    assert builder.find_malformed_rows(_SAMPLE_MARKDOWN) == []
+
+
+def test_build_refuses_to_write_the_dataset_when_a_row_is_malformed(tmp_path, capsys):
+    """A malformed row is written into the report and blocks the dataset output."""
+    markdown = tmp_path / "source.md"
+    markdown.write_text(_SAMPLE_MARKDOWN + "| Broken Row | 1/01 | 2021/08/23 |\n", encoding="utf-8")
+    out, report = tmp_path / "dataset.json", tmp_path / "report.md"
+    code = builder.main(["--markdown", str(markdown), "--dataset-out", str(out), "--report-out", str(report)])
+    assert code == 1 and not out.exists()
+    assert "Broken Row" in report.read_text(encoding="utf-8")
+
+
 def test_apostrophe_variants_map_to_the_same_creator():
     """A curly apostrophe in the Markdown still matches Creator Master's straight one."""
     record = builder.MarkdownRecord("hololive EN / Myth", 1, "Ninomae Ina’nis", "05-20", "2020-09-13", 1)
@@ -168,7 +186,7 @@ def test_valid_birthdays(value):
     assert seed.valid_birthday(value)
 
 
-@pytest.mark.parametrize("value", ["02-30", "04-31", "13-01", "00-10", "1-1", "2000-02-29", "02/29", "", None, 229])
+@pytest.mark.parametrize("value", ["02-30", "04-31", "13-01", "00-10", "1-1", "2000-02-29", "02/29", "", None, 229, "02-29\n", "٠٢-٢٩"])
 def test_invalid_birthdays_are_rejected(value):
     """Non-calendar days, wrong shapes and a year-bearing value are rejected."""
     assert not seed.valid_birthday(value)
@@ -180,7 +198,7 @@ def test_valid_debut_dates(value):
     assert seed.valid_debut_date(value, today=TODAY)
 
 
-@pytest.mark.parametrize("value", ["2021-02-29", "2020-13-01", "2018-10", "18-10-20", "2018/10/20", "2026-10-19", "", None])
+@pytest.mark.parametrize("value", ["2021-02-29", "2020-13-01", "2018-10", "18-10-20", "2018/10/20", "2026-10-19", "", None, "2020-02-29\n", "٢٠٢٠-٠٢-٢٩"])
 def test_invalid_debut_dates_are_rejected(value):
     """Impossible dates, missing year/day, other separators and future dates are rejected."""
     assert not seed.valid_debut_date(value, today=TODAY)
@@ -262,8 +280,38 @@ def test_insert_never_clobbers_an_item_created_concurrently(tables):
     """The conditional insert leaves an item that appeared after the read untouched."""
     table, _ = tables
     table.put_item(Item={"creatorId": "hakos_baelz", "birthday": "09-09", "debutDate": "2000-01-01"})
-    seed._insert(table, seed.MilestoneRecord("hakos_baelz", "02-29", "2021-08-23"))
+    assert seed._insert(table, seed.MilestoneRecord("hakos_baelz", "02-29", "2021-08-23")) is False
     assert table.get_item(Key={"creatorId": "hakos_baelz"})["Item"]["birthday"] == "09-09"
+
+
+def test_lost_insert_race_is_reclassified_not_reported_as_inserted(tables, monkeypatch):
+    """If the conditional insert loses a race, the item that is there now is classified (conflicting here), never counted as inserted."""
+    table, _ = tables
+    real_insert = seed._insert
+
+    def _lose_race(tbl, record):
+        tbl.put_item(Item={"creatorId": record.creator_id, "birthday": "09-09", "debutDate": record.debut_date})
+        return real_insert(tbl, record)
+
+    monkeypatch.setattr(seed, "_insert", _lose_race)
+    report = seed.run([_record()], MASTER_IDS, table=table, apply=True, today=TODAY)
+    assert report.inserted == []
+    assert [c[0] for c in report.conflicting] == ["hakos_baelz"]
+    assert table.get_item(Key={"creatorId": "hakos_baelz"})["Item"]["birthday"] == "09-09"
+
+
+def test_lost_insert_race_with_identical_values_is_unchanged(tables, monkeypatch):
+    """A race that left identical values is reported unchanged, not inserted."""
+    table, _ = tables
+    real_insert = seed._insert
+
+    def _lose_race(tbl, record):
+        tbl.put_item(Item={"creatorId": record.creator_id, "birthday": record.birthday, "debutDate": record.debut_date})
+        return real_insert(tbl, record)
+
+    monkeypatch.setattr(seed, "_insert", _lose_race)
+    report = seed.run([_record()], MASTER_IDS, table=table, apply=True, today=TODAY)
+    assert report.inserted == [] and report.unchanged == ["hakos_baelz"]
 
 
 def test_rejected_record_aborts_before_any_write(tables):
