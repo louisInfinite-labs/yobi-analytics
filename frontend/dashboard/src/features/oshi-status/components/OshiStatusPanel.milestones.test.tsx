@@ -353,15 +353,17 @@ describe("overlay geometry from the rendered elements", () => {
     expect(open).not.toContainElement(trigger())
   })
 
-  it("mobile: the viewport width, starting at the viewport edge, only the Now Playing span", async () => {
+  it("mobile: the panel's own left and right edges (its side margins, not the viewport edges), only the Now Playing span", async () => {
     setViewport(390)
-    stubRects()
+    // The panel is stubbed at left 16 with a width narrower than the 390px viewport, as on the stacked mobile layout.
+    stubRects(358)
     renderPanel("ch_aizawa_ema", "A video")
     fireEvent.pointerDown(trigger(), { pointerType: "touch" })
     fireEvent.click(trigger(), { detail: 1 })
     const open = await screen.findByRole("dialog")
-    expect(open.style.width).toBe("390px")
-    expect(open.style.left).toBe("-16px")
+    expect(open.style.width).toBe("358px")
+    // The dialog is positioned inside the panel (the containing block), so no offset from the panel's own left edge.
+    expect(open.style.left).toMatch(/^(-0|0)px$/)
     expect(open.style.top).toBe("60px")
     expect(open.style.height).toBe("160px")
   })
@@ -510,16 +512,16 @@ describe("one standard Now Playing region: the dialog geometry never depends on 
     await screen.findByRole("dialog")
   })
 
-  it("mobile: the viewport width and the same vertical span in every state, with no horizontal overflow", async () => {
+  it("mobile: the panel's edges and the same vertical span in every state, with no horizontal overflow", async () => {
     setViewport(390)
-    stubRects()
+    stubRects(358)
     for (const [label, status, title] of [["LIVE", LIVE, "A live video"], ["no video", OFFLINE, null]] as const) {
       const view = render(<OshiStatusPanel creatorId="ch_kaga_nazuna" status={status} feed={emptyFeed()} now={new Date(NOW_MS)} onSelectVideo={vi.fn()} nowPlayingTitle={title} />)
       fireEvent.pointerDown(trigger(), { pointerType: "touch" })
       fireEvent.click(trigger(), { detail: 1 })
       const open = await screen.findByRole("dialog")
-      expect(open.style.width, label).toBe("390px")
-      expect(open.style.left, label).toBe("-16px")
+      expect(open.style.width, label).toBe("358px")
+      expect(open.style.left, label).toMatch(/^(-0|0)px$/)
       expect(open.style.top, label).toBe("60px")
       expect(open.style.height, label).toBe("200px")
       view.unmount()

@@ -134,7 +134,7 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
   const milestoneDialogId = `oshi-status-milestones-${creatorId}`
   const milestoneDialog = useMilestoneDialogController({ creatorId, triggerRef: milestoneTriggerRef, dialogRef: milestoneDialogRef })
   const milestones = useCreatorMilestones(resolveCreatorKey(creatorId)?.creatorId, milestoneDialog.open)
-  const overlayGeometry = useOverlayGeometry(milestoneDialog.open, panelRef, nowPlayingRef, isDesktop)
+  const overlayGeometry = useOverlayGeometry(milestoneDialog.open, panelRef, nowPlayingRef)
   const [activityOpen, setActivityOpen] = useState(false)
   const viewAllRef = useRef<HTMLButtonElement | null>(null)
   const activityViewOpen = activityOpen && !isDesktop

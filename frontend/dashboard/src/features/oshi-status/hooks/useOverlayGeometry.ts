@@ -8,7 +8,6 @@ export function useOverlayGeometry(
   active: boolean,
   panelRef: RefObject<HTMLElement | null>,
   nowPlayingRef: RefObject<HTMLElement | null>,
-  matchPanelWidth: boolean,
 ): OverlayGeometry | null {
   const [geometry, setGeometry] = useState<OverlayGeometry | null>(null)
 
@@ -28,8 +27,6 @@ export function useOverlayGeometry(
         panelBorderTop: panel.clientTop,
         panelBorderLeft: panel.clientLeft,
         nowPlaying: { top: nowPlayingRect.top, bottom: nowPlayingRect.bottom },
-        matchPanelWidth,
-        viewportWidth: document.documentElement.clientWidth,
       })
       setGeometry((previous) =>
         previous && previous.top === next.top && previous.left === next.left && previous.width === next.width && previous.height === next.height ? previous : next,
@@ -45,7 +42,7 @@ export function useOverlayGeometry(
       window.removeEventListener("resize", measure)
       observer?.disconnect()
     }
-  }, [active, panelRef, nowPlayingRef, matchPanelWidth])
+  }, [active, panelRef, nowPlayingRef])
 
   return active ? geometry : null
 }
