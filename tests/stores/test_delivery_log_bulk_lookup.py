@@ -218,3 +218,62 @@ def test_a_dynamodb_error_is_wrapped(monkeypatch):
 
     with pytest.raises(NotificationDeliveryLogStoreError, match=NOTIFICATION_DELIVERY_LOG_TABLE):
         delivered_video_ids("c1", ["v1"], now=NOW)
+
+
+# ---- handled_ids: the same answer, WITHOUT the settled cache (used by the late-discovery catch-up's earlier-reminder guard) ----
+
+
+def test_handled_ids_answers_like_delivered_video_ids_for_every_kind_of_row(spy):
+    """Handled ids answers like delivered video ids for every kind of row."""
+    from stores.notification_delivery_log_store import handled_ids
+
+    mark_delivered("c1", "claimed-live", NOW.isoformat(), now=NOW)
+    mark_delivered("c1", "claimed-expired", (NOW - timedelta(minutes=30)).isoformat(), now=NOW - timedelta(minutes=30))
+    mark_delivered("c1", "delivered", NOW.isoformat(), now=NOW)
+    confirm_delivered("c1", "delivered", NOW.isoformat())
+    mark_suppressed("c1", "suppressed", NOW.isoformat())
+    mark_delivered("c2", "other-clients-row", NOW.isoformat(), now=NOW)
+    ids = ["claimed-live", "claimed-expired", "delivered", "suppressed", "never-seen", "other-clients-row"]
+
+    assert handled_ids("c1", ids, now=NOW) == delivered_video_ids("c1", ids, now=NOW) == {"claimed-live", "delivered", "suppressed"}
+
+
+def test_handled_ids_is_one_request_and_none_for_no_ids(spy):
+    """Handled ids is one request and none for no ids."""
+    from stores.notification_delivery_log_store import handled_ids
+
+    assert handled_ids("c1", [], now=NOW) == set()
+    assert spy.batch_calls == []
+    handled_ids("c1", ["a", "b", "a"], now=NOW)
+    assert spy.batch_calls == [2]  # duplicates collapse; one BatchGetItem
+
+
+def test_handled_ids_never_reads_or_rewrites_the_settled_cache(spy):
+    """delivered_video_ids prunes its per-container cache to the ids it is asked about; a small unrelated lookup must not wipe it."""
+    from stores.notification_delivery_log_store import handled_ids
+
+    mark_delivered("c1", "new-video-1", NOW.isoformat(), now=NOW)
+    confirm_delivered("c1", "new-video-1", NOW.isoformat())
+    delivered_video_ids("c1", ["new-video-1"], now=NOW)
+    cached_before = dict(store._settled_cache)
+
+    handled_ids("c1", ["something-else"], now=NOW)
+
+    assert store._settled_cache == cached_before
+
+
+def test_handled_ids_surfaces_a_store_failure_as_the_stores_own_error(monkeypatch):
+    """Handled ids surfaces a store failure as the stores own error."""
+    from stores.notification_delivery_log_store import handled_ids
+
+    class Broken:
+        """A resource whose BatchGetItem always fails."""
+        def batch_get_item(self, **_kwargs):
+            """Fail like a throttled DynamoDB."""
+            raise ClientError({"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "slow down"}}, "BatchGetItem")
+
+    monkeypatch.setattr(store, "_resource", lambda: Broken())
+
+    with pytest.raises(NotificationDeliveryLogStoreError, match=NOTIFICATION_DELIVERY_LOG_TABLE):
+        handled_ids("c1", ["v1"], now=NOW)
+

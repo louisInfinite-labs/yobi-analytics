@@ -42,6 +42,12 @@ carries it; one it has NOT reported yet cannot be known here -- the shared
 snapshot is refreshed every 10 minutes (tracking/livestream_lifecycle.py), so
 that is an inherent freshness limit of the data source, not of this timer.
 
+LATE-DISCOVERY CATCH-UP (docs/late-discovery-advance-catch-up.md): an advance reminder's on-time window is only [fire_at, fire_at + 1 min), so a stream
+that first appears in the shared snapshot AFTER its fire time can never be reminded on time. For exactly that case -- and only while the stream is still
+upcoming, at least 2 minutes before its start, and only for a reminder the client had already enabled at the fire time -- one extra reminder may be sent,
+worded with the actual minutes left. It is OFF unless the kill-switch record says otherwise, shares the on-time advance reminder's dedupe id, never
+touches the on-time or start branches, and needs no extra Holodex request or schedule: the first-seen stamps it relies on are written by the derivation below.
+
 Reminder EVALUATION (every dispatcher run) is deliberately decoupled from
 how often Holodex is actually QUERIED: this module never queries Holodex.
 _refresh_and_load_stream_schedule re-derives its "streamSchedule" entries from
@@ -102,6 +108,42 @@ _LEGACY_DEDUPE_WINDOW = timedelta(minutes=10)
 # less often would let a start time lag the snapshot it should follow.
 _SCHEDULE_REFRESH_INTERVAL = timedelta(minutes=10)
 
+# The longest gap between two derivations of the schedule across which first-seen tracking is still trusted: the display snapshot's own freshness
+# limit (two refresh intervals plus a minute). After a longer gap -- an outage -- streams Holodex had listed for hours would otherwise look newly
+# discovered, so every stream without a trusted history is stamped "known" instead (live_reminder.derive_first_seen).
+_FIRST_SEEN_MAX_SOURCE_GAP = timedelta(seconds=livestream_lifecycle.DISPLAY_FRESH_SECONDS)
+
+
+class _CatchUpSwitch:
+    """The late-discovery catch-up's kill switch, read lazily and at most once per run.
+
+    The switch is the system record (live_reminder.SYSTEM_CLIENT_ID, live_reminder.CATCH_UP_FLAG_KEY) with value {"enabled": true}. Anything else --
+    no record, a value that is not exactly that, a store error -- means OFF: the catch-up fails closed. It is asked only when a run has an actual
+    catch-up candidate (so a run with nothing to catch up costs no extra read) and BEFORE the candidate's delivery-log lookups. It gates the
+    catch-up send and nothing else: the on-time advance reminder and the start reminder never consult it.
+    """
+
+    def __init__(self) -> None:
+        """Nothing is read until the first candidate asks."""
+        self._enabled: bool | None = None
+
+    def enabled(self) -> bool:
+        """Whether the catch-up may send in this run (one read, remembered)."""
+        if self._enabled is None:
+            self._enabled = self._read()
+        return self._enabled
+
+    @staticmethod
+    def _read() -> bool:
+        """The stored switch, False on any doubt."""
+        try:
+            record = remote_config_store.get_remote_config(live_reminder.SYSTEM_CLIENT_ID, live_reminder.CATCH_UP_FLAG_KEY)
+        except Exception as exc:  # noqa: BLE001 -- a read failure must only turn the OPTIONAL catch-up off, never stop the reminders
+            print(f"Warning: could not read the late-discovery catch-up switch ({type(exc).__name__}): {exc}; catch-up stays off")
+            return False
+        value = record.get("value") if isinstance(record, dict) else None
+        return isinstance(value, dict) and value.get("enabled") is True
+
 
 class UnsupportedModeError(ValueError):
     """An event's explicit `mode` this Lambda does not know -- a stale or mistyped schedule target must fail loudly, never
@@ -123,6 +165,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     preference_records = remote_config_store.list_by_key(_NOTIFICATION_PREFERENCE_KEY)
     vapid_private_key, vapid_claims = get_vapid_credentials()
 
+    catch_up_switch = _CatchUpSwitch()
     checked = 0
     delivered = 0
     for pref_record in preference_records:
@@ -137,6 +180,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         if subscription_record is None:
             continue  # nothing to send a reminder to (a client whose global switch is OFF has its subscription removed)
         subscription = subscription_record["value"]
+        subscription_updated_at = live_reminder.parse_timestamp(subscription_record.get("updatedAt"))
 
         for video_id, resolved_reminder in _resolve_reminders_for_client(client_id, stream_schedule).items():
             checked += 1
@@ -150,6 +194,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 now=now,
                 vapid_private_key=vapid_private_key,
                 vapid_claims=vapid_claims,
+                subscription_updated_at=subscription_updated_at,
+                catch_up_switch=catch_up_switch,
             ):
                 delivered += 1
 
@@ -236,8 +282,21 @@ def _refresh_and_load_stream_schedule(*, now: datetime) -> dict[str, live_remind
         }
         if isinstance(stream.get("title"), str) and stream["title"].strip():
             fresh_entries[stream["videoId"]]["title"] = stream["title"]  # the original title, shown as the notification body
+        if isinstance(stream.get("status"), str) and stream["status"]:
+            fresh_entries[stream["videoId"]]["status"] = stream["status"]  # only a still-"upcoming" stream can get a late-discovery catch-up
 
     fresh_value: dict[str, Any] = {"entries": fresh_entries, "refreshedAt": now.isoformat()}
+    # When each stream's CURRENT start was first observed (and its earlier starts), for the late-discovery catch-up: derived from the PREVIOUS record,
+    # so it is computed on every derivation and carried forward. It never changes which streams or start times are scheduled.
+    fresh_value[live_reminder.FIRST_SEEN_KEY] = live_reminder.first_seen_to_value(
+        live_reminder.derive_first_seen(
+            previous=existing_snapshot,
+            entries=fresh_entries,
+            observed_at=source_refreshed_at,
+            now=now,
+            max_source_gap=_FIRST_SEEN_MAX_SOURCE_GAP,
+        )
+    )
     if source_refreshed_at is not None:
         fresh_value["sourceRefreshedAt"] = source_refreshed_at.isoformat()
     record = remote_config_api.write_remote_config(
@@ -281,6 +340,8 @@ def _resolve_reminders_for_client(
             scheduled_start_ms=schedule_entry.scheduled_start_ms,
             setting=setting,
             stream_title=schedule_entry.title,
+            status=schedule_entry.status,
+            first_seen=schedule_entry.first_seen,
         )
     return resolved
 
@@ -296,10 +357,16 @@ def _deliver_reminders_if_due(
     now: datetime,
     vapid_private_key: str,
     vapid_claims: dict[str, str],
+    subscription_updated_at: datetime | None = None,
+    catch_up_switch: _CatchUpSwitch | None = None,
 ) -> bool:
     """Send whichever of this stream's start/advance reminders are currently
     due for one client. Both are evaluated independently: a single stream can
     legitimately send both in the same run. Returns whether anything was sent.
+
+    A third, optional moment exists for a stream discovered AFTER its advance reminder's time: the late-discovery catch-up
+    (_deliver_catch_up_advance_if_due, off unless the kill switch says otherwise). It is a separate branch below; the on-time advance and start
+    branches are exactly what they always were and never consult the catch-up or its switch.
 
     Suppression: the global notifications switch being OFF or a disabled
     creator blocks both (a creator override can never re-enable a client whose
@@ -338,6 +405,26 @@ def _deliver_reminders_if_due(
             vapid_claims=vapid_claims,
         ):
             sent_any = True
+    try:
+        catch_up_sent = _deliver_catch_up_advance_if_due(
+            video_id,
+            override,
+            client_id=client_id,
+            preference=preference,
+            subscription=subscription,
+            creators_by_id=creators_by_id,
+            now=now,
+            window_ms=window_ms,
+            vapid_private_key=vapid_private_key,
+            vapid_claims=vapid_claims,
+            subscription_updated_at=subscription_updated_at,
+            catch_up_switch=catch_up_switch,
+        )
+    except Exception as exc:  # noqa: BLE001 -- the catch-up is optional and new: whatever goes wrong in it must never stop the on-time and start reminders after it
+        print(f"Warning: late-discovery catch-up failed for video {video_id!r} ({type(exc).__name__}): {exc}")
+        catch_up_sent = False
+    if catch_up_sent:
+        sent_any = True
     if live_reminder.is_start_reminder_due(setting, start_ms, now_ms=now_ms, window_ms=window_ms) and not _suppressed_at(
         preference, override.creator_id, start_ms
     ):
@@ -358,6 +445,94 @@ def _deliver_reminders_if_due(
         ):
             sent_any = True
     return sent_any
+
+
+def _deliver_catch_up_advance_if_due(
+    video_id: str,
+    override: live_reminder.ResolvedReminder,
+    *,
+    client_id: str,
+    preference: notification_dispatch.NotificationPreference,
+    subscription: Any,
+    creators_by_id: dict[str, Any],
+    now: datetime,
+    window_ms: int,
+    vapid_private_key: str,
+    vapid_claims: dict[str, str],
+    subscription_updated_at: datetime | None,
+    catch_up_switch: _CatchUpSwitch | None,
+) -> bool:
+    """The late-discovery catch-up: ONE advance reminder, worded with the actual minutes left, for a stream that only became known after its advance
+    reminder's time (docs/late-discovery-advance-catch-up.md). Returns whether it was sent.
+
+    The checks run cheapest first, and each can only say no:
+
+    1. live_reminder.is_advance_catch_up_due -- pure clock / first-seen / saved-before-the-fire-time rules; everything else is skipped until it passes;
+    2. mute or quiet hours at the ORIGINAL fire time (the caller already checked "right now"), exactly like the on-time reminder;
+    3. the kill switch (_CatchUpSwitch) -- BEFORE any delivery-log read, so a switched-off catch-up costs no BatchGetItem and writes nothing, and can
+       still send later (the minutes-left cutoff keeps that honest);
+    4. the earlier-reminder guard (_earlier_advance_reminder_handled): no catch-up for a stream this client already had an advance reminder handled for;
+    5. the shared atomic claim in _send_reminder -- the very same dedupe id as the on-time advance reminder for this start, so the two can never both
+       send, and overlapping runs or retries collapse into one delivery. A failed push releases the claim, so the next minute retries until the
+       minutes-left cutoff.
+    """
+    start_ms = override.scheduled_start_ms
+    now_ms = int(now.timestamp() * 1000)
+    if not live_reminder.is_advance_catch_up_due(
+        override.setting,
+        start_ms,
+        now_ms=now_ms,
+        window_ms=window_ms,
+        status=override.status,
+        first_seen=override.first_seen,
+        subscription_updated_at=subscription_updated_at,
+    ):
+        return False
+    if _suppressed_at(preference, override.creator_id, live_reminder.advance_reminder_fire_at_ms(override.setting, start_ms)):
+        return False
+    if catch_up_switch is None or not catch_up_switch.enabled():
+        return False
+    if _earlier_advance_reminder_handled(video_id, override.first_seen, client_id=client_id, now=now):
+        return False
+    remaining_minutes = live_reminder.catch_up_remaining_minutes(start_ms, now_ms)
+    sent = _send_reminder(
+        video_id,
+        notification_text.KIND_ADVANCE,
+        scheduled_start_ms=start_ms,
+        advance=override.setting.advance_reminder,
+        stream_title=override.stream_title,
+        locale=preference.locale,
+        client_id=client_id,
+        creator_id=override.creator_id,
+        creators_by_id=creators_by_id,
+        subscription=subscription,
+        now=now,
+        vapid_private_key=vapid_private_key,
+        vapid_claims=vapid_claims,
+        remaining_minutes=remaining_minutes,
+    )
+    if sent:
+        print(f"Late-discovery catch-up advance reminder sent for video {video_id!r} ({remaining_minutes} minutes before its start)")
+    return sent
+
+
+def _earlier_advance_reminder_handled(video_id: str, first_seen: live_reminder.FirstSeen | None, *, client_id: str, now: datetime) -> bool:
+    """Whether this client already had an advance reminder handled for an EARLIER start of this stream -- then no catch-up (R2).
+
+    Each start minute is its own dedupe target, so a rescheduled stream's earlier reminder is invisible to the shared claim. The earlier start
+    minutes come from the stream's FirstSeen (priorStartMinutes) and are read in one uncached BatchGetItem together with the legacy id older
+    deployments used; a delivered row or a live claim counts as handled.
+
+    LIMIT (by design): FirstSeen keeps only the last live_reminder.MAX_PRIOR_START_MINUTES earlier starts, so for a stream rescheduled more often than
+    that the oldest start is forgotten and an advance reminder delivered for it is NOT found here. Fails closed: a store error counts as handled.
+    """
+    ids = {f"{video_id}:reminder:{notification_text.KIND_ADVANCE}"}
+    ids.update(f"{video_id}:reminder:{notification_text.KIND_ADVANCE}@{minute}" for minute in (first_seen.prior_start_minutes if first_seen else ()))
+    try:
+        return bool(notification_delivery_log_store.handled_ids(client_id, ids, now=now))
+    except Exception as exc:  # noqa: BLE001 -- the catch-up is optional: when the guard cannot be read it must not send
+        print(f"Warning: could not check earlier advance reminders for video {video_id!r} ({type(exc).__name__}): {exc}; no catch-up")
+        return True
 
 
 def _suppressed_at(preference: notification_dispatch.NotificationPreference, creator_id: str, instant_ms: int | None) -> bool:
@@ -397,6 +572,7 @@ def _send_reminder(
     now: datetime,
     vapid_private_key: str,
     vapid_claims: dict[str, str],
+    remaining_minutes: int | None = None,
 ) -> bool:
     """Send one (start or advance) reminder moment, deduped independently of
     every other reminder kind/video/target (spec section 9: clientId + videoId
@@ -427,6 +603,7 @@ def _send_reminder(
         advance=advance,
         creator_name=creator.display_name if creator else None,
         stream_title=stream_title,
+        remaining_minutes=remaining_minutes,
     )
     result = push_sender.send_push_notification(
         subscription,

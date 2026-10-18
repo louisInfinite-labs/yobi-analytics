@@ -166,6 +166,25 @@ def delivered_video_ids(client_id: str, video_ids: Iterable[str], *, now: dateti
     return handled
 
 
+def handled_ids(client_id: str, video_ids: Iterable[str], *, now: datetime | None = None) -> set[str]:
+    """The subset of video_ids that client_id has already been handled for -- the same meaning as delivered_video_ids (a delivered or
+    suppressed row, or a still-live claim, counts; an expired claim does not) -- read in one BatchGetItem WITHOUT touching the per-container
+    settled cache.
+
+    delivered_video_ids prunes that cache to the ids it is currently asked about, which is right for the new-video slot run it was built for but
+    would let a small, unrelated lookup (the late-discovery catch-up's check of a stream's earlier reminder ids) wipe it. This one reads exactly
+    the given ids and remembers nothing.
+    """
+    wanted = sorted(set(video_ids))
+    reference = now or datetime.now(timezone.utc)
+    handled: set[str] = set()
+    for start in range(0, len(wanted), _BATCH_GET_LIMIT):
+        for item in _batch_get_rows(client_id, wanted[start : start + _BATCH_GET_LIMIT]):
+            if item["status"] in (_STATUS_DELIVERED, _STATUS_SUPPRESSED) or not _is_expired(item["claimedAt"], now=reference):
+                handled.add(item["videoId"])
+    return handled
+
+
 def _batch_get_rows(client_id: str, video_ids: list[str]) -> list[dict[str, Any]]:
     """BatchGetItem of up to _BATCH_GET_LIMIT (client_id, video_id) rows; returns the rows that exist."""
     resource = _resource()

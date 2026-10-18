@@ -5,6 +5,8 @@ Three locales are supported (zh-TW, ja, en); an unknown, missing or non-string l
 - the TITLE is a localized template around the creator's display name (new video / 1 hour / 30 minutes / 10 minutes / 1 minute / scheduled start);
   the start title only says the SCHEDULED start has arrived -- it is sent when the stored start time comes, before (and without) any confirmation
   that the broadcast is actually live, so it never claims the stream "is live" or "has started";
+- a late-discovery CATCH-UP advance reminder (the stream only became known after its reminder time) names the ACTUAL minutes left ("about N
+  minutes") instead of the configured offset, which would no longer be true;
 - the BODY is the original YouTube video or stream title, passed through untouched -- it is never translated, trimmed or rewritten -- or a
   short localized fallback when that title is missing or blank.
 
@@ -37,6 +39,7 @@ class NotificationText:
 class _LocaleStrings:
     new_video_title: str
     advance_titles: dict[str, str]
+    late_advance_title: str  # {minutes} is the actual whole minutes left
     start_title: str
     fallback_video_body: str
     fallback_stream_body: str
@@ -52,6 +55,7 @@ _STRINGS: dict[str, _LocaleStrings] = {
             "10min": "{name} 將於 10 分鐘後開播",
             "1min": "{name} 將於 1 分鐘後開播",
         },
+        late_advance_title="{name} 將於約 {minutes} 分鐘後開播",
         start_title="{name} 預定現在開播",
         fallback_video_body="新影片",
         fallback_stream_body="直播",
@@ -65,6 +69,7 @@ _STRINGS: dict[str, _LocaleStrings] = {
             "10min": "{name} は10分後に配信開始",
             "1min": "{name} は1分後に配信開始",
         },
+        late_advance_title="{name} は約{minutes}分後に配信開始",
         start_title="{name} の配信開始予定時刻です",
         fallback_video_body="新しい動画",
         fallback_stream_body="配信",
@@ -78,6 +83,7 @@ _STRINGS: dict[str, _LocaleStrings] = {
             "10min": "{name} goes live in 10 minutes",
             "1min": "{name} goes live in 1 minute",
         },
+        late_advance_title="{name} goes live in about {minutes} minutes",
         start_title="{name} is scheduled to go live now",
         fallback_video_body="New video",
         fallback_stream_body="Live stream",
@@ -108,19 +114,26 @@ def new_video_notification(*, locale: Any, creator_name: Any, video_title: Any) 
     return NotificationText(title=title, body=body)
 
 
-def reminder_notification(*, locale: Any, kind: str, advance: str | None, creator_name: Any, stream_title: Any) -> NotificationText:
+def reminder_notification(
+    *, locale: Any, kind: str, advance: str | None, creator_name: Any, stream_title: Any, remaining_minutes: int | None = None
+) -> NotificationText:
     """The notification for a live reminder: kind "start" (the stream's SCHEDULED start has arrived -- not a claim that it is live), or kind
     "advance" with one of ADVANCE_KEYS.
+
+    `remaining_minutes` (advance only) marks a late-discovery CATCH-UP: the title then says "about N minutes" with the actual time left rather
+    than the configured offset. It must be a whole number of at least 2; anything else is refused.
 
     `stream_title` is shown exactly as given. Raises ValueError for a kind / advance value this module does not know -- a programming error,
     never user data (the dispatcher only passes values it validated).
     """
     strings = _STRINGS[normalize_locale(locale)]
-    if kind == KIND_START:
+    if kind == KIND_START and remaining_minutes is None:
         template = strings.start_title
-    elif kind == KIND_ADVANCE and advance in strings.advance_titles:
+    elif kind == KIND_ADVANCE and advance in strings.advance_titles and remaining_minutes is None:
         template = strings.advance_titles[advance]
+    elif kind == KIND_ADVANCE and advance in strings.advance_titles and isinstance(remaining_minutes, int) and not isinstance(remaining_minutes, bool) and remaining_minutes >= 2:
+        template = strings.late_advance_title.replace("{minutes}", str(remaining_minutes))
     else:
-        raise ValueError(f"unknown reminder notification: kind={kind!r}, advance={advance!r}")
+        raise ValueError(f"unknown reminder notification: kind={kind!r}, advance={advance!r}, remaining_minutes={remaining_minutes!r}")
     body = stream_title if _present(stream_title) else strings.fallback_stream_body
     return NotificationText(title=template.replace("{name}", _name(strings, creator_name)), body=body)
