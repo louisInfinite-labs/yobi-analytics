@@ -55,6 +55,7 @@ from typing import Any, Callable
 from api import about_content_api
 from api import client_credential_api
 from stores import client_credential_store
+from stores.creator_milestones_store import CreatorMilestonesStoreError
 from ops import config
 from ops.config import MissingHolodexApiKeyError
 from api import dashboard_catalog_api
@@ -141,6 +142,10 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return _json_response(404, {"error": str(exc), "code": "HISTORICAL_DATA_UNAVAILABLE"})
     except read_api.RankingNotReadyError as exc:
         return _json_response(503, {"error": str(exc), "code": "RANKING_NOT_READY"})
+    except CreatorMilestonesStoreError as exc:
+        # Logged server-side only: the message carries the table name and AWS error text, neither of which a public caller needs.
+        print(f"Warning: creator milestones read failed for route {route_key!r}: {exc}")
+        return _json_response(503, {"error": "Creator milestones are temporarily unavailable", "code": "MILESTONES_UNAVAILABLE"})
     except about_content_api.AboutContentUnavailableError as exc:
         return _json_response(503, {"error": str(exc), "code": "ABOUT_CONTENT_UNAVAILABLE"})
     except (HolodexAPIError, HolodexNormalizationError, MissingHolodexApiKeyError) as exc:
@@ -165,7 +170,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         print(f"Unhandled error in api_handler for route {route_key!r}: {exc!r}")
         return _json_response(500, {"error": "Internal server error"})
 
-    return _json_response(200, result)
+    return _json_response(200, result, _CACHEABLE_ROUTES.get(route_key))
 
 
 def _handle_get_video_growth(event: dict[str, Any]) -> dict[str, Any]:
@@ -202,6 +207,14 @@ def _handle_get_creator_video_search(event: dict[str, Any]) -> dict[str, Any]:
 
 def _handle_get_oshi_status(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_oshi_status(_merged_params(event))
+
+
+def _handle_get_creator_milestones(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_creator_milestones(_merged_params(event))
+
+
+def _handle_list_creator_milestones(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.list_creator_milestones(_merged_params(event))
 
 
 def _handle_get_live_streams(event: dict[str, Any]) -> dict[str, Any]:
@@ -470,6 +483,8 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /creators/{creatorId}/videos/recent": _handle_get_recent_creator_videos,
     "GET /creators/{creatorId}/videos/search": _handle_get_creator_video_search,
     "GET /creators/{creatorId}/oshi-status": _handle_get_oshi_status,
+    "GET /creators/{creatorId}/milestones": _handle_get_creator_milestones,
+    "GET /milestones": _handle_list_creator_milestones,
     "GET /live-streams": _handle_get_live_streams,
     "POST /heartbeat": _handle_post_heartbeat,
     "GET /heartbeat/{clientId}/status": _handle_get_heartbeat_status,
@@ -579,10 +594,18 @@ def _json_body(event: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
-def _json_response(status_code: int, payload: dict[str, Any]) -> dict[str, Any]:
-    """Build an API Gateway HTTP API v2 proxy response."""
+# Fixed-fact reads a browser may keep: route key -> Cache-Control max-age seconds. GET /milestones is the roster birthday and debut dates (they never
+# change at runtime); a browser that already holds it for an hour does not call the API at all, on top of the Lambda-side cache.
+_CACHEABLE_ROUTES: dict[str, str] = {"GET /milestones": "public, max-age=3600"}
+
+
+def _json_response(status_code: int, payload: dict[str, Any], cache_control: str | None = None) -> dict[str, Any]:
+    """Build an API Gateway HTTP API v2 proxy response (with a Cache-Control header only when the route is cacheable and the call succeeded)."""
+    headers = {"Content-Type": "application/json"}
+    if cache_control:
+        headers["Cache-Control"] = cache_control
     return {
         "statusCode": status_code,
-        "headers": {"Content-Type": "application/json"},
+        "headers": headers,
         "body": json.dumps(payload),
     }

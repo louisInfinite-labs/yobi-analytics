@@ -137,6 +137,8 @@ jobs:
           tests/notifications/test_scheduled_start_notifications.py
           tests/notifications/test_live_reminder.py
           tests/test_notification_dispatch_schedule.py
+          tests/stores/test_creator_milestones_store.py
+          tests/api/test_creator_milestones_api.py
           tests/scripts/migration/test_seed_creator_milestones.py
           tests/test_terraform_creator_milestones_table.py
 
@@ -206,6 +208,17 @@ jobs:
           src/features/oshi-status/hooks/useOshiStatus.test.tsx
           src/features/oshi-status/hooks/useLastVisit.test.ts
           src/features/oshi-status/components/OshiStatusPanel.test.tsx
+          src/features/oshi-status/components/OshiStatusPanel.milestones.test.tsx
+          src/features/oshi-status/data/creatorMilestones.test.ts
+          src/features/oshi-status/data/allCreatorMilestones.test.ts
+          src/features/live-status/model/milestoneToday.test.ts
+          src/features/live-status/hooks/useTodayMilestoneIndicators.test.tsx
+          src/features/live-status/components/CreatorStatusList.milestones.test.tsx
+          src/shared/time/jstDay.test.tsx
+          src/test/networkGuard.test.ts
+          src/features/oshi-status/model/milestoneCountdown.test.ts
+          src/features/oshi-status/model/milestoneFormat.test.ts
+          src/features/oshi-status/model/milestoneOverlayGeometry.test.ts
           src/pages/home/HomePage.apiCutover.test.tsx
           src/features/live-status/model/creatorStatusSelection.test.ts
           src/features/live-status/hooks/useCreatorStatuses.test.tsx

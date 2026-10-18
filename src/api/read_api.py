@@ -61,6 +61,7 @@ from analytics.video_ranking import CONTENT_TYPE_SHORT as VIDEO_RANKING_CONTENT_
 from analytics.video_ranking import rank_video_rows
 from search.video_search import VALID_SEARCH_SORTS as VALID_VIDEO_SEARCH_SORTS
 from search.video_search import search_creator_video_rows
+from stores import creator_milestones_store
 from stores.video_ranking_store import S3VideoRankingStore
 from tracking.video_master import VALID_LIVE_STATUSES, Video
 from tracking.video_master import is_known_non_livestream
@@ -1174,6 +1175,34 @@ def _creator_subscriber_count(creator_id: str, report_dates: list[date]) -> int 
                 return count if isinstance(count, int) and not isinstance(count, bool) else None
         return None
     return None
+
+
+def get_creator_milestones(query: dict[str, Any]) -> dict[str, Any]:
+    """`GET /creators/{creatorId}/milestones`: one creator's birthday and ORIGINAL debut date, exactly as stored.
+
+    {creatorId, birthday "MM-DD" (no year), debutDate "YYYY-MM-DD"} from one GetItem on the Creator Milestones table (no Scan, no other
+    store, no write). Any Creator Master creator is eligible -- graduated ones included, with their original debut date -- and a
+    creatorId Creator Master does not know is a 404, as is a known creator with no stored record. No countdown, anniversary number or
+    time zone is computed here: the dates are fixed facts and the frontend derives everything from them.
+    """
+    creator_id = parse_creator_id(query.get("creatorId"))
+    if _find_creator(creator_id) is None:
+        raise ScopeNotFoundError(f"No creator found for creatorId {creator_id!r}")
+    record = creator_milestones_store.get_creator_milestones(creator_id)
+    if record is None:
+        raise ScopeNotFoundError(f"No milestones are recorded for creatorId {creator_id!r}")
+    return record
+
+
+def list_creator_milestones(query: dict[str, Any]) -> dict[str, Any]:
+    """`GET /milestones`: every creator's birthday and ORIGINAL debut date, for the Live Status list.
+
+    {"milestones": [{creatorId, birthday "MM-DD", debutDate "YYYY-MM-DD"}, ...]} sorted by creatorId -- the whole roster in one response, so the frontend
+    never reads per creator. Served from creator_milestones_store.get_all_creator_milestones: a paginated Scan cached in the warm Lambda environment for an
+    hour (see that function for the cache and its per-environment limitation). No input, no write, nothing computed here; the frontend derives every
+    "today" status in JST from these fixed dates.
+    """
+    return {"milestones": creator_milestones_store.get_all_creator_milestones()}
 
 
 def get_oshi_status(query: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
