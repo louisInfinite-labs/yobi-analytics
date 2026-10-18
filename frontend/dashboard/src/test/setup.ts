@@ -19,7 +19,8 @@ const realFetch = globalThis.fetch.bind(globalThis)
 const LOCAL_URL = /^(?:https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:[/?#]|$)|\/(?!\/))/i
 globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
-  if (LOCAL_URL.test(url)) return realFetch(input, init)
+  // redirect: "error": a local mock that answers with a redirect must not be able to send the request on to a remote host past this check.
+  if (LOCAL_URL.test(url)) return realFetch(input, { ...init, redirect: "error" })
   return Promise.reject(new TypeError(`Real network access is blocked in tests (stub fetch or mock the request): ${url}`))
 }) as typeof fetch
 // @testing-library/react's own auto-cleanup only self-registers when

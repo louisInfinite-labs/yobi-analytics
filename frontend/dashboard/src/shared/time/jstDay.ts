@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { JST_OFFSET_MS } from "../../features/oshi-status/model/milestoneCountdown"
+import { JST_OFFSET_MS } from "./jst"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 

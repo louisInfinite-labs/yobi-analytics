@@ -177,3 +177,13 @@ def test_manual_iam_policy_allows_only_get_and_scan_on_exactly_this_table():
     assert statement["Effect"] == "Allow"
     assert sorted(statement["Action"]) == ["dynamodb:GetItem", "dynamodb:Scan"]
     assert statement["Resource"] == "arn:aws:dynamodb:ap-northeast-1:189461315571:table/YobiCreatorMilestones"
+
+def test_deploy_doc_names_both_new_routes_and_each_exists_in_the_gateway_list():
+    """The documented targeted apply covers BOTH new routes (an environment following it must not leave the Oshi Status route undeployed)."""
+    root = Path(__file__).parent.parent.parent
+    doc = (root / "docs" / "creator-milestones-bulk-api.md").read_text(encoding="utf-8")
+    gateway = (root / "terraform" / "api_gateway.tf").read_text(encoding="utf-8")
+    for route in ("GET /milestones", "GET /creators/{creatorId}/milestones"):
+        assert f'-target=\'aws_apigatewayv2_route.routes["{route}"]\'' in doc, route
+        assert f'"{route}"' in gateway, route
+    assert "is unchanged" not in doc

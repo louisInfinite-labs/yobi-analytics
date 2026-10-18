@@ -156,7 +156,11 @@ function CreatorRow({
           className="live-status-member__creator-button"
           style={creatorNameAccentStyle(creator)}
           onClick={swipe.guardClick(() => onCreatorButtonClick(creator))}
-          aria-label={t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.displayName })}
+          // aria-label REPLACES the button content as its accessible name, so today's note is appended to it: a screen reader hears it too.
+          aria-label={
+            t(locale, "creatorStatusList.switchOshiTo", { creatorName: creator.displayName }) +
+            (milestone ? `, ${milestoneIndicatorText(locale, milestone)}` : "")
+          }
         >
           {creatorContent}
         </button>

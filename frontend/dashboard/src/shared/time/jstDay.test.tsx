@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { act, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { JST_OFFSET_MS } from "./jst"
 import { jstDayStartMs, useJstDayStart } from "./jstDay"
+import { JST_OFFSET_MS as FEATURE_JST_OFFSET_MS } from "../../features/oshi-status/model/milestoneCountdown"
 
 const jst = (year: number, month: number, day: number, hour = 0, minute = 0, second = 0) => Date.UTC(year, month - 1, day, hour, minute, second) - 9 * 3600 * 1000
 
@@ -70,5 +74,15 @@ describe("useJstDayStart", () => {
       window.dispatchEvent(new Event("pageshow"))
     })
     expect(result.current).toBe(jst(2027, 3, 23))
+  })
+})
+
+describe("shared/time dependency direction", () => {
+  it("the shared JST modules import nothing from a feature, and the feature uses the same constant", () => {
+    for (const file of ["jst.ts", "jstDay.ts"]) {
+      expect(readFileSync(resolve(__dirname, file), "utf8"), file).not.toMatch(/from\s+["'][^"']*features\//)
+    }
+    expect(JST_OFFSET_MS).toBe(9 * 60 * 60 * 1000)
+    expect(FEATURE_JST_OFFSET_MS).toBe(JST_OFFSET_MS)
   })
 })

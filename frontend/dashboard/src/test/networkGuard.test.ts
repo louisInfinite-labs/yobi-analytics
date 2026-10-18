@@ -1,3 +1,5 @@
+import { createServer } from "node:http"
+import type { AddressInfo } from "node:net"
 import { describe, expect, it, vi } from "vitest"
 
 /** The safety net in src/test/setup.ts: a unit test cannot reach a real server even when .env.local points the API at production. */
@@ -12,7 +14,7 @@ describe("test network guard", () => {
     vi.stubEnv("VITE_API_BASE_URL", "https://abc123.execute-api.ap-northeast-1.amazonaws.com")
     try {
       const { apiRequest } = await import("../shared/api/apiClient")
-      await expect(apiRequest("/milestones")).rejects.toThrow()
+      await expect(apiRequest("/milestones")).rejects.toThrow(/Real network access is blocked in tests/)
     } finally {
       vi.unstubAllEnvs()
     }
@@ -32,5 +34,23 @@ describe("test network guard", () => {
       (error: Error) => error.message,
     )
     expect(result).not.toMatch(/blocked in tests/)
+  })
+
+  it("never follows a redirect from an allowed local request on to a remote host", async () => {
+    const hits: string[] = []
+    const server = createServer((request, response) => {
+      hits.push(request.url ?? "")
+      response.writeHead(302, { Location: "https://api.example.com/stolen" })
+      response.end()
+    })
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()))
+    try {
+      const { port } = server.address() as AddressInfo
+      await expect(fetch(`http://127.0.0.1:${port}/start`)).rejects.toThrow()
+      // Only the local request was ever made: the redirect target was not requested (and nothing was returned to the caller).
+      expect(hits).toEqual(["/start"])
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
   })
 })

@@ -18,6 +18,13 @@ interface MilestoneDialogControllerOptions {
 export function useMilestoneDialogController({ creatorId, triggerRef, dialogRef }: MilestoneDialogControllerOptions) {
   // Which creator the dialog is open for: switching creator therefore closes it by derivation, with no effect.
   const [openFor, setOpenFor] = useState<string | null>(null)
+  // Forget the old creator as soon as it changes (the stored-previous-prop pattern, during render): without this A -> B -> A would make `openFor === creatorId`
+  // true again and reopen the dialog, and start a milestone read, with no user action.
+  const [lastCreatorId, setLastCreatorId] = useState(creatorId)
+  if (lastCreatorId !== creatorId) {
+    setLastCreatorId(creatorId)
+    if (openFor !== null) setOpenFor(null)
+  }
   const open = openFor === creatorId
   const setOpen = useCallback(
     (next: boolean | ((previous: boolean) => boolean)) => {

@@ -568,6 +568,27 @@ describe("creator switching", () => {
   })
 })
 
+describe("switching back to a creator", () => {
+  it("does not reopen the dialog (A open -> B -> A stays closed and makes no new read)", async () => {
+    loadMock.mockImplementation(async (id) => found(id === "aizawa_ema" ? EMA : { creatorId: "kaga_sumire", birthday: "04-02", debutDate: "2018-10-20" }))
+    const view = renderPanel("ch_aizawa_ema")
+    // Opened from the keyboard: no pointer press exists to close it on the way out.
+    fireEvent.click(trigger(), { detail: 0 })
+    await screen.findByRole("dialog")
+    const readsBefore = loadMock.mock.calls.length
+
+    view.switchCreator("ch_kaga_sumire")
+    expect(dialog()).toBeNull()
+    view.switchCreator("ch_aizawa_ema")
+    expect(dialog()).toBeNull()
+    expect(trigger()).toHaveAttribute("aria-expanded", "false")
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(loadMock.mock.calls.length).toBe(readsBefore)
+  })
+})
+
 describe("the one-second timer", () => {
   beforeEach(() => {
     vi.useRealTimers()

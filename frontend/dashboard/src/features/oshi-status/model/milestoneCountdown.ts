@@ -5,7 +5,9 @@
  * the browser's local calendar (no getHours/getDate/getTimezoneOffset). JST has no daylight saving, so a day is always exactly 24 hours
  * and the fixed +09:00 offset is exact. */
 
-export const JST_OFFSET_MS = 9 * 60 * 60 * 1000
+import { JST_OFFSET_MS } from "../../../shared/time/jst"
+
+export { JST_OFFSET_MS }
 const DAY_MS = 24 * 60 * 60 * 1000
 const HOUR_MS = 60 * 60 * 1000
 const MINUTE_MS = 60 * 1000

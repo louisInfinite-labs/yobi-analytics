@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { act, render } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { CreatorStatusList } from "./CreatorStatusList"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
@@ -110,6 +110,16 @@ describe("Live Status inline birthday / debut indicators", () => {
     expect(row?.childNodes[1]?.textContent).toBe(" ")
     expect(row?.querySelector(".live-status-member__milestone")?.textContent).toBe(expected.slice("星街すいせい ".length))
   })
+  it("the creator button accessible name includes today's note (aria-label replaces the content, so the note is appended to it)", async () => {
+    vi.setSystemTime(jst(2027, 3, 22, 9))
+    renderList({ locale: "en" })
+    await settle()
+    expect(screen.getByRole("button", { name: "Switch Oshi to 星街すいせい, Birthday & Debut Today" })).toBeInTheDocument()
+    // Everyone else keeps the plain name.
+    expect(screen.getByRole("button", { name: "Switch Oshi to 藍沢エマ" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Switch Oshi to 藍沢エマ, Birthday & Debut Today" })).toBeNull()
+  })
+
   it("birthday only: Kaga Nazuna on April 2 (zh-TW 生日 當日), placed right after the name", async () => {
     vi.setSystemTime(jst(2027, 4, 2, 9))
     renderList({ locale: "zh-TW" })

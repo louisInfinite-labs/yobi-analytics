@@ -6,7 +6,7 @@ birthday and/or debut anniversary (JST calendar day). It needs every creator's d
 ## Endpoint
 `GET /milestones` (existing API Lambda, existing routing) -> `{ "milestones": [{ "creatorId", "birthday" "MM-DD", "debutDate" "YYYY-MM-DD" }, ...] }`,
 sorted by `creatorId`, ~110 records, graduated creators included with their original debut date. Source of truth: DynamoDB `YobiCreatorMilestones`
-(not modified by this feature). The per-creator route `GET /creators/{creatorId}/milestones` (Oshi Status dialog) is unchanged.
+(not modified by this feature). The per-creator route `GET /creators/{creatorId}/milestones` (Oshi Status dialog) is ALSO new in this change and must be deployed with it.
 
 A DynamoDB failure follows the existing convention: `503 {"code": "MILESTONES_UNAVAILABLE"}` with the AWS error text kept in the logs only.
 
@@ -35,6 +35,8 @@ caches keep the Scans to a handful per hour. No new table, GSI, Lambda, schedule
 
 ## Deploying (separate approvals)
 1. Add the inline policy above to `yobi-analytics-lambda-role` (console).
-2. `terraform apply -target='aws_apigatewayv2_route.routes["GET /milestones"]'` (never a bulk apply: there is known unapplied drift).
+2. A targeted apply of BOTH new routes (never a bulk apply: there is known unapplied drift):
+   `terraform apply -target='aws_apigatewayv2_route.routes["GET /milestones"]' -target='aws_apigatewayv2_route.routes["GET /creators/{creatorId}/milestones"]'`.
+   Without the per-creator route the Oshi Status dialog gets a 404 and shows its unavailable placeholders.
 3. Deploy the API Lambda package that contains `creator_milestones_store.get_all_creator_milestones`.
 Until the route exists the frontend simply shows no indicators (the 404 is treated as "unavailable"; nothing is invented).
