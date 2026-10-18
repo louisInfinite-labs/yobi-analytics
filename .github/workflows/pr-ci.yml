@@ -136,6 +136,7 @@ jobs:
           tests/api/test_live_streams_shared_snapshot.py
           tests/notifications/test_scheduled_start_notifications.py
           tests/notifications/test_live_reminder.py
+          tests/notifications/test_late_discovery_catch_up.py
           tests/test_notification_dispatch_schedule.py
           tests/stores/test_creator_milestones_store.py
           tests/api/test_creator_milestones_api.py

@@ -577,7 +577,7 @@ def test_schedule_snapshot_refreshes_on_every_run_independent_of_any_saved_overr
     assert written["clientId"] == live_reminder.SYSTEM_CLIENT_ID
     assert written["key"] == live_reminder.STREAM_SCHEDULE_KEY
     assert written["value"]["entries"] == {
-        "v2": {"creatorId": "aizawa_ema", "scheduledStartMs": 1_000_000_000_000, "topic": None, "title": "Ranked grind"}
+        "v2": {"creatorId": "aizawa_ema", "scheduledStartMs": 1_000_000_000_000, "topic": None, "title": "Ranked grind", "status": "upcoming"}
     }
 
 
