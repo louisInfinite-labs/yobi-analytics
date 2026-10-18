@@ -137,6 +137,8 @@ jobs:
           tests/notifications/test_scheduled_start_notifications.py
           tests/notifications/test_live_reminder.py
           tests/test_notification_dispatch_schedule.py
+          tests/scripts/migration/test_seed_creator_milestones.py
+          tests/test_terraform_creator_milestones_table.py
 
   frontend-focused-tests:
     needs: detect-scope
