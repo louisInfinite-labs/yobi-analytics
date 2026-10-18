@@ -14,6 +14,8 @@ import { getMemberAccent } from "../../../shared/theme/memberAccent"
 import type { CreatorStatus } from "../model/creatorStatus"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { OshiSwitchConfirmDialog } from "../../oshi/components/OshiSwitchConfirmDialog"
+import { useTodayMilestoneIndicators } from "../hooks/useTodayMilestoneIndicators"
+import { milestoneIndicatorText, type MilestoneIndicatorKind } from "../model/milestoneToday"
 
 /** Avatar + favorite indicator. antd's own Avatar already falls back to its
  * `children` whenever `src` is unset or fails to load (see antd's Avatar.js
@@ -71,6 +73,8 @@ interface CreatorRowProps {
   /** The creator this session currently has open (currentOshi) -- drives
    * the row's own selected accent rail, independent of MAIN. */
   isCurrentOshi: boolean
+  /** Set only when this creator has a birthday and/or debut anniversary on the current JST day; the row then shows it right after the name. */
+  milestone?: MilestoneIndicatorKind
   locale: Locale
   onCreatorButtonClick: (creator: CanonicalCreator) => void
   onSelectVideo: (video: { videoId: string; title: string }) => void
@@ -95,6 +99,7 @@ function CreatorRow({
   isFavorite,
   isMainOshi,
   isCurrentOshi,
+  milestone,
   locale,
   onCreatorButtonClick,
   onSelectVideo,
@@ -111,6 +116,14 @@ function CreatorRow({
       <span className="live-status-member__main">
         <span className="live-status-member__name-row">
           <span className="live-status-member__name">{creator.displayName}</span>
+          {/* A real space (not just the flex gap) between the name and the note, so the row also reads "name note" as text -- copy, search, screen readers.
+              Whitespace-only text between flex items is not rendered, so the layout and the gap are untouched. */}
+          {milestone && (
+            <>
+              {" "}
+              <span className="live-status-member__milestone">{milestoneIndicatorText(locale, milestone)}</span>
+            </>
+          )}
           {isMainOshi && <span className="live-status-member__main-badge">{t(locale, "creatorStatusList.mainBadge")}</span>}
         </span>
         {topic && <span className="live-status-member__topic">{topic}</span>}
@@ -244,6 +257,8 @@ export function CreatorStatusList({
   // Settings > 我推設定.
   const [currentOshiId] = useSelectedCreator()
   const [defaultOshiId] = useDefaultOshiCreator()
+  // Today (JST) birthday / debut-anniversary indicators for the whole roster, from one bulk read (never per creator) -- empty until/unless it loads.
+  const milestoneIndicators = useTodayMilestoneIndicators()
 
   const switchCreatorForVideo = onSelectCreatorForVideo ?? onSelectCreator
 
@@ -321,6 +336,7 @@ export function CreatorStatusList({
                       isFavorite={isFavorite}
                       isMainOshi={legacyId === defaultOshiId}
                       isCurrentOshi={legacyId === currentOshiId}
+                      milestone={milestoneIndicators[creator.creatorId]}
                       locale={locale}
                       onCreatorButtonClick={handleCreatorClick}
                       onSelectVideo={(video) => handleVideoSelect(creator, video)}

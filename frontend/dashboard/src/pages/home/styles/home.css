@@ -303,6 +303,9 @@
   grid-column: 2;
   grid-row: 1 / 3;
 
+  /* The containing block of the milestone dialog overlay (.oshi-status__milestone-dialog); changes no layout. */
+  position: relative;
+
   width: 100%;
   height: 100%;
 
@@ -416,6 +419,137 @@
   text-overflow: ellipsis;
 }
 
+/* The subscriber line, with the milestone calendar icon right after the count. Same 13px line as the count alone, so the header height is unchanged. */
+.oshi-status__subscriber-row {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 4px;
+
+  height: 13px;
+}
+
+.oshi-status__milestone-trigger {
+  appearance: none;
+
+  position: relative;
+
+  flex: 0 0 auto;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 12px;
+  height: 12px;
+  padding: 0;
+
+  border: 0;
+  background: transparent;
+  color: var(--oshi-text-1);
+
+  cursor: pointer;
+}
+
+/* A larger touch target than the 12px icon, without taking any layout space. */
+.oshi-status__milestone-trigger::after {
+  content: "";
+
+  position: absolute;
+  inset: -8px;
+}
+
+.oshi-status__milestone-trigger:focus-visible {
+  outline: 1px solid var(--creator-main);
+  outline-offset: 2px;
+}
+
+/* While the milestone dialog is open the cross-origin player iframe passes pointer events through (set by useMilestoneDialogController), so
+   leaving the dialog over the player closes it and a tap on the player counts as a tap outside. */
+[data-oshi-milestone-open] .oshi-player-frame iframe {
+  pointer-events: none;
+}
+
+/* Birthday / debut anniversary overlay: absolutely positioned inside .oshi-status, so it covers the panel content without moving it. Its top,
+   left, width and height are measured from the rendered panel and Now Playing box (useOverlayGeometry) and set inline. */
+.oshi-status__milestone-dialog {
+  position: absolute;
+  z-index: 5;
+
+  box-sizing: border-box;
+
+  /* The inline height is the measured Now Playing region height; the rows are never clipped if a very short region were ever shorter than they are. */
+  min-height: min-content;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+
+  gap: 12px;
+
+  padding: 6px 12px;
+
+  overflow: hidden;
+
+  background: var(--oshi-surface-2);
+  box-shadow: var(--shadow-md);
+  color: var(--oshi-text-1);
+}
+
+.oshi-status__milestone-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+
+  column-gap: 8px;
+  row-gap: 2px;
+
+  min-width: 0;
+
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.oshi-status__milestone-label {
+  color: var(--oshi-text-1);
+
+  font-weight: 650;
+
+  white-space: nowrap;
+}
+
+.oshi-status__milestone-date {
+  color: var(--oshi-text-2);
+
+  white-space: nowrap;
+}
+
+/* The timezone reference line below the two rows: small secondary text, right aligned, no decoration. */
+.oshi-status__milestone-caption {
+  align-self: flex-end;
+
+  margin-top: -4px;
+
+  color: var(--oshi-text-3);
+
+  font-size: 10px;
+  line-height: 12px;
+
+  white-space: nowrap;
+}
+
+/* Pushed to the right edge of the row; when the whole line cannot fit it wraps below the label and date, still right-aligned. */
+.oshi-status__milestone-countdown {
+  margin-left: auto;
+
+  color: var(--oshi-text-1);
+
+  font-variant-numeric: tabular-nums;
+
+  white-space: nowrap;
+}
 .oshi-status__now-playing {
   margin-top: 8px;
 }
@@ -963,6 +1097,21 @@
   max-width: 100%;
 
   aspect-ratio: 16 / 9;
+}
+
+/* The Now Playing slot when no video is loaded: the same 16:9, 377px-max box a thumbnail takes, so the region keeps one footprint (the Now Playing
+   milestone dialog is measured from it). Neutral surface and the existing placeholder text, no decoration. */
+.oshi-status__now-playing-empty {
+  display: block;
+
+  width: 377px;
+  max-width: 100%;
+
+  aspect-ratio: 16 / 9;
+
+  border-radius: 3px;
+
+  background: var(--oshi-surface-2);
 }
 
 .oshi-status__now-playing-thumb,
@@ -2142,6 +2291,20 @@
   font-weight: 750;
 
   letter-spacing: 0.05em;
+}
+
+/* Today's birthday / debut anniversary, right after the name on the same line: the topic line's secondary text color at the status text size, never a
+   badge, border or fill. The name ellipsizes first (it is the shrinkable item), so the indicator stays whole and the row height is unchanged. */
+.live-status-member__milestone {
+  flex: 0 0 auto;
+
+  color: var(--oshi-text-2);
+
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 15px;
+
+  white-space: nowrap;
 }
 
 .live-status-member__topic {

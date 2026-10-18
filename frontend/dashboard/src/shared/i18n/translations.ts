@@ -74,6 +74,25 @@ export type TranslationKey =
   | "oshiStatus.nowPlaying"
   | "oshiStatus.thumbnailLabel"
   | "oshiStatus.devResetVisit"
+  | "oshiStatus.milestones.open"
+  | "oshiStatus.milestones.dialogLabel"
+  | "oshiStatus.milestones.birthday"
+  | "oshiStatus.milestones.anniversary"
+  | "oshiStatus.milestones.anniversaryUnknown"
+  | "oshiStatus.milestones.date"
+  | "oshiStatus.milestones.unit.month"
+  | "oshiStatus.milestones.unit.day"
+  | "oshiStatus.milestones.unit.hour"
+  | "oshiStatus.milestones.unit.minute"
+  | "oshiStatus.milestones.unit.second"
+  | "oshiStatus.milestones.unavailable"
+  | "oshiStatus.milestones.loading"
+  | "oshiStatus.milestones.today"
+  | "oshiStatus.milestones.caption"
+  | "liveStatus.milestone.birthday"
+  | "liveStatus.milestone.debut"
+  | "liveStatus.milestone.both"
+  | "liveStatus.milestone.today"
   | "errorState.code"
   | "errorState.defaultMessage"
   | "errorState.retry"
@@ -337,6 +356,25 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.nowPlaying": "正在播放",
     "oshiStatus.thumbnailLabel": "縮圖：{{title}}",
     "oshiStatus.devResetVisit": "重置造訪",
+    "oshiStatus.milestones.open": "開啟生日與出道紀念日",
+    "oshiStatus.milestones.dialogLabel": "生日與出道紀念日",
+    "oshiStatus.milestones.birthday": "生日",
+    "oshiStatus.milestones.anniversary": "{{ordinal}}周年紀念日",
+    "oshiStatus.milestones.anniversaryUnknown": "周年紀念日",
+    "oshiStatus.milestones.date": "{{month}}月{{day}}日",
+    "oshiStatus.milestones.unit.month": "個月",
+    "oshiStatus.milestones.unit.day": "天",
+    "oshiStatus.milestones.unit.hour": "小時",
+    "oshiStatus.milestones.unit.minute": "分",
+    "oshiStatus.milestones.unit.second": "秒",
+    "oshiStatus.milestones.unavailable": "資料暫時無法載入",
+    "oshiStatus.milestones.loading": "載入中",
+    "oshiStatus.milestones.today": "當日",
+    "oshiStatus.milestones.caption": "以 JST 00:00 為準",
+    "liveStatus.milestone.birthday": "生日",
+    "liveStatus.milestone.debut": "出道日",
+    "liveStatus.milestone.both": "生日&出道日",
+    "liveStatus.milestone.today": "當日",
     "errorState.code": "(代碼: {{code}})",
     "errorState.defaultMessage": "載入資料時發生錯誤。",
     "errorState.retry": "重試",
@@ -600,6 +638,25 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.nowPlaying": "Now Playing",
     "oshiStatus.thumbnailLabel": "Thumbnail: {{title}}",
     "oshiStatus.devResetVisit": "Reset visit",
+    "oshiStatus.milestones.open": "Open birthday and debut anniversary",
+    "oshiStatus.milestones.dialogLabel": "Birthday and debut anniversary",
+    "oshiStatus.milestones.birthday": "Birthday",
+    "oshiStatus.milestones.anniversary": "{{ordinal}} Anniversary",
+    "oshiStatus.milestones.anniversaryUnknown": "Anniversary",
+    "oshiStatus.milestones.date": "{{month}} {{day}}",
+    "oshiStatus.milestones.unit.month": "mo",
+    "oshiStatus.milestones.unit.day": "d",
+    "oshiStatus.milestones.unit.hour": "h",
+    "oshiStatus.milestones.unit.minute": "m",
+    "oshiStatus.milestones.unit.second": "s",
+    "oshiStatus.milestones.unavailable": "Data is temporarily unavailable",
+    "oshiStatus.milestones.loading": "Loading",
+    "oshiStatus.milestones.today": "Today",
+    "oshiStatus.milestones.caption": "Based on JST 00:00",
+    "liveStatus.milestone.birthday": "Birthday",
+    "liveStatus.milestone.debut": "Debut",
+    "liveStatus.milestone.both": "Birthday & Debut",
+    "liveStatus.milestone.today": "Today",
     "errorState.code": "(Code: {{code}})",
     "errorState.defaultMessage": "Something went wrong loading this data.",
     "errorState.retry": "Retry",
@@ -862,6 +919,25 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.nowPlaying": "再生中",
     "oshiStatus.thumbnailLabel": "サムネイル：{{title}}",
     "oshiStatus.devResetVisit": "訪問をリセット",
+    "oshiStatus.milestones.open": "誕生日とデビュー記念日を開く",
+    "oshiStatus.milestones.dialogLabel": "誕生日とデビュー記念日",
+    "oshiStatus.milestones.birthday": "誕生日",
+    "oshiStatus.milestones.anniversary": "{{ordinal}}周年記念日",
+    "oshiStatus.milestones.anniversaryUnknown": "周年記念日",
+    "oshiStatus.milestones.date": "{{month}}月{{day}}日",
+    "oshiStatus.milestones.unit.month": "ヶ月",
+    "oshiStatus.milestones.unit.day": "日",
+    "oshiStatus.milestones.unit.hour": "時間",
+    "oshiStatus.milestones.unit.minute": "分",
+    "oshiStatus.milestones.unit.second": "秒",
+    "oshiStatus.milestones.unavailable": "データを一時的に取得できません",
+    "oshiStatus.milestones.loading": "読み込み中",
+    "oshiStatus.milestones.today": "当日",
+    "oshiStatus.milestones.caption": "JST 00:00基準",
+    "liveStatus.milestone.birthday": "誕生日",
+    "liveStatus.milestone.debut": "デビュー日",
+    "liveStatus.milestone.both": "誕生日&デビュー日",
+    "liveStatus.milestone.today": "当日",
     "errorState.code": "(コード: {{code}})",
     "errorState.defaultMessage": "データの読み込み中にエラーが発生しました。",
     "errorState.retry": "再試行",

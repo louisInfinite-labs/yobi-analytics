@@ -775,10 +775,23 @@ describe("OshiStatusPanel thumbnails", () => {
       await waitFor(() => expect(thumbImg(".oshi-status__now-playing")?.getAttribute("src")).toBe(seenItem.thumbnailUrl))
     })
 
-    it("shows no thumbnail when only a title is known (no videoId to key it by)", () => {
+    it("shows no thumbnail when only a title is known (no videoId to key it by), but keeps the region footprint with the neutral placeholder", () => {
       renderThumbs({ nowPlayingTitle: "Some title" })
 
-      expect(document.querySelector(".oshi-status__now-playing-thumb")).toBeNull()
+      expect(document.querySelector(".oshi-status__now-playing .oshi-status__thumb")).toBeNull()
+      expect(document.querySelector(".oshi-status__now-playing-thumb .oshi-status__now-playing-empty")).not.toBeNull()
+    })
+
+    it("the Now Playing region is always rendered with the same structure, even with nothing playing", () => {
+      renderThumbs({ nowPlayingTitle: null })
+
+      const region = document.querySelector(".oshi-status__now-playing") as HTMLElement
+      expect(region).not.toBeNull()
+      expect(region.querySelector(".oshi-status__now-playing-label")).not.toBeNull()
+      expect(region.querySelector(".oshi-status__now-playing-title")?.textContent).toBe("—")
+      expect(region.querySelector(".oshi-status__now-playing-thumb .oshi-status__now-playing-empty")).not.toBeNull()
+      // The empty slot is not a control: nothing in it looks interactive.
+      expect(region.querySelector("button")).toBeNull()
     })
   })
 

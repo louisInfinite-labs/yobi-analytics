@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Avatar } from "antd"
+import { Calendar } from "lucide-react"
 import { mockCreators } from "../../../entities/creator/data/mockCreators"
 import { OshiErrorState } from "../../home-room/components/OshiErrorState"
 import { getMemberAccent } from "../../../shared/theme/memberAccent"
@@ -11,6 +12,9 @@ import { useUpcomingDisplayMode } from "../../live-status/hooks/useUpcomingDispl
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { resetPreviousVisit, usePreviousVisit } from "../hooks/useLastVisit"
 import { useOshiStatus } from "../hooks/useOshiStatus"
+import { useCreatorMilestones } from "../hooks/useCreatorMilestones"
+import { useMilestoneDialogController } from "../hooks/useMilestoneDialogController"
+import { useOverlayGeometry } from "../hooks/useOverlayGeometry"
 import { useLatestActivityRows } from "../hooks/useLatestActivityRows"
 import { useBreakpoint } from "../../../shared/hooks/useBreakpoint"
 import type { HomeAllFeed } from "../../home-room/hooks/useHomeAllFeed"
@@ -18,6 +22,7 @@ import { countUnwatched, formatCompactCount } from "../utils/oshiActivity"
 import { migrateWatchedLiveToSeen, resetNewContentTracking, useNewContent } from "../../../shared/newContent/newContentTracking"
 import { RecentActivityRow, StatusThumbnail } from "./RecentActivityRow"
 import { LatestActivityView } from "./LatestActivityView"
+import { MilestoneDialog } from "./MilestoneDialog"
 import type { CreatorStatus } from "../../live-status/model/creatorStatus"
 
 /** Shown for any number the backend has not provided (still loading, the request failed, or no
@@ -119,6 +124,17 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
   // 6-row preview and 查看全部 opens the dedicated full-screen view (LatestActivityView) over the same shared feed.
   const isDesktop = useBreakpoint() === "desktop"
   const { rows: latestRows, listRef } = useLatestActivityRows(creatorId, feed, isDesktop ? "scroll" : "preview")
+  // Birthday / debut anniversary dialog: a calendar icon beside the subscriber count opens it (hover on desktop, tap elsewhere). It overlays ONLY the
+  // Now Playing region -- its top edge to its bottom edge, measured from the rendered element -- so the creator header stays fully visible. That region is
+  // always rendered with a fixed structure (see the JSX below), so the dialog has the same geometry whatever the livestream or network state.
+  const panelRef = useRef<HTMLElement | null>(null)
+  const nowPlayingRef = useRef<HTMLDivElement | null>(null)
+  const milestoneTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const milestoneDialogRef = useRef<HTMLDivElement | null>(null)
+  const milestoneDialogId = `oshi-status-milestones-${creatorId}`
+  const milestoneDialog = useMilestoneDialogController({ creatorId, triggerRef: milestoneTriggerRef, dialogRef: milestoneDialogRef })
+  const milestones = useCreatorMilestones(resolveCreatorKey(creatorId)?.creatorId, milestoneDialog.open)
+  const overlayGeometry = useOverlayGeometry(milestoneDialog.open, panelRef, nowPlayingRef, isDesktop)
   const [activityOpen, setActivityOpen] = useState(false)
   const viewAllRef = useRef<HTMLButtonElement | null>(null)
   const activityViewOpen = activityOpen && !isDesktop
@@ -150,7 +166,7 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
   const countLabel = (value: number) => String(value)
 
   return (
-    <aside className="oshi-status">
+    <aside className="oshi-status" ref={panelRef}>
       <div className="oshi-status__header">
         <div className="oshi-status__header-top">
           <div className="oshi-status__creator">
@@ -169,12 +185,26 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
             </Avatar>
             <div className="oshi-status__creator-text">
               <div className="oshi-status__creator-name">{creator?.channelName ?? creatorId}</div>
-              {/* The backend's subscriberCount; the line is omitted when it is null (never a fabricated 0). */}
-              {data?.subscriberCount != null && (
-                <div className="oshi-status__subscriber-count">
-                  {formatCompactCount(data.subscriberCount)} {t(locale, "oshiStatus.subscribers")}
-                </div>
-              )}
+              <div className="oshi-status__subscriber-row">
+                {/* The backend's subscriberCount; the count is omitted when it is null (never a fabricated 0). */}
+                {data?.subscriberCount != null && (
+                  <div className="oshi-status__subscriber-count">
+                    {formatCompactCount(data.subscriberCount)} {t(locale, "oshiStatus.subscribers")}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  ref={milestoneTriggerRef}
+                  className="oshi-status__milestone-trigger"
+                  aria-label={t(locale, "oshiStatus.milestones.open")}
+                  aria-haspopup="dialog"
+                  aria-expanded={milestoneDialog.open}
+                  aria-controls={milestoneDialogId}
+                  {...milestoneDialog.triggerProps}
+                >
+                  <Calendar size={12} strokeWidth={1.5} aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </div>
           {import.meta.env.DEV && (
@@ -190,27 +220,33 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
             </button>
           )}
         </div>
-        {nowPlayingTitle && (
-          <div className="oshi-status__now-playing">
-            <div className="oshi-status__now-playing-label">{t(locale, "oshiStatus.nowPlaying")}</div>
-            {/* With a videoId, the title and the thumbnail run the one shared selection path (select, then back to the player), like every
-              * other title/thumbnail pair in this panel. Without one (only a title is known) there is nothing to select: plain text. */}
-            {openNowPlaying ? (
-              <button type="button" className="oshi-status__now-playing-title oshi-status__now-playing-title--link" onClick={openNowPlaying}>
-                {nowPlayingTitle}
-              </button>
+        {/* The Now Playing region is ALWAYS rendered, with the same three parts (label, one title line, a 16:9 slot), so its footprint is the same for
+          * LIVE, UPCOMING, OFFLINE, no loaded video, a failed request and while loading, and the milestone dialog can be measured from it. Only its
+          * content differs: a title and thumbnail when a video is loaded, otherwise the existing placeholders. */}
+        <div className="oshi-status__now-playing" ref={nowPlayingRef}>
+          <div className="oshi-status__now-playing-label">{t(locale, "oshiStatus.nowPlaying")}</div>
+          {/* With a videoId, the title and the thumbnail run the one shared selection path (select, then back to the player), like every
+            * other title/thumbnail pair in this panel. Without one (only a title is known) there is nothing to select: plain text. */}
+          {!nowPlayingTitle ? (
+            <div className="oshi-status__now-playing-title">{VALUE_UNAVAILABLE}</div>
+          ) : openNowPlaying ? (
+            <button type="button" className="oshi-status__now-playing-title oshi-status__now-playing-title--link" onClick={openNowPlaying}>
+              {nowPlayingTitle}
+            </button>
+          ) : (
+            <div className="oshi-status__now-playing-title">{nowPlayingTitle}</div>
+          )}
+          <div className="oshi-status__now-playing-thumb">
+            {nowPlayingVideoId && openNowPlaying && nowPlayingTitle ? (
+              <StatusThumbnail videoId={nowPlayingVideoId} thumbnailUrl={nowPlayingThumbnail} label={nowPlayingTitle} onOpen={openNowPlaying} />
             ) : (
-              <div className="oshi-status__now-playing-title">{nowPlayingTitle}</div>
-            )}
-            {nowPlayingVideoId && openNowPlaying && (
-              <div className="oshi-status__now-playing-thumb">
-                <StatusThumbnail videoId={nowPlayingVideoId} thumbnailUrl={nowPlayingThumbnail} label={nowPlayingTitle} onOpen={openNowPlaying} />
+              <div className="oshi-status__now-playing-empty">
+                <span className="oshi-status__thumb-placeholder">{t(locale, "liveSchedule.noThumbnail")}</span>
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
-
       <div className="oshi-status__body">
         <section className="oshi-status__section">
           <div className="oshi-status__section-title">{t(locale, "oshiStatus.liveNext")}</div>
@@ -272,6 +308,16 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
           )}
         </section>
       </div>
+      {milestoneDialog.open && (
+        <MilestoneDialog
+          id={milestoneDialogId}
+          locale={locale}
+          state={milestones}
+          style={overlayGeometry}
+          dialogRef={milestoneDialogRef}
+          {...milestoneDialog.dialogProps}
+        />
+      )}
       {activityViewOpen && (
         <LatestActivityView
           creatorId={creatorId}
