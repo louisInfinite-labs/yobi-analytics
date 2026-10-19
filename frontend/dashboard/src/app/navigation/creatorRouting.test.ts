@@ -282,3 +282,36 @@ describe("invalid URLs", () => {
     expect(window.location.pathname + window.location.search).toBe("/?admin")
   })
 })
+
+describe("push notification deep link: what the app does when a notification tap lands on /creator/:slug", () => {
+  it("app already open on another creator: the tap's navigation (a full load in the same session) shows the notified creator and leaves the persistent Oshi alone", async () => {
+    const app = await loadApp("/", { oshi: OSHI })
+    app.selectCreator("ch_usada_pekora") // this session was looking at someone else
+    expect(path()).toBe("/creator/usada-pekora")
+
+    const tapped = await loadApp("/creator/aizawa-ema", {}, true) // sw.js: client.navigate("/creator/aizawa-ema") -- same browser session
+
+    expect(path()).toBe("/creator/aizawa-ema")
+    expect(tapped.shown()).toBe(EMA)
+    expect(window.sessionStorage.getItem(HOME_KEY)).toBe("/creator/aizawa-ema") // only the SESSION creator changed
+    expect(window.localStorage.getItem("yobi.defaultOshiCreatorId")).toBe(OSHI)
+    expect(window.localStorage.getItem(HOME_KEY)).toBeNull()
+  })
+
+  it("app closed (a new session opened by the tap): the notified creator is shown, the Oshi is untouched, and a later fresh session starts from the Oshi again", async () => {
+    const opened = await loadApp("/creator/aizawa-ema", { oshi: OSHI }) // sw.js: clients.openWindow("/creator/aizawa-ema")
+    expect(opened.shown()).toBe(EMA)
+    expect(window.localStorage.getItem("yobi.defaultOshiCreatorId")).toBe(OSHI)
+
+    window.sessionStorage.clear() // the window was closed
+    const next = await loadApp("/", {}, true)
+    expect(next.shown()).toBe(OSHI)
+  })
+
+  it("a notification for a creator the roster no longer has lands on the root Home (the Oshi), never a blank or broken page", async () => {
+    const app = await loadApp("/creator/no-longer-here", { oshi: OSHI })
+
+    expect(path()).toBe("/")
+    expect(app.shown()).toBe(OSHI)
+  })
+})

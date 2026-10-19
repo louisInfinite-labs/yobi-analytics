@@ -169,7 +169,7 @@ def test_the_incident_replay_a_30_minute_reminder_for_a_stream_created_after_its
 
     assert len(world.pushes) == 1
     assert world.pushes[0]["title"].endswith("goes live in about 9 minutes")
-    assert world.pushes[0]["data"] == {"videoId": "v1", "reminderKind": "advance"}
+    assert world.pushes[0]["data"] == {"videoId": "v1", "reminderKind": "advance", "url": "/creator/aizawa-ema"}
     assert world.delivery[("c1", _minute_id("v1", "advance", START))]["status"] == "delivered"
 
 

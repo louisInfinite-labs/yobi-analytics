@@ -201,7 +201,7 @@ def test_the_start_notification_goes_out_in_the_minute_the_stored_scheduled_star
     summary = harness.run(START + timedelta(seconds=10))
 
     assert summary["delivered"] == 1
-    assert [push["data"] for push in harness.pushes] == [{"videoId": "v1", "reminderKind": "start"}]
+    assert [push["data"] for push in harness.pushes] == [{"videoId": "v1", "reminderKind": "start", "url": "/creator/aizawa-ema"}]
     assert harness.run(START + timedelta(seconds=70))["delivered"] == 0  # the next minute's run: outside the window, and already delivered
     assert len(harness.pushes) == 1
 
@@ -241,7 +241,7 @@ def test_the_existing_pre_start_reminders_fire_at_their_offsets_from_the_same_st
     summary = harness.run(START - timedelta(minutes=offset) + timedelta(seconds=10))
 
     assert summary["delivered"] == 1
-    assert harness.pushes[0]["data"] == {"videoId": "v1", "reminderKind": "advance"}
+    assert harness.pushes[0]["data"] == {"videoId": "v1", "reminderKind": "advance", "url": "/creator/aizawa-ema"}
     assert harness.run(START + timedelta(seconds=10))["delivered"] == 0  # at-start was NOT requested by c2
 
 

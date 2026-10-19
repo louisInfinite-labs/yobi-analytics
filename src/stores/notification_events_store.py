@@ -135,6 +135,12 @@ def _video_to_event_item(video: Video, discovery_source: str) -> dict[str, Any]:
     # then treated as an ordinary video.
     if video.content_type == CONTENT_TYPE_SHORT:
         item["contentType"] = CONTENT_TYPE_SHORT
+    # The thumbnail URL discovery already holds for this video (YouTube's own best listed variant, from the same response as the title: no new
+    # request, no probe), carried on the event so the new-video push can tell whether a Maxres thumbnail exists without looking anything up
+    # (notifications/notification_payload.py validates it and falls back to HQ). Omitted when the video has none -- an event written before this
+    # field existed is then simply sent with the HQ thumbnail.
+    if video.thumbnail_url:
+        item["thumbnailUrl"] = video.thumbnail_url
     return item
 
 

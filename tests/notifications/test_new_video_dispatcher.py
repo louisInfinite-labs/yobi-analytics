@@ -51,7 +51,7 @@ def test_delivers_a_due_event_to_the_client_whose_slot_it_is_and_confirms_it(mon
 
     sent, summary = _run(monkeypatch, events=[due_event()], preferences={"c1": preference_value()})
 
-    assert sent == [{"videoId": "v1"}]
+    assert sent == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
     assert rows == {("c1", "v1"): "delivered"}
     assert (summary["events"], summary["zones"], summary["slotsServed"], summary["recipients"], summary["delivered"]) == (1, 1, 1, 1, 1)
     assert summary["tick"] == "2026-09-03T09:00:00+00:00"
@@ -125,7 +125,7 @@ def test_mute_and_quiet_hours_at_the_slot_record_nothing_so_a_later_slot_deliver
     assert sent == [] and rows == {}
 
     sent_later, _ = _run(monkeypatch, now=DAY2_EVENING, events=[due_event()], preferences={"c1": preference_value()})
-    assert sent_later == [{"videoId": "v1"}]
+    assert sent_later == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
 
 
 def test_a_client_without_a_push_subscription_is_skipped_without_reading_its_delivery_log(monkeypatch):
@@ -177,7 +177,7 @@ def test_events_the_bulk_read_reports_as_handled_are_skipped(monkeypatch):
 
     sent, summary = _run(monkeypatch, events=events, preferences={"c1": preference_value()})
 
-    assert sent == [{"videoId": "v1"}] and summary["delivered"] == 1
+    assert sent == [{"videoId": "v1", "url": "/creator/aizawa-ema"}] and summary["delivered"] == 1
 
 
 # --- which clients a tick serves ------------------------------------------------
@@ -235,7 +235,7 @@ def test_a_local_08_00_is_delivered_at_exactly_08_00_local_and_not_a_tick_earlie
     assert rows == {}  # the previous quarter hour: 07:45 local, nothing yet
 
     sent, summary = _run(monkeypatch, now=tick + timedelta(seconds=30), events=[event], preferences={"c1": preference})
-    assert sent == [{"videoId": "v1"}] and rows == {("c1", "v1"): "delivered"}
+    assert sent == [{"videoId": "v1", "url": "/creator/aizawa-ema"}] and rows == {("c1", "v1"): "delivered"}
     assert summary["tick"] == tick.isoformat()  # served on the exact tick, not a later one
 
 
@@ -277,7 +277,7 @@ def test_a_repeated_fall_back_slot_never_delivers_the_same_video_twice(monkeypat
     sent_first, _ = _run(monkeypatch, now=datetime(2026, 11, 1, 5, 30, tzinfo=timezone.utc), events=[event], preferences={"c1": preference})
     sent_second, summary = _run(monkeypatch, now=datetime(2026, 11, 1, 6, 30, tzinfo=timezone.utc), events=[event], preferences={"c1": preference})
 
-    assert sent_first == [{"videoId": "v1"}] and sent_second == []  # 01:30 EDT delivered; the repeated 01:30 EST is not even a due slot
+    assert sent_first == [{"videoId": "v1", "url": "/creator/aizawa-ema"}] and sent_second == []  # 01:30 EDT delivered; the repeated 01:30 EST is not even a due slot
     assert summary["slotsServed"] == 0 and rows == {("c1", "v1"): "delivered"}
 
 
@@ -303,7 +303,7 @@ def test_a_zone_the_runtime_does_not_know_is_ignored_without_failing_the_run(mon
         index_override={("Not/AZone", 36): ["x"], ("Asia/Tokyo", 36): ["c1"]},
     )
 
-    assert sent == [{"videoId": "v1"}] and summary["delivered"] == 1
+    assert sent == [{"videoId": "v1", "url": "/creator/aizawa-ema"}] and summary["delivered"] == 1
     assert "unknown time zone 'Not/AZone'" in capsys.readouterr().out
 
 
@@ -401,7 +401,7 @@ def test_one_video_recorded_under_two_dates_is_sent_once(monkeypatch):
 
     sent, summary = _run(monkeypatch, events=[first, rediscovered], preferences={"c1": preference_value()})
 
-    assert summary["events"] == 1 and sent == [{"videoId": "v1"}]
+    assert summary["events"] == 1 and sent == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
     assert rows == {("c1", "v1"): "delivered"}
 
 

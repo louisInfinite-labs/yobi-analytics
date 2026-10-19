@@ -33,6 +33,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from notifications import notification_payload
 from notifications import notification_dispatch
 from notifications import notification_text
 from notifications import push_sender
@@ -311,7 +312,14 @@ def deliver_new_video_if_due(
         subscription,
         title=text.title,
         body=text.body,
-        data={"videoId": video_id},
+        data=notification_payload.notification_data(
+            {"videoId": video_id},
+            video_id=video_id,
+            creator_id=candidate["creatorId"],
+            creators_by_id=creators_by_id,
+            # Only an event that already carries the stored Video Master thumbnail can confirm Maxres; none is looked up or probed here.
+            known_thumbnail_url=candidate.get("thumbnailUrl"),
+        ),
         vapid_private_key=vapid_private_key,
         vapid_claims=vapid_claims,
     )
