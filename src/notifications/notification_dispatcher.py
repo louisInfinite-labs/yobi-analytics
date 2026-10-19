@@ -72,6 +72,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from stores import notification_delivery_log_store
+from notifications import notification_payload
 from notifications import notification_dispatch
 from notifications import live_reminder
 from notifications import new_video_dispatcher
@@ -609,7 +610,9 @@ def _send_reminder(
         subscription,
         title=text.title,
         body=text.body,
-        data={"videoId": video_id, "reminderKind": kind},
+        data=notification_payload.notification_data(
+            {"videoId": video_id, "reminderKind": kind}, video_id=video_id, creator_id=creator_id, creators_by_id=creators_by_id
+        ),
         vapid_private_key=vapid_private_key,
         vapid_claims=vapid_claims,
     )

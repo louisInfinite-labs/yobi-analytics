@@ -13,6 +13,7 @@ import { useWatchedDuringLive } from "../../features/media-player/hooks/useWatch
 import { useLiveStreams } from "../../shared/api/hooks/useLiveStreams"
 import { selectLiveEmbedVideo } from "../../features/media-player/utils/liveEmbed"
 import { scrollBelowTopBar } from "../../features/home-room/utils/scrollBelowTopBar"
+import { useResetScrollOnCreatorChange } from "../../features/home-room/hooks/useResetScrollOnCreatorChange"
 import { useVideoSearchInput } from "../../features/video-search/hooks/useVideoSearchInput"
 import { OshiStatusPanel } from "../../features/oshi-status/components/OshiStatusPanel"
 import { RecentVideosSection } from "../../features/home-room/components/RecentVideosSection"
@@ -76,6 +77,8 @@ export function HomePage() {
   // ONE ALL dataset for Video List ALL and Latest Activity: a single first-page request, paged further only by scrolling.
   const allFeed = useHomeAllFeed(creatorId)
   const breakpoint = useBreakpoint()
+  // A different creator is a newly opened creator view: below 1024px (where Home scrolls with the page) it starts at the very top.
+  useResetScrollOnCreatorChange(creatorId, breakpoint !== "desktop")
   const liveStatusOpen = useLiveDockExpanded()
   const status = statuses[creatorId] ?? { kind: "offline" as const }
   const streamRef = useRef<HTMLElement>(null)

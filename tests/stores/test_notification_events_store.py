@@ -76,6 +76,92 @@ def test_the_event_marks_a_short_so_the_dispatcher_can_deliver_it_only_to_client
     assert all("topic" not in event for event in events.values())  # Short is a format; no topic is stored on the event
 
 
+MAXRES_URL = "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"
+SD_URL = "https://i.ytimg.com/vi/dQw4w9WgXcQ/sddefault.jpg"
+
+
+def test_the_event_carries_the_discovery_time_thumbnail_url_only_when_the_video_has_one(notification_events_table):
+    """thumbnailUrl is the Video's own (already obtained) value; a video without one gets no field, exactly like an event written before the field."""
+    record_new_video_events(
+        [_video(video_id="dQw4w9WgXcQ", thumbnail_url=MAXRES_URL), _video(video_id="nothumb"), _video(video_id="emptythumb", thumbnail_url="")]
+    )
+
+    events = {event["videoId"]: event for event in list_events_for_date("2026-09-03")}
+
+    assert events["dQw4w9WgXcQ"]["thumbnailUrl"] == MAXRES_URL
+    assert "thumbnailUrl" not in events["nothumb"]
+    assert "thumbnailUrl" not in events["emptythumb"]
+    # every pre-existing field is unchanged
+    assert {key: value for key, value in events["dQw4w9WgXcQ"].items() if key != "thumbnailUrl"} == {key: value for key, value in events["nothumb"].items()} | {
+        "videoId": "dQw4w9WgXcQ",
+        "eventId": new_video_event_id("dQw4w9WgXcQ"),
+    }
+
+
+class _CountingTable:
+    """Delegates to the real moto table and records every method the store calls on it."""
+
+    def __init__(self, table, calls):
+        """Wrap `table`, appending each called method name to `calls`."""
+        self._table = table
+        self._calls = calls
+
+    def __getattr__(self, name):
+        """Return the real attribute, recording method calls."""
+        attribute = getattr(self._table, name)
+        if callable(attribute):
+
+            def recorded(*args, **kwargs):
+                self._calls.append(name)
+                return attribute(*args, **kwargs)
+
+            return recorded
+        return attribute
+
+
+def test_adding_the_thumbnail_field_does_not_add_any_dynamodb_operation(notification_events_table, monkeypatch):
+    """One conditional put_item per newly discovered video -- with or without a thumbnail -- and nothing else (no update, no extra write or read)."""
+    from stores import notification_events_store
+
+    real_resource = notification_events_store._resource()
+    calls: list[str] = []
+
+    class _Resource:
+        def Table(self, name):
+            """The counting wrapper around the real table."""
+            return _CountingTable(real_resource.Table(name), calls)
+
+    monkeypatch.setattr(notification_events_store, "_resource", lambda: _Resource())
+
+    recorded = record_new_video_events([_video(video_id="a", thumbnail_url=MAXRES_URL), _video(video_id="b")])
+
+    assert recorded == 2
+    assert calls == ["put_item", "put_item"]
+
+
+def test_a_recorded_events_thumbnail_reaches_the_push_payload_and_only_a_confirmed_maxres_is_used(notification_events_table):
+    """Event -> store -> payload: Maxres when the stored URL confirms it; HQ for a smaller stored size, a legacy event without the field, or a foreign video's URL."""
+    from notifications.notification_payload import notification_data
+
+    record_new_video_events(
+        [
+            _video(video_id="dQw4w9WgXcQ", thumbnail_url=MAXRES_URL),
+            _video(video_id="aaaaaaaaaaa", thumbnail_url="https://i.ytimg.com/vi/aaaaaaaaaaa/sddefault.jpg"),
+            _video(video_id="bbbbbbbbbbb"),
+            _video(video_id="ccccccccccc", thumbnail_url=MAXRES_URL),  # another video's Maxres URL stored by mistake
+        ]
+    )
+    events = {event["videoId"]: event for event in list_events_for_date("2026-09-03")}
+
+    def image(video_id: str) -> str:
+        return notification_data({"videoId": video_id}, video_id=video_id, creator_id="x", creators_by_id={}, known_thumbnail_url=events[video_id].get("thumbnailUrl"))["image"]
+
+    assert image("dQw4w9WgXcQ") == MAXRES_URL
+    assert image("aaaaaaaaaaa") == "https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg"
+    assert image("bbbbbbbbbbb") == "https://i.ytimg.com/vi/bbbbbbbbbbb/hqdefault.jpg"
+    assert image("ccccccccccc") == "https://i.ytimg.com/vi/ccccccccccc/hqdefault.jpg"
+
+
 def test_list_events_for_date_only_returns_that_dates_events(notification_events_table):
     record_new_video_events([_video(video_id="v1", discovered_at="2026-09-02T18:00:00+09:00")])
     record_new_video_events([_video(video_id="v2", discovered_at="2026-09-03T18:00:00+09:00")])

@@ -119,7 +119,7 @@ def test_new_video_delivery_follows_the_global_switch_and_the_creators_new_video
 
     sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference)
 
-    assert (sent == [{"videoId": "v1"}]) is expect_sent
+    assert (sent == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]) is expect_sent
 
 
 def test_another_creators_off_switch_does_not_suppress_this_creator(monkeypatch):
@@ -128,7 +128,7 @@ def test_another_creators_off_switch_does_not_suppress_this_creator(monkeypatch)
 
     sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference)
 
-    assert sent == [{"videoId": "v1"}]
+    assert sent == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
 
 
 def test_the_general_creator_override_still_applies_alongside_the_new_video_map(monkeypatch):

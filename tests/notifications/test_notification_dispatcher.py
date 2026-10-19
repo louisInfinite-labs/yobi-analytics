@@ -495,12 +495,12 @@ def test_a_normal_stream_with_no_override_gets_both_reminders_from_the_system_wi
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(datetime.fromtimestamp(advance_fire_at_ms / 1000, tz=timezone.utc)))
     response = lambda_handler({}, None)
     assert response["delivered"] == 1
-    assert sent[-1] == {"videoId": "v2", "reminderKind": "advance"}
+    assert sent[-1] == {"videoId": "v2", "reminderKind": "advance", "url": "/creator/aizawa-ema"}
 
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(datetime.fromtimestamp(scheduled_start_ms / 1000, tz=timezone.utc)))
     response = lambda_handler({}, None)
     assert response["delivered"] == 1
-    assert sent[-1] == {"videoId": "v2", "reminderKind": "start"}
+    assert sent[-1] == {"videoId": "v2", "reminderKind": "start", "url": "/creator/aizawa-ema"}
 
 
 def test_stream_a_override_suppresses_the_creators_30min_reminder_for_that_stream(monkeypatch):
@@ -558,7 +558,7 @@ def test_stream_b_with_no_override_still_resolves_the_creators_recurring_setting
     response = lambda_handler({}, None)
 
     assert response["delivered"] == 1
-    assert sent[-1] == {"videoId": "v3", "reminderKind": "advance"}
+    assert sent[-1] == {"videoId": "v3", "reminderKind": "advance", "url": "/creator/aizawa-ema"}
 
 
 def test_schedule_snapshot_refreshes_on_every_run_independent_of_any_saved_override(monkeypatch):

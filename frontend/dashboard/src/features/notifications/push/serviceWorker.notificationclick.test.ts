@@ -16,11 +16,12 @@ function fakeClient(url: string, options: { navigable?: boolean } = {}): FakeCli
   return client
 }
 
-/** Runs public/sw.js (plain JS, served as-is) against a fake service-worker scope and taps a notification carrying `data`. */
-async function tapNotification(data: unknown, windows: FakeClient[]) {
+/** Runs public/sw.js (plain JS, served as-is) against a fake service-worker scope and taps a notification carrying `data`. `openWindow` can be
+ * replaced to simulate a platform that rejects it or hands back no window. */
+async function tapNotification(data: unknown, windows: FakeClient[], options: { openWindow?: () => Promise<unknown> } = {}) {
   const source = readFileSync(resolve(__dirname, "../../../../public/sw.js"), "utf-8")
   const listeners: Record<string, (event: unknown) => void> = {}
-  const openWindow = vi.fn(async () => undefined)
+  const openWindow = vi.fn(options.openWindow ?? (async () => undefined))
   const scope = {
     addEventListener: (type: string, listener: (event: unknown) => void) => {
       listeners[type] = listener
@@ -98,19 +99,148 @@ describe("service worker notificationclick", () => {
     }
   })
 
-  it("falls back to focusing the window where it is when it cannot be navigated", async () => {
-    const open = fakeClient("/", { navigable: false })
-
-    await tapNotification({ url: "/creator/aizawa-ema" }, [open])
-
-    expect(open.focus).toHaveBeenCalledTimes(1)
-  })
-
   it("never follows a cross-origin or malformed route from a payload: it falls back to /", async () => {
-    for (const bad of ["https://evil.example.com/x", "//evil.example.com/x", "javascript:alert(1)", 42, "", null]) {
+    for (const bad of ["https://evil.example.com/x", "//evil.example.com/x", "\\\\evil.example.com\\x", "javascript:alert(1)", "data:text/html,x", 42, "", null, {}]) {
       const { openWindow } = await tapNotification({ url: bad }, [])
       expect(openWindow, String(bad)).toHaveBeenCalledWith("/")
     }
+  })
+})
+
+/** The payloads the dispatchers send (src/notifications/creator_route.py adds `url`), one per notification kind. */
+const CREATOR_PAYLOADS = {
+  "advance reminder (30 / 10 / 1 min)": { videoId: "v1", reminderKind: "advance", url: "/creator/aizawa-ema" },
+  "live start reminder": { videoId: "v1", reminderKind: "start", url: "/creator/aizawa-ema" },
+  "late-discovery catch-up (an advance payload)": { videoId: "v1", reminderKind: "advance", url: "/creator/aizawa-ema" },
+  "new video": { videoId: "v1", url: "/creator/aizawa-ema" },
+} as const
+
+describe.each(Object.entries(CREATOR_PAYLOADS))("creator deep link: %s", (_kind, payload) => {
+  it("app closed: opens exactly one window on the creator Home", async () => {
+    const { openWindow, close } = await tapNotification(payload, [])
+
+    expect(close).toHaveBeenCalled()
+    expect(openWindow).toHaveBeenCalledTimes(1)
+    expect(openWindow).toHaveBeenCalledWith("/creator/aizawa-ema")
+  })
+
+  it("app open on another page or creator: navigates that window to the creator Home and focuses it, opening nothing", async () => {
+    for (const current of ["/", "/schedule", "/setting", "/creator/usada-pekora"]) {
+      const open = fakeClient(current)
+
+      const { openWindow } = await tapNotification(payload, [open])
+
+      expect(open.navigate, current).toHaveBeenCalledWith("/creator/aizawa-ema")
+      expect(open.focus, current).toHaveBeenCalledTimes(1)
+      expect(openWindow, current).not.toHaveBeenCalled()
+    }
+  })
+
+  it("app already on that creator Home: only focuses it (no navigation, no new window)", async () => {
+    const open = fakeClient("/creator/aizawa-ema")
+
+    const { openWindow } = await tapNotification(payload, [open])
+
+    expect(open.focus).toHaveBeenCalledTimes(1)
+    expect(open.navigate).not.toHaveBeenCalled()
+    expect(openWindow).not.toHaveBeenCalled()
+  })
+})
+
+describe("creator deep link: a window that cannot be navigated", () => {
+  const payload = { videoId: "v1", reminderKind: "start", url: "/creator/aizawa-ema" }
+
+  it("navigation unsupported: opens the creator Home directly instead of leaving the user on the wrong page", async () => {
+    const open = fakeClient("/", { navigable: false })
+
+    const { openWindow } = await tapNotification(payload, [open])
+
+    expect(openWindow).toHaveBeenCalledTimes(1)
+    expect(openWindow).toHaveBeenCalledWith("/creator/aizawa-ema")
+    expect(open.focus).not.toHaveBeenCalled() // the opened window is the one the user sees; the old one is not pulled in front of it
+  })
+
+  it("navigation rejects: opens the creator Home directly", async () => {
+    const open = fakeClient("/")
+    open.navigate = vi.fn(async () => {
+      throw new Error("navigate refused")
+    })
+
+    const { openWindow } = await tapNotification(payload, [open])
+
+    expect(openWindow).toHaveBeenCalledWith("/creator/aizawa-ema")
+  })
+
+  it("navigation resolves with no window (refused): opens the creator Home directly", async () => {
+    const open = fakeClient("/")
+    open.navigate = vi.fn(async () => null) as unknown as FakeClient["navigate"]
+
+    const { openWindow } = await tapNotification(payload, [open])
+
+    expect(openWindow).toHaveBeenCalledWith("/creator/aizawa-ema")
+    expect(open.focus).not.toHaveBeenCalled()
+  })
+
+  it("openWindow resolving with no window (iOS-style null) still counts as opened: no extra focus, no second window", async () => {
+    const open = fakeClient("/", { navigable: false })
+
+    const { openWindow } = await tapNotification(payload, [open], { openWindow: async () => null })
+
+    expect(openWindow).toHaveBeenCalledTimes(1)
+    expect(open.focus).not.toHaveBeenCalled()
+  })
+
+  it("neither navigation nor openWindow works: the existing window is still focused where it is", async () => {
+    const open = fakeClient("/", { navigable: false })
+
+    const { openWindow } = await tapNotification(payload, [open], {
+      openWindow: async () => {
+        throw new Error("InvalidAccessError")
+      },
+    })
+
+    expect(openWindow).toHaveBeenCalledTimes(1)
+    expect(open.focus).toHaveBeenCalledTimes(1)
+  })
+
+  it("never reaches an untrusted URL through the fallback: a bad route opens the root and never navigates", async () => {
+    const open = fakeClient("/", { navigable: true })
+
+    const { openWindow } = await tapNotification({ videoId: "v1", url: "https://evil.example.com/creator/aizawa-ema" }, [open])
+
+    expect(open.navigate).not.toHaveBeenCalled()
+    expect(openWindow).not.toHaveBeenCalled()
+    expect(open.focus).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("creator deep link: missing or unusable creator information", () => {
+  it("a payload without a route (older notification, unknown/inactive creator) just opens or focuses the app as before", async () => {
+    const { openWindow } = await tapNotification({ videoId: "v1", reminderKind: "start" }, [])
+    expect(openWindow).toHaveBeenCalledWith("/")
+
+    const open = fakeClient("/schedule")
+    await tapNotification({ videoId: "v1", reminderKind: "start" }, [open])
+    expect(open.focus).toHaveBeenCalledTimes(1)
+    expect(open.navigate).not.toHaveBeenCalled()
+  })
+
+  it("an invalid creator slug is still delivered to the app as a same-origin path: the app itself falls back to / (see creatorRouting.test.ts)", async () => {
+    const { openWindow } = await tapNotification({ videoId: "v1", url: "/creator/not-a-creator" }, [])
+
+    expect(openWindow).toHaveBeenCalledWith("/creator/not-a-creator") // same-origin, so allowed; Creator routing refuses an unknown slug and shows /
+  })
+
+  it("with several open windows only one is used: one navigation, one focus", async () => {
+    const first = fakeClient("/schedule")
+    const second = fakeClient("/setting")
+
+    const { openWindow } = await tapNotification({ videoId: "v1", url: "/creator/aizawa-ema" }, [first, second])
+
+    expect(first.navigate).toHaveBeenCalledTimes(1)
+    expect(second.navigate).not.toHaveBeenCalled()
+    expect(second.focus).not.toHaveBeenCalled()
+    expect(openWindow).not.toHaveBeenCalled()
   })
 })
 

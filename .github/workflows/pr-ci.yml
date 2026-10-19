@@ -142,6 +142,8 @@ jobs:
           tests/api/test_creator_milestones_api.py
           tests/scripts/migration/test_seed_creator_milestones.py
           tests/test_terraform_creator_milestones_table.py
+          tests/notifications/test_creator_route.py
+          tests/notifications/test_notification_payload.py
 
   frontend-focused-tests:
     needs: detect-scope
@@ -311,6 +313,7 @@ jobs:
           src/features/notifications/push/pushGate.test.tsx
           src/features/notifications/push/pushPermissionState.test.ts
           src/features/notifications/push/serviceWorker.notificationclick.test.ts
+          src/features/home-room/hooks/useResetScrollOnCreatorChange.test.ts
           src/features/live-schedule/components/StreamNotificationPanel.pushGate.test.tsx
 
   # The stable required check. Always runs (even when a test group failed or was skipped) and decides from the results:

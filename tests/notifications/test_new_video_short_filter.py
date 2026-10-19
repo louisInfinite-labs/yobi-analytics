@@ -110,13 +110,14 @@ def test_a_short_event_is_delivered_for_a_member_of_the_short_card(monkeypatch):
     fake_delivery_log(monkeypatch)
     preference = preference_value(newVideoShortCreatorOverride={"aizawa_ema": True})
 
-    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT)) == [{"videoId": "v1"}]
+    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event(**SHORT_EVENT)) == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
 
 
 def test_members_a_and_c_get_their_shorts_but_b_does_not(monkeypatch):
     preference = preference_value(newVideoShortCreatorOverride={"aizawa_ema": True, "shirakami_fubuki": False, "hakos_baelz": True})
 
-    for creator_id, expected in (("aizawa_ema", [{"videoId": "v1"}]), ("shirakami_fubuki", []), ("hakos_baelz", [{"videoId": "v1"}])):
+    # The harness's Creator Master only has aizawa_ema, so the other delivered creator (hakos_baelz) gets no route.
+    for creator_id, expected in (("aizawa_ema", [{"videoId": "v1", "url": "/creator/aizawa-ema"}]), ("shirakami_fubuki", []), ("hakos_baelz", [{"videoId": "v1"}])):
         fake_delivery_log(monkeypatch)
         sent = run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event(creatorId=creator_id, **SHORT_EVENT))
         assert sent == expected, creator_id
@@ -137,13 +138,13 @@ def test_an_ordinary_video_is_unaffected_by_the_short_card(monkeypatch):
     fake_delivery_log(monkeypatch)
     preference = preference_value(newVideoShortCreatorOverride={"aizawa_ema": True})
 
-    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event()) == [{"videoId": "v1"}]
+    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference, event=_event()) == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
 
 
 def test_a_legacy_event_without_a_content_type_is_an_ordinary_video(monkeypatch):
     fake_delivery_log(monkeypatch)
 
-    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference_value(), event=_event()) == [{"videoId": "v1"}]
+    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=preference_value(), event=_event()) == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
 
 
 def test_the_global_master_switch_beats_the_short_card(monkeypatch):

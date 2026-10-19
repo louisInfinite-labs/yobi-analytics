@@ -115,7 +115,7 @@ def test_new_video_eligibility_ignores_retired_scopes_and_follows_the_creator_sw
     stale = preference_value(newVideoTopicOverride={"gta": True, "endfield": False}, newVideoCreatorOverride={"aizawa_ema": True})
     fake_delivery_log(monkeypatch)
 
-    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=stale, event=due_event()) == [{"videoId": "v1"}]
+    assert run_slot_pass(monkeypatch, now=DAY1_EVENING, preference=stale, event=due_event()) == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
 
     fake_delivery_log(monkeypatch)
     off = preference_value(newVideoTopicOverride={"gta": True}, newVideoCreatorOverride={"aizawa_ema": False})

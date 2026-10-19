@@ -57,7 +57,7 @@ def test_every_reminder_type_reaches_a_client_in_its_own_language_with_the_origi
 
     assert payload["title"] == EXPECTED_TITLE[locale][timing]
     assert payload["body"] == JA_STREAM_TITLE  # the original Japanese title, never translated
-    assert payload["data"] == {"videoId": "sf6_stream", "reminderKind": "start" if timing == "start" else "advance"}
+    assert payload["data"] == {"videoId": "sf6_stream", "reminderKind": "start" if timing == "start" else "advance", "url": "/creator/aizawa-ema"}
 
 
 @pytest.mark.parametrize("locale", ["zh-TW", "ja", "en"])
@@ -68,7 +68,7 @@ def test_a_new_video_reaches_a_client_in_its_own_language_with_the_original_vide
 
     assert payload["title"] == EXPECTED_TITLE[locale]["new_video"]
     assert payload["body"] == original
-    assert payload["data"] == {"videoId": "v1"}
+    assert payload["data"] == {"videoId": "v1", "url": "/creator/aizawa-ema"}
 
 
 @pytest.mark.parametrize("preference", [_preference_value(), _preference_value(notificationLocale=None), _preference_value(notificationLocale="fr"), _preference_value(notificationLocale=5)])
