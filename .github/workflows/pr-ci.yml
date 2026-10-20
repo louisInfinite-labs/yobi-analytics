@@ -315,6 +315,8 @@ jobs:
           src/features/notifications/push/serviceWorker.notificationclick.test.ts
           src/features/home-room/hooks/useResetScrollOnCreatorChange.test.ts
           src/features/live-schedule/components/StreamNotificationPanel.pushGate.test.tsx
+          src/app/seo/sitemap.test.ts
+          src/app/seo/hosting.test.ts
 
   # The stable required check. Always runs (even when a test group failed or was skipped) and decides from the results:
   # a group whose scope was detected MUST have succeeded; a group whose scope was not detected must have been skipped.

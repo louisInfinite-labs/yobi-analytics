@@ -1,5 +1,6 @@
 import { getCreatorById } from "../../entities/creator/data/creatorRegistry"
 import type { CanonicalCreator } from "../../entities/creator/model/creatorMaster"
+import { CREATOR_SLUG_PATTERN, creatorIdToSlug } from "./creatorSlugRule"
 
 /** Home's creator URLs: /creator/:creatorSlug. The slug is the creator's canonical, backend-stable creatorId (the Creator Registry's
  * `creatorId`, e.g. "aizawa_ema") with "_" written as "-" ("aizawa-ema"). Canonical ids only use [a-z0-9_] and never "-", so the mapping is
@@ -8,7 +9,7 @@ import type { CanonicalCreator } from "../../entities/creator/model/creatorMaste
 export const CREATOR_ROUTE_PREFIX = "/creator/"
 
 export function creatorSlug(creator: Pick<CanonicalCreator, "creatorId">): string {
-  return creator.creatorId.replace(/_/g, "-")
+  return creatorIdToSlug(creator.creatorId)
 }
 
 export function creatorPath(creator: Pick<CanonicalCreator, "creatorId">): string {
@@ -18,7 +19,7 @@ export function creatorPath(creator: Pick<CanonicalCreator, "creatorId">): strin
 /** The creator a slug names, or undefined (a malformed slug, a creator that is not in the registry, or one that is not active). Strict: only the
  * canonical spelling resolves, so there is exactly one URL per creator. */
 export function creatorFromSlug(slug: string): CanonicalCreator | undefined {
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return undefined
+  if (!CREATOR_SLUG_PATTERN.test(slug)) return undefined
   const creator = getCreatorById(slug.replace(/-/g, "_"))
   return creator?.active && creatorSlug(creator) === slug ? creator : undefined
 }
