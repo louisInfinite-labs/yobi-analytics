@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import { resolveCreatorKey } from "../../entities/creator/data/creatorRegistry"
 import { creatorThemeStyle } from "../../shared/theme/creatorThemeStyle"
 import { useBreakpoint } from "../../shared/hooks/useBreakpoint"
@@ -17,6 +17,8 @@ import { useResetScrollOnCreatorChange } from "../../features/home-room/hooks/us
 import { useVideoSearchInput } from "../../features/video-search/hooks/useVideoSearchInput"
 import { OshiStatusPanel } from "../../features/oshi-status/components/OshiStatusPanel"
 import { RecentVideosSection } from "../../features/home-room/components/RecentVideosSection"
+import { useVideoDeepLink } from "../../features/video-deep-link/useVideoDeepLink"
+import { VideoDeepLinkDialog } from "../../features/video-deep-link/VideoDeepLinkDialog"
 
 /** The real, playable YouTube embed for the selected creator -- only
  * rendered when selectLiveEmbedVideo finds something eligible (live, upcoming,
@@ -114,6 +116,28 @@ export function HomePage() {
     if (mobileSearch) scrollToPlayerWhenBack.current = true
     else scrollBelowTopBar(streamRef.current)
   }
+  // A video notification's `?video=<id>` link (service worker -> /creator/<slug>?video=<id>): the exact video is checked and then opened through the same openVideo as a shelf
+  // pick, or a dialog explains why it cannot be shown. It never touches the default Oshi. The check can finish before /live-streams has loaded, and openVideo's
+  // "is this a live/upcoming stream" rule (a plain open must not mark a stream as watched) needs that data -- so the opening waits for it, and is dropped if the
+  // viewer has moved to another creator meanwhile.
+  const linkRef = useRef<{ pending: { video: { videoId: string; title: string }; creatorId: string } | null; flush: () => void }>({ pending: null, flush: () => {} })
+  useEffect(() => {
+    // Re-bound after every render so it always sees the latest loading flag, creator and openVideo; runs the waiting link as soon as the data is there.
+    linkRef.current.flush = () => {
+      const pending = linkRef.current.pending
+      if (!pending || streamVideos.loading) return
+      linkRef.current.pending = null
+      if (pending.creatorId === creatorId) openVideo(pending.video)
+    }
+    linkRef.current.flush()
+  })
+  const videoLink = useVideoDeepLink({
+    currentCreatorId: creatorId,
+    openVideo: (video) => {
+      linkRef.current.pending = { video, creatorId }
+      linkRef.current.flush()
+    },
+  })
 
   return (
     <div className="oshi-home" data-live-status-open={liveStatusOpen}>
@@ -151,6 +175,7 @@ export function HomePage() {
           />
         )}
       </main>
+      {videoLink.dialog && <VideoDeepLinkDialog kind={videoLink.dialog} onRetry={videoLink.retry} onClose={videoLink.dismiss} />}
     </div>
   )
 }

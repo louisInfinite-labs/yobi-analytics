@@ -241,6 +241,14 @@ export type TranslationKey =
   | "push.failedBody"
   | "push.failedDiagnosticLabel"
   | "push.close"
+  | "videoLink.titleUnavailable"
+  | "videoLink.titleUnknown"
+  | "videoLink.membersOnly"
+  | "videoLink.privateOrDeleted"
+  | "videoLink.unavailable"
+  | "videoLink.unknown"
+  | "videoLink.retry"
+  | "videoLink.close"
   | "pwa.installLabel"
   | "pwa.installHelp"
   | "pwa.installButton"
@@ -524,6 +532,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.failedBody": "請稍後再試。這次的變更未套用。",
     "push.failedDiagnosticLabel": "診斷碼",
     "push.close": "關閉",
+    "videoLink.titleUnavailable": "無法顯示影片",
+    "videoLink.titleUnknown": "無法確認影片狀態",
+    "videoLink.membersOnly": "這部影片已改為會員限定，無法顯示。",
+    "videoLink.privateOrDeleted": "這部影片已設為私人或已被刪除，無法顯示。",
+    "videoLink.unavailable": "這部影片目前無法觀看。",
+    "videoLink.unknown": "無法確認影片狀態，請稍後再試。",
+    "videoLink.retry": "重試",
+    "videoLink.close": "關閉",
     "pwa.installLabel": "安裝 OshiYobi",
     "pwa.installHelp": "將 OshiYobi 加入裝置主畫面，之後可像 App 一樣開啟。安裝是選用的，不安裝也能正常使用。",
     "pwa.installButton": "安裝",
@@ -805,6 +821,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.failedBody": "Please try again later. This change wasn't applied.",
     "push.failedDiagnosticLabel": "Diagnostic code",
     "push.close": "Close",
+    "videoLink.titleUnavailable": "This video can't be shown",
+    "videoLink.titleUnknown": "Couldn't check the video",
+    "videoLink.membersOnly": "This video was changed to members-only and can't be shown.",
+    "videoLink.privateOrDeleted": "This video is private or has been deleted and can't be shown.",
+    "videoLink.unavailable": "This video isn't available to watch right now.",
+    "videoLink.unknown": "We couldn't check the video's status. Please try again later.",
+    "videoLink.retry": "Retry",
+    "videoLink.close": "Close",
     "pwa.installLabel": "Install OshiYobi",
     "pwa.installHelp": "Add OshiYobi to your device's home screen to open it like an app. Installing is optional — everything works without it.",
     "pwa.installButton": "Install",
@@ -1086,6 +1110,14 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.failedBody": "しばらくしてからもう一度お試しください。今回の変更は適用されていません。",
     "push.failedDiagnosticLabel": "診断コード",
     "push.close": "閉じる",
+    "videoLink.titleUnavailable": "動画を表示できません",
+    "videoLink.titleUnknown": "動画の状態を確認できません",
+    "videoLink.membersOnly": "この動画はメンバー限定に変更されたため、表示できません。",
+    "videoLink.privateOrDeleted": "この動画は非公開または削除されたため、表示できません。",
+    "videoLink.unavailable": "この動画は現在視聴できません。",
+    "videoLink.unknown": "動画の状態を確認できませんでした。時間をおいて再度お試しください。",
+    "videoLink.retry": "再試行",
+    "videoLink.close": "閉じる",
     "pwa.installLabel": "OshiYobiをインストール",
     "pwa.installHelp": "OshiYobiを端末のホーム画面に追加して、アプリのように開けます。インストールは任意で、しなくても通常どおり使えます。",
     "pwa.installButton": "インストール",

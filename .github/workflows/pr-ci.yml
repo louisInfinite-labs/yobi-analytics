@@ -313,6 +313,10 @@ jobs:
           src/features/notifications/push/pushGate.test.tsx
           src/features/notifications/push/pushPermissionState.test.ts
           src/features/notifications/push/serviceWorker.notificationclick.test.ts
+          src/features/video-deep-link/videoAvailability.test.ts
+          src/features/video-deep-link/useVideoDeepLink.test.tsx
+          src/features/video-deep-link/VideoDeepLinkDialog.test.tsx
+          src/pages/home/HomePage.videoDeepLink.test.tsx
           src/features/home-room/hooks/useResetScrollOnCreatorChange.test.ts
           src/features/live-schedule/components/StreamNotificationPanel.pushGate.test.tsx
           src/app/seo/sitemap.test.ts

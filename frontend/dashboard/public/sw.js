@@ -100,12 +100,27 @@ function payloadRoute(data) {
   }
 }
 
+// A video-specific notification (new upload, live start/advance/catch-up reminder) carries the exact YouTube video id in `data.videoId`. When the
+// payload's route is a creator Home (`/creator/<slug>`, nothing else) and the id is a well-formed 11-character YouTube id, the route asks the app
+// for that exact video: `/creator/<slug>?video=<id>`. The app (src/features/video-deep-link) validates it again, checks the video's current
+// availability and either plays it or explains why it cannot. Any other id (malformed, or a payload without a creator route) leaves the plain route,
+// so a payload can never put anything but a bare video id into the URL.
+const CREATOR_ROUTE = /^\/creator\/[a-z0-9]+(?:-[a-z0-9]+)*$/
+const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
+
+function notificationRoute(data) {
+  const route = payloadRoute(data)
+  const videoId = data && data.videoId
+  if (route && CREATOR_ROUTE.test(route) && typeof videoId === "string" && YOUTUBE_VIDEO_ID.test(videoId)) return `${route}?video=${videoId}`
+  return route
+}
+
 // Tapping a notification focuses an already-open OshiYobi window rather than always opening a new one, so repeated
 // notifications don't pile up duplicate windows. With a payload route, the window is moved there (the SPA's own
 // route handling takes over); without one, the window is only focused and keeps whatever page it was on.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()
-  const route = payloadRoute(event.notification.data)
+  const route = notificationRoute(event.notification.data)
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clientList) => {
       const windows = clientList.filter((client) => "focus" in client)
