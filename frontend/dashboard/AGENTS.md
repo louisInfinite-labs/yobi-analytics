@@ -916,3 +916,44 @@ When implementation choices conflict, use this priority order:
 6. General engineering preference
 
 Do not override an explicit user requirement merely because another implementation appears technically cleaner.
+
+---
+
+# 43. Automated Browser Testing Against Production
+
+Automated browsers must never create production GA4 users/page views or production AWS client records.
+
+Why this matters (verified in code):
+
+- GA4 starts on `https://oshiyobi.web.app` and `https://oshiyobi.firebaseapp.com` production builds, on the measured routes `/`, `/schedule` and `/creator/*` (`src/shared/analytics/analytics.ts`). A fresh browser context is a new GA4 user.
+- The deployed AWS API (`*.execute-api.*.amazonaws.com`) is written by the app itself: `POST /clients/{id}/credential` (client registration, triggered e.g. by opening a stream notification panel on `/schedule`), `PUT/DELETE /clients/{id}/notification-preference`, `/push-subscription`, `/creator-reminder/...`, `/stream-notification-override/...`, and `POST /heartbeat` (dev-only dashboard page). These create or update records in DynamoDB.
+- Firebase preview channels (`oshiyobi--<channel>.web.app`) do NOT send GA4, but they use the production API, so their writes still reach DynamoDB.
+
+The only supported guard is `e2e/helpers/automationGuard.mjs`. It answers GA4 collection requests locally (204) and every non-GET/HEAD/OPTIONS request to the AWS API locally (403 `automation_guard_blocked`). API reads, `gtag.js`, Service Workers, Web Push, cookies and `localStorage` are untouched. It must be installed on the browser context BEFORE the first navigation. Do not add bot/automation detection to the app and do not change `analytics.ts` or heartbeat behavior for test purposes.
+
+How to use it:
+
+- Repository Playwright specs (`e2e/*.spec.ts`): both Playwright configs already pass `ANALYTICS_LAUNCH_ARGS` (GA hosts unresolvable in every launched browser). A spec that may target a real deployment imports `test` from `e2e/helpers/guardedTest.ts` (or `e2e/smoke/helpers.ts`, which already blocks GA and API writes) instead of `@playwright/test`.
+- Ad-hoc `playwright-core` scripts (Claude Code smoke checks) that visit production:
+
+  ```js
+  import { chromium } from "<repo>/frontend/dashboard/node_modules/playwright-core/index.mjs"
+  import { launchGuarded } from "<repo>/frontend/dashboard/e2e/helpers/automationGuard.mjs"
+  const { browser, context, guard } = await launchGuarded(chromium, { contextOptions: { viewport: { width: 1440, height: 900 } } })
+  const page = await context.newPage()
+  // ... drive the site ...
+  console.log("GA blocked:", guard.analytics.length, "API writes blocked:", guard.apiWrites)
+  await browser.close()
+  ```
+
+  Use `launchGuardedPersistent(chromium, <throwaway profile dir>, { launchOptions: { channel: "chrome" } })` when real Chrome with a persistent profile is needed (e.g. Web Push work). It replaces driving Chrome through a hand-rolled CDP client. For a script that creates its own context, call `guardAutomation(context)` before `newPage()`.
+- Local runs (localhost dev server + `scripts/local_api_server.py`) need no guard: the guard never matches 127.0.0.1/localhost.
+
+Tools that CANNOT be guarded reliably - do NOT use them against production:
+
+- The Claude Browser pane (`mcp__Claude_Browser__*`), claude-in-chrome, and any CDP client attached to a Chrome that was launched outside Playwright. They cannot install request interception before navigation (a CDP `--host-resolver-rules` launch flag would cover GA only, never the API writes), so neither GA4 nor AWS writes are protected. Use them only on localhost with a local/mock API (`VITE_API_BASE_URL` pointed at the local fixture), or replace the check with a guarded `playwright-core` script. Reading static assets with `curl` is fine (no JavaScript runs, so GA4 never fires).
+- If a production check truly needs one of these tools, ask the user first and say which GA4/AWS side effects it can have.
+
+Residual (not blocked, by design): `firebase.googleapis.com` / `firebaseinstallations.googleapis.com` calls made by the Firebase SDK. They are not GA4 reports, and blocking them would stop the SDK from initialising, which changes what is being tested.
+
+Regression tests for the guard: `npm run test:guard` (`e2e/guard/automation-guard.spec.ts`, throwaway local servers only, no production traffic). Run it after any change to `automationGuard.mjs` or either Playwright config.

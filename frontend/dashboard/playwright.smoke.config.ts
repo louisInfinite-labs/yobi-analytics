@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
+import { ANALYTICS_LAUNCH_ARGS } from "./e2e/helpers/automationGuard.mjs"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, "../..")
@@ -62,6 +63,9 @@ export default defineConfig({
       ],
   use: {
     baseURL: frontendBaseURL || `http://localhost:${SMOKE_FRONTEND_PORT}`,
+    // Pointed at production this suite must never reach GA4: GA collection hosts are unresolvable here, and e2e/smoke/helpers.ts also
+    // answers any collect request locally (e2e/helpers/automationGuard.mjs).
+    launchOptions: { args: ANALYTICS_LAUNCH_ARGS },
   },
   projects: [{ name: "chromium", use: { browserName: "chromium" } }],
 })

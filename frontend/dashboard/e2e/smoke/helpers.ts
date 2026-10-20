@@ -1,5 +1,6 @@
 import { test as base, expect, type Page, type Route } from "@playwright/test"
 import { DEFAULT_SMOKE_API_BASE_URL } from "../../playwright.smoke.config"
+import { blockAnalytics } from "../helpers/automationGuard.mjs"
 
 /** The backend base URL this smoke run targets -- the real deployed API when
  * SMOKE_API_BASE_URL is set (see the MD's Preconditions table for why that
@@ -64,10 +65,18 @@ export async function installReadOnlyApiGuard(page: Page): Promise<ApiWriteGuard
 /** Drop-in replacement for Playwright's `test` for every spec that drives a
  * browser page: the read-only guard is installed automatically on each test's
  * page, so a new spec cannot forget it. */
-export const test = base.extend<{ apiWriteGuard: ApiWriteGuard }>({
+export const test = base.extend<{ apiWriteGuard: ApiWriteGuard; analyticsGuard: Awaited<ReturnType<typeof blockAnalytics>> }>({
   apiWriteGuard: [
     async ({ page }, use) => {
       await use(await installReadOnlyApiGuard(page))
+    },
+    { auto: true },
+  ],
+  // GA4 collection is answered locally on every test's context too: when SMOKE_FRONTEND_URL points at the real site, no smoke run can
+  // create a user, session or page_view in the production GA4 property.
+  analyticsGuard: [
+    async ({ context }, use) => {
+      await use(await blockAnalytics(context))
     },
     { auto: true },
   ],
