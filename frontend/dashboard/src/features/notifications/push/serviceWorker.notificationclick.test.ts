@@ -276,3 +276,95 @@ describe("service worker lifecycle", () => {
     expect(types.sort()).toEqual(["activate", "install", "notificationclick", "push"])
   })
 })
+
+describe("video deep link: a video notification asks the app for that exact video (/creator/<slug>?video=<id>)", () => {
+  const VIDEO = "dQw4w9WgXcQ"
+  const CREATOR = "/creator/aizawa-ema"
+  const WITH_VIDEO = `${CREATOR}?video=${VIDEO}`
+
+  it("cold start (app closed): opens one window directly on the creator route carrying the exact video id", async () => {
+    const { openWindow } = await tapNotification({ videoId: VIDEO, url: CREATOR }, [])
+
+    expect(openWindow).toHaveBeenCalledTimes(1)
+    expect(openWindow).toHaveBeenCalledWith(WITH_VIDEO)
+  })
+
+  it("existing tab on another page or creator: navigates that tab to the exact-video route and focuses it, opening nothing", async () => {
+    const open = fakeClient("/schedule")
+
+    const { openWindow } = await tapNotification({ videoId: VIDEO, url: CREATOR }, [open])
+
+    expect(open.navigate).toHaveBeenCalledWith(WITH_VIDEO)
+    expect(open.focus).toHaveBeenCalledTimes(1)
+    expect(openWindow).not.toHaveBeenCalled()
+  })
+
+  it("existing tab already on that creator Home (parameter already consumed): it is still navigated, because the video itself is what the tap asks for", async () => {
+    const open = fakeClient(CREATOR)
+
+    await tapNotification({ videoId: VIDEO, url: CREATOR }, [open])
+
+    expect(open.navigate).toHaveBeenCalledWith(WITH_VIDEO)
+  })
+
+  it("a tab that is already showing the exact deep-link URL is only focused (no navigation, no new window)", async () => {
+    const open = fakeClient(WITH_VIDEO)
+
+    const { openWindow } = await tapNotification({ videoId: VIDEO, url: CREATOR }, [open])
+
+    expect(open.navigate).not.toHaveBeenCalled()
+    expect(open.focus).toHaveBeenCalledTimes(1)
+    expect(openWindow).not.toHaveBeenCalled()
+  })
+
+  it("every video-specific kind (new upload, live start, advance and catch-up reminders) carries the same payload shape and gets the same route", async () => {
+    for (const reminderKind of [undefined, "start", "advance", "late_discovery"]) {
+      const { openWindow } = await tapNotification({ videoId: VIDEO, url: CREATOR, reminderKind, image: `https://i.ytimg.com/vi/${VIDEO}/hqdefault.jpg` }, [])
+      expect(openWindow).toHaveBeenCalledWith(WITH_VIDEO)
+    }
+  })
+
+  it("an installed PWA window that cannot be navigated gets the exact-video route through openWindow", async () => {
+    const pwa = fakeClient("/schedule", { navigable: false })
+
+    const { openWindow } = await tapNotification({ videoId: VIDEO, url: CREATOR }, [pwa])
+
+    expect(openWindow).toHaveBeenCalledWith(WITH_VIDEO)
+  })
+
+  it("duplicate clicks on the same notification never open more than one window and always land on the same route", async () => {
+    const open = fakeClient("/schedule")
+
+    await tapNotification({ videoId: VIDEO, url: CREATOR }, [open])
+    const second = await tapNotification({ videoId: VIDEO, url: CREATOR }, [open])
+
+    expect(open.navigate).toHaveBeenCalledTimes(2)
+    expect(open.navigate).toHaveBeenNthCalledWith(1, WITH_VIDEO)
+    expect(open.navigate).toHaveBeenNthCalledWith(2, WITH_VIDEO)
+    expect(second.openWindow).not.toHaveBeenCalled()
+  })
+
+  it("a creator-only notification (no videoId) keeps the plain creator route", async () => {
+    const { openWindow } = await tapNotification({ url: CREATOR }, [])
+    expect(openWindow).toHaveBeenCalledWith(CREATOR)
+  })
+
+  it("an invalid videoId is never put in the URL: the plain creator route is used", async () => {
+    for (const videoId of ["v1", "", "short", "twelve_chars!", `${VIDEO}x`, "dQw4w9WgXc/", "a&b=c#d.e/f", "../..//etc", 12345678901, null, undefined, { id: VIDEO }]) {
+      const { openWindow } = await tapNotification({ videoId, url: CREATOR }, [])
+      expect(openWindow, String(videoId)).toHaveBeenCalledWith(CREATOR)
+    }
+  })
+
+  it("a videoId only ever rides on a creator Home route: other routes, no route and cross-origin routes are unchanged", async () => {
+    expect((await tapNotification({ videoId: VIDEO, url: "/schedule" }, [])).openWindow).toHaveBeenCalledWith("/schedule")
+    expect((await tapNotification({ videoId: VIDEO, url: `${CREATOR}?x=1` }, [])).openWindow).toHaveBeenCalledWith(`${CREATOR}?x=1`)
+    expect((await tapNotification({ videoId: VIDEO }, [])).openWindow).toHaveBeenCalledWith("/")
+    expect((await tapNotification({ videoId: VIDEO, url: `https://evil.example${CREATOR}` }, [])).openWindow).toHaveBeenCalledWith("/")
+  })
+
+  it("an invalid creator slug is still only a same-origin path with the id attached to nothing: it falls back as before", async () => {
+    expect((await tapNotification({ videoId: VIDEO, url: "/creator/Not_A_Slug" }, [])).openWindow).toHaveBeenCalledWith("/creator/Not_A_Slug")
+    expect((await tapNotification({ videoId: VIDEO, url: "/creator/" }, [])).openWindow).toHaveBeenCalledWith("/creator/")
+  })
+})
