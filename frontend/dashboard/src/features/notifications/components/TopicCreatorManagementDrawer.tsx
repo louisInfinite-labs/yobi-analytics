@@ -130,7 +130,17 @@ async function applyWhenPushReady(apply: () => void): Promise<void> {
  * larger screens. A native <input type="checkbox"> (so the keyboard, Space, and the screen reader's "checkbox, checked / not checked"
  * come for free) inside a 44px-minimum <label> (the whole square of space is the tap target); the look is settings.css's. It carries
  * exactly the switch's `checked` / `onChange` / accessible name, so the value, the push gate and the persistence are the same. */
-export function NotificationCheckbox({ checked, onChange, ariaLabel }: { checked: boolean; onChange: (checked: boolean) => void; ariaLabel: string }) {
+export function NotificationCheckbox({
+  checked,
+  onChange,
+  ariaLabel,
+  disabled = false,
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  ariaLabel: string
+  disabled?: boolean
+}) {
   return (
     <label className="topic-creator-drawer__checkbox">
       <input
@@ -139,6 +149,7 @@ export function NotificationCheckbox({ checked, onChange, ariaLabel }: { checked
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
         aria-label={ariaLabel}
+        disabled={disabled}
       />
     </label>
   )

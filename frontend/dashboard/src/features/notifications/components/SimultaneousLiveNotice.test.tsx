@@ -111,4 +111,19 @@ describe("SimultaneousLiveNotice", () => {
 
     expect(screen.queryByRole("alert")).toBeNull()
   })
+
+  it("keeps the phone checkbox disabled until the stored state has been read, so a tap can never overwrite an opt-in it has not seen", async () => {
+    setViewport(390)
+    let answer: (enabled: boolean) => void = () => {}
+    vi.mocked(fetchSimultaneousLiveNotice).mockReturnValue(new Promise<boolean>((resolve) => (answer = resolve)))
+    render(<SimultaneousLiveNotice />)
+
+    const box = screen.getByRole("checkbox", { name: "Simultaneous stream heads-up" })
+    expect(box).toBeDisabled()
+
+    answer(true)
+    await waitFor(() => expect(box).toBeEnabled())
+    expect(box).toBeChecked()
+    setViewport(1024)
+  })
 })

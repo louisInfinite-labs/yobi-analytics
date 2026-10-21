@@ -12,10 +12,27 @@ single-recipient runs and the test suite deterministic and free of thread start-
 
 from __future__ import annotations
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Sequence, TypeVar
 
 T = TypeVar("T")
+
+# One pool per worker count, created on first use and kept for the life of the container. The pool's threads keep their per-thread boto3 resources (and
+# TLS connections) warm from one invocation to the next instead of rebuilding up to 16 of them every due minute. A Lambda container runs one invocation at a
+# time, so a pool is never used by two runs at once.
+_pools: dict[int, ThreadPoolExecutor] = {}
+_pools_lock = threading.Lock()
+
+
+def _pool(workers: int) -> ThreadPoolExecutor:
+    """The container's long-lived pool of `workers` threads."""
+    with _pools_lock:
+        pool = _pools.get(workers)
+        if pool is None:
+            pool = _pools[workers] = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"yobi-pool-{workers}")
+        return pool
+
 
 DEFAULT_WORKERS = 16  # about 50 recipients per second at ~0.3 s each: 300 s is ~15,000 recipients, far beyond one minute's realistic fan-out
 
@@ -30,12 +47,11 @@ def run_ordered(fn: Callable[[Any], T], items: Sequence[Any], *, workers: int) -
             except Exception as exc:  # noqa: BLE001 -- returned in the item's slot, see the module docstring
                 results.append(exc)
         return results
-    with ThreadPoolExecutor(max_workers=min(workers, len(items))) as pool:
-        futures = [pool.submit(fn, item) for item in items]
-        out: list[T | BaseException] = []
-        for future in futures:
-            try:
-                out.append(future.result())
-            except Exception as exc:  # noqa: BLE001 -- see the module docstring
-                out.append(exc)
-        return out
+    futures = [_pool(workers).submit(fn, item) for item in items]
+    out: list[T | BaseException] = []
+    for future in futures:
+        try:
+            out.append(future.result())
+        except Exception as exc:  # noqa: BLE001 -- see the module docstring
+            out.append(exc)
+    return out

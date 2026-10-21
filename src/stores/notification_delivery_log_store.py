@@ -80,7 +80,8 @@ def _resource():
     """
     resource = getattr(_local, "resource", None)
     if resource is None:
-        resource = boto3.resource("dynamodb")
+        # A private Session per thread: the shared default Session is not thread-safe to build resources from (first use races to create it).
+        resource = boto3.session.Session().resource("dynamodb")
         _local.resource = resource
     return resource
 

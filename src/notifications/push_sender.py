@@ -188,7 +188,9 @@ def send_push_notification(
         # rejected redirect from _PUSH_SESSION's max_redirects=0) never
         # reached the push service well enough to know the subscription is
         # gone — always transient, matching the "not expired" branch above.
-        return PushResult(sent=False, subscription_expired=False, error=str(exc), retryable=True)
+        # A read timeout means the request WAS sent and may have been accepted: an immediate resend could show the notification twice (the
+        # service worker sets no tag), so only a failure before the request went out (connect error / connect timeout) is retryable.
+        return PushResult(sent=False, subscription_expired=False, error=str(exc), retryable=not isinstance(exc, requests.ReadTimeout))
 
     return PushResult(sent=True, subscription_expired=False)
 

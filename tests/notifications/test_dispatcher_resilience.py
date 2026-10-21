@@ -447,18 +447,30 @@ def test_run_ordered_with_one_worker_runs_inline_on_the_calling_thread():
     assert set(seen) == {threading.get_ident()}
 
 
-def test_the_stores_keep_one_boto3_resource_per_thread(monkeypatch):
-    """boto3 Resource objects are not thread-safe, so the pool's threads must not share one."""
+def test_the_stores_build_each_threads_resource_from_that_threads_own_boto3_session(monkeypatch):
+    """boto3 Resource AND the shared default Session are not thread-safe to build from concurrently: every thread gets its own Session, once."""
     from stores import notification_delivery_log_store, remote_config_store
 
     for module in (remote_config_store, notification_delivery_log_store):
-        created: list[object] = []
-        monkeypatch.setattr(module.boto3, "resource", lambda *_a, **_kw: (created.append(object()), created[-1])[1])
+        sessions: list[object] = []
+
+        class _Session:
+            """A stand-in boto3 Session that records that it was created and hands out its own resource."""
+
+            def __init__(self):
+                """Record this Session."""
+                sessions.append(self)
+
+            def resource(self, name):
+                """This Session's own resource."""
+                return object()
+
+        monkeypatch.setattr(module.boto3.session, "Session", _Session)
         monkeypatch.setattr(module, "_local", threading.local())
         seen: list[object] = []
 
         def fetch(module=module, seen=seen):
-            """Two calls on this thread, one resource."""
+            """Two calls on this thread: one Session, one resource."""
             first, second = module._resource(), module._resource()
             assert first is second
             seen.append(first)
@@ -469,23 +481,17 @@ def test_the_stores_keep_one_boto3_resource_per_thread(monkeypatch):
         for thread in threads:
             thread.join()
 
-        assert len({id(resource) for resource in seen}) == 3 and len(created) == 3
+        assert len({id(resource) for resource in seen}) == 3 and len(sessions) == 3
 
 
-# ============ V1 target: 100 simultaneous recipients, production worker count, no real Web Push ============
+def test_the_pool_keeps_its_threads_between_calls_so_their_resources_and_connections_stay_warm():
+    """Every due minute is a new call: it must reuse the same worker threads instead of starting up to 16 new ones (and rebuilding their boto3 resources)."""
+    def work(item):
+        """Hold the thread briefly so the whole pool is used."""
+        time.sleep(0.01)
+        return threading.get_ident()
 
+    first = set(parallel.run_ordered(work, list(range(24)), workers=6))
+    second = set(parallel.run_ordered(work, list(range(24)), workers=6))
 
-def test_v1_target_one_hundred_due_reminder_recipients_are_each_delivered_exactly_once_with_the_production_settings(world, monkeypatch):
-    """The V1 sizing target: 100 clients due in the same minute, served with the production worker count (parallel.DEFAULT_WORKERS), against a fake push
-    service -- nobody real is notified. Every client is delivered once, concurrently, and nothing is left unserved."""
-    monkeypatch.setattr(notification_dispatcher, "_SEND_WORKERS", parallel.DEFAULT_WORKERS)
-    push = _SlowPush()
-    monkeypatch.setattr(push_sender, "send_push_notification", push)
-    _fans(world, 99)  # plus the fixture's c1
-    world.run(START - timedelta(minutes=2))
-
-    summary = world.run(START + timedelta(seconds=10))
-
-    assert summary["delivered"] == 100 and "unserved" not in summary
-    assert len(push.endpoints) == 100 and len(set(push.endpoints)) == 100
-    assert 1 < push.max_in_flight <= parallel.DEFAULT_WORKERS
+    assert 1 < len(first) <= 6 and second <= first

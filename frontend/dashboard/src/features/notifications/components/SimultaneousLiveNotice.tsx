@@ -31,7 +31,7 @@ export function SimultaneousLiveNotice() {
           <p className="notification-detail-section__description">{t(locale, "notificationSettings.simultaneousLive.description")}</p>
         </div>
         {phone ? (
-          <NotificationCheckbox checked={enabled} onChange={onChange} ariaLabel={title} />
+          <NotificationCheckbox checked={enabled} onChange={onChange} ariaLabel={title} disabled={!loaded} />
         ) : (
           <Switch checked={enabled} disabled={!loaded} onChange={onChange} aria-label={title} />
         )}

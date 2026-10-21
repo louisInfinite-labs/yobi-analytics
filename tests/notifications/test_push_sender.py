@@ -357,3 +357,22 @@ def test_the_retry_is_bounded_and_never_repeats_a_non_retryable_or_expired_resul
     for result in (push_sender.PushResult(False, False, "bad", retryable=False), push_sender.PushResult(False, True, "gone", retryable=False)):
         calls = _scripted(monkeypatch, [result] * 5)
         assert _bounded().sent is False and len(calls) == 1
+
+
+@pytest.mark.parametrize("exception, retryable", [("ConnectionError", True), ("ConnectTimeout", True), ("ReadTimeout", False)])
+def test_a_read_timeout_is_not_resent_but_a_failure_before_the_request_went_out_is(monkeypatch, exception, retryable):
+    """A ReadTimeout means the push service may already have accepted the message (an immediate resend could show it twice); a connect error / connect
+    timeout never reached it, so one more attempt is safe."""
+    import requests
+
+    def fake(**kwargs):
+        raise getattr(requests, exception)("boom")
+
+    monkeypatch.setattr(push_sender, "webpush", fake)
+
+    result = push_sender.send_push_notification(
+        {"endpoint": "https://fcm.googleapis.com/fcm/send/x", "keys": {"p256dh": "a", "auth": "b"}},
+        title="t", body="b", data=None, vapid_private_key="k", vapid_claims={"sub": "mailto:a@b.c"},
+    )
+
+    assert result.sent is False and result.retryable is retryable
