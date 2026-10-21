@@ -234,7 +234,7 @@ def test_the_reminder_schedule_is_built_from_the_same_filtered_list(monkeypatch,
 
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
     written = {}
-    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: written.update(record))
+    monkeypatch.setattr(remote_config_store, "put_remote_config_if_newer", lambda record, *, revision: written.update(record) or True)
     monkeypatch.setattr(notification_dispatcher.remote_config_api, "write_remote_config", lambda record: record)
 
     entries = notification_dispatcher._refresh_and_load_stream_schedule(now=datetime.now(timezone.utc))

@@ -29,6 +29,7 @@ never delivered, if the process that claimed it died mid-flight).
 from __future__ import annotations
 
 import os
+import threading
 import random
 import time
 from datetime import datetime, timedelta, timezone
@@ -67,22 +68,21 @@ class NotificationDeliveryLogStoreError(Exception):
     """Raised when the DynamoDB Notification Delivery Log table is unreachable or malformed."""
 
 
-_cached_resource = None
+_local = threading.local()
 
 
 def _resource():
-    """Return a cached boto3 DynamoDB resource, using the ambient AWS credentials/region.
+    """Return this THREAD's cached boto3 DynamoDB resource, using the ambient AWS credentials/region.
 
-    Cached at module level rather than constructed fresh per call — see
-    dynamodb_store.py's own _resource() for why (a fresh boto3.resource()
-    per call forces a new TLS handshake every time instead of reusing a
-    warm connection). boto3 resources are documented as safe to share
-    across threads for the calls this module makes.
+    Cached (not constructed per call) so a warm Lambda keeps its connection pool -- see dynamodb_store.py's own _resource() for the production
+    incident a per-call resource caused. Cached per THREAD because boto3 Resource objects are not documented as thread-safe and the dispatcher
+    now serves recipients from a small thread pool; the low-level client underneath is thread-safe, the Resource wrapper is not guaranteed to be.
     """
-    global _cached_resource
-    if _cached_resource is None:
-        _cached_resource = boto3.resource("dynamodb")
-    return _cached_resource
+    resource = getattr(_local, "resource", None)
+    if resource is None:
+        resource = boto3.resource("dynamodb")
+        _local.resource = resource
+    return resource
 
 
 def already_delivered(client_id: str, video_id: str, *, now: datetime | None = None) -> bool:
@@ -104,6 +104,25 @@ def already_delivered(client_id: str, video_id: str, *, now: datetime | None = N
     if item["status"] in (_STATUS_DELIVERED, _STATUS_SUPPRESSED):
         return True
     return not _is_expired(item["claimedAt"], now=now)
+
+
+def row_status(client_id: str, video_id: str, *, now: datetime | None = None) -> str | None:
+    """The state of one (client_id, video_id) row: "delivered", "suppressed", "claimed" (a still-live claim), or None when there is no row or
+    its claim has expired (abandoned: a later attempt may take it over).
+
+    One GetItem. Unlike already_delivered it tells a live in-flight claim apart from a settled row, which a caller with its own retry state
+    needs: a settled row is done, a live claim means another worker may still be sending (look again later, never assume it was delivered).
+    """
+    table = _resource().Table(NOTIFICATION_DELIVERY_LOG_TABLE)
+    try:
+        item = table.get_item(Key={"clientId": client_id, "videoId": video_id}).get("Item")
+    except ClientError as exc:
+        raise NotificationDeliveryLogStoreError(f"Failed to read {NOTIFICATION_DELIVERY_LOG_TABLE}: {exc}") from exc
+    if item is None:
+        return None
+    if item["status"] in (_STATUS_DELIVERED, _STATUS_SUPPRESSED):
+        return item["status"]
+    return None if _is_expired(item["claimedAt"], now=now) else _STATUS_CLAIMED
 
 
 def handled_within(client_id: str, video_id: str, within: timedelta, *, now: datetime | None = None) -> bool:

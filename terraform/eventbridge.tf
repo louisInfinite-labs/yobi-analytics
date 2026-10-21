@@ -159,6 +159,19 @@ resource "aws_scheduler_schedule" "notification_dispatch" {
   target {
     arn      = aws_lambda_function.notification_dispatcher.arn
     role_arn = local.scheduler_role_arn
+    # Before this change (verified read-only 2026-10-21) the live schedule had no input and the Scheduler's default retry policy, 24 h / 185
+    # attempts. The dispatcher serves the minute it was SCHEDULED for, not the minute it happened to run in, so an invocation the Scheduler
+    # retried after a failure or throttle still reaches its own reminders (notification_dispatcher._scheduled_instant, which ignores a
+    # scheduledTime older than its 10-minute recovery lookback and then simply runs as an ordinary current minute). The input must stay a plain
+    # string -- jsonencode would escape the angle brackets and the Scheduler would not substitute its context attribute.
+    input = "{\"scheduledTime\":\"<aws.scheduler.scheduled-time>\"}"
+
+    # A reminder minute is worthless after ~10 minutes, so a failed invocation is retried only within that: the default would keep re-running a
+    # failing minute for 24 hours (up to 185 runs), each now able to recover nothing and only adding load during an outage.
+    retry_policy {
+      maximum_retry_attempts       = 5
+      maximum_event_age_in_seconds = 600
+    }
 
     dead_letter_config {
       arn = aws_sqs_queue.scheduler_dlq.arn

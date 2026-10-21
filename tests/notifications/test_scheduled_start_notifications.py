@@ -78,10 +78,14 @@ class Harness:
         monkeypatch.setattr(read_api, "holodex_get", self._no_holodex)
         monkeypatch.setattr(remote_config_store, "get_remote_config", self._get_config)
         monkeypatch.setattr(remote_config_store, "put_remote_config", self._put_config)
+        monkeypatch.setattr(remote_config_store, "put_remote_config_if_newer", self._put_config_if_newer)
+        monkeypatch.setattr(remote_config_store, "put_remote_config_versioned", self._put_config_versioned)
+        monkeypatch.setattr(remote_config_store, "delete_remote_config", self._delete_config)
         monkeypatch.setattr(remote_config_store, "list_by_key", self._list_by_key)
         monkeypatch.setattr(remote_config_store, "list_remote_config_by_prefix", self._list_by_prefix)
         monkeypatch.setattr(notification_delivery_log_store, "already_delivered", self._already_delivered)
         monkeypatch.setattr(notification_delivery_log_store, "handled_within", self._handled_within)
+        monkeypatch.setattr(notification_delivery_log_store, "row_status", self._row_status)
         monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", self._mark_delivered)
         monkeypatch.setattr(notification_delivery_log_store, "confirm_delivered", self._confirm_delivered)
         monkeypatch.setattr(notification_delivery_log_store, "release_claim", self._release_claim)
@@ -107,9 +111,36 @@ class Harness:
         """remote_config_store.put_remote_config (a full overwrite, like the real one)."""
         self.config[(record["clientId"], record["key"])] = record["value"]
 
+    def _put_config_if_newer(self, record, *, revision):
+        """remote_config_store.put_remote_config_if_newer: the conditional write -- refused when a record at least this new is stored."""
+        current = self.config.get((record["clientId"], record["key"]))
+        if isinstance(current, dict) and isinstance(current.get("revision"), int) and current["revision"] >= revision:
+            return False
+        self._put_config(record)
+        return True
+
+    def _put_config_versioned(self, record, *, expected_version):
+        """remote_config_store.put_remote_config_versioned: compare-and-set on value.version (None = create only)."""
+        current = self.config.get((record["clientId"], record["key"]))
+        if expected_version is None:
+            if current is not None:
+                return False
+        elif current is None or current.get("version") != expected_version:
+            return False
+        self._put_config(record)
+        return True
+
+    def _delete_config(self, client_id, key):
+        """remote_config_store.delete_remote_config."""
+        self.config.pop((client_id, key), None)
+
     def _list_by_key(self, key):
-        """remote_config_store.list_by_key: every client holding `key`."""
-        return [{"clientId": client, "value": value} for (client, k), value in self.config.items() if k == key]
+        """remote_config_store.list_by_key (the configKey-index): every client holding `key`, with the stored item."""
+        return [
+            {"clientId": client, "key": k, "value": value, "updatedAt": "2026-10-17T00:00:00+00:00"}
+            for (client, k), value in self.config.items()
+            if k == key
+        ]
 
     def _list_by_prefix(self, client_id, prefix):
         """remote_config_store.list_remote_config_by_prefix for one client."""
@@ -125,6 +156,15 @@ class Harness:
             return False
         return (client_id, video_id) in self.delivery
 
+    def _row_status(self, client_id, video_id, *, now=None):
+        """The delivery log's row state: delivered / suppressed / a still-live claim ("claimed"), or None (no row, or an abandoned claim)."""
+        row = self.delivery.get((client_id, video_id))
+        if row is None:
+            return None
+        if row["status"] == "claimed" and now is not None and now - datetime.fromisoformat(row["at"]) > timedelta(minutes=20):
+            return None
+        return row["status"]
+
     def _handled_within(self, client_id, video_id, within, *, now=None):
         """The delivery log's bounded legacy check: a row counts only while its timestamp is within `within` of `now`."""
         row = self.delivery.get((client_id, video_id))
@@ -132,8 +172,11 @@ class Harness:
 
     def _mark_delivered(self, client_id, video_id, claimed_at, *, now=None):
         """The atomic claim: a conditional put that only the first caller wins."""
-        if (client_id, video_id) in self.delivery:  # the real store's conditional put
-            return False
+        existing = self.delivery.get((client_id, video_id))
+        if existing is not None:  # the real store's conditional put: only an EXPIRED claim (older than 20 minutes) may be taken over
+            abandoned = existing["status"] == "claimed" and datetime.fromisoformat(claimed_at) - datetime.fromisoformat(existing["at"]) > timedelta(minutes=20)
+            if not abandoned:
+                return False
         self.delivery[(client_id, video_id)] = {"status": "claimed", "at": claimed_at}
         return True
 
@@ -167,10 +210,10 @@ class Harness:
         self.snapshot = streams
         self.snapshot_at = at
 
-    def run(self, now: datetime) -> dict:
-        """One dispatcher invocation at `now`."""
+    def run(self, now: datetime, context=None) -> dict:
+        """One dispatcher invocation at `now` (with an optional Lambda context)."""
         self._monkeypatch.setattr(notification_dispatcher, "datetime", _frozen(now))
-        return notification_dispatcher.lambda_handler({}, None)
+        return notification_dispatcher.lambda_handler({}, context)
 
     def titles(self) -> list[str]:
         """The titles of every push that actually went out."""

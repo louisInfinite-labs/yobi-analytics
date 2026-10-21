@@ -23,6 +23,7 @@ retrying later without deleting anything).
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
@@ -58,6 +59,9 @@ _PUSH_REQUEST_TIMEOUT_SECONDS = 10.0
 # Lambda container keeps its connection pool.
 _PUSH_SESSION = requests.Session()
 _PUSH_SESSION.max_redirects = 0
+# The dispatcher sends from a small thread pool (notifications/parallel.py): the default pool of 10 connections per host would discard connections
+# ("pool is full") under 16 workers all talking to the same push service, so the pool is sized for them.
+_PUSH_SESSION.mount("https://", requests.adapters.HTTPAdapter(pool_connections=4, pool_maxsize=32))
 
 
 class InvalidSubscriptionError(ValueError):
@@ -71,6 +75,9 @@ class PushResult:
     sent: bool
     subscription_expired: bool
     error: str | None = None
+    # True only for a failure that is plausibly transient and worth one more immediate attempt: a transport error, a 429 or a 5xx from the push
+    # service. A permanently bad subscription, an unusable key or a 4xx rejection is never retryable.
+    retryable: bool = False
 
 
 def parse_subscription(raw: Any) -> dict[str, Any]:
@@ -170,7 +177,8 @@ def send_push_notification(
         )
     except WebPushException as exc:
         status_code = exc.response.status_code if exc.response is not None else None
-        return PushResult(sent=False, subscription_expired=status_code in (404, 410), error=str(exc))
+        retryable = status_code is None or status_code == 429 or status_code >= 500
+        return PushResult(sent=False, subscription_expired=status_code in (404, 410), error=str(exc), retryable=retryable)
     except (ValueError, VapidException) as exc:
         # Signing the VAPID claims or encrypting for a malformed stored subscription key failed before anything was sent: a failed send
         # for THIS subscription, never an exception that ends the caller's whole run.
@@ -180,6 +188,36 @@ def send_push_notification(
         # rejected redirect from _PUSH_SESSION's max_redirects=0) never
         # reached the push service well enough to know the subscription is
         # gone — always transient, matching the "not expired" branch above.
-        return PushResult(sent=False, subscription_expired=False, error=str(exc))
+        return PushResult(sent=False, subscription_expired=False, error=str(exc), retryable=True)
 
     return PushResult(sent=True, subscription_expired=False)
+
+
+# One more immediate attempt after a plausibly transient failure (see PushResult.retryable), never more: a longer retry belongs to the caller's own
+# durable retry state, not to a Lambda sleeping inside a loop over recipients.
+_RETRY_PAUSE_SECONDS = 0.5
+
+
+def send_with_bounded_retry(
+    subscription: dict[str, Any],
+    *,
+    title: str,
+    body: str,
+    data: dict[str, Any] | None,
+    vapid_private_key: str,
+    vapid_claims: dict[str, str],
+    attempts: int = 2,
+) -> PushResult:
+    """send_push_notification, repeated at most `attempts` times in total while the failure is retryable (not sent, not an expired
+    subscription, PushResult.retryable). Returns the last result. Never raises."""
+    result = send_push_notification(
+        subscription, title=title, body=body, data=data, vapid_private_key=vapid_private_key, vapid_claims=vapid_claims
+    )
+    for _ in range(max(attempts, 1) - 1):
+        if result.sent or result.subscription_expired or not result.retryable:
+            break
+        time.sleep(_RETRY_PAUSE_SECONDS)
+        result = send_push_notification(
+            subscription, title=title, body=body, data=data, vapid_private_key=vapid_private_key, vapid_claims=vapid_claims
+        )
+    return result

@@ -11,6 +11,8 @@ from stores.remote_config_store import (
     list_remote_config,
     list_remote_config_by_prefix,
     put_remote_config,
+    put_remote_config_if_newer,
+    put_remote_config_versioned,
 )
 
 AWS_REGION = "ap-northeast-1"
@@ -193,3 +195,71 @@ def test_list_by_prefix_returns_only_that_clients_matching_keys(remote_config_ta
 
 def test_list_by_prefix_returns_empty_list_when_nothing_matches(remote_config_table):
     assert list_remote_config_by_prefix("c1", "creatorReminder#") == []
+
+
+def _system_record(key: str, value: dict, client_id: str = "__system__") -> dict:
+    """A record as remote_config_api.write_remote_config shapes it."""
+    return {"clientId": client_id, "key": key, "value": value, "updatedAt": "2026-10-17T00:00:00+00:00"}
+
+
+def test_if_newer_writes_when_nothing_is_stored_and_replaces_an_older_revision(remote_config_table):
+    """The revision-guarded schedule write: first write lands, a newer revision replaces it."""
+    assert put_remote_config_if_newer(_system_record("streamSchedule", {"revision": 100, "n": 1}), revision=100) is True
+    assert put_remote_config_if_newer(_system_record("streamSchedule", {"revision": 200, "n": 2}), revision=200) is True
+
+    assert get_remote_config("__system__", "streamSchedule")["value"] == {"revision": 200, "n": 2}
+
+
+def test_if_newer_refuses_an_older_or_equal_revision_and_leaves_the_stored_value_alone(remote_config_table):
+    """An older overlapping run (or a duplicate of the same source) loses the conditional write instead of overwriting newer state."""
+    put_remote_config_if_newer(_system_record("streamSchedule", {"revision": 200, "n": 2}), revision=200)
+
+    assert put_remote_config_if_newer(_system_record("streamSchedule", {"revision": 100, "n": 1}), revision=100) is False
+    assert put_remote_config_if_newer(_system_record("streamSchedule", {"revision": 200, "n": 3}), revision=200) is False
+
+    assert get_remote_config("__system__", "streamSchedule")["value"] == {"revision": 200, "n": 2}
+
+
+def test_if_newer_always_replaces_a_record_written_before_revisions_existed(remote_config_table):
+    """A stored record with no revision (the record format before this change) is replaced."""
+    put_remote_config(_system_record("streamSchedule", {"entries": {}}))
+
+    assert put_remote_config_if_newer(_system_record("streamSchedule", {"revision": 5}), revision=5) is True
+    assert get_remote_config("__system__", "streamSchedule")["value"] == {"revision": 5}
+
+
+def test_versioned_create_succeeds_once_and_fails_if_the_record_exists(remote_config_table):
+    """expected_version=None is create-only: of two writers racing to create a ledger exactly one wins."""
+    assert put_remote_config_versioned(_system_record("simulNotice#x", {"version": 1}), expected_version=None) is True
+    assert put_remote_config_versioned(_system_record("simulNotice#x", {"version": 1, "other": True}), expected_version=None) is False
+
+    assert get_remote_config("__system__", "simulNotice#x")["value"] == {"version": 1}
+
+
+def test_versioned_update_is_a_compare_and_set_on_the_stored_version(remote_config_table):
+    """Only the writer holding the current version can advance it; a stale writer is refused and changes nothing."""
+    put_remote_config_versioned(_system_record("simulNotice#x", {"version": 1}), expected_version=None)
+
+    assert put_remote_config_versioned(_system_record("simulNotice#x", {"version": 2, "by": "first"}), expected_version=1) is True
+    assert put_remote_config_versioned(_system_record("simulNotice#x", {"version": 2, "by": "second"}), expected_version=1) is False
+
+    assert get_remote_config("__system__", "simulNotice#x")["value"] == {"version": 2, "by": "first"}
+
+
+def test_versioned_update_of_a_missing_record_is_refused(remote_config_table):
+    """A deleted (superseded) ledger is never resurrected by a late writer holding an old version."""
+    assert put_remote_config_versioned(_system_record("simulNotice#gone", {"version": 2}), expected_version=1) is False
+    assert get_remote_config("__system__", "simulNotice#gone") is None
+
+
+def test_the_config_key_index_lists_exactly_the_clients_holding_a_reminder_or_opt_in_key(remote_config_table):
+    """The sparse per-creator / opt-in lookups the dispatcher relies on: a Query of one configKey returns only the clients that stored it."""
+    for client_id in ("c1", "c2", "c3"):
+        put_remote_config(_system_record("creatorReminder#aizawa_ema#all", {"notifyAtStart": True, "advanceReminder": None}, client_id))
+    put_remote_config(_system_record("creatorReminder#other#all", {"notifyAtStart": True, "advanceReminder": None}, "c4"))
+    put_remote_config(_system_record("simultaneousLiveNotice", {"enabled": True}, "c2"))
+
+    assert [r["clientId"] for r in list_by_key("creatorReminder#aizawa_ema#all")] == ["c1", "c2", "c3"]
+    assert [r["clientId"] for r in list_by_key("simultaneousLiveNotice")] == ["c2"]
+    assert list_by_key("creatorReminder#nobody#all") == []
+    assert {"clientId", "key", "value", "updatedAt"} == set(list_by_key("simultaneousLiveNotice")[0])

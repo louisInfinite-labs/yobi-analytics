@@ -19,6 +19,7 @@ import { ALL_TOPICS_ID, getSelectableTopics, isNotificationTopic, isPermanentTop
 import type { TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { NewVideoDeliveryTimes } from "./NewVideoDeliveryTimes"
+import { SimultaneousLiveNotice } from "./SimultaneousLiveNotice"
 import { TopicCreatorManagementDrawer } from "./TopicCreatorManagementDrawer"
 
 
@@ -244,6 +245,8 @@ function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraf
   // The new-video times only matter for a topic that sends new-video notifications: a Live-only topic hides the section (a Short card is
   // all new videos, so it always shows it).
   const sendsNewVideos = isShort || getNotificationType(topicId) !== "live"
+  // The simultaneous-livestream notice is about live streams: shown for a topic that sends live notifications (a Short card and a New-Video-only topic have none).
+  const sendsLive = !isShort && getNotificationType(topicId) !== "newVideo"
 
   return (
     <div className="notification-detail-panel">
@@ -257,6 +260,7 @@ function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraf
       {!isShort && <NotificationTypeSection topicId={topicId} topicLabel={topicLabel} />}
       <MembersSection topicId={topicId} topicLabel={topicLabel} onManage={onManage} />
       {sendsNewVideos && <NewVideoDeliveryTimes />}
+      {sendsLive && <SimultaneousLiveNotice />}
 
       {/* No actions, no row: a saved permanent topic has nothing to Save or Remove, so the footer (and its divider and padding) is not rendered. */}
       {(isDraft || !isPermanentTopic(topicId)) && (

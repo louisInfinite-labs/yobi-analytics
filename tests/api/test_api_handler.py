@@ -1271,3 +1271,81 @@ def test_get_recent_streams_route_is_retired_with_410_and_never_reaches_holodex(
         "code": "ENDPOINT_RETIRED",
         "replacement": "GET /creators/{creatorId}/videos/recent",
     }
+
+
+# --- 同時開播預告 opt-in: one sparse item, written / deleted on its own -------------------------------------------------------
+
+
+def _put_simultaneous_notice(client_secret, *, with_secret=True, body=None):
+    """PUT /clients/c1/simultaneous-live-notice."""
+    return lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/simultaneous-live-notice",
+            path={"clientId": "c1"},
+            body=body,
+            headers={"x-client-secret": client_secret} if with_secret else {},
+        ),
+        None,
+    )
+
+
+def _delete_simultaneous_notice(client_secret, *, with_secret=True):
+    """DELETE /clients/c1/simultaneous-live-notice."""
+    return lambda_handler(
+        _event(
+            "DELETE /clients/{clientId}/simultaneous-live-notice",
+            path={"clientId": "c1"},
+            headers={"x-client-secret": client_secret} if with_secret else {},
+        ),
+        None,
+    )
+
+
+def test_put_simultaneous_live_notice_writes_exactly_one_opt_in_item_and_nothing_else(monkeypatch, client_secret):
+    """The opt-in is its own tiny item (so the preference PUT, which replaces the whole item, can never switch it off by omission)."""
+    puts = []
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: puts.append(record))
+    for other in ("get_remote_config", "list_remote_config", "list_remote_config_by_prefix", "delete_remote_config"):
+        monkeypatch.setattr(remote_config_store, other, _boom)
+
+    response = _put_simultaneous_notice(client_secret)
+
+    assert response["statusCode"] == 200
+    assert [(r["clientId"], r["key"], r["value"]) for r in puts] == [("c1", "simultaneousLiveNotice", {"enabled": True})]
+
+
+def test_put_simultaneous_live_notice_needs_the_clients_own_secret(monkeypatch, client_secret):
+    """Like every client-scoped write: no secret, no write."""
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    assert _put_simultaneous_notice(client_secret, with_secret=False)["statusCode"] == 403
+
+
+def test_delete_simultaneous_live_notice_deletes_only_the_opt_in_item(monkeypatch, client_secret):
+    """Opting out removes the item (idempotent) and touches nothing else."""
+    deleted = []
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", lambda client_id, key: deleted.append((client_id, key)))
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+    monkeypatch.setattr(remote_config_store, "list_remote_config_by_prefix", _boom)
+
+    response = _delete_simultaneous_notice(client_secret)
+
+    assert response["statusCode"] == 200
+    assert deleted == [("c1", "simultaneousLiveNotice")]
+
+
+def test_delete_simultaneous_live_notice_needs_the_clients_own_secret(monkeypatch, client_secret):
+    """No secret, no delete."""
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", _boom)
+
+    assert _delete_simultaneous_notice(client_secret, with_secret=False)["statusCode"] == 403
+
+
+def test_the_generic_remote_config_read_returns_the_opt_in_so_the_dashboard_can_show_its_state(monkeypatch, client_secret):
+    """The Settings toggle reads its state back through the existing self-service GET /remote-config (the opt-in is not a secret)."""
+    stored = {"clientId": "c1", "key": "simultaneousLiveNotice", "value": {"enabled": True}, "updatedAt": "2026-10-21T00:00:00+00:00"}
+    monkeypatch.setattr(remote_config_store, "list_remote_config", lambda client_id: [stored])
+
+    response = lambda_handler(_event("GET /remote-config", query={"clientId": "c1"}, headers={"x-client-secret": client_secret}), None)
+
+    assert response["statusCode"] == 200 and stored in json.loads(response["body"])["configs"]

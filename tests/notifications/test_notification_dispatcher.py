@@ -100,6 +100,14 @@ def _schedule_value(entries: dict, *, refreshed_at: datetime) -> dict:
 # stub_reminder_items fixture's list_remote_config_by_prefix stand-in, so a
 # test declares reminder settings the same way it always did.
 _STORED_REMINDER_ITEMS: dict[str, dict] = {}
+# The stored notificationPreference of each client under test (clientId -> value), served by _remote_config_stub's get_remote_config: the dispatcher
+# no longer lists every client's preference -- it finds the clients whose reminder is due through the configKey-index and then reads each one's own.
+_STORED_PREFERENCES: dict[str, dict] = {}
+
+
+def _store_preference(client_id: str, value: dict) -> None:
+    """Declare one client's stored notification preference."""
+    _STORED_PREFERENCES[client_id] = value
 
 
 def _remote_config_stub(*, subscription=None, overrides=None, creator_reminders=None, topic_reminders=None, schedule=None):
@@ -121,6 +129,9 @@ def _remote_config_stub(*, subscription=None, overrides=None, creator_reminders=
         _STORED_REMINDER_ITEMS[live_reminder.creator_reminder_key(creator_id, topic)] = value
 
     def _get(client_id: str, key: str):
+        if key == notification_dispatcher._NOTIFICATION_PREFERENCE_KEY:
+            stored = _STORED_PREFERENCES.get(client_id)
+            return {"clientId": client_id, "key": key, "value": stored, "updatedAt": "2026-01-01T00:00:00+00:00"} if stored is not None else None
         if key == notification_dispatcher._PUSH_SUBSCRIPTION_KEY:
             return {"value": subscription} if subscription is not None else None
         if key == live_reminder.STREAM_SCHEDULE_KEY:
@@ -132,8 +143,10 @@ def _remote_config_stub(*, subscription=None, overrides=None, creator_reminders=
 
 @pytest.fixture(autouse=True)
 def stub_reminder_items(monkeypatch):
-    """Serve _STORED_REMINDER_ITEMS through list_remote_config_by_prefix (empty unless a test fills it)."""
+    """Serve _STORED_REMINDER_ITEMS through list_remote_config_by_prefix and, by exact key, through list_by_key (the configKey-index the dispatcher finds
+    followers with); both are empty unless a test fills them. The revision-guarded schedule write delegates to put_remote_config."""
     _STORED_REMINDER_ITEMS.clear()
+    _STORED_PREFERENCES.clear()
 
     def _list(client_id: str, key_prefix: str):
         return [
@@ -143,6 +156,18 @@ def stub_reminder_items(monkeypatch):
         ]
 
     monkeypatch.setattr(remote_config_store, "list_remote_config_by_prefix", _list)
+
+    def _list_by_key(key: str):
+        return [
+            {"clientId": client_id, "key": key, "value": _STORED_REMINDER_ITEMS[key], "updatedAt": "2026-01-01T00:00:00+00:00"}
+            for client_id in _STORED_PREFERENCES
+            if key in _STORED_REMINDER_ITEMS
+        ]
+
+    monkeypatch.setattr(remote_config_store, "list_by_key", _list_by_key)
+    monkeypatch.setattr(
+        remote_config_store, "put_remote_config_if_newer", lambda record, *, revision: (remote_config_store.put_remote_config(record), True)[1]
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -179,7 +204,7 @@ def test_no_recent_events_and_no_reminder_data_reports_nothing_checked_or_delive
     discovery-event loop. With no stored reminder data either, there is
     genuinely nothing to deliver."""
     monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [])
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     monkeypatch.setattr(remote_config_store, "get_remote_config", _remote_config_stub(subscription=_subscription_value()))
 
     response = lambda_handler({}, None)
@@ -193,7 +218,7 @@ def test_client_with_no_push_subscription_is_skipped(monkeypatch):
     monkeypatch.setattr(
         notification_events_store, "list_events_for_date", lambda event_date: [_event_item()] if event_date == "2026-09-03" else []
     )
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)
 
     def _boom(*a, **kw):
@@ -212,7 +237,7 @@ def test_client_with_an_invalid_stored_preference_is_skipped(monkeypatch):
     monkeypatch.setattr(
         notification_events_store, "list_events_for_date", lambda event_date: [_event_item()] if event_date == "2026-09-03" else []
     )
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": {"enabled": "not-a-bool"}}])
+    _store_preference("c1", {"enabled": "not-a-bool"})
 
     def _boom(client_id, key):
         # The schedule-staleness check (SYSTEM_CLIENT_ID) runs once per
@@ -242,7 +267,7 @@ def test_sends_a_due_start_and_advance_reminder_independently_in_the_same_run(mo
     advance_fire_at_ms = scheduled_start_ms - 30 * 60_000
     now = datetime.fromtimestamp(scheduled_start_ms / 1000, tz=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     monkeypatch.setattr(
         remote_config_store,
         "get_remote_config",
@@ -301,11 +326,7 @@ def test_creator_disabled_override_still_prevents_reminder_delivery(monkeypatch)
     scheduled_start_ms = 1_000_000_000_000
     now = datetime.fromtimestamp(scheduled_start_ms / 1000, tz=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(
-        remote_config_store,
-        "list_by_key",
-        lambda key: [{"clientId": "c1", "value": _preference_value(creatorOverride={"aizawa_ema": False})}],
-    )
+    _store_preference("c1", _preference_value(creatorOverride={"aizawa_ema": False}))
     monkeypatch.setattr(
         remote_config_store,
         "get_remote_config",
@@ -333,7 +354,7 @@ def test_reminder_dedupe_prevents_resending_the_same_reminder_kind(monkeypatch):
     scheduled_start_ms = 1_000_000_000_000
     now = datetime.fromtimestamp(scheduled_start_ms / 1000, tz=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     monkeypatch.setattr(
         remote_config_store,
         "get_remote_config",
@@ -368,7 +389,7 @@ def test_reminder_uses_the_system_schedules_scheduled_start_not_the_unrelated_di
         "list_events_for_date",
         lambda event_date: [_event_item(videoId="unrelated_v0", discoveredAt="2000-01-01T00:00:00+09:00")],
     )
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     monkeypatch.setattr(
         remote_config_store,
         "get_remote_config",
@@ -408,7 +429,7 @@ def test_rescheduling_a_stream_after_its_override_was_saved_moves_the_reminder_w
     new_start_ms = old_start_ms + 2 * 60 * 60_000  # +2h, e.g. 18:00 -> 20:00
     new_advance_fire_at_ms = new_start_ms - 60 * 60_000  # 19:00
 
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: video_id == "unrelated_v0")
 
     def _boom(*a, **kw):
@@ -480,7 +501,7 @@ def test_a_normal_stream_with_no_override_gets_both_reminders_from_the_system_wi
     scheduled_start_ms = 1_000_000_000_000
     advance_fire_at_ms = scheduled_start_ms - 30 * 60_000
     monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": [_holodex_stream()]})
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     monkeypatch.setattr(
         remote_config_store,
         "get_remote_config",
@@ -512,7 +533,7 @@ def test_stream_a_override_suppresses_the_creators_30min_reminder_for_that_strea
     advance_30min_fire_at_ms = scheduled_start_ms - 30 * 60_000
     monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": [_holodex_stream(videoId="v1")]})
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(datetime.fromtimestamp(advance_30min_fire_at_ms / 1000, tz=timezone.utc)))
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     monkeypatch.setattr(
         remote_config_store,
         "get_remote_config",
@@ -543,7 +564,7 @@ def test_stream_b_with_no_override_still_resolves_the_creators_recurring_setting
         read_api, "get_live_streams", lambda *_a, **_kw: {"streams": [_holodex_stream(videoId="v3", scheduledStart="2033-05-18T03:33:20+00:00")]}
     )
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(datetime.fromtimestamp(advance_fire_at_ms / 1000, tz=timezone.utc)))
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     monkeypatch.setattr(
         remote_config_store,
         "get_remote_config",
@@ -567,7 +588,7 @@ def test_schedule_snapshot_refreshes_on_every_run_independent_of_any_saved_overr
     stream override or a creator recurring reminder."""
     monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": [_holodex_stream()]})
     monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [])
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [])  # no client has any preference at all
+    # no client has any preference at all (nothing stored by _store_preference)
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)  # no prior snapshot -- always stale
     written = {}
     monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: written.update(record))
@@ -679,11 +700,8 @@ def test_multiple_clients_in_one_dispatcher_run_cause_only_one_holodex_refresh(m
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
     monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [])
-    monkeypatch.setattr(
-        remote_config_store,
-        "list_by_key",
-        lambda key: [{"clientId": "c1", "value": _preference_value()}, {"clientId": "c2", "value": _preference_value()}],
-    )
+    _store_preference("c1", _preference_value())
+    _store_preference("c2", _preference_value())
     calls = []
     monkeypatch.setattr(read_api, "get_live_streams", lambda *a, **kw: (calls.append(1), {"streams": []})[1])
     monkeypatch.setattr(
@@ -705,7 +723,7 @@ def test_reminder_dedupe_prevents_duplicate_send_for_a_normal_stream_with_no_ove
     scheduled_start_ms = 1_000_000_000_000
     monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": [_holodex_stream()]})
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(datetime.fromtimestamp(scheduled_start_ms / 1000, tz=timezone.utc)))
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     monkeypatch.setattr(
         remote_config_store,
         "get_remote_config",
@@ -741,9 +759,7 @@ def _run_reminder_scenario(monkeypatch, *, now, streams, preference=None, **remi
     monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": streams})
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
     monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [])
-    monkeypatch.setattr(
-        remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": preference or _preference_value()}]
-    )
+    _store_preference("c1", preference or _preference_value())
     monkeypatch.setattr(remote_config_store, "get_remote_config", _remote_config_stub(subscription=_subscription_value(), **reminders))
     monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: False)
     monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
@@ -1071,7 +1087,8 @@ def _setup_bulk_lookup_run(monkeypatch, *, client_ids):
     now = datetime(2026, 9, 3, 9, 5, tzinfo=timezone.utc)
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
     monkeypatch.setattr(notification_events_store, "list_events_for_date", _three_pending_events)
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": c, "value": _preference_value()} for c in client_ids])
+    for client_id in client_ids:
+        _store_preference(client_id, _preference_value())
     monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: {"value": _subscription_value()})
     monkeypatch.setattr(notification_delivery_log_store, "mark_delivered", lambda client_id, video_id, delivered_at: True)
     monkeypatch.setattr(notification_delivery_log_store, "confirm_delivered", lambda client_id, video_id, delivered_at: None)

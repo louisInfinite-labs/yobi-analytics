@@ -144,6 +144,11 @@ jobs:
           tests/test_terraform_creator_milestones_table.py
           tests/notifications/test_creator_route.py
           tests/notifications/test_notification_payload.py
+          tests/notifications/test_reminder_candidates.py
+          tests/notifications/test_simultaneous_live.py
+          tests/notifications/test_simultaneous_dispatch.py
+          tests/notifications/test_dispatcher_resilience.py
+          tests/stores/test_remote_config_store.py
 
   frontend-focused-tests:
     needs: detect-scope
@@ -298,6 +303,8 @@ jobs:
           src/pages/about/markdown.articles.test.tsx
           src/features/live-status/components/CreatorStatusList.test.tsx
           src/features/notifications/components/NotificationSettings.test.tsx
+          src/features/notifications/api/simultaneousLiveNoticeApi.test.ts
+          src/features/notifications/components/SimultaneousLiveNotice.test.tsx
           src/features/notifications/components/NotificationToggle.test.tsx
           src/features/notifications/hooks/useNotificationLocaleSync.test.tsx
           src/features/notifications/hooks/notificationDisabledMasterSwitch.test.tsx

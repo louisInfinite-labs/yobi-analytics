@@ -137,7 +137,8 @@ describe("Fix 4 -- phone: square checkboxes instead of the ON/OFF switches", () 
     renderSettings(390)
     await openChattingDrawer(user)
 
-    const names = screen.getAllByRole("checkbox").map((box) => box.getAttribute("aria-label"))
+    // The drawer's own checkboxes (the page behind it has its own, separately named, on/off controls such as the simultaneous-stream opt-in).
+    const names = within(screen.getByRole("dialog")).getAllByRole("checkbox").map((box) => box.getAttribute("aria-label"))
     expect(names.every((name) => /(live|new video) notifications$/.test(name ?? ""))).toBe(true)
   })
 

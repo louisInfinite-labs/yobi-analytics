@@ -555,7 +555,7 @@ def test_an_unknown_mode_fails_loudly_instead_of_running_the_reminder_job(monkey
     def _boom(*_a, **_kw):
         raise AssertionError("an unsupported mode must not run any job")
 
-    monkeypatch.setattr(notification_dispatcher, "_refresh_and_load_stream_schedule", _boom)
+    monkeypatch.setattr(notification_dispatcher, "_load_schedule", _boom)
 
     with pytest.raises(notification_dispatcher.UnsupportedModeError):
         notification_dispatcher.lambda_handler({"mode": "new_video"}, None)
@@ -569,7 +569,7 @@ def test_the_reminder_run_no_longer_delivers_new_videos_or_reads_new_video_event
 
     monkeypatch.setattr(notification_events_store, "list_events_for_date", _boom)
     monkeypatch.setattr(notification_slot_store, "list_recipients", _boom)
-    monkeypatch.setattr(notification_dispatcher, "_refresh_and_load_stream_schedule", lambda *, now: {})
+    monkeypatch.setattr(notification_dispatcher, "_load_schedule", lambda *, now: ({}, []))
     monkeypatch.setattr(remote_config_store, "list_remote_config_by_prefix", lambda client_id, key_prefix: [])
     monkeypatch.setattr(notification_dispatcher, "load_creators", lambda: [])
     monkeypatch.setattr(notification_dispatcher, "get_vapid_credentials", lambda: ("pem", {"sub": "mailto:a@b.com"}))

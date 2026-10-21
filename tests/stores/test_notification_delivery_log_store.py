@@ -13,6 +13,7 @@ from stores.notification_delivery_log_store import (
     mark_delivered,
     mark_suppressed,
     release_claim,
+    row_status,
 )
 
 AWS_REGION = "ap-northeast-1"
@@ -207,3 +208,31 @@ def test_handled_within_raises_store_error_when_table_is_missing(aws_credentials
     with mock_aws():
         with pytest.raises(NotificationDeliveryLogStoreError):
             handled_within("c1", "v1", timedelta(minutes=10), now=NOW)
+
+
+def test_row_status_tells_a_settled_row_a_live_claim_and_nothing_apart(delivery_log_table):
+    """delivered / suppressed / a live claim are distinguished (already_delivered folds them together); no row is None."""
+    assert row_status("c1", "simul:1:a", now=NOW) is None
+    mark_delivered("c1", "simul:1:a", NOW.isoformat(), now=NOW)
+    assert row_status("c1", "simul:1:a", now=NOW) == "claimed"
+    confirm_delivered("c1", "simul:1:a", NOW.isoformat())
+    assert row_status("c1", "simul:1:a", now=NOW) == "delivered"
+    mark_suppressed("c1", "simul:1:b", NOW.isoformat())
+    assert row_status("c1", "simul:1:b", now=NOW) == "suppressed"
+
+
+def test_row_status_treats_an_abandoned_claim_as_absent_so_it_can_be_taken_over(delivery_log_table):
+    """A claim older than the expiry window belongs to a dead worker: not live, and mark_delivered may reclaim it."""
+    mark_delivered("c1", "simul:1:a", (NOW - timedelta(minutes=30)).isoformat(), now=NOW - timedelta(minutes=30))
+
+    assert row_status("c1", "simul:1:a", now=NOW) is None
+    assert mark_delivered("c1", "simul:1:a", NOW.isoformat(), now=NOW) is True
+
+
+def test_a_failed_push_release_lets_the_same_notice_be_claimed_again(delivery_log_table):
+    """Claim -> release (the push failed) -> the retry can claim the very same key: a failure never permanently loses the notice."""
+    assert mark_delivered("c1", "simul:1:a", NOW.isoformat(), now=NOW) is True
+    assert mark_delivered("c1", "simul:1:a", NOW.isoformat(), now=NOW) is False  # a concurrent worker cannot also claim it
+    release_claim("c1", "simul:1:a")
+
+    assert mark_delivered("c1", "simul:1:a", NOW.isoformat(), now=NOW) is True

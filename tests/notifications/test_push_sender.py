@@ -278,3 +278,82 @@ def test_send_push_notification_passes_a_bounded_timeout_and_the_hardened_sessio
     assert captured["timeout"] == push_sender._PUSH_REQUEST_TIMEOUT_SECONDS
     assert captured["requests_session"] is push_sender._PUSH_SESSION
     assert captured["requests_session"].max_redirects == 0
+
+
+# --- retryable failures and the bounded immediate retry ----------------------------------------------------------------------
+
+
+def _failing_webpush(status_code):
+    """A webpush stand-in raising a WebPushException that carries an HTTP status (None = no response at all)."""
+    from pywebpush import WebPushException
+
+    class _Response:
+        """Just enough of a requests.Response."""
+
+        def __init__(self, status):
+            self.status_code = status
+
+    def fake(**kwargs):
+        raise WebPushException("push failed", response=None if status_code is None else _Response(status_code))
+
+    return fake
+
+
+@pytest.mark.parametrize("status, retryable, expired", [(500, True, False), (503, True, False), (429, True, False), (None, True, False), (400, False, False), (401, False, False), (410, False, True), (404, False, True)])
+def test_only_a_plausibly_transient_failure_is_marked_retryable(monkeypatch, status, retryable, expired):
+    """5xx / 429 / no response are retryable; a 4xx rejection is not; 404 / 410 mean the subscription is gone."""
+    monkeypatch.setattr(push_sender, "webpush", _failing_webpush(status))
+
+    result = push_sender.send_push_notification(
+        {"endpoint": "https://fcm.googleapis.com/fcm/send/x", "keys": {"p256dh": "a", "auth": "b"}},
+        title="t", body="b", data=None, vapid_private_key="k", vapid_claims={"sub": "mailto:a@b.c"},
+    )
+
+    assert result.sent is False and result.retryable is retryable and result.subscription_expired is expired
+
+
+def test_a_transport_error_is_retryable(monkeypatch):
+    """A timeout / connection error never reached the push service well enough to know anything: retry once."""
+    import requests
+
+    def fake(**kwargs):
+        raise requests.ConnectionError("reset")
+
+    monkeypatch.setattr(push_sender, "webpush", fake)
+
+    result = push_sender.send_push_notification(
+        {"endpoint": "https://fcm.googleapis.com/fcm/send/x", "keys": {"p256dh": "a", "auth": "b"}},
+        title="t", body="b", data=None, vapid_private_key="k", vapid_claims={"sub": "mailto:a@b.c"},
+    )
+
+    assert result.retryable is True
+
+
+def _scripted(monkeypatch, results):
+    """Make send_push_notification answer from `results` in order, counting calls."""
+    calls = []
+    monkeypatch.setattr(push_sender, "_RETRY_PAUSE_SECONDS", 0)
+    monkeypatch.setattr(push_sender, "send_push_notification", lambda *a, **kw: (calls.append(1), results[len(calls) - 1])[1])
+    return calls
+
+
+def _bounded(attempts=2):
+    """send_with_bounded_retry with throwaway arguments."""
+    return push_sender.send_with_bounded_retry({}, title="t", body="b", data=None, vapid_private_key="k", vapid_claims={}, attempts=attempts)
+
+
+def test_a_retryable_failure_is_sent_once_more_and_a_success_ends_it(monkeypatch):
+    """One immediate re-send; the second answer is the result."""
+    calls = _scripted(monkeypatch, [push_sender.PushResult(False, False, "x", retryable=True), push_sender.PushResult(True, False)])
+
+    assert _bounded().sent is True and len(calls) == 2
+
+
+def test_the_retry_is_bounded_and_never_repeats_a_non_retryable_or_expired_result(monkeypatch):
+    """At most `attempts` sends; a permanent failure and an expired subscription are sent exactly once."""
+    calls = _scripted(monkeypatch, [push_sender.PushResult(False, False, "x", retryable=True)] * 5)
+    assert _bounded(attempts=3).sent is False and len(calls) == 3
+
+    for result in (push_sender.PushResult(False, False, "bad", retryable=False), push_sender.PushResult(False, True, "gone", retryable=False)):
+        calls = _scripted(monkeypatch, [result] * 5)
+        assert _bounded().sent is False and len(calls) == 1
