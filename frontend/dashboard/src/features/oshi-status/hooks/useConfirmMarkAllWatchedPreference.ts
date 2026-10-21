@@ -15,7 +15,7 @@ function readPreference(): boolean {
 
 const confirmMarkAllWatchedStore = createSharedState<boolean>(STORAGE_KEY, readPreference, (value) => String(value))
 
-/** Whether 已觀看全部 asks before marking. Its own key, separate from the Oshi-switch confirmation: opting out of one never silences the other. Defaults to
+/** Whether the Mark all watched button asks before marking. Its own key, separate from the Oshi-switch confirmation: opting out of one never silences the other. Defaults to
  * true; only the dialog's "Don't ask again" + confirm path ever sets it to false (Cancel never persists it). */
 export function useConfirmMarkAllWatchedPreference() {
   return useSharedState(confirmMarkAllWatchedStore)

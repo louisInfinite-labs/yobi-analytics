@@ -169,7 +169,7 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
   const rowsAvailable = !loading && !error && eligibility !== undefined
   const unwatched = countUnwatched(eligibility, recent, { isNew: isNewContent, isUnseen }, now)
   const countLabel = (value: number) => String(value)
-  // 已觀看全部: marks the videos the 尚未觀看 影片 count counts (never a livestream archive) seen in the shared seen store, the one every NEW badge and count reads,
+  // Mark all watched: marks the videos the "Not watched yet" Videos count counts (never a livestream archive) seen in the shared seen store, the one every NEW badge and count reads,
   // so they all update at once and the state survives a reload exactly like opening each video would. With nothing outstanding there is nothing to confirm.
   const [confirmMarkAll, setConfirmMarkAll] = useConfirmMarkAllWatchedPreference()
   const [markAllOpen, setMarkAllOpen] = useState(false)

@@ -715,7 +715,7 @@
   border-color: var(--oshi-text-3);
 }
 
-/* 已觀看全部 (and, on mobile/tablet, 查看全部 beside it): the right-hand end of the 最近動態 heading row, both in the one ghost-button look above. */
+/* Mark all watched (and, on mobile/tablet, View all beside it): the right-hand end of the Recent Activity heading row, both in the one ghost-button look above. */
 .oshi-status__section-actions {
   display: flex;
   align-items: center;

@@ -1,6 +1,7 @@
-/** 最近動態 的「已觀看全部」: a button at the right end of the section heading that, after the SAME confirmation dialog the Oshi switch uses (message / checkbox /
- * Cancel + confirm), marks every outstanding NEW video seen in the shared seen store -- so the NEW badges and the 尚未觀看 counts update at once and the state survives
- * a reload -- and never touches a livestream archive. "Don't ask again" is remembered only by confirming, and only for this action. */
+/** The "Mark all watched" button of the Recent Activity section: a button at the right end of the section heading that, after the SAME confirmation dialog the Oshi
+ * switch uses (message / checkbox / Cancel + confirm), marks every outstanding NEW video seen in the shared seen store -- so the NEW badges and the "Not watched yet"
+ * counts update at once and the state survives a reload -- and never touches a livestream archive. "Don't ask again" is remembered only by confirming, and only for
+ * this action. The UI strings asserted below are the product's zh-TW (and en/ja) texts and are intentionally not translated. */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -112,8 +113,8 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks())
 
-describe("the 已觀看全部 button", () => {
-  it("sits at the right end of the 最近動態 heading row, after the title", async () => {
+describe("the Mark all watched button", () => {
+  it("sits at the right end of the Recent Activity heading row, after the title", async () => {
     renderPanel()
     const head = (await screen.findByText("最近動態")).parentElement as HTMLElement
     expect(head).toHaveClass("oshi-status__section-head")
@@ -122,7 +123,7 @@ describe("the 已觀看全部 button", () => {
     expect(within(head.lastElementChild as HTMLElement).getByRole("button", { name: "已觀看全部" })).toBe(markAllButton())
   })
 
-  it("desktop: it is the only control of the heading row; mobile: 查看全部 sits beside it, in the same right-hand group", async () => {
+  it("desktop: it is the only control of the heading row; mobile: View all sits beside it, in the same right-hand group", async () => {
     const desktop = renderPanel()
     await screen.findByText("最近動態")
     expect(within(document.querySelector(".oshi-status__section-actions") as HTMLElement).getAllByRole("button").map((button) => button.textContent)).toEqual(["已觀看全部"])
@@ -155,7 +156,7 @@ describe("the 已觀看全部 button", () => {
 })
 
 describe("the confirmation dialog", () => {
-  it("opens with the exact text: the question, 以後不再提示 (unchecked) and 取消 / 確定 in that order", async () => {
+  it("opens with the exact text: the question, the unchecked Don't ask again checkbox, and Cancel / Confirm in that order", async () => {
     renderPanel()
     await screen.findByText("Upload u1")
     await userEvent.setup().click(markAllButton())
@@ -204,8 +205,8 @@ describe("the confirmation dialog", () => {
   })
 })
 
-describe("取消 changes nothing", () => {
-  it("closes the dialog, marks nothing, and does not save 以後不再提示 even when it was checked", async () => {
+describe("Cancel changes nothing", () => {
+  it("closes the dialog, marks nothing, and does not save Don't ask again even when it was checked", async () => {
     renderPanel()
     await screen.findByText("Upload u1")
     const user = userEvent.setup()
@@ -224,7 +225,7 @@ describe("取消 changes nothing", () => {
   })
 })
 
-describe("確定 marks every outstanding NEW video seen", () => {
+describe("Confirm marks every outstanding NEW video seen", () => {
   it("through the shared seen store: the NEW badges and the counts update at once, and a livestream archive stays NEW", async () => {
     renderPanel()
     await screen.findByText("Upload u1")
@@ -244,7 +245,7 @@ describe("確定 marks every outstanding NEW video seen", () => {
     expect(markAllButton()).toBeDisabled() // nothing outstanding any more
   })
 
-  it("marks videos beyond the rows shown too (the whole 尚未觀看 影片 count), and leaves already-seen and unrelated ids alone", async () => {
+  it("marks videos beyond the rows shown too (the whole Not watched yet Videos count), and leaves already-seen and unrelated ids alone", async () => {
     window.localStorage.setItem(SEEN_KEY, JSON.stringify(["old_seen"]))
     resetAllSharedStateForTests()
     items = [upload("u1")]
@@ -277,7 +278,7 @@ describe("確定 marks every outstanding NEW video seen", () => {
     expect(seen().sort()).toEqual(["u1", "u2"])
   })
 
-  it("an unchecked 以後不再提示 saves nothing: the next click asks again", async () => {
+  it("an unchecked Don't ask again saves nothing: the next click asks again", async () => {
     renderPanel()
     await screen.findByText("Upload u1")
     const user = userEvent.setup()
@@ -287,8 +288,8 @@ describe("確定 marks every outstanding NEW video seen", () => {
   })
 })
 
-describe("以後不再提示", () => {
-  it("checked + 確定 saves the preference, marks, and later clicks mark at once with no dialog", async () => {
+describe("Don't ask again", () => {
+  it("checked + Confirm saves the preference, marks, and later clicks mark at once with no dialog", async () => {
     renderPanel()
     await screen.findByText("Upload u1")
     const user = userEvent.setup()

@@ -105,7 +105,7 @@ export function countUnwatched(
   return { videos: values.filter((kind) => kind === "video").length, livestreams: values.filter((kind) => kind === "livestream").length }
 }
 
-/** The ids behind the 尚未觀看 影片 count: exactly the videos countUnwatched counts as videos (never a livestream archive), so marking them seen takes that
+/** The ids behind the "Not watched yet" Videos count: exactly the videos countUnwatched counts as videos (never a livestream archive), so marking them seen takes that
  * count to zero and leaves every livestream's NEW state alone. */
 export function unwatchedVideoIds(
   eligibility: NewContentEligibility | undefined,
