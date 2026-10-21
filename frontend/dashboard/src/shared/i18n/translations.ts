@@ -68,6 +68,9 @@ export type TranslationKey =
   | "oshiStatus.recent"
   | "oshiStatus.noRecentActivity"
   | "oshiStatus.viewAll"
+  | "oshiStatus.markAllWatched"
+  | "oshiStatus.markAllWatched.confirmMessage"
+  | "oshiStatus.markAllWatched.confirmAction"
   | "oshiStatus.closeActivity"
   | "oshiStatus.newBadge"
   | "oshiStatus.subscribers"
@@ -360,6 +363,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.recent": "最近動態",
     "oshiStatus.noRecentActivity": "尚無最近動態",
     "oshiStatus.viewAll": "查看全部",
+    "oshiStatus.markAllWatched": "已觀看全部",
+    "oshiStatus.markAllWatched.confirmMessage": "已觀看全部新影片嗎?",
+    "oshiStatus.markAllWatched.confirmAction": "確定",
     "oshiStatus.closeActivity": "關閉",
     "oshiStatus.newBadge": "NEW",
     "oshiStatus.subscribers": "訂閱者",
@@ -652,6 +658,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.recent": "Recent",
     "oshiStatus.noRecentActivity": "No recent activity",
     "oshiStatus.viewAll": "View all",
+    "oshiStatus.markAllWatched": "Mark all watched",
+    "oshiStatus.markAllWatched.confirmMessage": "Mark all new videos as watched?",
+    "oshiStatus.markAllWatched.confirmAction": "OK",
     "oshiStatus.closeActivity": "Close",
     "oshiStatus.newBadge": "NEW",
     "oshiStatus.subscribers": "subscribers",
@@ -943,6 +952,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "oshiStatus.recent": "最近の動き",
     "oshiStatus.noRecentActivity": "最近の動きはありません",
     "oshiStatus.viewAll": "すべて見る",
+    "oshiStatus.markAllWatched": "すべて視聴済み",
+    "oshiStatus.markAllWatched.confirmMessage": "新着動画をすべて視聴済みにしますか?",
+    "oshiStatus.markAllWatched.confirmAction": "OK",
     "oshiStatus.closeActivity": "閉じる",
     "oshiStatus.newBadge": "NEW",
     "oshiStatus.subscribers": "登録者数",

@@ -161,6 +161,18 @@ export function markContentSeen(videoId: string): void {
   seenStore.set(next)
 }
 
+/** Marks every given video seen in ONE write to the same shared `seen` store (so every badge and count re-renders once). Idempotent; ids already seen,
+ * empty ids and everything not listed are untouched. Same cap as markContentSeen. */
+export function markContentSeenMany(videoIds: Iterable<string>): void {
+  const current = seenStore.get()
+  const fresh = [...new Set(videoIds)].filter((videoId) => videoId && !current.has(videoId))
+  if (fresh.length === 0) return
+  const next = new Set(current)
+  fresh.forEach((videoId) => next.add(videoId))
+  while (next.size > MAX_SEEN_IDS) next.delete(next.values().next().value as string)
+  seenStore.set(next)
+}
+
 /** Records that the user watched this livestream DURING the live session. Callers must only invoke it after the
  * embedded YouTube player reported PLAYING for a stream that is live right now -- never for a page open, an
  * automatic creator selection, an iframe/videoId assignment or an autoplay attempt (see useWatchedDuringLive).

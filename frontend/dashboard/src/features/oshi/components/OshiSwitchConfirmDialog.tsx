@@ -3,7 +3,11 @@ import { createPortal } from "react-dom"
 import { t, type Locale } from "../../../shared/i18n/translations"
 
 interface OshiSwitchConfirmDialogProps {
-  creatorName: string
+  creatorName?: string
+  /** Another confirmation that reuses this exact dialog (message / checkbox / Cancel + confirm): its own question. Default: the Oshi switch question. */
+  message?: string
+  /** The confirm button's label. Default: the Oshi switch's "Switch". */
+  confirmLabel?: string
   locale: Locale
   onCancel: () => void
   onConfirm: (dontAskAgain: boolean) => void
@@ -15,7 +19,7 @@ interface OshiSwitchConfirmDialogProps {
  * Backdrop click, Esc, and Tab-trapping follow the same convention already
  * established by VideoPlayerModal. Checking "Don't ask again" only takes
  * effect together with Switch — Cancel never persists it (spec section 7). */
-export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfirm }: OshiSwitchConfirmDialogProps) {
+export function OshiSwitchConfirmDialog({ creatorName = "", message: customMessage, confirmLabel, locale, onCancel, onConfirm }: OshiSwitchConfirmDialogProps) {
   const [dontAskAgain, setDontAskAgain] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const checkboxRef = useRef<HTMLInputElement>(null)
@@ -76,7 +80,7 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
     }
   }, [])
 
-  const message = t(locale, "oshiSwitch.confirmMessage", { creatorName })
+  const message = customMessage ?? t(locale, "oshiSwitch.confirmMessage", { creatorName })
 
   // Portalled to <body>: this renders from inside the Live Status drawer,
   // which is transformed — and a transformed ancestor becomes the
@@ -106,7 +110,7 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
             className="oshi-switch-confirm__confirm"
             onClick={() => onConfirm(dontAskAgain)}
           >
-            {t(locale, "oshiSwitch.confirmAction")}
+            {confirmLabel ?? t(locale, "oshiSwitch.confirmAction")}
           </button>
         </div>
       </div>

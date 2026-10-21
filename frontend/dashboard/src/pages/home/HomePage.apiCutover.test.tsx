@@ -92,6 +92,9 @@ function installApi() {
       api.requests.push(path)
 
       if (url.pathname === "/live-streams") return json({ streams: [] })
+      // The ONE shared bulk milestones read (cached in memory, also what the Live Status list uses): the Oshi Status calendar icon appears only for a
+      // creator it lists with a usable date. No dates here, so no icon; it is not a per-creator request.
+      if (url.pathname === "/milestones") return json({ milestones: [] })
       // Real shape (src/api/dashboard_catalog_api.py's get_topics): the tag bar's own
       // GET /topics fetch (useVideoTopicCatalog) -- "valorant"/"VALO" is the one id/label
       // this file's own tests click through the rendered tag bar.
@@ -173,7 +176,7 @@ describe("Home -> real API: open", () => {
     expect(paramOf(first, "offset")).toBe("0")
     expect(paramOf(first, "limit")).toBe(String(PAGE))
     expect(api.requests.some((path) => path.startsWith(`/creators/${CREATOR_A.creatorId}/oshi-status`))).toBe(true)
-    expect(api.unexpected).toEqual([]) // Home calls no endpoint other than the ones above, /live-streams and /topics
+    expect(api.unexpected).toEqual([]) // Home calls no endpoint other than the ones above, /live-streams, /topics and the shared /milestones read
     expect(creatorsRequested(api.requests)).toEqual(new Set([CREATOR_A.creatorId])) // only the current creator
   })
 

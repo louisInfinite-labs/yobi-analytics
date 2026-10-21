@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { countUnwatched } from "./oshiActivity"
+import { countUnwatched, unwatchedVideoIds } from "./oshiActivity"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 
 const NOW = new Date("2026-10-17T03:00:00Z")
@@ -35,5 +35,23 @@ describe("countUnwatched", () => {
 
   it("without an eligibility from the backend only loaded NEW rows can count", () => {
     expect(countUnwatched(undefined, [], state(), NOW)).toEqual({ videos: 0, livestreams: 0 })
+  })
+})
+
+describe("unwatchedVideoIds", () => {
+  it("is exactly the ids countUnwatched counts as videos: eligible and unclassified ones, never a livestream archive, never one already seen", () => {
+    const eligibility = { videoIds: ["v1", "v2", "v_seen"], livestreamIds: ["s1"], unclassifiedIds: ["x1"] }
+    const loadedArchive = { videoId: "s_loaded", publishedAt: "2026-10-17T01:00:00Z", discoveredAt: "2026-10-17T01:00:00Z", contentFormat: "live_archive" } as unknown as RecentVideo
+    const loadedUpload = { videoId: "v_loaded", publishedAt: "2026-10-17T01:00:00Z", discoveredAt: "2026-10-17T01:00:00Z", contentFormat: "normal_video" } as unknown as RecentVideo
+    const flagNew = () => true
+
+    const ids = unwatchedVideoIds(eligibility, [loadedArchive, loadedUpload], state(["v_seen"], flagNew), NOW)
+
+    expect([...ids].sort()).toEqual(["v1", "v2", "v_loaded", "x1"])
+    expect(countUnwatched(eligibility, [loadedArchive, loadedUpload], state(["v_seen"], flagNew), NOW).videos).toBe(ids.length)
+  })
+
+  it("is empty without eligibility and loaded rows", () => {
+    expect(unwatchedVideoIds(undefined, [], state(), NOW)).toEqual([])
   })
 })

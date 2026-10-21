@@ -218,6 +218,8 @@ jobs:
           src/features/oshi-status/hooks/useLastVisit.test.ts
           src/features/oshi-status/components/OshiStatusPanel.test.tsx
           src/features/oshi-status/components/OshiStatusPanel.milestones.test.tsx
+          src/features/oshi-status/components/OshiStatusPanel.markAllWatched.test.tsx
+          src/features/oshi-status/utils/oshiActivity.countUnwatched.test.ts
           src/features/oshi-status/data/creatorMilestones.test.ts
           src/features/oshi-status/data/allCreatorMilestones.test.ts
           src/features/live-status/model/milestoneToday.test.ts

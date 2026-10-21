@@ -715,6 +715,25 @@
   border-color: var(--oshi-text-3);
 }
 
+/* 已觀看全部 (and, on mobile/tablet, 查看全部 beside it): the right-hand end of the 最近動態 heading row, both in the one ghost-button look above. */
+.oshi-status__section-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+
+  gap: 6px;
+}
+
+.oshi-status__view-all:disabled {
+  color: var(--oshi-text-3);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.oshi-status__view-all:disabled:hover {
+  border-color: var(--oshi-border);
+}
+
 /* The dedicated full-screen Latest Activity view (mobile/tablet 查看全部): fixed over the whole viewport, its own scroll container, so Home
    underneath keeps its scroll position untouched while it is open. */
 .oshi-activity-view {

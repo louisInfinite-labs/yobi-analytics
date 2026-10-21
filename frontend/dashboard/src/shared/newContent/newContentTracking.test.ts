@@ -4,6 +4,7 @@ import {
   isNewContent,
   isUnseenContent,
   markContentSeen,
+  markContentSeenMany,
   newContentEventTime,
   resetNewContentTracking,
   startOfLocalDay,
@@ -273,6 +274,20 @@ describe("seen state", () => {
     markContentSeen("")
 
     expect(storedSeen()).toEqual(["a"])
+  })
+
+  it("markContentSeenMany marks every listed video in one write, idempotently, ignoring empty and already-seen ids and touching nothing else", () => {
+    firstUseAt(local(10, 7, 8, 0))
+    markContentSeen("old")
+    const { result } = renderHook(() => useNewContent())
+
+    act(() => markContentSeenMany(["a", "b", "", "old", "a"]))
+    act(() => markContentSeenMany(["a", "b"]))
+    act(() => markContentSeenMany([]))
+
+    expect(storedSeen()).toEqual(["old", "a", "b"])
+    expect(result.current.isUnseen("a")).toBe(false)
+    expect(result.current.isUnseen("c")).toBe(true)
   })
 
   it("keeps the remembered ids bounded (20,000), dropping the oldest first", () => {

@@ -4,8 +4,15 @@ import { parseBirthday, parseDebutDate } from "../model/milestoneCountdown"
 /** Every creator fixed milestone dates in ONE read: GET /milestones -> { milestones: [{ creatorId, birthday, debutDate }, ...] }. The Live Status list needs
  * them for the whole roster, so this is a single bulk request, shared by every component and cached in memory. */
 export interface MilestoneDates {
-  birthday: string
-  debutDate: string
+  /** "MM-DD"; absent when the record has no usable birthday. */
+  birthday?: string
+  /** The ORIGINAL debut date "YYYY-MM-DD"; absent when the record has no usable debut date. */
+  debutDate?: string
+}
+
+/** Whether a record carries at least one usable birthday or debut date -- the one rule for showing the calendar icon (nothing is decided by a channel name or type). */
+export function hasUsableMilestoneDate(dates: MilestoneDates | undefined): boolean {
+  return dates !== undefined && (parseBirthday(dates.birthday) !== null || parseDebutDate(dates.debutDate) !== null)
 }
 
 export type AllCreatorMilestones = Record<string, MilestoneDates>
@@ -14,15 +21,19 @@ interface BulkDto {
   milestones?: unknown
 }
 
-/** Checked, never trusted: a record without a usable id, birthday or debut date is skipped (nothing is invented or repaired). */
+/** Checked, never trusted: a record without a usable id, or with neither a usable birthday nor a usable debut date, is skipped (nothing is invented or
+ * repaired); a record with only one usable date keeps just that one. */
 export async function fetchAllCreatorMilestones(): Promise<AllCreatorMilestones> {
   const dto = await apiRequest<BulkDto>("/milestones")
   if (!Array.isArray(dto.milestones)) throw new Error("Milestones response has no list")
   const byId: AllCreatorMilestones = {}
   for (const record of dto.milestones as Array<Record<string, unknown>>) {
     const { creatorId, birthday, debutDate } = record ?? {}
-    if (typeof creatorId !== "string" || !creatorId || !parseBirthday(birthday) || !parseDebutDate(debutDate)) continue
-    byId[creatorId] = { birthday: birthday as string, debutDate: debutDate as string }
+    if (typeof creatorId !== "string" || !creatorId) continue
+    const dates: MilestoneDates = {}
+    if (parseBirthday(birthday)) dates.birthday = birthday as string
+    if (parseDebutDate(debutDate)) dates.debutDate = debutDate as string
+    if (hasUsableMilestoneDate(dates)) byId[creatorId] = dates
   }
   return byId
 }
