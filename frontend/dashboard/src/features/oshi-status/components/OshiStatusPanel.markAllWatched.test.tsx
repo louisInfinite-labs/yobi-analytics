@@ -76,6 +76,22 @@ function renderPanel() {
   )
 }
 
+/** The panel with a creator that can be switched: the feed always reflects the current `items`, so a test sets them before switching. */
+function renderSwitchable(firstCreatorId = "ch_aizawa_ema") {
+  const ui = (creatorId: string) => (
+    <OshiStatusPanel
+      creatorId={creatorId}
+      status={{ kind: "offline" }}
+      feed={{ ...feedFor(items), ...feedOverride }}
+      now={now}
+      onSelectVideo={vi.fn()}
+      nowPlayingTitle={null}
+    />
+  )
+  const view = render(ui(firstCreatorId))
+  return { switchTo: (creatorId: string) => view.rerender(ui(creatorId)) }
+}
+
 function setViewport(width: number) {
   Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: width })
   Object.defineProperty(document.documentElement, "clientWidth", { configurable: true, value: width })
@@ -352,6 +368,129 @@ describe("the other locales", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: button }))
     const dialog = await screen.findByRole("dialog", { name: question })
     expect(within(dialog).getAllByRole("button").map((entry) => entry.textContent)).toEqual([cancel, confirm])
+  })
+})
+
+describe("a creator change while the confirmation is open", () => {
+  it("closes it, marks nothing, and does not reopen when the first creator is selected again", async () => {
+    const view = renderSwitchable()
+    await screen.findByText("Upload u1")
+    await userEvent.setup().click(markAllButton())
+    await screen.findByRole("dialog", { name: "已觀看全部新影片嗎?" })
+
+    items = [upload("b1"), upload("b2")]
+    view.switchTo("ch_gawr_gura")
+    expect(confirmDialog()).toBeNull()
+    expect(seen()).toEqual([])
+
+    items = [upload("u1"), upload("u2"), livestream("s1")]
+    view.switchTo("ch_aizawa_ema") // A -> B -> A
+    await screen.findByText("Upload u1")
+    expect(confirmDialog()).toBeNull()
+    expect(seen()).toEqual([])
+  })
+
+  it("never lets a confirmation made for one creator mark the other creator's videos", async () => {
+    const view = renderSwitchable()
+    await screen.findByText("Upload u1")
+    const user = userEvent.setup()
+    await user.click(markAllButton())
+    await screen.findByRole("dialog", { name: "已觀看全部新影片嗎?" })
+
+    items = [upload("b1"), upload("b2")]
+    view.switchTo("ch_gawr_gura")
+    expect(screen.queryByRole("button", { name: "確定" })).toBeNull() // there is nothing left to confirm
+    expect(counts()).toEqual({ 影片: "2", 直播: "0" })
+
+    await user.click(markAllButton()) // a fresh request for the new creator marks only that creator's videos
+    await user.click(await screen.findByRole("button", { name: "確定" }))
+    expect(seen().sort()).toEqual(["b1", "b2"])
+  })
+})
+
+describe("focus after the confirmation closes", () => {
+  it("confirming the last outstanding videos disables the button, so focus moves to an enabled control of the section, not the page body", async () => {
+    renderPanel()
+    await screen.findByText("Upload u1")
+    const user = userEvent.setup()
+    await user.click(markAllButton())
+    await user.click(await screen.findByRole("button", { name: "確定" }))
+
+    expect(markAllButton()).toBeDisabled()
+    const focused = document.activeElement as HTMLElement
+    expect(focused).not.toBe(document.body)
+    expect(focused.closest(".oshi-status__section--recent")).not.toBeNull()
+    expect(focused).toBeEnabled()
+    expect(focused).toHaveClass("oshi-status__recent-video-link") // desktop: the first row's title
+  })
+
+  it("mobile: focus moves to View all, the first enabled control beside the disabled button", async () => {
+    setViewport(390)
+    renderPanel()
+    await screen.findByText("Upload u1")
+    const user = userEvent.setup()
+    await user.click(markAllButton())
+    await user.click(await screen.findByRole("button", { name: "確定" }))
+
+    expect(markAllButton()).toBeDisabled()
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "查看全部" }))
+  })
+
+  it("cancelling keeps today's behavior: focus returns to the Mark all watched button, which is still enabled", async () => {
+    renderPanel()
+    await screen.findByText("Upload u1")
+    const user = userEvent.setup()
+    await user.click(markAllButton())
+    await user.click(await screen.findByRole("button", { name: "取消" }))
+
+    expect(markAllButton()).toBeEnabled()
+    expect(document.activeElement).toBe(markAllButton())
+  })
+})
+
+describe("OshiSwitchConfirmDialog focus restoration", () => {
+  function mountFrom(opener: HTMLElement, restoreFocusFallback?: () => HTMLElement | null) {
+    opener.focus()
+    return render(<OshiSwitchConfirmDialog creatorName="x" locale="en" onCancel={vi.fn()} onConfirm={vi.fn()} restoreFocusFallback={restoreFocusFallback} />)
+  }
+  const addButton = (label: string) => {
+    const button = document.createElement("button")
+    button.textContent = label
+    document.body.appendChild(button)
+    return button
+  }
+
+  it("returns focus to the opener when it can take it (with or without a fallback)", () => {
+    const opener = addButton("opener")
+    const fallback = addButton("fallback")
+    mountFrom(opener, () => fallback).unmount()
+    expect(document.activeElement).toBe(opener)
+
+    mountFrom(opener).unmount()
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it("gives focus to the fallback when the opener became disabled while the dialog was open", () => {
+    const opener = addButton("opener")
+    const fallback = addButton("fallback")
+    const view = mountFrom(opener, () => fallback)
+    opener.disabled = true
+    view.unmount()
+    expect(document.activeElement).toBe(fallback)
+  })
+
+  it("gives focus to the fallback when the opener left the page, and never throws when there is no fallback", () => {
+    const opener = addButton("opener")
+    const fallback = addButton("fallback")
+    const view = mountFrom(opener, () => fallback)
+    opener.remove()
+    view.unmount()
+    expect(document.activeElement).toBe(fallback)
+
+    const secondOpener = addButton("second")
+    const second = mountFrom(secondOpener)
+    secondOpener.disabled = true
+    expect(() => second.unmount()).not.toThrow()
   })
 })
 

@@ -172,10 +172,20 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
   // Mark all watched: marks the videos the "Not watched yet" Videos count counts (never a livestream archive) seen in the shared seen store, the one every NEW badge and count reads,
   // so they all update at once and the state survives a reload exactly like opening each video would. With nothing outstanding there is nothing to confirm.
   const [confirmMarkAll, setConfirmMarkAll] = useConfirmMarkAllWatchedPreference()
-  const [markAllOpen, setMarkAllOpen] = useState(false)
+  // The creator the confirmation is open for: a creator change closes it by derivation, and A -> B -> A never reopens it (see useMilestoneDialogController).
+  const [markAllFor, setMarkAllFor] = useState<string | null>(null)
+  const [lastCreatorId, setLastCreatorId] = useState(creatorId)
+  if (lastCreatorId !== creatorId) {
+    setLastCreatorId(creatorId)
+    if (markAllFor !== null) setMarkAllFor(null)
+  }
+  const markAllOpen = markAllFor === creatorId
+  const recentSectionRef = useRef<HTMLElement | null>(null)
   const canMarkAll = rowsAvailable && unwatched.videos > 0
   const markAllWatched = () => markContentSeenMany(unwatchedVideoIds(eligibility, recent, { isNew: isNewContent, isUnseen }, now))
-  const requestMarkAll = () => (confirmMarkAll ? setMarkAllOpen(true) : markAllWatched())
+  const requestMarkAll = () => (confirmMarkAll ? setMarkAllFor(creatorId) : markAllWatched())
+  // Confirming the last outstanding videos disables the Mark all watched button, which then cannot take focus back: the first enabled control of the section does.
+  const focusAfterMarkAll = () => recentSectionRef.current?.querySelector<HTMLElement>("button:not(:disabled)") ?? null
 
   return (
     <aside className="oshi-status" ref={panelRef}>
@@ -283,7 +293,7 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
           </div>
         </section>
 
-        <section className="oshi-status__section oshi-status__section--recent">
+        <section ref={recentSectionRef} className="oshi-status__section oshi-status__section--recent">
           <div className="oshi-status__section-head">
             <div className="oshi-status__section-title">{t(locale, "oshiStatus.recent")}</div>
             <div className="oshi-status__section-actions">
@@ -342,11 +352,12 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
           message={t(locale, "oshiStatus.markAllWatched.confirmMessage")}
           confirmLabel={t(locale, "oshiStatus.markAllWatched.confirmAction")}
           locale={locale}
-          onCancel={() => setMarkAllOpen(false)}
+          restoreFocusFallback={focusAfterMarkAll}
+          onCancel={() => setMarkAllFor(null)}
           onConfirm={(dontAskAgain) => {
             markAllWatched()
             if (dontAskAgain) setConfirmMarkAll(false)
-            setMarkAllOpen(false)
+            setMarkAllFor(null)
           }}
         />
       )}
