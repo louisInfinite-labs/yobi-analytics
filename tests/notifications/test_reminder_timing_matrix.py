@@ -30,6 +30,7 @@ from .test_notification_dispatcher import (  # noqa: F401  (autouse fixtures mus
     _preference_value,
     _remote_config_stub,
     _sf6_stream,
+    _store_preference,
     _subscription_value,
     stub_creators,
     stub_live_streams,
@@ -57,7 +58,7 @@ def run(monkeypatch, *, now: datetime, streams: list[dict], preference: dict | N
     monkeypatch.setattr(read_api, "get_live_streams", lambda *_a, **_kw: {"streams": streams})
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
     monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [])
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": preference or _preference_value()}])
+    _store_preference("c1", preference or _preference_value())
     monkeypatch.setattr(remote_config_store, "get_remote_config", _remote_config_stub(subscription=_subscription_value(), **reminders))
     log = delivered if delivered is not None else set()
     monkeypatch.setattr(notification_delivery_log_store, "already_delivered", lambda client_id, video_id: (client_id, video_id) in log)

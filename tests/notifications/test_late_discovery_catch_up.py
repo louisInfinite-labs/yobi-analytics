@@ -96,6 +96,18 @@ class CatchUpHarness(Harness):
                 records.append(record)
         return records
 
+    def _list_by_key(self, key):
+        """remote_config_store.list_by_key (the configKey-index): every client's record under `key`, each with its own updatedAt like the base item."""
+        records = []
+        for (client, k), value in self.config.items():
+            if k == key:
+                record = {"clientId": client, "key": k, "value": value}
+                updated = self._updated(client, k)
+                if updated is not None:
+                    record["updatedAt"] = updated
+                records.append(record)
+        return records
+
     def _handled_ids(self, client_id, ids, *, now=None):
         """notification_delivery_log_store.handled_ids over the in-memory log (a claim or a delivery counts)."""
         self.events.append("handled")

@@ -66,6 +66,7 @@ from api.holodex_normalization import HolodexNormalizationError
 from notifications import notification_dispatch
 from notifications import live_reminder
 from notifications import push_sender
+from notifications import simultaneous_live
 from api import read_api
 from api import remote_config_api
 from stores import notification_slot_store
@@ -396,6 +397,29 @@ def _handle_delete_stream_notification_override(event: dict[str, Any]) -> dict[s
     return {"clientId": client_id, "key": key, "deleted": True}
 
 
+def _handle_put_simultaneous_live_notice(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: a client opts IN to 同時開播預告 (a notice when several creators it follows are scheduled to start at the same time).
+
+    Writes exactly ONE tiny remote-config item (simultaneous_live.OPT_IN_KEY) -- not a field of the notification preference, whose PUT replaces the
+    whole item and would let any stale writer switch this off by omission. The item is the sparse opt-in index the dispatcher lists. The body is
+    ignored: the route itself is the choice, and DELETE is the opposite.
+    """
+    client_id = heartbeat_api.parse_client_id(_merged_params(event).get("clientId"))
+    _require_client_secret(event, client_id)
+    record = remote_config_api.write_remote_config({"clientId": client_id, "key": simultaneous_live.OPT_IN_KEY, "value": {"enabled": True}})
+    remote_config_store.put_remote_config(record)
+    return {"clientId": client_id, "key": simultaneous_live.OPT_IN_KEY, "value": {"enabled": True}}
+
+
+def _handle_delete_simultaneous_live_notice(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: a client opts OUT of 同時開播預告 by deleting its opt-in item (idempotent). The dispatcher re-reads the item right before every
+    send, so a notice that is still pending for this client is dropped, not delivered."""
+    client_id = heartbeat_api.parse_client_id(_merged_params(event).get("clientId"))
+    _require_client_secret(event, client_id)
+    remote_config_store.delete_remote_config(client_id, simultaneous_live.OPT_IN_KEY)
+    return {"clientId": client_id, "key": simultaneous_live.OPT_IN_KEY, "deleted": True}
+
+
 def _handle_post_client_credential(event: dict[str, Any]) -> dict[str, Any]:
     """Issue a new client secret for a clientId that doesn't have one yet (PR #18 CodeRabbit hardening).
 
@@ -498,6 +522,8 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "DELETE /clients/{clientId}/creator-reminder/{creatorId}/{scope}": _handle_delete_creator_reminder,
     "PUT /clients/{clientId}/stream-notification-override/{videoId}": _handle_put_stream_notification_override,
     "DELETE /clients/{clientId}/stream-notification-override/{videoId}": _handle_delete_stream_notification_override,
+    "PUT /clients/{clientId}/simultaneous-live-notice": _handle_put_simultaneous_live_notice,
+    "DELETE /clients/{clientId}/simultaneous-live-notice": _handle_delete_simultaneous_live_notice,
     "GET /admin/heartbeat-stats": _handle_get_admin_heartbeat_stats,
 }
 

@@ -44,6 +44,9 @@ class _LocaleStrings:
     fallback_video_body: str
     fallback_stream_body: str
     fallback_creator_name: str
+    simultaneous_title: str  # {names} are the creators starting together
+    names_separator: str
+    more_names: str  # {count} further creators beyond the two named
 
 
 _STRINGS: dict[str, _LocaleStrings] = {
@@ -60,6 +63,9 @@ _STRINGS: dict[str, _LocaleStrings] = {
         fallback_video_body="新影片",
         fallback_stream_body="直播",
         fallback_creator_name="你追蹤的創作者",
+        simultaneous_title="{names} 預定同時開播",
+        names_separator="、",
+        more_names="等 {count} 位",
     ),
     "ja": _LocaleStrings(
         new_video_title="{name} が新しい動画を公開しました",
@@ -74,6 +80,9 @@ _STRINGS: dict[str, _LocaleStrings] = {
         fallback_video_body="新しい動画",
         fallback_stream_body="配信",
         fallback_creator_name="フォロー中の配信者",
+        simultaneous_title="{names} の配信開始予定が重なっています",
+        names_separator="、",
+        more_names="ほか{count}人",
     ),
     "en": _LocaleStrings(
         new_video_title="{name} posted a new video",
@@ -88,6 +97,9 @@ _STRINGS: dict[str, _LocaleStrings] = {
         fallback_video_body="New video",
         fallback_stream_body="Live stream",
         fallback_creator_name="A creator you follow",
+        simultaneous_title="{names} are scheduled to go live at the same time",
+        names_separator=", ",
+        more_names="and {count} more",
     ),
 }
 
@@ -112,6 +124,23 @@ def new_video_notification(*, locale: Any, creator_name: Any, video_title: Any) 
     title = strings.new_video_title.replace("{name}", _name(strings, creator_name))
     body = video_title if _present(video_title) else strings.fallback_video_body
     return NotificationText(title=title, body=body)
+
+
+def simultaneous_notification(*, locale: Any, creator_names: list[Any], start_label: str, stream_titles: list[Any]) -> NotificationText:
+    """The notice that several creators the client follows are scheduled to start at the same time (同時開播預告).
+
+    The title names at most two creators ("A, B and N more"); a missing name falls back to the localized generic one. The body is the shared start
+    time in the client's own time zone (`start_label`, "HH:MM") followed by the original stream titles, joined and untouched; it always carries
+    at least the time, so it is never empty. Like every other kind it only says the start is SCHEDULED -- nothing here claims anyone is live.
+    """
+    strings = _STRINGS[normalize_locale(locale)]
+    names = [_name(strings, name) for name in creator_names]
+    shown = strings.names_separator.join(names[:2])
+    if len(names) > 2:
+        shown = f"{shown} {strings.more_names.replace('{count}', str(len(names) - 2))}"
+    titles = [title for title in stream_titles if _present(title)]
+    body = start_label if not titles else f"{start_label}  {' / '.join(titles)}"
+    return NotificationText(title=strings.simultaneous_title.replace("{names}", shown), body=body)
 
 
 def reminder_notification(

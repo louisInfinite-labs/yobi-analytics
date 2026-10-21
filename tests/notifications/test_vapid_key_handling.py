@@ -32,6 +32,7 @@ from .test_notification_dispatcher import (  # noqa: F401  (autouse fixtures mus
     _override_value,
     _preference_value,
     _remote_config_stub,
+    _store_preference,
     stub_creators,
     stub_live_streams,
     stub_reminder_items,
@@ -161,7 +162,7 @@ def run_dispatcher(monkeypatch, *, vapid_key: str, now: datetime = START, webpus
     monkeypatch.setattr(notification_dispatcher, "datetime", _frozen_datetime(now))
     monkeypatch.setattr(notification_dispatcher, "get_vapid_credentials", lambda: (vapid_key, CLAIMS))
     monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda event_date: [])
-    monkeypatch.setattr(remote_config_store, "list_by_key", lambda key: [{"clientId": "c1", "value": _preference_value()}])
+    _store_preference("c1", _preference_value())
     overrides = {"first_stream": _override_value(notifyAtStart=True, advanceReminder=None), OTHER: _override_value(notifyAtStart=True, advanceReminder=None)}
     monkeypatch.setattr(remote_config_store, "get_remote_config", _remote_config_stub(subscription=real_subscription(), overrides=overrides))
     log: set = set()

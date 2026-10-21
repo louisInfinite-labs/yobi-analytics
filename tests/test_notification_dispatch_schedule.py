@@ -41,3 +41,23 @@ def test_reminder_window_matches_the_prepared_cadence():
     between two runs, and no wider than necessary or "1min" stops being
     honoured precisely."""
     assert notification_dispatcher._REMINDER_WINDOW == timedelta(minutes=1)
+
+
+def test_the_prepared_schedule_passes_its_scheduled_time_so_a_retried_or_delayed_run_serves_its_own_minute():
+    """The input carries the Scheduler's context attribute as a plain string (jsonencode would escape the angle brackets and defeat the substitution)."""
+    block = _notification_dispatch_block()
+    code = "\n".join(line for line in block.splitlines() if not line.strip().startswith("#"))
+
+    assert 'input = "{\\"scheduledTime\\":\\"<aws.scheduler.scheduled-time>\\"}"' in code
+    assert "jsonencode" not in code
+
+
+def test_the_prepared_retry_policy_never_outlives_the_dispatchers_recovery_lookback():
+    """An invocation retried later than the dispatcher can recover is only extra load: its max event age must not exceed the lookback."""
+    block = _notification_dispatch_block()
+    age = int(re.search(r"maximum_event_age_in_seconds\s*=\s*(\d+)", block).group(1))
+    attempts = int(re.search(r"maximum_retry_attempts\s*=\s*(\d+)", block).group(1))
+
+    assert age <= notification_dispatcher._MAX_RECOVERY_LOOKBACK.total_seconds()
+    assert 1 <= attempts <= 10
+    assert "dead_letter_config" in block  # the dead-letter queue stays: an exhausted retry is still visible

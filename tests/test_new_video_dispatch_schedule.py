@@ -73,10 +73,12 @@ def test_a_failed_slot_run_is_retried_only_briefly_so_it_cannot_serve_a_long_pas
     assert age <= new_video_dispatcher._MAX_TICK_LAG.total_seconds()  # a retry never arrives later than the dispatcher honours
 
 
-def test_the_one_minute_reminder_schedule_is_unchanged_and_sends_no_mode():
+def test_the_one_minute_reminder_schedule_keeps_its_cadence_and_sends_no_mode():
     block = _block(EVENTBRIDGE_TF, 'resource "aws_scheduler_schedule" "notification_dispatch"')
     assert '"rate(1 minute)"' in block
-    assert re.search(r"^\s*input\s*=", block, re.MULTILINE) is None  # no input at all: the reminder job is the no-mode default
+    # The reminder job is the no-mode default: its input (the Scheduler's scheduled time, so a delayed or retried run serves its own minute) never names a mode.
+    input_lines = [line for line in block.splitlines() if re.match(r"^\s*input\s*=", line)]
+    assert len(input_lines) == 1 and "scheduledTime" in input_lines[0] and "mode" not in input_lines[0]
 
 
 def test_the_slot_table_has_the_keys_and_index_the_store_queries():

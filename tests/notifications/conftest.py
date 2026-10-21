@@ -23,3 +23,27 @@ def stub_new_video_dispatcher_environment(monkeypatch):
     """No real VAPID credentials or creator master file for the slot dispatcher -- push_sender itself is stubbed in every test."""
     monkeypatch.setattr(new_video_dispatcher, "get_vapid_credentials", lambda: ("pem", {"sub": "mailto:a@b.com"}))
     monkeypatch.setattr(new_video_dispatcher, "load_creators", lambda: [default_creator()])
+
+
+@pytest.fixture(autouse=True)
+def reset_simultaneous_dispatch_cache():
+    """The simultaneous-livestream dispatcher remembers settled collisions per warm container; no test may inherit another's memory."""
+    from notifications import simultaneous_dispatcher
+
+    simultaneous_dispatcher.reset_cache()
+    yield
+    simultaneous_dispatcher.reset_cache()
+
+
+@pytest.fixture(autouse=True)
+def deterministic_dispatcher_defaults(monkeypatch):
+    """Existing dispatcher tests run one recipient at a time on the calling thread, with recovery of unserved minutes switched off (they call the
+    dispatcher at arbitrary instants, which the recovery would -- correctly -- treat as missed runs). The tests of those two features turn them on."""
+    from datetime import timedelta
+
+    from notifications import notification_dispatcher, simultaneous_dispatcher
+
+    monkeypatch.setattr(notification_dispatcher, "_SEND_WORKERS", 1)
+    monkeypatch.setattr(notification_dispatcher, "_MAX_RECOVERY_LOOKBACK", timedelta(0))
+    monkeypatch.setattr(notification_dispatcher, "_last_served_ms", None)
+    monkeypatch.setattr(simultaneous_dispatcher, "_ATTEMPT_WORKERS", 1)

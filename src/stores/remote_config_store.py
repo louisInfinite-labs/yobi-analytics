@@ -22,6 +22,7 @@ opaque value depends on that distinction.
 from __future__ import annotations
 
 import os
+import threading
 from decimal import Decimal
 from typing import Any
 
@@ -37,23 +38,22 @@ class RemoteConfigStoreError(Exception):
     """Raised when the DynamoDB Remote Config table is unreachable or malformed."""
 
 
-_cached_resource = None
+_local = threading.local()
 
 
 def _resource():
-    """Return a cached boto3 DynamoDB resource, using the ambient AWS credentials/region.
+    """Return this THREAD's cached boto3 DynamoDB resource, using the ambient AWS credentials/region.
 
-    Cached at module level rather than constructed fresh per call — a fresh
-    `boto3.resource()` opens its own connection pool, so constructing one
-    per call forces a new TLS handshake every time instead of reusing a warm
-    connection (see dynamodb_store.py's own _resource() for the production
-    incident this pattern caused there). boto3 resources are documented as
-    safe to share across threads for the calls this module makes.
+    Cached (not constructed per call) so a warm Lambda keeps its connection pool -- see dynamodb_store.py's own _resource() for the production
+    incident a per-call resource caused. Cached per THREAD because boto3 Resource objects are not documented as thread-safe and the dispatcher
+    now serves recipients from a small thread pool; the low-level client underneath is thread-safe, the Resource wrapper is not guaranteed to be.
     """
-    global _cached_resource
-    if _cached_resource is None:
-        _cached_resource = boto3.resource("dynamodb")
-    return _cached_resource
+    resource = getattr(_local, "resource", None)
+    if resource is None:
+        # A private Session per thread: the shared default Session is not thread-safe to build resources from (first use races to create it).
+        resource = boto3.session.Session().resource("dynamodb")
+        _local.resource = resource
+    return resource
 
 
 def put_remote_config(record: dict[str, Any]) -> None:
@@ -74,6 +74,67 @@ def put_remote_config(record: dict[str, Any]) -> None:
     try:
         table.put_item(Item=item)
     except ClientError as exc:
+        raise RemoteConfigStoreError(f"Failed to write to {REMOTE_CONFIG_TABLE}: {exc}") from exc
+
+
+def put_remote_config_if_newer(record: dict[str, Any], *, revision: int) -> bool:
+    """Persist `record` only if no record with a revision >= `revision` is stored: the write of a record that carries its own monotonic
+    `value.revision` (an integer, e.g. the shared snapshot's refresh time in epoch ms).
+
+    A dispatcher run that derived its record from an OLDER source than the one already stored (two overlapping runs, a retried event)
+    loses the conditional write instead of overwriting the newer state. Returns True when written, False when a record at least as new
+    already existed. A stored record without a revision (written before this existed) is always replaced.
+    """
+    table = _resource().Table(REMOTE_CONFIG_TABLE)
+    item = {
+        "clientId": record["clientId"],
+        "configKey": record["key"],
+        "value": _floats_to_decimal(record["value"]),
+        "updatedAt": record["updatedAt"],
+    }
+    try:
+        table.put_item(
+            Item=item,
+            ConditionExpression="attribute_not_exists(clientId) OR attribute_not_exists(#value.#revision) OR #value.#revision < :revision",
+            ExpressionAttributeNames={"#value": "value", "#revision": "revision"},
+            ExpressionAttributeValues={":revision": revision},
+        )
+        return True
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise RemoteConfigStoreError(f"Failed to write to {REMOTE_CONFIG_TABLE}: {exc}") from exc
+
+
+def put_remote_config_versioned(record: dict[str, Any], *, expected_version: int | None) -> bool:
+    """Compare-and-set write of a record that carries its own `value.version` (an integer counter).
+
+    `expected_version=None` creates the record and fails if it already exists; otherwise the write succeeds only while the stored
+    `value.version` still equals `expected_version`. The caller writes `expected_version + 1`. Returns False when another writer got
+    there first (the caller skips its work rather than overwrite). Used for the lease + progress of a simultaneous-livestream notice.
+    """
+    table = _resource().Table(REMOTE_CONFIG_TABLE)
+    item = {
+        "clientId": record["clientId"],
+        "configKey": record["key"],
+        "value": _floats_to_decimal(record["value"]),
+        "updatedAt": record["updatedAt"],
+    }
+    kwargs: dict[str, Any]
+    if expected_version is None:
+        kwargs = {"ConditionExpression": "attribute_not_exists(clientId)"}
+    else:
+        kwargs = {
+            "ConditionExpression": "#value.#version = :version",
+            "ExpressionAttributeNames": {"#value": "value", "#version": "version"},
+            "ExpressionAttributeValues": {":version": expected_version},
+        }
+    try:
+        table.put_item(Item=item, **kwargs)
+        return True
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
         raise RemoteConfigStoreError(f"Failed to write to {REMOTE_CONFIG_TABLE}: {exc}") from exc
 
 
@@ -149,10 +210,11 @@ def list_by_key(key: str) -> list[dict[str, Any]]:
     VideoMaster's old full-catalog scan, just scaling with client count
     instead of video count. Now a Query against `configKey-index`
     (terraform/dynamodb.tf), so cost scales with how many clients actually
-    stored this one key, never with the whole table. Used by the Roadmap
-    4.6 notification dispatcher to find every client that has ever stored a
-    "notificationPreference", every 15 minutes, since a clientId is
-    otherwise only reachable if you already know it.
+    stored this one key, never with the whole table. Used by the notification
+    dispatcher to find the followers of one creator / stream (the reminder
+    items `creatorReminder#<creator>#...` / `streamOverride#<video>` are the
+    subscription edges) and the clients that opted in to the simultaneous-
+    livestream notice -- never to list every client's preference.
     """
     table = _resource().Table(REMOTE_CONFIG_TABLE)
     items: list[dict] = []

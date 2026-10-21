@@ -141,6 +141,8 @@ export type TranslationKey =
   | "notificationSettings.deliveryTimes.timeAriaLabel"
   | "notificationSettings.deliveryTimes.removeAriaLabel"
   | "notificationSettings.deliveryTimes.addAriaLabel"
+  | "notificationSettings.simultaneousLive.title"
+  | "notificationSettings.simultaneousLive.description"
   | "notificationSettings.liveColumnHeader"
   | "notificationSettings.newVideoColumnHeader"
   | "notificationSettings.liveSwitchAriaLabel"
@@ -422,6 +424,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.deliveryTimes.timeAriaLabel": "通知時間 {{index}}",
     "notificationSettings.deliveryTimes.removeAriaLabel": "刪除通知時間 {{time}}",
     "notificationSettings.deliveryTimes.addAriaLabel": "新增通知時間",
+    "notificationSettings.simultaneousLive.title": "同時開播預告",
+    "notificationSettings.simultaneousLive.description": "當你開啟直播通知的兩位以上創作者預定在完全相同的時間開播時，在開播前通知你。預設關閉。",
     "oshiSettings.pageDescription": "管理你收藏的成員，並用於直播狀態、通知設定等功能。",
     "oshiSettings.selectedCountLabel": "已選 {{count}} 人",
     "oshiSettings.viewFilter.favoritesOnly": "收藏",
@@ -712,6 +716,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.deliveryTimes.timeAriaLabel": "Notification time {{index}}",
     "notificationSettings.deliveryTimes.removeAriaLabel": "Delete notification time {{time}}",
     "notificationSettings.deliveryTimes.addAriaLabel": "Add a notification time",
+    "notificationSettings.simultaneousLive.title": "Simultaneous stream heads-up",
+    "notificationSettings.simultaneousLive.description": "Get a notice before the start when two or more creators you have live notifications for are scheduled to go live at exactly the same time. Off by default.",
     "oshiSettings.pageDescription": "Manage your favorite members for Live Status, notification settings, and other features.",
     "oshiSettings.selectedCountLabel": "{{count}} selected",
     "oshiSettings.viewFilter.favoritesOnly": "Favorites",
@@ -1001,6 +1007,8 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.deliveryTimes.timeAriaLabel": "通知時間 {{index}}",
     "notificationSettings.deliveryTimes.removeAriaLabel": "通知時間 {{time}} を削除",
     "notificationSettings.deliveryTimes.addAriaLabel": "通知時間を追加",
+    "notificationSettings.simultaneousLive.title": "同時配信のお知らせ",
+    "notificationSettings.simultaneousLive.description": "ライブ通知をオンにしている2人以上の配信者がまったく同じ時刻に配信予定のとき、開始前にお知らせします。初期設定はオフです。",
     "oshiSettings.pageDescription": "お気に入りのメンバーを管理します。ライブ状況や通知設定などで確認できます。",
     "oshiSettings.selectedCountLabel": "{{count}} 人選択中",
     "oshiSettings.viewFilter.favoritesOnly": "お気に入り",
