@@ -111,6 +111,17 @@ def test_an_advance_reminder_and_a_simultaneous_notice_live_exactly_until_the_sc
     for minutes_before in (1, 10, 30, 60):
         start = now + timedelta(minutes=minutes_before)
         assert push_ttl.advance_reminder_ttl_seconds(scheduled_start_ms=_ms(start), now=now) == minutes_before * 60
+        assert push_ttl.simultaneous_notice_ttl_seconds(scheduled_start_ms=_ms(start), now=now) == minutes_before * 60
+
+
+def test_a_simultaneous_notice_never_outlives_its_start_even_in_the_last_seconds():
+    """Five seconds before the start it lives five seconds (no 30 s floor); it is never zero, and never longer than a day."""
+    now = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
+
+    assert push_ttl.simultaneous_notice_ttl_seconds(scheduled_start_ms=_ms(now + timedelta(seconds=5)), now=now) == 5
+    assert push_ttl.simultaneous_notice_ttl_seconds(scheduled_start_ms=_ms(now + timedelta(milliseconds=200)), now=now) == 1
+    assert push_ttl.simultaneous_notice_ttl_seconds(scheduled_start_ms=_ms(now - timedelta(seconds=3)), now=now) == 1
+    assert push_ttl.simultaneous_notice_ttl_seconds(scheduled_start_ms=_ms(now + timedelta(days=4)), now=now) == push_ttl.MAX_TTL_SECONDS
 
 
 def test_a_time_sensitive_lifetime_is_never_zero_and_never_longer_than_a_day():
@@ -199,10 +210,10 @@ def test_a_simultaneous_notice_never_outlives_the_shared_start(world):  # noqa: 
     assert [push["ttl"] for push in world.pushes] == [2 * 3600]
 
 
-def test_a_simultaneous_notice_sent_in_the_last_seconds_still_gets_a_positive_ttl(world):  # noqa: F811
-    """A notice discovered 5 seconds before the start (it is still true) is never sent with TTL 0 or a negative value."""
+def test_a_simultaneous_notice_sent_in_the_last_seconds_lives_only_those_seconds(world):  # noqa: F811
+    """A notice discovered 5 seconds before the start (it is still true) is held for 5 seconds -- never 0, never past the start."""
     follower(world, "c1", creators=(A, B))
 
     show(world, [vA(), vB()], SIM_START - timedelta(seconds=5))
 
-    assert [push["ttl"] for push in world.pushes] == [push_ttl.MIN_TIME_SENSITIVE_TTL_SECONDS]
+    assert [push["ttl"] for push in world.pushes] == [5]

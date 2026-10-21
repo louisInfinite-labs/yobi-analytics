@@ -495,7 +495,7 @@ def _attempt(
         data=data,
         vapid_private_key=vapid_private_key,
         vapid_claims=vapid_claims,
-        ttl_seconds=push_ttl.advance_reminder_ttl_seconds(scheduled_start_ms=collision.start_ms, now=now),
+        ttl_seconds=push_ttl.simultaneous_notice_ttl_seconds(scheduled_start_ms=collision.start_ms, now=now),
     )
     if result.subscription_expired:
         print(f"Push subscription expired for client {client_id!r}; leaving cleanup to a future pass")

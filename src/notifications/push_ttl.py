@@ -7,7 +7,7 @@
   what is left of 24 hours since discovery, never less than an hour: the dispatcher may already have held it back for quiet hours or a delivery slot;
 - a live reminder is only true until the stream starts, so an advance reminder lives until the scheduled start and a start reminder for a short grace
   after it -- a "starts in 10 minutes" that arrives after the start would be wrong, and a push service must not deliver it late;
-- a simultaneous-livestream notice is only true until the shared start, exactly like an advance reminder.
+- a simultaneous-livestream notice is only true until the shared start, so it lives exactly the time left until it (never past it).
 
 The TTL only bounds how long the push service may keep an UNDELIVERED message; it does not guarantee delivery. It is unrelated to any DynamoDB TTL.
 """
@@ -48,8 +48,16 @@ def new_video_ttl_seconds(*, discovered_at: datetime, now: datetime) -> int:
 
 
 def advance_reminder_ttl_seconds(*, scheduled_start_ms: int, now: datetime) -> int:
-    """Lifetime of an advance reminder or a simultaneous-livestream notice: until the scheduled start (at least 30 s, at most 24 h)."""
+    """Lifetime of an advance reminder: until the scheduled start (at least 30 s, at most 24 h)."""
     return _clamp(_until(scheduled_start_ms, now), MIN_TIME_SENSITIVE_TTL_SECONDS, MAX_TTL_SECONDS)
+
+
+def simultaneous_notice_ttl_seconds(*, scheduled_start_ms: int, now: datetime) -> int:
+    """Lifetime of a simultaneous-livestream notice: exactly the time left until the shared start (at least 1 s, at most 24 h), so it cannot outlive it.
+
+    The dispatcher never sends at or after the start, so the remaining time is always positive; the 1 s floor only guards rounding.
+    """
+    return max(1, min(_until(scheduled_start_ms, now), MAX_TTL_SECONDS))
 
 
 def start_reminder_ttl_seconds(*, scheduled_start_ms: int, now: datetime) -> int:

@@ -121,6 +121,12 @@ export function HomePage() {
   // "is this a live/upcoming stream" rule (a plain open must not mark a stream as watched) needs that data -- so the opening waits for it, and is dropped if the
   // viewer has moved to another creator meanwhile.
   const linkRef = useRef<{ pending: { video: { videoId: string; title: string }; creatorId: string } | null; flush: () => void }>({ pending: null, flush: () => {} })
+  const selectedVideoId = selectedVideo?.videoId ?? null
+  useEffect(() => {
+    // The viewer picked a different video while the link was waiting for the data: the pick wins, the queued link is dropped.
+    const pending = linkRef.current.pending
+    if (pending && selectedVideoId !== null && selectedVideoId !== pending.video.videoId) linkRef.current.pending = null
+  }, [selectedVideoId])
   useEffect(() => {
     // Re-bound after every render so it always sees the latest loading flag, creator and openVideo; runs the waiting link as soon as the data is there.
     linkRef.current.flush = () => {
@@ -133,7 +139,7 @@ export function HomePage() {
   })
   const videoLink = useVideoDeepLink({
     currentCreatorId: creatorId,
-    selectedVideoId: selectedVideo?.videoId ?? null,
+    selectedVideoId,
     openVideo: (video) => {
       linkRef.current.pending = { video, creatorId }
       linkRef.current.flush()

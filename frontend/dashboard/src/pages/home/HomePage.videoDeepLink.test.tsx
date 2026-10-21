@@ -39,6 +39,8 @@ const inHours = (hours: number) => new Date(Date.now() + hours * 3_600_000).toIS
 
 /** Per-video oEmbed answers (a function so a test can change them between a check and its retry). */
 let oembed: (videoId: string) => Response
+/** When set, /live-streams answers only after it resolves (a test holds the Home data back). */
+let liveStreamsGate: Promise<void> | null = null
 
 function installApi() {
   vi.stubEnv("VITE_API_BASE_URL", "https://api.test")
@@ -48,6 +50,7 @@ function installApi() {
       const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url)
       if (url.hostname === "www.youtube.com" && url.pathname === "/oembed") return oembed(new URL(url.searchParams.get("url") ?? "").searchParams.get("v") ?? "")
       if (url.pathname === "/live-streams") {
+        if (liveStreamsGate) await liveStreamsGate
         return json({
           streams: [
             { videoId: LIVE_NOW, creatorId: CREATOR_A.creatorId, channelName: "c", title: "Live right now", status: "live", scheduledStart: null, actualStart: inHours(-1), thumbnailUrl: "", topic: null },
@@ -78,6 +81,7 @@ const ok = (title: string) => json({ title })
 beforeEach(() => {
   installApi()
   oembed = (videoId) => ok(`Title of ${videoId}`)
+  liveStreamsGate = null
   vi.mocked(loadYouTubeIframeApi).mockReset()
   vi.mocked(loadYouTubeIframeApi).mockResolvedValue({ PlayerState: { PLAYING: 1 }, Player: class {} } as never)
   window.localStorage.clear()
@@ -136,6 +140,24 @@ describe("an available video opens in the player", () => {
     await waitFor(() => expect(playerSrc()).toContain(`/embed/${NOT_IN_LISTS}?`))
     await screen.findByRole("button", { name: "Recent One" })
     expect(playerSrc()).toContain(`/embed/${NOT_IN_LISTS}?`)
+  })
+
+  it("a pick made while the linked video is still waiting for the Home data wins: the queued link never replaces it", async () => {
+    let openGate: () => void = () => undefined
+    liveStreamsGate = new Promise<void>((resolve) => (openGate = resolve))
+    window.history.replaceState({}, "", `${ROUTE_A}?video=${NOT_IN_LISTS}`)
+    render(<HomePage />)
+    const recent = await screen.findByRole("button", { name: "Recent One" }) // the shelf is up while /live-streams is still held back
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("oembed"))).toBe(true))
+    await new Promise((resolve) => setTimeout(resolve, 30)) // the check has answered; the link is queued behind the data
+
+    await userEvent.setup().click(recent)
+    await waitFor(() => expect(playerSrc()).toContain("R1R1R1R1R1R"))
+    openGate()
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    expect(playerSrc()).toContain("R1R1R1R1R1R")
+    expect(playerSrc()).not.toContain(NOT_IN_LISTS)
   })
 
   it("picking another video afterwards releases the link: a refresh then shows the plain creator Home", async () => {

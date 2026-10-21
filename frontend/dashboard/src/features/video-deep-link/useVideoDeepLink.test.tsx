@@ -241,6 +241,23 @@ describe("refresh, Back/Forward and repeated clicks", () => {
     await waitFor(() => expect(openVideo).toHaveBeenCalledWith({ videoId: VIDEO, title: "Late" }))
   })
 
+  it("a pick made while the availability check is still running wins: the late answer never replaces it", async () => {
+    open(`/creator/aizawa-ema?video=${VIDEO}`)
+    let release: (value: VideoAvailability) => void = () => undefined
+    const openVideo = vi.fn()
+    const check = vi.fn(() => new Promise<VideoAvailability>((resolve) => (release = resolve)))
+    const { rerender } = renderHook(({ selected }) => useVideoDeepLink({ currentCreatorId: EMA, openVideo, selectedVideoId: selected, check }), {
+      initialProps: { selected: null as string | null },
+    })
+
+    rerender({ selected: OTHER }) // the viewer chose something else before the answer arrived
+    release(available("Too late"))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(openVideo).not.toHaveBeenCalled()
+    expect(where()).toBe("/creator/aizawa-ema")
+  })
+
   it("selecting a DIFFERENT video releases the parameter; selecting the linked video, or a first render, does not", () => {
     open(`/creator/aizawa-ema?video=${VIDEO}`)
     const check = vi.fn(async () => available())
