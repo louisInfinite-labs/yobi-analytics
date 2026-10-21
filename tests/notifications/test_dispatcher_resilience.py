@@ -495,3 +495,43 @@ def test_the_pool_keeps_its_threads_between_calls_so_their_resources_and_connect
     second = set(parallel.run_ordered(work, list(range(24)), workers=6))
 
     assert 1 < len(first) <= 6 and second <= first
+
+
+# ============ the EventBridge retry policy (5 attempts / 600 s) cannot lose or replay a notification ============
+
+
+def test_a_scheduler_retry_older_than_the_lookback_is_an_ordinary_current_minute_and_replays_nothing(world, recovery, monkeypatch):
+    """The OLD default policy kept re-running a failed minute for up to 24 h; with the new 600 s age such an event is dropped to the DLQ, and if one ever
+    arrives late anyway (an in-flight retry, a manual re-drive) it must neither replay the long-gone minute nor send anything twice."""
+    world.run(START - timedelta(minutes=10))
+    assert world.run(START + timedelta(seconds=10))["delivered"] == 1  # the minute was served on time
+    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen(START + timedelta(minutes=40)))
+
+    summary = notification_dispatcher.lambda_handler({"scheduledTime": START.isoformat()}, None)
+
+    assert summary["delivered"] == 0 and len(world.pushes) == 1
+
+
+def test_a_failed_minute_retried_within_the_new_policy_still_reaches_its_reminders(world, recovery, monkeypatch):
+    """The case the retry policy exists for: the run for the start minute failed for everyone; the Scheduler's retry (a few minutes later, inside the 600 s
+    age) carries that minute's scheduledTime and delivers the reminder -- once -- where a wall-clock run could not."""
+    world.run(START - timedelta(minutes=10))
+    original = world._get_config
+    failing = {"on": True}
+
+    def broken(client_id, key):
+        """Every per-client read fails while the outage lasts."""
+        if failing["on"] and client_id != "__system__":
+            raise RuntimeError("DynamoDB throttled")
+        return original(client_id, key)
+
+    monkeypatch.setattr("stores.remote_config_store.get_remote_config", broken)
+    with pytest.raises(RuntimeError, match="throttled"):
+        world.run(START + timedelta(seconds=5))  # the invocation scheduled for the start minute fails
+    failing["on"] = False
+    monkeypatch.setattr(notification_dispatcher, "datetime", _frozen(START + timedelta(minutes=4)))
+
+    first = notification_dispatcher.lambda_handler({"scheduledTime": START.isoformat()}, None)  # the Scheduler's retry
+    second = notification_dispatcher.lambda_handler({"scheduledTime": START.isoformat()}, None)  # a duplicate retry
+
+    assert first["delivered"] == 1 and second["delivered"] == 0 and len(world.pushes) == 1
