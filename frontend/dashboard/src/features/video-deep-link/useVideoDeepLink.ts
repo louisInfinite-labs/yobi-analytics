@@ -82,7 +82,9 @@ export function useVideoDeepLink({ currentCreatorId, openVideo, selectedVideoId 
     previousSelection.current = selectedVideoId
     if (selectedVideoId === null || selectedVideoId === before) return
     const linked = readVideoParam(window.location.search)
-    if (linked !== null && linked !== selectedVideoId) stripVideoParam() // the viewer picked another video: the link has been superseded
+    if (linked === null || linked === selectedVideoId) return
+    sequence.current += 1 // a check still in flight must not later replace the viewer's pick with the linked video
+    stripVideoParam() // the viewer picked another video: the link has been superseded
   }, [selectedVideoId])
 
   const dismiss = useCallback(() => {
