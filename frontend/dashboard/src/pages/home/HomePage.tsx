@@ -117,7 +117,7 @@ export function HomePage() {
     else scrollBelowTopBar(streamRef.current)
   }
   // A video notification's `?video=<id>` link (service worker -> /creator/<slug>?video=<id>): the exact video is checked and then opened through the same openVideo as a shelf
-  // pick, or a dialog explains why it cannot be shown. It never touches the default Oshi. The check can finish before /live-streams has loaded, and openVideo's
+  // pick, or a dialog explains why it cannot be shown. The parameter stays in the URL (refresh re-opens the same video) until another video is picked. It never touches the default Oshi. The check can finish before /live-streams has loaded, and openVideo's
   // "is this a live/upcoming stream" rule (a plain open must not mark a stream as watched) needs that data -- so the opening waits for it, and is dropped if the
   // viewer has moved to another creator meanwhile.
   const linkRef = useRef<{ pending: { video: { videoId: string; title: string }; creatorId: string } | null; flush: () => void }>({ pending: null, flush: () => {} })
@@ -133,6 +133,7 @@ export function HomePage() {
   })
   const videoLink = useVideoDeepLink({
     currentCreatorId: creatorId,
+    selectedVideoId: selectedVideo?.videoId ?? null,
     openVideo: (video) => {
       linkRef.current.pending = { video, creatorId }
       linkRef.current.flush()

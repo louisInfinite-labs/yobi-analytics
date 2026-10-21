@@ -18,19 +18,22 @@ interface DeepLinkOptions {
   /** Shows the video in Home's central player exactly like a deliberate pick from the shelf (HomePage's openVideo: selects it, scrolls to the player, and
    * applies the existing NEW rules). Called with the video's own id and YouTube's title when it has one. */
   openVideo: (video: { videoId: string; title: string }) => void
+  /** The video id Home's player is showing from a deliberate pick (null when none). Once it changes to a video other than the linked one, the viewer has
+   * moved on and the parameter is released, so a later refresh shows what they chose rather than the stale link. */
+  selectedVideoId?: string | null
   /** Injection point for tests; defaults to the oEmbed check. */
   check?: (videoId: string) => Promise<VideoAvailability>
 }
 
-/** Consumes a `?video=<id>` deep link on a creator Home (the service worker's video notification route). It reads the id once (on mount and on every
- * popstate), removes the parameter from the URL straight away so refresh, Back/Forward and unrelated navigation never replay it, checks the video's
- * CURRENT availability, and then either opens that exact video or raises a dialog:
+/** Consumes a `?video=<id>` deep link on a creator Home (the service worker's video notification route). It reads the id on mount and on every
+ * popstate, checks the video's CURRENT availability, and then either opens that exact video or raises a dialog:
  *  - available (public, unlisted, live, archive; whether or not it is in Recent Videos) -> openVideo.
  *  - unavailable -> the creator Home stays as it is and a dialog explains why.
  *  - unknown (the check failed) -> a dialog with Retry; never reported as private.
- * A malformed id, or a `video` parameter on anything but a valid creator route, is ignored and removed. Nothing here writes the default Oshi or any
- * stored preference. */
-export function useVideoDeepLink({ currentCreatorId, openVideo, check = checkVideoAvailability }: DeepLinkOptions) {
+ * The parameter stays in the address bar, so refreshing or re-opening the URL selects the same video again. It is released (replaceState) when the viewer
+ * dismisses a dialog or deliberately selects another video. A malformed id, or a `video` parameter on anything but a valid creator route, is ignored and
+ * removed. Nothing here writes the default Oshi or any stored preference. */
+export function useVideoDeepLink({ currentCreatorId, openVideo, selectedVideoId = null, check = checkVideoAvailability }: DeepLinkOptions) {
   const [dialog, setDialog] = useState<{ kind: VideoDeepLinkDialogKind; target: Target } | null>(null)
   const latest = useRef({ currentCreatorId, openVideo, check })
   useEffect(() => {
@@ -59,8 +62,10 @@ export function useVideoDeepLink({ currentCreatorId, openVideo, check = checkVid
       const raw = readVideoParam(window.location.search)
       if (raw === null) return
       const route = parseCreatorRoute(window.location.pathname)
-      stripVideoParam()
-      if (!isYouTubeVideoId(raw) || route?.kind !== "creator") return
+      if (!isYouTubeVideoId(raw) || route?.kind !== "creator") {
+        stripVideoParam()
+        return
+      }
       void run({ videoId: raw, creatorId: route.creator.creatorId })
     }
     consume()
@@ -71,9 +76,19 @@ export function useVideoDeepLink({ currentCreatorId, openVideo, check = checkVid
     }
   }, [run])
 
+  const previousSelection = useRef(selectedVideoId)
+  useEffect(() => {
+    const before = previousSelection.current
+    previousSelection.current = selectedVideoId
+    if (selectedVideoId === null || selectedVideoId === before) return
+    const linked = readVideoParam(window.location.search)
+    if (linked !== null && linked !== selectedVideoId) stripVideoParam() // the viewer picked another video: the link has been superseded
+  }, [selectedVideoId])
+
   const dismiss = useCallback(() => {
     sequence.current += 1 // a check still in flight must not reopen what was just closed
     setDialog(null)
+    stripVideoParam() // a closed explanation must not come back on refresh
   }, [])
   const retry = useCallback(() => {
     if (!dialog) return

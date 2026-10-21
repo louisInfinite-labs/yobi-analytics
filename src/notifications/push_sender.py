@@ -32,6 +32,8 @@ import requests
 from py_vapid import Vapid, VapidException
 from pywebpush import WebPushException, webpush
 
+from notifications import push_ttl
+
 # The only Web Push services a real browser subscription can ever point to
 # for this project's supported browsers (module docstring: Chrome/Edge via
 # Google FCM, Firefox via Mozilla, Safari / iOS and iPadOS Home Screen web
@@ -144,8 +146,13 @@ def send_push_notification(
     data: dict[str, Any] | None,
     vapid_private_key: str,
     vapid_claims: dict[str, str],
+    ttl_seconds: int = push_ttl.DEFAULT_TTL_SECONDS,
 ) -> PushResult:
     """Send one Web Push notification. Never raises — every failure comes back as a PushResult.
+
+    `ttl_seconds` is how long the push service may hold the message while the device is unreachable (the TTL header; see push_ttl). It is always passed
+    to `webpush()` explicitly -- the library's own default of 0 means "drop it unless the device is reachable right now" -- and a value that is not a
+    positive integer is a failed send (never a silent TTL 0).
 
     A 404/410 response means the push service has permanently discarded
     this subscription (the browser uninstalled it, revoked permission, or
@@ -154,6 +161,8 @@ def send_push_notification(
     a malformed stored subscription) is reported as not expired, since
     retrying later — or fixing the stored value — may still succeed.
     """
+    if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or ttl_seconds <= 0:
+        return PushResult(sent=False, subscription_expired=False, error="push TTL must be a positive number of seconds")
     try:
         parsed = parse_subscription(subscription)
         payload = build_payload(title=title, body=body, data=data)
@@ -172,6 +181,7 @@ def send_push_notification(
             data=payload,
             vapid_private_key=vapid_signer,
             vapid_claims=dict(vapid_claims),
+            ttl=ttl_seconds,
             timeout=_PUSH_REQUEST_TIMEOUT_SECONDS,
             requests_session=_PUSH_SESSION,
         )
@@ -208,18 +218,19 @@ def send_with_bounded_retry(
     data: dict[str, Any] | None,
     vapid_private_key: str,
     vapid_claims: dict[str, str],
+    ttl_seconds: int = push_ttl.DEFAULT_TTL_SECONDS,
     attempts: int = 2,
 ) -> PushResult:
     """send_push_notification, repeated at most `attempts` times in total while the failure is retryable (not sent, not an expired
-    subscription, PushResult.retryable). Returns the last result. Never raises."""
+    subscription, PushResult.retryable), each time with the same `ttl_seconds`. Returns the last result. Never raises."""
     result = send_push_notification(
-        subscription, title=title, body=body, data=data, vapid_private_key=vapid_private_key, vapid_claims=vapid_claims
+        subscription, title=title, body=body, data=data, vapid_private_key=vapid_private_key, vapid_claims=vapid_claims, ttl_seconds=ttl_seconds
     )
     for _ in range(max(attempts, 1) - 1):
         if result.sent or result.subscription_expired or not result.retryable:
             break
         time.sleep(_RETRY_PAUSE_SECONDS)
         result = send_push_notification(
-            subscription, title=title, body=body, data=data, vapid_private_key=vapid_private_key, vapid_claims=vapid_claims
+            subscription, title=title, body=body, data=data, vapid_private_key=vapid_private_key, vapid_claims=vapid_claims, ttl_seconds=ttl_seconds
         )
     return result

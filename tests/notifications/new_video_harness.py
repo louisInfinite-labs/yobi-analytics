@@ -178,7 +178,7 @@ def install_world(
     sent: list = []
     if stub_push:
 
-        def _send(subscription, *, title, body, data, vapid_private_key, vapid_claims):
+        def _send(subscription, *, title, body, data, vapid_private_key, vapid_claims, ttl_seconds=None):
             sent.append(data)
             return PushResult(sent=True, subscription_expired=False)
 

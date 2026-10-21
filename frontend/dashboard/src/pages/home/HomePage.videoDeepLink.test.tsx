@@ -109,13 +109,49 @@ async function openDeepLink(search: string) {
 }
 
 describe("an available video opens in the player", () => {
-  it("a public video that is in none of the Home lists plays in the player, scrolls to it, and the parameter is removed", async () => {
+  it("a public video that is in none of the Home lists plays in the player, scrolls to it, and the parameter stays in the URL", async () => {
     await openDeepLink(`?video=${NOT_IN_LISTS}`)
 
     await waitFor(() => expect(playerSrc()).toContain(`/embed/${NOT_IN_LISTS}?`))
     expect(window.scrollTo).toHaveBeenCalledTimes(1)
-    expect(window.location.pathname + window.location.search).toBe(ROUTE_A)
+    expect(window.location.pathname + window.location.search).toBe(`${ROUTE_A}?video=${NOT_IN_LISTS}`)
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("reloading the deep-link URL (cold start again) selects the same exact video, and the exact video is not replaced by the creator's latest one", async () => {
+    const first = await openDeepLink(`?video=${NOT_IN_LISTS}`)
+    await waitFor(() => expect(playerSrc()).toContain(`/embed/${NOT_IN_LISTS}?`))
+    first.unmount()
+    resetHomeSelectedVideoForTests() // a reload loses every in-memory pick
+
+    render(<HomePage />)
+    await screen.findByRole("button", { name: "Recent One" })
+    await waitFor(() => expect(playerSrc()).toContain(`/embed/${NOT_IN_LISTS}?`))
+    expect(playerSrc()).not.toContain("R1R1R1R1R1R")
+  })
+
+  it("a video link that is checked before the Home data has loaded still wins once that data arrives", async () => {
+    window.history.replaceState({}, "", `${ROUTE_A}?video=${NOT_IN_LISTS}`)
+    render(<HomePage />) // no waiting for the lists: the check and /live-streams race
+    await waitFor(() => expect(playerSrc()).toContain(`/embed/${NOT_IN_LISTS}?`))
+    await screen.findByRole("button", { name: "Recent One" })
+    expect(playerSrc()).toContain(`/embed/${NOT_IN_LISTS}?`)
+  })
+
+  it("picking another video afterwards releases the link: a refresh then shows the plain creator Home", async () => {
+    const view = await openDeepLink(`?video=${NOT_IN_LISTS}`)
+    await waitFor(() => expect(playerSrc()).toContain(NOT_IN_LISTS))
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Recent One" }))
+    await waitFor(() => expect(playerSrc()).toContain("R1R1R1R1R1R"))
+    expect(window.location.pathname + window.location.search).toBe(ROUTE_A)
+
+    view.unmount()
+    resetHomeSelectedVideoForTests()
+    render(<HomePage />)
+    await screen.findByRole("button", { name: "Recent One" })
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(playerSrc()).not.toContain(NOT_IN_LISTS)
   })
 
   it("an ongoing livestream, an upcoming livestream and a completed archive are each located by their own id", async () => {
@@ -155,10 +191,11 @@ describe("a video that cannot be shown keeps the creator Home and explains", () 
     const dialog = await screen.findByRole("dialog")
     expect(dialog).toHaveTextContent("This video is private or has been deleted and can't be shown.")
     expect(playerSrc()).not.toContain(PRIVATE)
-    expect(window.location.pathname + window.location.search).toBe(ROUTE_A)
+    expect(window.location.pathname + window.location.search).toBe(`${ROUTE_A}?video=${PRIVATE}`)
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Close" }))
     expect(screen.queryByRole("dialog")).toBeNull()
+    expect(window.location.pathname + window.location.search).toBe(ROUTE_A) // a closed explanation does not come back on refresh
     await userEvent.setup().click(screen.getByRole("button", { name: "Recent One" })) // the creator Home still works
     await waitFor(() => expect(playerSrc()).toContain("R1R1R1R1R1R"))
     expect(screen.queryByRole("dialog")).toBeNull() // not shown again after normal use
@@ -215,11 +252,16 @@ describe("what is left alone", () => {
     expect(window.location.search).toBe("")
   })
 
-  it("refreshing after the link was consumed shows the plain creator Home (no second deep link, no dialog)", async () => {
+  it("refreshing an unavailable link explains again; after the explanation was closed, a refresh shows the plain creator Home", async () => {
     oembed = () => new Response("Not Found", { status: 404 })
     const first = await openDeepLink(`?video=${PRIVATE}`)
     await screen.findByRole("dialog")
     first.unmount()
+
+    const second = render(<HomePage />) // F5 while the link is still in the address bar
+    expect(await screen.findByRole("dialog")).toHaveTextContent("private or has been deleted")
+    await userEvent.setup().click(screen.getByRole("button", { name: "Close" }))
+    second.unmount()
 
     render(<HomePage />) // F5 on the now-clean URL
     await screen.findByRole("button", { name: "Recent One" })

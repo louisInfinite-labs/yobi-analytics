@@ -50,6 +50,7 @@ from notifications import notification_payload
 from notifications import notification_text
 from notifications import parallel
 from notifications import push_sender
+from notifications import push_ttl
 from notifications import simultaneous_live as sim
 from stores import notification_delivery_log_store
 from stores import remote_config_store
@@ -488,7 +489,13 @@ def _attempt(
         data["image"] = image
     vapid_private_key, vapid_claims = vapid
     result = push_sender.send_with_bounded_retry(
-        subscription_record["value"], title=text.title, body=text.body, data=data, vapid_private_key=vapid_private_key, vapid_claims=vapid_claims
+        subscription_record["value"],
+        title=text.title,
+        body=text.body,
+        data=data,
+        vapid_private_key=vapid_private_key,
+        vapid_claims=vapid_claims,
+        ttl_seconds=push_ttl.advance_reminder_ttl_seconds(scheduled_start_ms=collision.start_ms, now=now),
     )
     if result.subscription_expired:
         print(f"Push subscription expired for client {client_id!r}; leaving cleanup to a future pass")

@@ -798,11 +798,11 @@ def test_a_failure_inside_the_catch_up_never_stops_the_start_reminder_that_follo
     schedule["firstSeen"]["v2"] = {"startMinute": int(earlier_start.timestamp()) // 60, "firstSeenAt": "2026-10-18T11:00:07+00:00", "priorStartMinutes": []}
     real_send = world._send_push
 
-    def flaky(subscription, *, title, body, data, vapid_private_key, vapid_claims):
+    def flaky(subscription, *, title, body, data, vapid_private_key, vapid_claims, ttl_seconds=None):
         """Blow up only for the catch-up's own wording."""
         if "about" in title:
             raise RuntimeError("push library blew up")
-        return real_send(subscription, title=title, body=body, data=data, vapid_private_key=vapid_private_key, vapid_claims=vapid_claims)
+        return real_send(subscription, title=title, body=body, data=data, vapid_private_key=vapid_private_key, vapid_claims=vapid_claims, ttl_seconds=ttl_seconds)
 
     monkeypatch.setattr(notification_dispatcher.push_sender, "send_push_notification", flaky)
 
