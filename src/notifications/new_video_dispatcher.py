@@ -37,6 +37,7 @@ from notifications import notification_payload
 from notifications import notification_dispatch
 from notifications import notification_text
 from notifications import push_sender
+from notifications import push_ttl
 from notifications.delivery_slots import due_local_slots, floor_to_tick, slot_start_time
 from ops.config import get_vapid_credentials
 from stores import notification_delivery_log_store
@@ -322,6 +323,7 @@ def deliver_new_video_if_due(
         ),
         vapid_private_key=vapid_private_key,
         vapid_claims=vapid_claims,
+        ttl_seconds=push_ttl.new_video_ttl_seconds(discovered_at=discovered_at, now=now),
     )
     if result.subscription_expired:
         print(f"Push subscription expired for client {client_id!r}; leaving cleanup to a future pass")

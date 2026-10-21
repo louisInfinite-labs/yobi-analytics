@@ -77,6 +77,7 @@ from notifications import new_video_dispatcher
 from notifications import notification_text
 from notifications import parallel
 from notifications import push_sender
+from notifications import push_ttl
 from notifications import reminder_candidates
 from notifications import simultaneous_dispatcher
 from stores import remote_config_store
@@ -850,6 +851,13 @@ def _reminder_dedupe_ids(video_id: str, kind: str, scheduled_start_ms: int) -> t
     return f"{legacy_id}@{scheduled_start_ms // 60_000}", legacy_id
 
 
+def _reminder_ttl_seconds(kind: str, scheduled_start_ms: int, now: datetime) -> int:
+    """The push TTL for a reminder: a start reminder lives a short grace past the scheduled start, an advance reminder only until it (push_ttl)."""
+    if kind == notification_text.KIND_START:
+        return push_ttl.start_reminder_ttl_seconds(scheduled_start_ms=scheduled_start_ms, now=now)
+    return push_ttl.advance_reminder_ttl_seconds(scheduled_start_ms=scheduled_start_ms, now=now)
+
+
 def _send_reminder(
     video_id: str,
     kind: str,
@@ -909,6 +917,7 @@ def _send_reminder(
         ),
         vapid_private_key=vapid_private_key,
         vapid_claims=vapid_claims,
+        ttl_seconds=_reminder_ttl_seconds(kind, scheduled_start_ms, now),
     )
     if result.subscription_expired:
         print(f"Push subscription expired for client {client_id!r}; leaving cleanup to a future pass")

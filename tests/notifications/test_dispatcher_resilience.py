@@ -326,7 +326,7 @@ class _SlowPush:
         self.endpoints: list[str] = []
         self.threads: set[int] = set()
 
-    def __call__(self, subscription, *, title, body, data, vapid_private_key, vapid_claims):
+    def __call__(self, subscription, *, title, body, data, vapid_private_key, vapid_claims, ttl_seconds=None):
         """One push: ~2 ms of 'network'."""
         with self.lock:
             self.in_flight += 1

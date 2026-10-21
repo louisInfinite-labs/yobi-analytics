@@ -188,10 +188,10 @@ class Harness:
         """Give a claim back after a failed send so a retry can deliver."""
         self.delivery.pop((client_id, video_id), None)
 
-    def _send_push(self, subscription, *, title, body, data, vapid_private_key, vapid_claims):
+    def _send_push(self, subscription, *, title, body, data, vapid_private_key, vapid_claims, ttl_seconds=None):
         """push_sender.send_push_notification: record the push and answer from the scripted results (default: sent)."""
         result = self.push_results.pop(0) if self.push_results else PushResult(sent=True, subscription_expired=False)
-        self.pushes.append({"title": title, "body": body, "data": data, "sent": result.sent, "endpoint": subscription["endpoint"]})
+        self.pushes.append({"title": title, "body": body, "data": data, "sent": result.sent, "endpoint": subscription["endpoint"], "ttl": ttl_seconds})
         return result
 
     # ---- scenario helpers ----

@@ -39,14 +39,14 @@ function mount({ result, creator = EMA }: Setup) {
 const available = (title: string | null = "Exact title"): VideoAvailability => ({ status: "available", title })
 
 describe("available videos open exactly the notified video", () => {
-  it("public video (cold start on /creator/<slug>?video=<id>): checks that id, opens it with its own title, and removes the parameter", async () => {
+  it("public video (cold start on /creator/<slug>?video=<id>): checks that id, opens it with its own title, and keeps the parameter so a reload selects it again", async () => {
     open(`/creator/aizawa-ema?video=${VIDEO}`)
     const { check, openVideo, result } = mount({ result: available() })
 
     await waitFor(() => expect(openVideo).toHaveBeenCalledTimes(1))
     expect(check).toHaveBeenCalledWith(VIDEO)
     expect(openVideo).toHaveBeenCalledWith({ videoId: VIDEO, title: "Exact title" })
-    expect(where()).toBe("/creator/aizawa-ema")
+    expect(where()).toBe(`/creator/aizawa-ema?video=${VIDEO}`)
     expect(result.current.dialog).toBeNull()
   })
 
@@ -106,16 +106,18 @@ describe("videos that cannot be shown leave the creator Home in place and explai
 
     await waitFor(() => expect(view.current.dialog).toBe(kind))
     expect(openVideo).not.toHaveBeenCalled()
-    expect(where()).toBe("/creator/aizawa-ema")
+    expect(window.location.pathname).toBe("/creator/aizawa-ema")
   })
 
-  it("dismissal closes the dialog and it does not come back on unrelated navigation or a re-render", async () => {
+  it("dismissal closes the dialog, releases the parameter, and it does not come back on unrelated navigation or a re-render", async () => {
     open(`/creator/aizawa-ema?video=${VIDEO}`)
     const { result, rerender, check } = mount({ result: { status: "unavailable", reason: "private_or_deleted" } })
     await waitFor(() => expect(result.current.dialog).toBe("private_or_deleted"))
+    expect(where()).toBe(`/creator/aizawa-ema?video=${VIDEO}`) // still there while the explanation is open: a refresh explains again
 
     act(() => result.current.dismiss())
     expect(result.current.dialog).toBeNull()
+    expect(where()).toBe("/creator/aizawa-ema")
 
     open("/schedule")
     act(() => window.dispatchEvent(new PopStateEvent("popstate")))
@@ -213,21 +215,44 @@ describe("what is ignored", () => {
 })
 
 describe("refresh, Back/Forward and repeated clicks", () => {
-  it("refreshing the deep-link URL after it was consumed shows the plain creator Home: no second check, no dialog", async () => {
+  it("refreshing the deep-link URL selects the same exact video again (the target survives a reload)", async () => {
     open(`/creator/aizawa-ema?video=${VIDEO}`)
     const first = mount({ result: available() })
     await waitFor(() => expect(first.openVideo).toHaveBeenCalledTimes(1))
     first.unmount()
 
-    const reloaded = mount({ result: available() }) // F5: the address bar no longer carries the parameter
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(reloaded.check).not.toHaveBeenCalled()
-    expect(reloaded.openVideo).not.toHaveBeenCalled()
+    const reloaded = mount({ result: available("After reload") }) // F5: the address bar still carries the parameter
+    await waitFor(() => expect(reloaded.openVideo).toHaveBeenCalledWith({ videoId: VIDEO, title: "After reload" }))
+    expect(reloaded.check).toHaveBeenCalledWith(VIDEO)
   })
 
-  it("the parameter is removed the moment it is read, even while the check is still running (so a refresh then shows the plain creator Home)", async () => {
+  it("the parameter stays while the check is still running, so an interrupted load still reloads onto the same video", async () => {
     open(`/creator/aizawa-ema?video=${VIDEO}`)
     mount({ result: () => new Promise(() => undefined) })
+    expect(where()).toBe(`/creator/aizawa-ema?video=${VIDEO}`)
+  })
+
+  it("a video that is slow to check opens when the answer arrives (asynchronous loading after navigation)", async () => {
+    open(`/creator/aizawa-ema?video=${VIDEO}`)
+    let release: (value: VideoAvailability) => void = () => undefined
+    const { openVideo } = mount({ result: () => new Promise((resolve) => (release = resolve)) })
+    expect(openVideo).not.toHaveBeenCalled()
+    release(available("Late"))
+    await waitFor(() => expect(openVideo).toHaveBeenCalledWith({ videoId: VIDEO, title: "Late" }))
+  })
+
+  it("selecting a DIFFERENT video releases the parameter; selecting the linked video, or a first render, does not", () => {
+    open(`/creator/aizawa-ema?video=${VIDEO}`)
+    const check = vi.fn(async () => available())
+    const { rerender } = renderHook(({ selected }) => useVideoDeepLink({ currentCreatorId: EMA, openVideo: vi.fn(), selectedVideoId: selected, check }), {
+      initialProps: { selected: OTHER as string | null }, // a pick that predates the link (e.g. Back onto a link entry) must not release it
+    })
+    expect(where()).toBe(`/creator/aizawa-ema?video=${VIDEO}`)
+
+    rerender({ selected: VIDEO }) // the link's own video becomes the pick
+    expect(where()).toBe(`/creator/aizawa-ema?video=${VIDEO}`)
+
+    rerender({ selected: OTHER }) // the viewer chose something else
     expect(where()).toBe("/creator/aizawa-ema")
   })
 
@@ -253,7 +278,7 @@ describe("refresh, Back/Forward and repeated clicks", () => {
 
     await waitFor(() => expect(openVideo).toHaveBeenCalledTimes(1))
     expect(check).toHaveBeenCalledTimes(1)
-    expect(where()).toBe("/creator/aizawa-ema")
+    expect(where()).toBe(`/creator/aizawa-ema?video=${VIDEO}`)
   })
 
   it("a second notification click for the same video in the same page replaces the first: one open, one dialog at most", async () => {
