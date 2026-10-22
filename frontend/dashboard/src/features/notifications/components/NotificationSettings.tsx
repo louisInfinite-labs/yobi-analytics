@@ -20,6 +20,7 @@ import type { TopicNotificationType } from "../model/notificationTopics"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { NewVideoDeliveryTimes } from "./NewVideoDeliveryTimes"
 import { SimultaneousLiveNotice } from "./SimultaneousLiveNotice"
+import { InstallSetting } from "../../pwa/components/InstallSetting"
 import { TopicCreatorManagementDrawer } from "./TopicCreatorManagementDrawer"
 
 
@@ -261,6 +262,9 @@ function DetailPanel({ entries, isDraft, topicId, selectableTopics, onSelectDraf
       <MembersSection topicId={topicId} topicLabel={topicLabel} onManage={onManage} />
       {sendsNewVideos && <NewVideoDeliveryTimes />}
       {sendsLive && <SimultaneousLiveNotice />}
+      {/* The last row of the same settings box, right below the simultaneous-livestream row. Only the open topic's panel is ever rendered, so there is exactly one
+          install row; it renders nothing (no row, no separator) outside a phone browser or inside the installed app. */}
+      <InstallSetting />
 
       {/* No actions, no row: a saved permanent topic has nothing to Save or Remove, so the footer (and its divider and padding) is not rendered. */}
       {(isDraft || !isPermanentTopic(topicId)) && (

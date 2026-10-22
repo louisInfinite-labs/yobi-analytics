@@ -4,7 +4,7 @@ import { t, type Locale } from "../../../shared/i18n/translations"
 import type { TimeFormat } from "../../../shared/i18n/model/timeFormat"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { formatActivityTime } from "../utils/oshiActivity"
-import { markContentSeen, useNewContent } from "../../../shared/newContent/newContentTracking"
+import { isNotYetWatchableFormat, markContentSeen, useNewContent } from "../../../shared/newContent/newContentTracking"
 
 /** The existing app-wide thumbnail path for a video with no backend `thumbnailUrl` (Home's cards, the Schedule modal and the old Recent
  * Activity thumbnail all key YouTube's own JPG endpoint by the real videoId) -- never a substituted video. */
@@ -58,28 +58,27 @@ export function RecentActivityRow({
   locale,
   timeFormat,
   onOpen,
+  newBadgeAllowed = true,
 }: {
   entry: RecentVideo
   now: Date
   locale: Locale
   timeFormat: TimeFormat
   onOpen: (video: { videoId: string; title: string }) => void
+  /** False while the live status is still loading: a Premiere or a pending archive cannot be told apart from a new upload yet, so no NEW badge is drawn. */
+  newBadgeAllowed?: boolean
 }) {
   // NEW is displayed only here. The seen state (keyed by videoId) is shared with Home's Video List, which shows no badge: opening an
   // eligible archive or upload in either list calls markContentSeen; live/upcoming clicks do not. A confirmed PLAYING of a live stream
   // also keeps its later archive from being NEW (see newContentTracking.ts).
   const { isNew: isNewContent } = useNewContent()
-  const isNew = isNewContent(
-    { videoId: entry.videoId, publishedAt: entry.publishedAt, eventAt: entry.eventAt, discoveredAt: entry.discoveredAt, contentFormat: entry.contentFormat },
+  const isNew = newBadgeAllowed && isNewContent(
+    { videoId: entry.videoId, publishedAt: entry.publishedAt, eventAt: entry.eventAt, discoveredAt: entry.discoveredAt, archiveAvailableAt: entry.archiveAvailableAt, contentFormat: entry.contentFormat },
     now,
   )
   // A Premiere is not a livestream, but like one it has not happened yet: opening its waiting page is not watching it. A pending-archive
   // placeholder (ended, archive not yet verified) is not confirmed watchable either -- opening it must not mark the eventual real archive seen.
-  const isNotYetWatchable =
-    entry.contentFormat === "live_now" ||
-    entry.contentFormat === "live_upcoming" ||
-    entry.contentFormat === "premiere" ||
-    entry.contentFormat === "archive_pending"
+  const isNotYetWatchable = isNotYetWatchableFormat(entry.contentFormat)
   // One handler for the title AND the thumbnail, so they can never diverge (same seen-marking, same selected video). A live/upcoming or
   // Premiere row never counts as opened by itself (HomePage's openVideo decides), exactly like the same stream in the Video List.
   const open = () => {

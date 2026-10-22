@@ -28,6 +28,7 @@ from tracking.video_discovery import (
 )
 from tracking.video_master import Video, VideoMasterError, load_video_ids_for_creator
 from tracking.video_topics import classify_video_topic
+from collection import premiere_announcements
 from collection.youtube_client import QuotaExhaustedError, YouTubeAPIError, build_youtube_client, get_video_statistics
 
 # Local/manual collection retains the existing JSON or DynamoDB adapter.
@@ -333,9 +334,18 @@ def run_discovery(window: str | None = None) -> int:
         print(f"Error: {exc}")
         return 1
 
+    announcements_on = premiere_announcements.announcements_enabled()
+
     if newly_discovered:
+        # A Premiere this Collector already announced from the shared snapshot has its event; its later uploads-playlist discovery still
+        # persists the video below but records no second event (the dispatcher would dedupe it by video anyway).
+        to_record = (
+            premiere_announcements.without_announced(newly_discovered, _announced_premiere_ids_best_effort())
+            if announcements_on
+            else newly_discovered
+        )
         try:
-            _record_new_video_events(newly_discovered, first_ingestion_creator_ids, run_time, source=source)
+            _record_new_video_events(to_record, first_ingestion_creator_ids, run_time, source=source)
         except NotificationEventsStoreError as exc:
             print(f"Error: failed to record new-video events (videos not persisted, the next window rediscovers them): {exc}")
             return 1
@@ -347,11 +357,62 @@ def run_discovery(window: str | None = None) -> int:
 
     _patch_manifest_with_new_videos_if_configured(newly_discovered)
 
+    # The optional Premiere announcement step runs only AFTER the ordinary discovery is fully persisted, and nothing it does can change this run's outcome.
+    if announcements_on and not quota_exhausted:
+        _announce_upcoming_premieres_best_effort(youtube, active_creators, known_ids_by_creator, newly_discovered, run_time, source=source)
+
     if quota_exhausted:
         return 1
 
     print(f"Discovery complete: {len(newly_discovered)} new video(s) found across {len(active_creators)} creator(s)")
     return 0
+
+
+def _announce_upcoming_premieres_best_effort(
+    youtube: Resource,
+    creators: list[Creator],
+    known_ids_by_creator: dict[str, set[str]],
+    newly_discovered: list[Video],
+    run_time: datetime,
+    *,
+    source: str,
+) -> None:
+    """Run the Premiere announcement step (collection.premiere_announcements).
+
+    Strictly best-effort, quota exhaustion included: any failure is a warning, never a reason to fail or alter the uploads-playlist discovery that has
+    already been persisted, and it never changes the run's exit code (a failing run would be retried and dead-lettered for a step that is optional). An id whose
+    event could not be recorded simply stays undecided and the next window retries it. The videos this very run discovered through the playlist count as
+    known, so they are never announced a second time.
+    """
+    known = {creator_id: set(ids) for creator_id, ids in known_ids_by_creator.items()}
+    for video in newly_discovered:
+        known.setdefault(video.creator_id, set()).add(video.video_id)
+    try:
+        summary = premiere_announcements.announce_upcoming_premieres(
+            youtube, creators, known, run_time=run_time, source=source, record_events=record_new_video_events
+        )
+    except QuotaExhaustedError as exc:
+        print(f"Warning: Premiere announcements skipped, YouTube quota exhausted: {exc}")
+        return
+    except Exception as exc:  # noqa: BLE001 -- an optional step: ordinary discovery must not depend on it
+        print(f"Warning: Premiere announcements skipped ({type(exc).__name__}): {exc}")
+        return
+    print(
+        f"Premiere announcements: {summary['candidates']} candidate(s) classified in {summary['requests']} request(s), "
+        f"{summary['announced']} announced, {summary['ordinary']} not announced"
+    )
+
+
+def _announced_premiere_ids_best_effort() -> set[str]:
+    """The ids of Premieres already announced by the Collector; empty when the record cannot be read (a duplicate event is then possible but harmless:
+    the dispatcher delivers each video once)."""
+    try:
+        from stores.premiere_announcements_store import announced_video_ids, read_decisions
+
+        return announced_video_ids(read_decisions())
+    except Exception as exc:  # noqa: BLE001
+        print(f"Warning: could not read the announced Premieres ({type(exc).__name__}): {exc}")
+        return set()
 
 
 def _known_ids_by_creator() -> dict[str, set[str]]:

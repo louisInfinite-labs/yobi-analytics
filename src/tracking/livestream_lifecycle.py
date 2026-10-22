@@ -618,6 +618,33 @@ def _archive_window_open(entry: dict[str, Any], moment: datetime) -> bool:
     return reference is not None and moment - reference < ARCHIVE_LOOKUP_MIN_WINDOW
 
 
+def _persist_premiere_archive_times(ended: dict[str, dict[str, Any]], moment: datetime) -> None:
+    """Keep the archive-availability time of every completed Premiere in the durable record (stores.premiere_archive_times_store), so the replay stays NEW-eligible
+    after this module's own ended record is pruned (RECENTLY_ENDED_RETENTION). The time is the lifecycle's own verified `archive.availableAt`, copied as it is.
+
+    Runs every completion cycle over the retained ended map, so a write that failed (or a cycle that ran before this existed) is simply retried by the next
+    cycle while the entry is still retained -- recording is idempotent (a video that has a time keeps it). The durable record is read only when at least one
+    completed Premiere archive is retained, which is rare; nothing here touches YouTube or Holodex. Best-effort: a failure never affects end or archive recording.
+    """
+    from collection.youtube_client import is_completed_premiere
+
+    candidates: dict[str, str] = {}
+    for video_id, entry in ended.items():
+        archive = entry.get("archive") if isinstance(entry, dict) else None
+        if not isinstance(archive, dict) or archive.get("status") != ARCHIVE_AVAILABLE or not archive.get("availableAt"):
+            continue
+        if is_completed_premiere(archive.get("publishedAt"), archive):
+            candidates[video_id] = archive["availableAt"]
+    if not candidates:
+        return
+    try:
+        from stores.premiere_archive_times_store import record_premiere_archive_times
+
+        record_premiere_archive_times(candidates, now=moment)
+    except Exception as exc:  # noqa: BLE001 -- the archive is already recorded available; the next cycle retries this write
+        print(f"Warning: could not persist the Premiere archive-availability times ({type(exc).__name__}): {exc}")
+
+
 def _record_premiere_archived_notification_if_applicable(entry: dict[str, Any], facts: dict[str, Any], moment: datetime) -> None:
     """Record the independent `premiere_archived` new-video notification event (notification_events_store.py) the FIRST time this
     video's archive is confirmed available, but only when the verified facts show a completed Premiere -- never for an ordinary
@@ -783,6 +810,7 @@ def refresh_snapshot(*, now: datetime | None = None) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001 -- not raised: a re-delivery would only repeat this work; the next cycle redoes it idempotently
         print(f"Warning: livestream completion state could not be persisted ({type(exc).__name__}): {exc}")
         return {"refreshed": False, "writeFailed": True, **summary_base}
+    _persist_premiere_archive_times(ended, moment)
     reset_ended_cache()
     return {"refreshed": True, "streamCount": len(streams), "completionCandidates": candidates, "confirmedCompleted": newly_ended}
 

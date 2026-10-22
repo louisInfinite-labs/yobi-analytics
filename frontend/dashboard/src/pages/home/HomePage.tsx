@@ -11,6 +11,7 @@ import { useSelectedCreator } from "../../features/oshi/hooks/useSelectedCreator
 import { useUpcomingStartRecovery } from "../../features/media-player/hooks/useUpcomingStartRecovery"
 import { useWatchedDuringLive } from "../../features/media-player/hooks/useWatchedDuringLive"
 import { useLiveStreams } from "../../shared/api/hooks/useLiveStreams"
+import { isNotYetWatchableFormat } from "../../shared/newContent/newContentTracking"
 import { selectLiveEmbedVideo } from "../../features/media-player/utils/liveEmbed"
 import { scrollBelowTopBar } from "../../features/home-room/utils/scrollBelowTopBar"
 import { useResetScrollOnCreatorChange } from "../../features/home-room/hooks/useResetScrollOnCreatorChange"
@@ -106,10 +107,12 @@ export function HomePage() {
   // A live/upcoming stream is picked without counting as "opened": only a confirmed PLAYING while it is live may
   // suppress its later archive's NEW (see useWatchedDuringLive); a plain click must not.
   const openVideo = (video: { videoId: string; title: string }) => {
-    const isCurrentStream =
+    // Also an upcoming Premiere's waiting page and an ended stream/Premiere whose archive is still pending: opening them is not watching the final archive.
+    const isNotYetWatchable =
       (status.kind !== "offline" && status.videoId === video.videoId) ||
-      streamVideos.videos.some((entry) => entry.videoId === video.videoId && (entry.contentFormat === "live_now" || entry.contentFormat === "live_upcoming"))
-    selectHomeVideo(video, creatorId, { countsAsOpened: !isCurrentStream })
+      streamVideos.videos.some((entry) => entry.videoId === video.videoId && isNotYetWatchableFormat(entry.contentFormat)) ||
+      allFeed.videos.some((entry) => entry.videoId === video.videoId && isNotYetWatchableFormat(entry.contentFormat))
+    selectHomeVideo(video, creatorId, { countsAsOpened: !isNotYetWatchable })
     // A deliberate pick, from the shelf or any Oshi Status title/thumbnail: take the viewer straight back to the player. Called here, in the
     // click path, and not from an effect on the selected video, so no automatic selection or refresh can ever move the page.
     // From a search result the player is not mounted yet (Home is still being restored): scroll to it once it is.

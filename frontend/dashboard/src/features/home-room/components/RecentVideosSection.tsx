@@ -7,7 +7,7 @@ import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t, type Locale } from "../../../shared/i18n/translations"
 import { formatCompactCount } from "../../oshi-status/utils/oshiActivity"
-import { markContentSeen, migrateWatchedLiveToSeen } from "../../../shared/newContent/newContentTracking"
+import { isNotYetWatchableFormat, markContentSeen, migrateWatchedLiveToSeen } from "../../../shared/newContent/newContentTracking"
 import { useLiveStreams } from "../../../shared/api/hooks/useLiveStreams"
 import { toRecentVideo } from "../hooks/useRecentVideos"
 import { composeLatestLiveShelf } from "../utils/latestLiveShelf"
@@ -83,8 +83,7 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
   const isLiveNow = video.contentFormat === "live_now"
   // A Premiere is not a livestream, but like one it has not happened yet: opening its waiting page is not watching it. A pending-archive
   // placeholder (ended, archive not yet verified) is not confirmed watchable either -- opening it must not mark the eventual real archive seen.
-  const isNotYetWatchable =
-    isLiveNow || video.contentFormat === "live_upcoming" || video.contentFormat === "premiere" || video.contentFormat === "archive_pending"
+  const isNotYetWatchable = isNotYetWatchableFormat(video.contentFormat)
   const meta = formatCardMeta(video)
 
   return (

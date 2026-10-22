@@ -37,6 +37,11 @@ function toPendingRecentVideo(entry: RecentlyEndedStreamDto): RecentVideo {
 export interface HomeAllFeed extends VideoPage {
   /** The paged archive alone (no current streams) -- what the Video List's own shelf state is when ALL is showing. */
   page: VideoPage
+  /** Whether the live status is KNOWN, so a discovered video can be told apart from an upcoming Premiere or an ended stream with a pending archive. False while the
+   * shared /live-streams read is still loading, and after a failed read that has no earlier answer to fall back on (neither a previous response nor the cached
+   * one): in both cases the NEW badges and the unwatched counts stay unavailable ("—") instead of counting a Premiere that is not watchable yet. A failed read
+   * with an earlier answer keeps that last-known status, so it never leaves the counts waiting. Undefined (every feed built elsewhere) means known. */
+  liveStatusSettled?: boolean
 }
 
 /** Home's shared ALL feed for the CURRENT creator: ONE first-page request (the same `/videos/recent` request ALL always made, now also
@@ -47,7 +52,9 @@ export function useHomeAllFeed(creatorId: string): HomeAllFeed {
   const { baseline } = useNewContent()
   const query = useMemo(() => buildShelfQuery("all", canonicalCreatorId, HOME_ALL_DEFAULT_CONTROLS), [canonicalCreatorId])
   const page = useOshiVideos(query, { newSince: baseline })
-  const { streams, recentlyEnded } = useLiveStreams()
+  const { streams, recentlyEnded, isLoading: liveStatusLoading, error: liveStatusError } = useLiveStreams()
+  // Known once the read answered; after a failed read only if the store still holds an earlier answer (it keeps the last response, or the cached one on a reload).
+  const liveStatusKnown = !liveStatusLoading && (liveStatusError === null || streams.length > 0 || recentlyEnded !== undefined)
 
   const currentIdsForCreator = useMemo(
     () => (canonicalCreatorId ? streams.filter((stream) => stream.creatorId === canonicalCreatorId).map((stream) => stream.videoId) : []),
@@ -91,5 +98,5 @@ export function useHomeAllFeed(creatorId: string): HomeAllFeed {
     return composeHomeAllFeed(current, archives)
   }, [canonicalCreatorId, streams, page.videos, pendingForCreator])
 
-  return { ...page, videos, page }
+  return { ...page, videos, page, liveStatusSettled: liveStatusKnown }
 }

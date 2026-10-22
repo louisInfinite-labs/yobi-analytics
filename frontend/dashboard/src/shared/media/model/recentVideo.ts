@@ -17,4 +17,7 @@ export interface RecentVideo {
   viewCount?: number
   /** When AWS first discovered the video (null when the backend has no such time); absent for sources that do not carry it. NEW counts from it. */
   discoveredAt?: string | null
+  /** A completed Premiere only: when its replay was verified available. A Premiere is announced long before its replay can be watched, so NEW counts from this
+   * time (never from the announcement) once it is present. */
+  archiveAvailableAt?: string | null
 }

@@ -99,7 +99,7 @@ def build_youtube_client(api_key: str) -> Resource:
         raise YouTubeAPIError(f"Failed to create YouTube API client: {exc}") from exc
 
 
-def call_youtube_api(request_executor: Callable[[], T]) -> T:
+def call_youtube_api(request_executor: Callable[[], T], *, max_attempts: int | None = None) -> T:
     """Run a googleapiclient request, translating transport/API errors into YouTubeAPIError.
 
     Failures are classified (Roadmap 2.5) before deciding what to do:
@@ -113,10 +113,14 @@ def call_youtube_api(request_executor: Callable[[], T]) -> T:
       missing resource) is non-retryable and raises immediately — the
       request itself was invalid or rejected, not transient.
 
+    `max_attempts` overrides MAX_RETRIES for one call (resolved at call time); a caller with a hard request budget passes 1 so that no
+    HTTP attempt beyond the one it planned is ever made.
+
     Usage: call_youtube_api(lambda: youtube.videos().list(...).execute())
     """
+    attempts = MAX_RETRIES if max_attempts is None else max_attempts
     last_exc: Exception | None = None
-    for attempt in range(1, MAX_RETRIES + 1):
+    for attempt in range(1, attempts + 1):
         try:
             return request_executor()
         except HttpError as exc:
@@ -133,20 +137,20 @@ def call_youtube_api(request_executor: Callable[[], T]) -> T:
                 ) from exc
 
             last_exc = exc
-            if attempt < MAX_RETRIES:
+            if attempt < attempts:
                 print(
-                    f"Warning: retryable API error on attempt {attempt}/{MAX_RETRIES} "
+                    f"Warning: retryable API error on attempt {attempt}/{attempts} "
                     f"(status {exc.status_code}, reason {reason!r}), retrying: {exc.reason}"
                 )
                 time.sleep(_backoff_seconds(attempt))
         except (OSError, httplib2.HttpLib2Error) as exc:
             last_exc = exc
-            if attempt < MAX_RETRIES:
-                print(f"Warning: network error on attempt {attempt}/{MAX_RETRIES}, retrying: {exc}")
+            if attempt < attempts:
+                print(f"Warning: network error on attempt {attempt}/{attempts}, retrying: {exc}")
                 time.sleep(_backoff_seconds(attempt))
 
     raise YouTubeAPIError(
-        f"YouTube API call failed after {MAX_RETRIES} attempts ({_safe_error_context(last_exc)})"
+        f"YouTube API call failed after {attempts} attempts ({_safe_error_context(last_exc)})"
     ) from last_exc
 
 
@@ -291,6 +295,64 @@ def get_archive_probe(youtube: Resource, video_ids: list[str]) -> dict[str, dict
                 "viewCount": view_count,
             }
     return probes
+
+UPCOMING_KIND_PREMIERE = "premiere"
+UPCOMING_KIND_LIVESTREAM = "livestream"
+
+
+def get_upcoming_premiere_facts(youtube: Resource, video_ids: list[str]) -> dict[str, dict]:
+    """Tell an upcoming YouTube Premiere from an ordinary scheduled livestream for the given video ids -- one videos.list call per MAX_IDS_PER_REQUEST ids
+    (1 quota unit each), asking for snippet, liveStreamingDetails and contentDetails in that single request.
+
+    Returns videoId -> {"kind", "title", "channelId", "publishedAt", "scheduledStartTime", "thumbnailUrl"} for every id YouTube returned a DEFINITIVE
+    answer for: kind "premiere" when is_upcoming_premiere holds (the shape observed on real upcoming Premieres), kind "livestream" when the broadcast is
+    upcoming and contentDetails carries a duration (a real stream reports "P0D"). Anything else -- an id YouTube did not return, a missing liveBroadcastContent,
+    a missing contentDetails, a started or ended broadcast -- is ABSENT from the result: it is unknown, never guessed either way.
+
+    Any API failure propagates (YouTubeAPIError); QuotaExhaustedError stops immediately like the other batched reads here.
+
+    Request budget: exactly one HTTP request per batch and NO in-run retry (max_attempts=1), so a run makes at most ceil(ids / 50) requests -- the
+    Collector caps that at 3 -- and every request may be charged 1 quota unit, failed ones included. A failure simply leaves the ids undecided for the
+    next discovery window.
+    """
+    facts: dict[str, dict] = {}
+    for start in range(0, len(video_ids), MAX_IDS_PER_REQUEST):
+        batch = video_ids[start : start + MAX_IDS_PER_REQUEST]
+        response = call_youtube_api(
+            lambda ids=",".join(batch): youtube.videos().list(part="snippet,liveStreamingDetails,contentDetails", id=ids).execute(),
+            max_attempts=1,
+        )
+        items = response.get("items")
+        if not isinstance(items, list):
+            raise YouTubeAPIError("Malformed response from YouTube API: missing 'items'")
+        for item in items:
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                continue
+            snippet = item.get("snippet") if isinstance(item.get("snippet"), dict) else {}
+            live_details = item.get("liveStreamingDetails") if isinstance(item.get("liveStreamingDetails"), dict) else {}
+            content_details = item.get("contentDetails")
+            if is_upcoming_premiere(snippet, live_details, content_details):
+                kind = UPCOMING_KIND_PREMIERE
+            elif (
+                snippet.get("liveBroadcastContent") == "upcoming"
+                and "actualStartTime" not in live_details
+                and "actualEndTime" not in live_details
+                and isinstance(content_details, dict)
+                and content_details.get("duration")
+            ):
+                kind = UPCOMING_KIND_LIVESTREAM
+            else:
+                continue
+            facts[item["id"]] = {
+                "kind": kind,
+                "title": snippet.get("title"),
+                "channelId": snippet.get("channelId"),
+                "publishedAt": snippet.get("publishedAt"),
+                "scheduledStartTime": live_details.get("scheduledStartTime"),
+                "thumbnailUrl": select_video_thumbnail_url(snippet.get("thumbnails")),
+            }
+    return facts
+
 
 def _fetch_batch(youtube: Resource, batch: list[str]) -> tuple[list[dict], dict[str, str]]:
     """Fetch and parse one videos.list batch, skipping missing/malformed items with a reason."""

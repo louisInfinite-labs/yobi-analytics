@@ -150,6 +150,9 @@ jobs:
           tests/notifications/test_dispatcher_resilience.py
           tests/notifications/test_push_ttl.py
           tests/stores/test_remote_config_store.py
+          tests/stores/test_premiere_archive_times_store.py
+          tests/stores/test_premiere_announcements_store.py
+          tests/collection/test_premiere_announcements.py
 
   frontend-focused-tests:
     needs: detect-scope
@@ -219,6 +222,7 @@ jobs:
           src/features/oshi-status/components/OshiStatusPanel.test.tsx
           src/features/oshi-status/components/OshiStatusPanel.milestones.test.tsx
           src/features/oshi-status/components/OshiStatusPanel.markAllWatched.test.tsx
+          src/features/notifications/components/NotificationSettings.install.test.tsx
           src/features/oshi-status/utils/oshiActivity.countUnwatched.test.ts
           src/features/oshi-status/data/creatorMilestones.test.ts
           src/features/oshi-status/data/allCreatorMilestones.test.ts
@@ -327,6 +331,7 @@ jobs:
           src/features/video-deep-link/useVideoDeepLink.test.tsx
           src/features/video-deep-link/VideoDeepLinkDialog.test.tsx
           src/pages/home/HomePage.videoDeepLink.test.tsx
+          src/pages/home/HomePage.premiereNew.test.tsx
           src/features/home-room/hooks/useResetScrollOnCreatorChange.test.ts
           src/features/live-schedule/components/StreamNotificationPanel.pushGate.test.tsx
           src/app/seo/sitemap.test.ts

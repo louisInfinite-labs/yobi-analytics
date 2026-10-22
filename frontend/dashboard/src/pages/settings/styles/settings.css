@@ -2841,6 +2841,20 @@
   border-color: var(--oshi-text-3);
 }
 
+/* In Notification Settings the install action is a compact ghost button beside the section text (not the Display Settings' full control column). */
+.pwa-install-section .pwa-install-button {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 112px;
+  height: 36px;
+  background: transparent;
+  color: var(--oshi-text-2);
+}
+
+.pwa-install-section .pwa-install-button:hover {
+  color: var(--oshi-text-1);
+}
+
 @media (max-width: 900px) {
   .display-setting-row {
     grid-template-columns: 1fr;

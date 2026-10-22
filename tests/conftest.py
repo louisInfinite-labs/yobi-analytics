@@ -27,6 +27,16 @@ def topic_catalog_fixture():
     video_topics.set_catalog_loader(load_global_topic_catalog_fixture)
 
 @pytest.fixture(autouse=True)
+def premiere_archive_times_cache_is_reset():
+    """The API caches the durable Premiere availability times per warm Lambda; no test may see another test's cached record."""
+    from api import read_api
+
+    read_api.clear_premiere_archive_times_cache()
+    yield
+    read_api.clear_premiere_archive_times_cache()
+
+
+@pytest.fixture(autouse=True)
 def no_real_youtube_classification(monkeypatch):
     """GET /live-streams asks the YouTube Data API about unclassified upcoming streams; no test may ever do that for real (a local .env
     may hold a real key). A test that needs the lookup patches api.livestream_classification._fetch_classifications itself."""

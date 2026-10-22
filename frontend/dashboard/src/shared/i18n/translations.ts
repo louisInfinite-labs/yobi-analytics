@@ -262,6 +262,9 @@ export type TranslationKey =
   | "pwa.iosStep1"
   | "pwa.iosStep2"
   | "pwa.iosStep3"
+  | "pwa.menuTitle"
+  | "pwa.menuStep1"
+  | "pwa.menuStep2"
   | "pwa.dataWarningTitle"
   | "pwa.dataWarningBody"
   | "liveSchedule.pageTitle"
@@ -559,6 +562,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "pwa.iosStep1": "在 Safari 點選「分享」按鈕。",
     "pwa.iosStep2": "選擇「加入主畫面」。",
     "pwa.iosStep3": "點選「新增」，之後從主畫面開啟 OshiYobi。",
+    "pwa.menuTitle": "安裝 OshiYobi",
+    "pwa.menuStep1": "開啟瀏覽器選單（通常是右上角的「⋮」或「…」）。",
+    "pwa.menuStep2": "選擇「安裝應用程式」或「加到主畫面」，之後從主畫面開啟 OshiYobi。",
     "pwa.dataWarningTitle": "本機資料可能不會自動帶入",
     "pwa.dataWarningBody": "加入主畫面後的 OshiYobi 可能不會自動使用你在 Safari 中的本機資料，例如 My Oshi、收藏、顯示設定及其他僅存在此裝置的偏好設定。原本 Safari 裡的資料不會被刪除，但也不保證會自動轉移，你可能需要在主畫面版本重新設定。",
     "liveSchedule.pageTitle": "直播時間表",
@@ -854,6 +860,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "pwa.iosStep1": "In Safari, tap the Share button.",
     "pwa.iosStep2": "Choose Add to Home Screen.",
     "pwa.iosStep3": "Tap Add, then open OshiYobi from your Home Screen.",
+    "pwa.menuTitle": "Install OshiYobi",
+    "pwa.menuStep1": "Open the browser menu (usually the ⋮ or … button).",
+    "pwa.menuStep2": "Choose Install app or Add to Home screen, then open OshiYobi from your Home screen.",
     "pwa.dataWarningTitle": "Local data may not carry over",
     "pwa.dataWarningBody": "The Home Screen version of OshiYobi may not automatically use the local data you had in Safari, such as My Oshi, Favorites, display settings and other preferences stored only on this device. Your Safari data is not deleted, but it is not guaranteed to transfer — you may need to set things up again in the Home Screen version.",
     "liveSchedule.pageTitle": "Live Schedule",
@@ -1141,7 +1150,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "videoLink.unknown": "動画の状態を確認できませんでした。時間をおいて再度お試しください。",
     "videoLink.retry": "再試行",
     "videoLink.close": "閉じる",
-    "pwa.installLabel": "OshiYobiをインストール",
+    "pwa.installLabel": "OshiYobi をインストール",
     "pwa.installHelp": "OshiYobiを端末のホーム画面に追加して、アプリのように開けます。インストールは任意で、しなくても通常どおり使えます。",
     "pwa.installButton": "インストール",
     "pwa.howButton": "インストール方法を見る",
@@ -1149,6 +1158,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "pwa.iosStep1": "Safariで「共有」ボタンをタップします。",
     "pwa.iosStep2": "「ホーム画面に追加」を選びます。",
     "pwa.iosStep3": "「追加」をタップし、ホーム画面からOshiYobiを開きます。",
+    "pwa.menuTitle": "OshiYobi をインストール",
+    "pwa.menuStep1": "ブラウザのメニュー（通常は「⋮」または「…」ボタン）を開きます。",
+    "pwa.menuStep2": "「アプリをインストール」または「ホーム画面に追加」を選び、ホーム画面から OshiYobi を開きます。",
     "pwa.dataWarningTitle": "ローカルデータは引き継がれない場合があります",
     "pwa.dataWarningBody": "ホーム画面版のOshiYobiは、Safariで使っていたローカルデータ（My Oshi、お気に入り、表示設定など、この端末内にのみ保存されている設定）を自動では引き継がない場合があります。Safari側のデータは削除されませんが、自動で移行される保証はなく、ホーム画面版で再設定が必要になることがあります。",
     "liveSchedule.pageTitle": "配信スケジュール",

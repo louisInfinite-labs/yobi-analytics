@@ -1,5 +1,5 @@
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
-import type { NewContentCandidate } from "../../../shared/newContent/newContentTracking"
+import { isNotYetWatchableFormat, type NewContentCandidate } from "../../../shared/newContent/newContentTracking"
 import type { NewContentEligibility } from "../../home-room/data/oshiVideos"
 import { formatClockTime, type TimeFormat } from "../../../shared/i18n/model/timeFormat"
 
@@ -81,15 +81,21 @@ function classifyUnwatched(
   now: Date,
 ): Map<string, "video" | "livestream"> {
   const kinds = new Map<string, "video" | "livestream">()
+  // A video whose own row is still transitional (upcoming Premiere, live, or an ended stream/Premiere whose archive is pending or handed off) is not
+  // NEW yet, even though the backend eligibility already lists it from its discovery time. It joins the count only once the real archived row replaces
+  // the transitional one (same videoId, so it is counted at most once across every stage).
+  // A confirmed archived row for the same videoId wins over a transitional one (the feed keeps one row per videoId, the real row first).
+  const confirmed = new Set(loaded.filter((row) => !isNotYetWatchableFormat(row.contentFormat)).map((row) => row.videoId))
+  const notYetWatchable = new Set(loaded.filter((row) => isNotYetWatchableFormat(row.contentFormat) && !confirmed.has(row.videoId)).map((row) => row.videoId))
   const add = (ids: string[], kind: "video" | "livestream") => {
-    for (const videoId of ids) if (!kinds.has(videoId) && state.isUnseen(videoId)) kinds.set(videoId, kind)
+    for (const videoId of ids) if (!kinds.has(videoId) && !notYetWatchable.has(videoId) && state.isUnseen(videoId)) kinds.set(videoId, kind)
   }
   add(eligibility?.videoIds ?? [], "video")
   add(eligibility?.unclassifiedIds ?? [], "video")
   add(eligibility?.livestreamIds ?? [], "livestream")
   for (const row of loaded) {
-    if (kinds.has(row.videoId)) continue
-    const candidate = { videoId: row.videoId, publishedAt: row.publishedAt, eventAt: row.eventAt, discoveredAt: row.discoveredAt, contentFormat: row.contentFormat }
+    if (kinds.has(row.videoId) || notYetWatchable.has(row.videoId)) continue
+    const candidate = { videoId: row.videoId, publishedAt: row.publishedAt, eventAt: row.eventAt, discoveredAt: row.discoveredAt, archiveAvailableAt: row.archiveAvailableAt, contentFormat: row.contentFormat }
     if (state.isNew(candidate, now)) kinds.set(row.videoId, row.contentFormat === "live_archive" ? "livestream" : "video")
   }
   return kinds
