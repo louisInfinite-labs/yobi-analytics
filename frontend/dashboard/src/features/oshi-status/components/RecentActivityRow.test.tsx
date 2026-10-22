@@ -23,13 +23,13 @@ function renderRow(entry: RecentVideo, onOpen = vi.fn()) {
 }
 
 function isUnseen(videoId: string): boolean {
-  let result = true
   function Probe() {
-    result = useNewContent().isUnseen(videoId)
-    return null
+    return <span data-testid="probe-result">{String(useNewContent().isUnseen(videoId))}</span>
   }
-  render(<Probe />)
-  return result
+  const { getByTestId, unmount } = render(<Probe />)
+  const value = getByTestId("probe-result").textContent === "true"
+  unmount() // each call renders its own probe; unmount at once so repeated calls within one test never collide in the DOM
+  return value
 }
 
 beforeEach(() => {
