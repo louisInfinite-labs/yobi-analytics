@@ -5,6 +5,7 @@ import { OshiStatusPanel } from "./OshiStatusPanel"
 import * as useLastVisit from "../hooks/useLastVisit"
 import { fetchOshiStatus } from "../data/oshiStatus"
 import { loadCreatorMilestones, type CreatorMilestonesResult } from "../data/creatorMilestones"
+import { getCachedAllCreatorMilestones, loadAllCreatorMilestones, type AllCreatorMilestones } from "../data/allCreatorMilestones"
 import type { HomeAllFeed } from "../../home-room/hooks/useHomeAllFeed"
 import type { CreatorStatus } from "../../live-status/model/creatorStatus"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
@@ -15,9 +16,25 @@ vi.mock("../hooks/useLastVisit", async () => {
 })
 vi.mock("../data/oshiStatus", () => ({ fetchOshiStatus: vi.fn() }))
 vi.mock("../data/creatorMilestones", () => ({ loadCreatorMilestones: vi.fn(), getCachedCreatorMilestones: vi.fn(() => undefined) }))
+// The calendar icon is decided by the shared bulk read (every creator it lists with at least one usable date); the real predicate is kept.
+vi.mock("../data/allCreatorMilestones", async () => {
+  const actual = await vi.importActual<typeof import("../data/allCreatorMilestones")>("../data/allCreatorMilestones")
+  return { ...actual, getCachedAllCreatorMilestones: vi.fn(), loadAllCreatorMilestones: vi.fn() }
+})
 
 const statusMock = vi.mocked(fetchOshiStatus)
 const loadMock = vi.mocked(loadCreatorMilestones)
+const bulkCachedMock = vi.mocked(getCachedAllCreatorMilestones)
+const bulkLoadMock = vi.mocked(loadAllCreatorMilestones)
+
+/** The shared bulk read as the panel sees it: what is already held AND what a (re)load answers. */
+function setBulk(bulk: AllCreatorMilestones) {
+  bulkCachedMock.mockReturnValue(bulk)
+  bulkLoadMock.mockResolvedValue(bulk)
+}
+
+/** A bulk read in which EVERY creator has both dates (the default of these tests); a test replaces it to model creators without dates. */
+const everyCreatorHasDates = new Proxy({} as AllCreatorMilestones, { get: () => ({ birthday: "01-31", debutDate: "2021-09-18" }) })
 
 /** An absolute instant from JST wall-clock fields. */
 const jst = (year: number, month: number, day: number, hour = 0, minute = 0, second = 0) => Date.UTC(year, month - 1, day, hour, minute, second) - 9 * 3600 * 1000
@@ -51,6 +68,7 @@ function renderPanel(creatorId = "ch_aizawa_ema", nowPlayingTitle: string | null
   )
   const view = render(ui(creatorId, nowPlayingTitle, status))
   return {
+    unmount: view.unmount,
     switchCreator: (id: string) => {
       currentId = id
       view.rerender(ui(id, nowPlayingTitle, status))
@@ -84,6 +102,10 @@ beforeEach(() => {
   vi.mocked(useLastVisit.usePreviousVisit).mockReturnValue(null)
   loadMock.mockReset()
   loadMock.mockResolvedValue(found(EMA))
+  bulkCachedMock.mockReset()
+  bulkCachedMock.mockReturnValue(everyCreatorHasDates)
+  bulkLoadMock.mockReset()
+  bulkLoadMock.mockResolvedValue(everyCreatorHasDates)
   localStorage.setItem("yobi.locale", "en")
   resetAllSharedStateForTests()
   setViewport(1280)
@@ -106,6 +128,71 @@ describe("calendar icon", () => {
     expect(button).toHaveAttribute("aria-expanded", "false")
     expect(button.querySelector("svg")).not.toBeNull()
     expect(dialog()).toBeNull()
+    expect(loadMock).not.toHaveBeenCalled()
+  })
+
+  it("is shown for a creator with a birthday and a debut date, and for one with only a single date", async () => {
+    for (const dates of [{ birthday: "01-31", debutDate: "2021-09-18" }, { birthday: "01-31" }, { debutDate: "2021-09-18" }]) {
+      setBulk({ aizawa_ema: dates })
+      const view = renderPanel()
+      await screen.findByText(/123\.5K/)
+      expect(trigger()).toBeInTheDocument()
+      view.unmount()
+    }
+  })
+
+  it("is hidden for an entry with neither date -- a staff, official or organization channel is decided by its missing data, never by its name", async () => {
+    // The roster lists only a creator that HAS dates; the entry shown (any id, whatever its name or type) is absent from it, or listed without a usable date.
+    for (const bulk of [{ some_other_creator: { birthday: "01-31", debutDate: "2021-09-18" } }, { aizawa_ema: {} }] as AllCreatorMilestones[]) {
+      setBulk(bulk)
+      const view = renderPanel()
+      await screen.findByText(/123\.5K/)
+      expect(screen.queryByRole("button", { name: /birthday and debut anniversary/i })).toBeNull()
+      expect(document.querySelector(".oshi-status__milestone-trigger")).toBeNull()
+      view.unmount()
+    }
+  })
+
+  it("hiding it leaves the subscriber line, its height rule and the name exactly where they were", async () => {
+    setBulk({})
+    renderPanel()
+    const count = await screen.findByText(/123\.5K/)
+    const row = count.parentElement as HTMLElement
+    expect(row).toHaveClass("oshi-status__subscriber-row") // the row (fixed 13px high in home.css) still exists, so nothing moves
+    expect(row.children).toHaveLength(1)
+    expect(row.previousElementSibling).toHaveClass("oshi-status__creator-name")
+    expect(row.parentElement).toHaveClass("oshi-status__creator-text")
+  })
+
+  it("hiding it does not hide any other control of the panel", async () => {
+    setBulk({})
+    renderPanel()
+    await screen.findByText(/123\.5K/)
+    expect(screen.getByRole("button", { name: "Mark all watched" })).toBeInTheDocument()
+    expect(screen.getByText("Recent")).toBeInTheDocument()
+  })
+
+  it("waits for the bulk read when nothing is held yet, then appears; an unreadable read keeps it hidden", async () => {
+    bulkCachedMock.mockReturnValue(null)
+    let resolveRead: (value: AllCreatorMilestones) => void = () => undefined
+    bulkLoadMock.mockReturnValue(new Promise((resolve) => (resolveRead = resolve)))
+    renderPanel()
+    await screen.findByText(/123\.5K/)
+    expect(document.querySelector(".oshi-status__milestone-trigger")).toBeNull()
+    await act(async () => resolveRead({ aizawa_ema: { birthday: "01-31" } }))
+    expect(trigger()).toBeInTheDocument()
+
+    bulkCachedMock.mockReturnValue(null)
+    bulkLoadMock.mockRejectedValue(new Error("offline"))
+    renderPanel()
+    await waitFor(() => expect(bulkLoadMock).toHaveBeenCalledTimes(2))
+    expect(screen.getAllByRole("button", { name: /birthday and debut anniversary/i })).toHaveLength(1) // only the first panel's
+  })
+
+  it("asks for no milestone request of its own: the icon uses the one shared bulk read", async () => {
+    renderPanel()
+    await screen.findByText(/123\.5K/)
+    expect(bulkLoadMock).toHaveBeenCalledTimes(1)
     expect(loadMock).not.toHaveBeenCalled()
   })
 

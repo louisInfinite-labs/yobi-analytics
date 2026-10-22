@@ -5,6 +5,7 @@ import {
   FRESH_FOR_MS,
   fetchAllCreatorMilestones,
   getCachedAllCreatorMilestones,
+  hasUsableMilestoneDate,
   isAllCreatorMilestonesStale,
   loadAllCreatorMilestones,
   resetAllCreatorMilestonesForTests,
@@ -38,17 +39,24 @@ describe("fetchAllCreatorMilestones", () => {
     expect(result).toEqual({ hoshimachi_suisei: { birthday: "03-22", debutDate: "2018-03-22" }, mano_aloe: { birthday: "10-28", debutDate: "2020-08-15" } })
   })
 
-  it("skips unusable records instead of inventing or repairing them", async () => {
+  it("skips records with no usable date at all, and keeps only the usable one of a record with a single usable date", async () => {
     requestMock.mockResolvedValue({
       milestones: [
         BODY.milestones[0],
         { creatorId: "bad_birthday", birthday: "02-30", debutDate: "2020-01-01" },
         { creatorId: "bad_debut", birthday: "01-01", debutDate: "01-01" },
+        { creatorId: "no_dates", birthday: "02-30", debutDate: "01-01" },
+        { creatorId: "empty_strings", birthday: "", debutDate: "" },
+        { creatorId: "missing_fields" },
         { birthday: "01-01", debutDate: "2020-01-01" },
         null,
       ],
     })
-    expect(Object.keys(await fetchAllCreatorMilestones())).toEqual(["hoshimachi_suisei"])
+    expect(await fetchAllCreatorMilestones()).toEqual({
+      hoshimachi_suisei: { birthday: "03-22", debutDate: "2018-03-22" },
+      bad_birthday: { debutDate: "2020-01-01" },
+      bad_debut: { birthday: "01-01" },
+    })
   })
 
   it("a response without a list is an error", async () => {
@@ -154,5 +162,18 @@ describe("bounded cache lifetime: fresh for one hour, then revalidated when next
     requestMock.mockRejectedValue(new Error("503"))
     await expect(loadAllCreatorMilestones(() => 1)).rejects.toThrow("503")
     expect(getCachedAllCreatorMilestones()).toBeNull()
+  })
+})
+
+describe("hasUsableMilestoneDate: the one rule for showing the calendar icon", () => {
+  it.each([
+    ["both dates", { birthday: "03-22", debutDate: "2018-03-22" }, true],
+    ["only a birthday", { birthday: "03-22" }, true],
+    ["only a debut date", { debutDate: "2018-03-22" }, true],
+    ["neither date", {}, false],
+    ["two unusable dates", { birthday: "02-30", debutDate: "03-22" }, false],
+    ["no record at all", undefined, false],
+  ])("%s -> %s", (_label, dates, expected) => {
+    expect(hasUsableMilestoneDate(dates)).toBe(expected)
   })
 })

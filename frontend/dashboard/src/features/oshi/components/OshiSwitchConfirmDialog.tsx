@@ -3,10 +3,17 @@ import { createPortal } from "react-dom"
 import { t, type Locale } from "../../../shared/i18n/translations"
 
 interface OshiSwitchConfirmDialogProps {
-  creatorName: string
+  creatorName?: string
+  /** Another confirmation that reuses this exact dialog (message / checkbox / Cancel + confirm): its own question. Default: the Oshi switch question. */
+  message?: string
+  /** The confirm button's label. Default: the Oshi switch's "Switch". */
+  confirmLabel?: string
   locale: Locale
   onCancel: () => void
   onConfirm: (dontAskAgain: boolean) => void
+  /** Where focus goes on close when the element that opened the dialog can no longer take it (it became disabled or left the page). Optional: without it
+   * the opener is the only target, exactly as before. */
+  restoreFocusFallback?: () => HTMLElement | null
 }
 
 /** Confirms an Oshi switch before it happens (spec section 5/6/7). Structure
@@ -15,7 +22,7 @@ interface OshiSwitchConfirmDialogProps {
  * Backdrop click, Esc, and Tab-trapping follow the same convention already
  * established by VideoPlayerModal. Checking "Don't ask again" only takes
  * effect together with Switch — Cancel never persists it (spec section 7). */
-export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfirm }: OshiSwitchConfirmDialogProps) {
+export function OshiSwitchConfirmDialog({ creatorName = "", message: customMessage, confirmLabel, locale, onCancel, onConfirm, restoreFocusFallback }: OshiSwitchConfirmDialogProps) {
   const [dontAskAgain, setDontAskAgain] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const checkboxRef = useRef<HTMLInputElement>(null)
@@ -27,8 +34,10 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
   // listener effect below from re-running (and re-focusing the checkbox,
   // stealing focus from wherever Tab had moved it) on every such re-render.
   const onCancelRef = useRef(onCancel)
+  const restoreFocusFallbackRef = useRef(restoreFocusFallback)
   useEffect(() => {
     onCancelRef.current = onCancel
+    restoreFocusFallbackRef.current = restoreFocusFallback
   })
 
   // Mount-only: return focus to the opener exactly once, on unmount — not
@@ -36,7 +45,11 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
   useEffect(() => {
     const opener = openerRef.current
     return () => {
-      if (opener instanceof HTMLElement) opener.focus()
+      // The opener may have been disabled by the very action just confirmed (a disabled element cannot take focus): then the fallback, if any, gets it
+      // instead of the page body. While the opener can still take focus it is always the target.
+      const openerCanTakeFocus = opener instanceof HTMLElement && opener.isConnected && !opener.matches(":disabled")
+      if (openerCanTakeFocus) opener.focus()
+      else restoreFocusFallbackRef.current?.()?.focus()
     }
   }, [])
 
@@ -76,7 +89,7 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
     }
   }, [])
 
-  const message = t(locale, "oshiSwitch.confirmMessage", { creatorName })
+  const message = customMessage ?? t(locale, "oshiSwitch.confirmMessage", { creatorName })
 
   // Portalled to <body>: this renders from inside the Live Status drawer,
   // which is transformed — and a transformed ancestor becomes the
@@ -106,7 +119,7 @@ export function OshiSwitchConfirmDialog({ creatorName, locale, onCancel, onConfi
             className="oshi-switch-confirm__confirm"
             onClick={() => onConfirm(dontAskAgain)}
           >
-            {t(locale, "oshiSwitch.confirmAction")}
+            {confirmLabel ?? t(locale, "oshiSwitch.confirmAction")}
           </button>
         </div>
       </div>

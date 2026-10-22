@@ -74,12 +74,12 @@ export function formatActivityTime(iso: string, now: Date, timeFormat: TimeForma
  * (so every NEW badge counts exactly once even if the eligibility is briefly behind). A livestream archive is a livestream; everything else --
  * an upload AND a record with no contentType yet, whose stored value is never changed -- is a video, the same way the Video List already
  * presents it. Set-based by videoId, so a video can never count twice and opening it can never decrement twice. */
-export function countUnwatched(
+function classifyUnwatched(
   eligibility: NewContentEligibility | undefined,
   loaded: RecentVideo[],
   state: { isNew: (candidate: NewContentCandidate, now: Date) => boolean; isUnseen: (videoId: string) => boolean },
   now: Date,
-): { videos: number; livestreams: number } {
+): Map<string, "video" | "livestream"> {
   const kinds = new Map<string, "video" | "livestream">()
   const add = (ids: string[], kind: "video" | "livestream") => {
     for (const videoId of ids) if (!kinds.has(videoId) && state.isUnseen(videoId)) kinds.set(videoId, kind)
@@ -92,6 +92,26 @@ export function countUnwatched(
     const candidate = { videoId: row.videoId, publishedAt: row.publishedAt, eventAt: row.eventAt, discoveredAt: row.discoveredAt, contentFormat: row.contentFormat }
     if (state.isNew(candidate, now)) kinds.set(row.videoId, row.contentFormat === "live_archive" ? "livestream" : "video")
   }
-  const values = [...kinds.values()]
+  return kinds
+}
+
+export function countUnwatched(
+  eligibility: NewContentEligibility | undefined,
+  loaded: RecentVideo[],
+  state: { isNew: (candidate: NewContentCandidate, now: Date) => boolean; isUnseen: (videoId: string) => boolean },
+  now: Date,
+): { videos: number; livestreams: number } {
+  const values = [...classifyUnwatched(eligibility, loaded, state, now).values()]
   return { videos: values.filter((kind) => kind === "video").length, livestreams: values.filter((kind) => kind === "livestream").length }
+}
+
+/** The ids behind the "Not watched yet" Videos count: exactly the videos countUnwatched counts as videos (never a livestream archive), so marking them seen takes that
+ * count to zero and leaves every livestream's NEW state alone. */
+export function unwatchedVideoIds(
+  eligibility: NewContentEligibility | undefined,
+  loaded: RecentVideo[],
+  state: { isNew: (candidate: NewContentCandidate, now: Date) => boolean; isUnseen: (videoId: string) => boolean },
+  now: Date,
+): string[] {
+  return [...classifyUnwatched(eligibility, loaded, state, now)].filter(([, kind]) => kind === "video").map(([videoId]) => videoId)
 }

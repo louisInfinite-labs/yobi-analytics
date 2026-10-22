@@ -42,12 +42,20 @@ describe("fetchCreatorMilestones", () => {
 
   it.each([
     ["another creator's record", { ...SUISEI, creatorId: "someone_else" }],
-    ["an impossible birthday", { ...SUISEI, birthday: "02-30" }],
-    ["a debut date without a year", { ...SUISEI, debutDate: "03-22" }],
-    ["a missing date", { creatorId: "hoshimachi_suisei", birthday: "03-22" }],
+    ["no usable date at all (an impossible birthday and a debut date without a year)", { ...SUISEI, birthday: "02-30", debutDate: "03-22" }],
+    ["no dates", { creatorId: "hoshimachi_suisei" }],
   ])("rejects %s instead of showing it", async (_label, body) => {
     requestMock.mockResolvedValue(body)
     await expect(fetchCreatorMilestones("hoshimachi_suisei")).rejects.toThrow()
+  })
+
+  it.each([
+    ["an impossible birthday", { ...SUISEI, birthday: "02-30" }, { creatorId: "hoshimachi_suisei", debutDate: SUISEI.debutDate }],
+    ["a debut date without a year", { ...SUISEI, debutDate: "03-22" }, { creatorId: "hoshimachi_suisei", birthday: SUISEI.birthday }],
+    ["a missing debut date", { creatorId: "hoshimachi_suisei", birthday: "03-22" }, { creatorId: "hoshimachi_suisei", birthday: "03-22" }],
+  ])("%s: keeps just the one usable date", async (_label, body, expected) => {
+    requestMock.mockResolvedValue(body)
+    await expect(fetchCreatorMilestones("hoshimachi_suisei")).resolves.toEqual({ kind: "found", milestones: expected })
   })
 })
 

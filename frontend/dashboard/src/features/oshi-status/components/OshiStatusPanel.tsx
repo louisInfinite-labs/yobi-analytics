@@ -13,13 +13,16 @@ import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistr
 import { resetPreviousVisit, usePreviousVisit } from "../hooks/useLastVisit"
 import { useOshiStatus } from "../hooks/useOshiStatus"
 import { useCreatorMilestones } from "../hooks/useCreatorMilestones"
+import { useHasMilestoneDates } from "../hooks/useHasMilestoneDates"
+import { useConfirmMarkAllWatchedPreference } from "../hooks/useConfirmMarkAllWatchedPreference"
+import { OshiSwitchConfirmDialog } from "../../oshi/components/OshiSwitchConfirmDialog"
 import { useMilestoneDialogController } from "../hooks/useMilestoneDialogController"
 import { useOverlayGeometry } from "../hooks/useOverlayGeometry"
 import { useLatestActivityRows } from "../hooks/useLatestActivityRows"
 import { useBreakpoint } from "../../../shared/hooks/useBreakpoint"
 import type { HomeAllFeed } from "../../home-room/hooks/useHomeAllFeed"
-import { countUnwatched, formatCompactCount } from "../utils/oshiActivity"
-import { migrateWatchedLiveToSeen, resetNewContentTracking, useNewContent } from "../../../shared/newContent/newContentTracking"
+import { countUnwatched, formatCompactCount, unwatchedVideoIds } from "../utils/oshiActivity"
+import { markContentSeenMany, migrateWatchedLiveToSeen, resetNewContentTracking, useNewContent } from "../../../shared/newContent/newContentTracking"
 import { RecentActivityRow, StatusThumbnail } from "./RecentActivityRow"
 import { LatestActivityView } from "./LatestActivityView"
 import { MilestoneDialog } from "./MilestoneDialog"
@@ -134,6 +137,8 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
   const milestoneDialogId = `oshi-status-milestones-${creatorId}`
   const milestoneDialog = useMilestoneDialogController({ creatorId, triggerRef: milestoneTriggerRef, dialogRef: milestoneDialogRef })
   const milestones = useCreatorMilestones(resolveCreatorKey(creatorId)?.creatorId, milestoneDialog.open)
+  // The icon exists only for an entry with at least one usable birthday or debut date (staff, official and organization channels have none).
+  const hasMilestoneDates = useHasMilestoneDates(resolveCreatorKey(creatorId)?.creatorId)
   const overlayGeometry = useOverlayGeometry(milestoneDialog.open, panelRef, nowPlayingRef)
   const [activityOpen, setActivityOpen] = useState(false)
   const viewAllRef = useRef<HTMLButtonElement | null>(null)
@@ -164,6 +169,23 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
   const rowsAvailable = !loading && !error && eligibility !== undefined
   const unwatched = countUnwatched(eligibility, recent, { isNew: isNewContent, isUnseen }, now)
   const countLabel = (value: number) => String(value)
+  // Mark all watched: marks the videos the "Not watched yet" Videos count counts (never a livestream archive) seen in the shared seen store, the one every NEW badge and count reads,
+  // so they all update at once and the state survives a reload exactly like opening each video would. With nothing outstanding there is nothing to confirm.
+  const [confirmMarkAll, setConfirmMarkAll] = useConfirmMarkAllWatchedPreference()
+  // The creator the confirmation is open for: a creator change closes it by derivation, and A -> B -> A never reopens it (see useMilestoneDialogController).
+  const [markAllFor, setMarkAllFor] = useState<string | null>(null)
+  const [lastCreatorId, setLastCreatorId] = useState(creatorId)
+  if (lastCreatorId !== creatorId) {
+    setLastCreatorId(creatorId)
+    if (markAllFor !== null) setMarkAllFor(null)
+  }
+  const markAllOpen = markAllFor === creatorId
+  const recentSectionRef = useRef<HTMLElement | null>(null)
+  const canMarkAll = rowsAvailable && unwatched.videos > 0
+  const markAllWatched = () => markContentSeenMany(unwatchedVideoIds(eligibility, recent, { isNew: isNewContent, isUnseen }, now))
+  const requestMarkAll = () => (confirmMarkAll ? setMarkAllFor(creatorId) : markAllWatched())
+  // Confirming the last outstanding videos disables the Mark all watched button, which then cannot take focus back: the first enabled control of the section does.
+  const focusAfterMarkAll = () => recentSectionRef.current?.querySelector<HTMLElement>("button:not(:disabled)") ?? null
 
   return (
     <aside className="oshi-status" ref={panelRef}>
@@ -192,18 +214,20 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
                     {formatCompactCount(data.subscriberCount)} {t(locale, "oshiStatus.subscribers")}
                   </div>
                 )}
-                <button
-                  type="button"
-                  ref={milestoneTriggerRef}
-                  className="oshi-status__milestone-trigger"
-                  aria-label={t(locale, "oshiStatus.milestones.open")}
-                  aria-haspopup="dialog"
-                  aria-expanded={milestoneDialog.open}
-                  aria-controls={milestoneDialogId}
-                  {...milestoneDialog.triggerProps}
-                >
-                  <Calendar size={12} strokeWidth={1.5} aria-hidden="true" />
-                </button>
+                {hasMilestoneDates && (
+                  <button
+                    type="button"
+                    ref={milestoneTriggerRef}
+                    className="oshi-status__milestone-trigger"
+                    aria-label={t(locale, "oshiStatus.milestones.open")}
+                    aria-haspopup="dialog"
+                    aria-expanded={milestoneDialog.open}
+                    aria-controls={milestoneDialogId}
+                    {...milestoneDialog.triggerProps}
+                  >
+                    <Calendar size={12} strokeWidth={1.5} aria-hidden="true" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -269,14 +293,19 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
           </div>
         </section>
 
-        <section className="oshi-status__section oshi-status__section--recent">
+        <section ref={recentSectionRef} className="oshi-status__section oshi-status__section--recent">
           <div className="oshi-status__section-head">
             <div className="oshi-status__section-title">{t(locale, "oshiStatus.recent")}</div>
-            {!isDesktop && (
-              <button ref={viewAllRef} type="button" className="oshi-status__view-all" onClick={() => setActivityOpen(true)}>
-                {t(locale, "oshiStatus.viewAll")}
+            <div className="oshi-status__section-actions">
+              <button type="button" className="oshi-status__view-all" disabled={!canMarkAll} onClick={requestMarkAll}>
+                {t(locale, "oshiStatus.markAllWatched")}
               </button>
-            )}
+              {!isDesktop && (
+                <button ref={viewAllRef} type="button" className="oshi-status__view-all" onClick={() => setActivityOpen(true)}>
+                  {t(locale, "oshiStatus.viewAll")}
+                </button>
+              )}
+            </div>
           </div>
           {loading ? (
             <div className="oshi-status__recent-list">
@@ -316,6 +345,20 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
           style={overlayGeometry}
           dialogRef={milestoneDialogRef}
           {...milestoneDialog.dialogProps}
+        />
+      )}
+      {markAllOpen && (
+        <OshiSwitchConfirmDialog
+          message={t(locale, "oshiStatus.markAllWatched.confirmMessage")}
+          confirmLabel={t(locale, "oshiStatus.markAllWatched.confirmAction")}
+          locale={locale}
+          restoreFocusFallback={focusAfterMarkAll}
+          onCancel={() => setMarkAllFor(null)}
+          onConfirm={(dontAskAgain) => {
+            markAllWatched()
+            if (dontAskAgain) setConfirmMarkAll(false)
+            setMarkAllFor(null)
+          }}
         />
       )}
       {activityViewOpen && (

@@ -5,15 +5,16 @@ import { parseBirthday, parseDebutDate } from "../model/milestoneCountdown"
  * every countdown and anniversary number is derived in the browser (see model/milestoneCountdown.ts). */
 export interface CreatorMilestones {
   creatorId: string
-  /** "MM-DD", no year. */
-  birthday: string
-  /** The ORIGINAL debut date, "YYYY-MM-DD" (graduated creators keep it). */
-  debutDate: string
+  /** "MM-DD", no year; absent when the stored value is not a usable birthday. */
+  birthday?: string
+  /** The ORIGINAL debut date, "YYYY-MM-DD" (graduated creators keep it); absent when the stored value is not a usable date. */
+  debutDate?: string
 }
 
 export type CreatorMilestonesResult = { kind: "found"; milestones: CreatorMilestones } | { kind: "not_found" }
 
-/** The response checked, never trusted: the wrong creator or an unusable date is an error, so nothing fabricated or mismatched is shown. */
+/** The response checked, never trusted: the wrong creator, or a response with NO usable date at all, is an error, so nothing fabricated or mismatched is
+ * shown; a response with only one usable date keeps just that one (the dialog shows the other as unavailable). */
 export async function fetchCreatorMilestones(creatorId: string): Promise<CreatorMilestonesResult> {
   let dto: { creatorId?: unknown; birthday?: unknown; debutDate?: unknown }
   try {
@@ -22,10 +23,12 @@ export async function fetchCreatorMilestones(creatorId: string): Promise<Creator
     if (error instanceof ApiError && error.status === 404) return { kind: "not_found" }
     throw error
   }
-  if (dto.creatorId !== creatorId || !parseBirthday(dto.birthday) || !parseDebutDate(dto.debutDate)) {
+  const birthday = parseBirthday(dto.birthday) ? (dto.birthday as string) : undefined
+  const debutDate = parseDebutDate(dto.debutDate) ? (dto.debutDate as string) : undefined
+  if (dto.creatorId !== creatorId || (birthday === undefined && debutDate === undefined)) {
     throw new Error("Creator milestones response is not valid for this creator")
   }
-  return { kind: "found", milestones: { creatorId, birthday: dto.birthday as string, debutDate: dto.debutDate as string } }
+  return { kind: "found", milestones: { creatorId, ...(birthday !== undefined && { birthday }), ...(debutDate !== undefined && { debutDate }) } }
 }
 
 const settled = new Map<string, CreatorMilestonesResult>()
