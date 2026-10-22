@@ -462,11 +462,13 @@ describe("ALL = the union of 最新直播 and 最新影片 content", () => {
     await user.click(await screen.findByText("ALL"))
   }
 
-  it("lists the current LIVE, then UPCOMING nearest-first, then uploads and completed livestreams merged newest-first", async () => {
+  it("sorts by one global effective-publication timestamp, newest first -- lifecycle tier (LIVE/UPCOMING/archive) never overrides it", async () => {
+    // UP-21/UP-5 are scheduled further in the future than LIVE-NOW started in the past, so they sort ABOVE it: ALL is
+    // purely chronological by effective time, never LIVE-first the way 最新直播/the Live Status dock still are.
     const user = userEvent.setup()
     await openAll(user)
 
-    await waitFor(() => expect(cardTitles()).toEqual(["LIVE-NOW", "UP-5", "UP-21", "UPLOAD-2", "ARC-1", "UPLOAD-1", "ARC-2"]))
+    await waitFor(() => expect(cardTitles()).toEqual(["UP-21", "UP-5", "LIVE-NOW", "UPLOAD-2", "ARC-1", "UPLOAD-1", "ARC-2"]))
     expect(new Set(cardTitles()).size).toBe(cardTitles().length)
     expect(hasLiveBadge("LIVE-NOW")).toBe(true)
   })

@@ -1421,17 +1421,27 @@ def _persist_inferred_classification(video_id: str, classification: tuple[str, s
 
 
 def _without_known_non_livestreams(streams: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Drop every stream that is not a livestream: one Video Master classifies as an ordinary upload or a Short (an uploaded MV/Cover
-    Premiere, a Short), or one still UNCLASSIFIED that the YouTube Data API shows to be an upcoming Premiere.
+    """Drop every stream that is a known, already-published non-livestream (an ordinary upload or a Short), and relabel rather than
+    drop a still-upcoming stream the YouTube Data API has just confirmed is a Premiere.
 
     Holodex lists a YouTube Premiere as an ordinary stream (it carries no field that tells the two apart), so the canonical
     content classification -- the one stored in Video Master by the collector (collection.youtube_client) and shared with the
     video shelves -- is joined on videoId here, with ONE batch read for the whole list and no per-stream request.
-    tracking.video_master.is_known_non_livestream is the single rule for a stored classification. Only for an UPCOMING stream with
-    no stored classification, the same collector classifier is asked through api.livestream_classification (and its definitive answer
-    is stored for every other consumer). A stream whose classification is missing, "live" or unreadable is kept, a failed lookup
-    keeps every stream rather than failing the endpoint (availability first; the next call retries), and nothing is ever decided from
-    the title.
+    tracking.video_master.is_known_non_livestream is the single rule for a STORED classification, and a stream whose stored
+    contentType it flags (an already-published upload or a Short) is always dropped here -- unchanged, and the only drop path a
+    Short ever takes (Holodex never lists one as upcoming in the first place).
+
+    Only for an UPCOMING stream with no stored classification is the same collector classifier asked through
+    api.livestream_classification (and its definitive answer stored for every other consumer). Unlike an already-published
+    upload, a Premiere that is STILL upcoming has a real, public waiting page -- the same thing Holodex itself cannot tell apart
+    from a real stream -- so it is kept rather than dropped, with its returned `status` changed to "premiere" (a value Holodex
+    itself never reports) so every /live-streams consumer can tell it apart from a real live/upcoming stream without guessing
+    from contentType alone. classify_unclassified_upcoming only ever returns a definitive ("upload", None) or ("live", "upcoming")
+    for such a candidate (livestream_classification._is_definitive), so an "upload" answer here can only mean this one Premiere
+    shape; it is never reached for an already-stored upload (that always has stored_type != None and is dropped above instead).
+    A stream whose classification is missing, "live" or unreadable is kept as an ordinary stream, a failed lookup keeps every
+    stream rather than failing the endpoint (availability first; the next call retries), and nothing is ever decided from the
+    title.
     """
     if not streams:
         return streams
@@ -1450,13 +1460,24 @@ def _without_known_non_livestreams(streams: list[dict[str, Any]]) -> list[dict[s
         if video_id in stored:  # a record exists to classify (a not-yet-discovered video has none and is answered per request only)
             _persist_inferred_classification(video_id, classification)
 
-    def is_premiere_or_video(video_id: str) -> bool:
+    def is_inferred_premiere(video_id: str) -> bool:
+        """Only a still-upcoming, never-before-stored stream the classifier just confirmed is a Premiere -- never a stored
+        upload/Short (those are handled, and always dropped, above)."""
         if stored_type(video_id) is not None:
-            return is_known_non_livestream(stored_type(video_id))
+            return False
         classification = inferred.get(video_id)
-        return classification is not None and is_known_non_livestream(classification[0])
+        return classification is not None and classification[0] == "upload"
 
-    return [stream for stream in streams if not is_premiere_or_video(stream["videoId"])]
+    kept: list[dict[str, Any]] = []
+    for stream in streams:
+        video_id = stream["videoId"]
+        if stored_type(video_id) is not None and is_known_non_livestream(stored_type(video_id)):
+            continue
+        if is_inferred_premiere(video_id):
+            kept.append({**stream, "status": "premiere"})
+            continue
+        kept.append(stream)
+    return kept
 
 
 def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1557,9 +1578,17 @@ def _with_verified_completed_streams(rows: list[dict[str, Any]], creator_id: str
     kind of overlaid row carries `provisional: true` until the daily run replaces it. Nothing is overlaid for an archive that was not verified
     (private, still processing, not embeddable, the creator not archiving) -- see tracking.livestream_lifecycle._evaluate_archive.
 
+    A verified archive whose own facts (actualStartTime/actualEndTime/publishedAt, carried by the same lifecycle record -- no extra request)
+    show a completed Premiere (collection.youtube_client.is_completed_premiere) is overlaid as contentType="upload" with no liveStatus
+    instead -- a Premiere is a video, never a livestream, so it must never be forced to contentType="live" here even when the catalog has no
+    classification for it yet or (a stale ranking row) still shows it as "live". Ambiguous evidence is never guessed into either shape: the
+    ordinary livestream overlay stays the default.
+
     The result goes through the endpoint's normal topic -> contentType -> liveStatus -> sort -> offset/limit pipeline, so filters, ordering and
     pagination treat these rows exactly like any other.
     """
+    from collection.youtube_client import is_completed_premiere
+
     verified = _read_available_archives(creator_id)
     if not verified:
         return rows
@@ -1568,28 +1597,35 @@ def _with_verified_completed_streams(rows: list[dict[str, Any]], creator_id: str
     for archive in verified:
         video_id = archive["videoId"]
         index = by_video_id.get(video_id)
+        is_premiere = is_completed_premiere(archive.get("publishedAt"), archive)
+        content_type = "upload" if is_premiere else "live"
         if index is not None:
             existing = overlaid[index]
             if existing.get("liveStatus") == "completed" or existing.get("contentType") not in (None, "live"):
                 continue
-            overlaid[index] = {**existing, "contentType": "live", "liveStatus": "completed", "provisional": True}
+            patched = {**existing, "contentType": content_type, "provisional": True}
+            if is_premiere:
+                patched.pop("liveStatus", None)
+            else:
+                patched["liveStatus"] = "completed"
+            overlaid[index] = patched
             continue
         title = archive.get("title") or ""
-        overlaid.append(
-            {
-                "videoId": video_id,
-                "creatorId": creator_id,
-                "topic": classify_video_topic(title),
-                "contentType": "live",
-                "liveStatus": "completed",
-                "currentViewCount": archive.get("viewCount") or 0,
-                "title": title,
-                "thumbnailUrl": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
-                "publishedAt": archive.get("publishedAt"),
-                "discoveredAt": None,
-                "provisional": True,
-            }
-        )
+        new_row = {
+            "videoId": video_id,
+            "creatorId": creator_id,
+            "topic": classify_video_topic(title),
+            "contentType": content_type,
+            "currentViewCount": archive.get("viewCount") or 0,
+            "title": title,
+            "thumbnailUrl": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+            "publishedAt": archive.get("publishedAt"),
+            "discoveredAt": None,
+            "provisional": True,
+        }
+        if not is_premiere:
+            new_row["liveStatus"] = "completed"
+        overlaid.append(new_row)
     # An added row has no catalog entry, so its ORIGINAL AWS first-discovery time comes from its Video Master record (when discovery has recorded
     # one). Without it the stream could never count as NEW; with none on file it stays unknown (None) -- publishedAt is never substituted.
     added = [row for row in overlaid[len(rows) :] if row.get("discoveredAt") is None]

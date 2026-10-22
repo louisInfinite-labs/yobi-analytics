@@ -488,7 +488,14 @@ def _evaluate_archive(probe: dict[str, Any] | None, expected_channel_id: str | N
         return "still_processing", facts
     if probe.get("embeddable") is False:
         return "not_embeddable", facts
-    facts.update({"actualEndTime": probe["actualEndTime"], "publishedAt": probe.get("publishedAt"), "viewCount": probe.get("viewCount")})
+    facts.update(
+        {
+            "actualStartTime": probe.get("actualStartTime"),
+            "actualEndTime": probe["actualEndTime"],
+            "publishedAt": probe.get("publishedAt"),
+            "viewCount": probe.get("viewCount"),
+        }
+    )
     return None, facts
 
 def _prune_ended(ended: dict[str, dict[str, Any]], moment: datetime) -> dict[str, dict[str, Any]]:
@@ -527,12 +534,17 @@ def _resolve_candidates(
 ) -> tuple[list[str], dict[str, dict[str, Any]]]:
     """Decide each pending candidate from this cycle's YouTube answer. Returns (videoIds newly recorded as ended, next pending).
 
-    ENDED (actualEndTime present) -> recorded with YouTube's end time; Video Master completed is a best-effort side write whose
-    failure keeps the candidate for a bounded retry of the write only. Present but not ended -> still live: stays, costs nothing.
-    Not returned -> counted; after _MAX_PENDING_ATTEMPTS recorded as "unavailable". Not answered -> untouched. Idempotent: a video
-    already recorded is never recorded twice.
+    ENDED (actualEndTime present) -> recorded with YouTube's end time; the Video Master side write is best-effort and its failure
+    keeps the candidate for a bounded retry of the write only (the end itself, recorded above, is never re-attempted). A confirmed
+    candidate whose probe also shows a completed Premiere's shape (is_completed_premiere: actualStartTime, actualEndTime and
+    publishedAt all present and consistent) is classified "upload" via set_video_classification -- the same completion cycle, same
+    probe, no extra request -- and NEVER forced to contentType="live": a Premiere that is only ambiguously ended (any of those three
+    fields missing) is left as an ordinary livestream candidate instead of guessed. Present but not ended -> still live: stays, costs
+    nothing. Not returned -> counted; after _MAX_PENDING_ATTEMPTS recorded as "unavailable". Not answered -> untouched. Idempotent: a
+    video already recorded is never recorded twice.
     """
-    from stores.dynamodb_store import set_video_live_status
+    from collection.youtube_client import is_completed_premiere
+    from stores.dynamodb_store import get_video, set_video_classification, set_video_live_status
 
     newly_ended: list[str] = []
     next_pending: dict[str, dict[str, Any]] = {}
@@ -563,7 +575,34 @@ def _resolve_candidates(
             ended[video_id] = _ended_entry(stream, end_state=END_STATE_ENDED, previous_refreshed_at=previous_refreshed_at, moment=moment, actual_end=probe["actualEndTime"])
             newly_ended.append(video_id)
         try:
-            set_video_live_status(video_id, "completed")
+            if is_completed_premiere(probe.get("publishedAt"), probe):
+                # A completed Premiere is normally already classified contentType="upload" by api.read_api's own
+                # _persist_inferred_classification while it was still upcoming, so set_video_classification rejecting the write
+                # (already classified) is the expected steady state -- not a failure, never retried. But a rejection can also mean
+                # the row does not exist in Video Master at all yet (discovery has not reached it), which IS a real gap: distinguish
+                # the two with one GetItem (get_video, the same single-video read read_api.py already makes elsewhere -- not a
+                # periodic poll, just this one reconciliation check, and only when the write was actually rejected) rather than
+                # silently treating a rejection as settled either way. Never falls back to set_video_live_status, which would
+                # wrongly require contentType="live". Visibility is unaffected either way: _with_verified_completed_streams'
+                # archive overlay already shows this video correctly classified "upload" from the archive's own verified facts,
+                # with or without a Video Master row, so a still-missing row only delays Video Master's OWN record, never Home's.
+                if not set_video_classification(video_id, "upload", None):
+                    record = get_video(video_id)
+                    if record is None or record.content_type != "upload":
+                        attempts = int(state.get("attempts", 0)) + 1
+                        print(
+                            f"Warning: could not classify completed Premiere {video_id!r} as upload in Video Master "
+                            f"(record={'missing' if record is None else record.content_type!r}, attempt {attempts})"
+                        )
+                        if attempts < _MAX_PENDING_ATTEMPTS:
+                            next_pending[video_id] = {**state, "attempts": attempts}
+            else:
+                persisted = set_video_live_status(video_id, "completed")
+                if not persisted:
+                    attempts = int(state.get("attempts", 0)) + 1
+                    print(f"Warning: Video Master has no contentType=\"live\" record to complete for {video_id!r} (attempt {attempts})")
+                    if attempts < _MAX_PENDING_ATTEMPTS:
+                        next_pending[video_id] = {**state, "attempts": attempts}
         except Exception as exc:  # noqa: BLE001 -- the end is already recorded; only this side write is retried, boundedly
             attempts = int(state.get("attempts", 0)) + 1
             print(f"Warning: could not persist completion for {video_id!r} ({type(exc).__name__}): {exc}")
@@ -577,6 +616,33 @@ def _archive_window_open(entry: dict[str, Any], moment: datetime) -> bool:
     upload yet. Measured from YouTube's actualEnd (the confirmation time when there is none), so confirming an end sooner never shortens it."""
     reference = _parse_moment(entry.get("actualEnd")) or _parse_moment(entry.get("confirmedEndedAt"))
     return reference is not None and moment - reference < ARCHIVE_LOOKUP_MIN_WINDOW
+
+
+def _record_premiere_archived_notification_if_applicable(entry: dict[str, Any], facts: dict[str, Any], moment: datetime) -> None:
+    """Record the independent `premiere_archived` new-video notification event (notification_events_store.py) the FIRST time this
+    video's archive is confirmed available, but only when the verified facts show a completed Premiere -- never for an ordinary
+    livestream archive, which already has its own notification path and must not get a second, unrelated push. `facts` already
+    carries actualStartTime/actualEndTime/publishedAt from the SAME probe that confirmed availability -- no extra request.
+
+    Best-effort and silent on failure: the archive-availability record above is unconditional and already written regardless of
+    this call's outcome; only the extra notification is ever skipped, never the visibility fix itself.
+    """
+    from collection.youtube_client import is_completed_premiere
+
+    if not is_completed_premiere(facts.get("publishedAt"), facts):
+        return
+    try:
+        from stores.notification_events_store import record_premiere_archived_event
+
+        record_premiere_archived_event(
+            video_id=entry["videoId"],
+            creator_id=entry["creatorId"],
+            title=facts.get("title") or entry.get("title") or "",
+            thumbnail_url=None,
+            confirmed_at=moment.isoformat(),
+        )
+    except Exception as exc:  # noqa: BLE001 -- the archive is already recorded available regardless; only this notification is best-effort
+        print(f"Warning: could not record the Premiere archive-available notification for {entry['videoId']!r} ({type(exc).__name__}): {exc}")
 
 
 def _run_archive_lookups(
@@ -611,6 +677,7 @@ def _run_archive_lookups(
         reason, facts = _evaluate_archive(probes.get(video_id), _creator_channel_id(entry.get("creatorId")))
         if reason is None:
             entry["archive"] = {"status": ARCHIVE_AVAILABLE, "attempts": attempts, "availableAt": moment.isoformat(), **facts}
+            _record_premiere_archived_notification_if_applicable(entry, facts, moment)
         elif attempts >= ARCHIVE_LOOKUP_MAX_ATTEMPTS and not _archive_window_open(entry, moment):
             entry["archive"] = {"status": ARCHIVE_HANDED_OFF, "attempts": attempts, "handedOffAt": moment.isoformat(), "reason": reason}
         else:

@@ -61,12 +61,29 @@ def _ids() -> list[str]:
     return [stream["videoId"] for stream in read_api.get_live_streams()["streams"]]
 
 
-def test_an_unclassified_upcoming_premiere_is_asked_about_and_hidden_and_a_real_upcoming_stream_is_kept(setup):
+def _statuses() -> dict[str, str]:
+    return {stream["videoId"]: stream["status"] for stream in read_api.get_live_streams()["streams"]}
+
+
+def test_an_unclassified_upcoming_premiere_is_asked_about_kept_as_a_premiere_and_a_real_upcoming_stream_stays_upcoming(setup):
     setup["holodex"] = [_holodex("cover-premiere"), _holodex("real-upcoming")]
     setup["api"] = {"cover-premiere": ("upload", None), "real-upcoming": ("live", "upcoming")}
 
-    assert _ids() == ["real-upcoming"]
+    assert _statuses() == {"cover-premiere": "premiere", "real-upcoming": "upcoming"}
     assert setup["asked"] == [["cover-premiere", "real-upcoming"]]  # ONE batched lookup, not one per stream
+
+
+def test_a_preserved_premiere_keeps_every_other_field_from_holodex_only_status_changes(setup):
+    setup["holodex"] = [_holodex("cover-premiere", title="Cover MV")]
+    setup["api"] = {"cover-premiere": ("upload", None)}
+
+    [stream] = read_api.get_live_streams()["streams"]
+
+    assert stream["status"] == "premiere"
+    assert stream["videoId"] == "cover-premiere"
+    assert stream["title"] == "Cover MV"
+    assert stream["creatorId"] == "emma"
+    assert stream["scheduledStart"] is not None
 
 
 def test_the_stored_classification_always_wins_and_is_never_looked_up_again(setup):
@@ -91,7 +108,9 @@ def test_a_definitive_answer_is_stored_for_every_consumer_only_when_a_record_exi
     setup["stored"] = {"recorded-premiere": _video("recorded-premiere", None)}  # discovered, not yet classified
     setup["api"] = {"recorded-premiere": ("upload", None), "undiscovered-premiere": ("upload", None)}
 
-    assert _ids() == []
+    # Both are kept as premieres (neither has a STORED non-livestream classification yet); the write only ever
+    # happens for the one with an existing record to update.
+    assert _statuses() == {"recorded-premiere": "premiere", "undiscovered-premiere": "premiere"}
     assert setup["written"] == [("recorded-premiere", "upload", None)]  # the undiscovered one has no record to write to; it is answered per request
 
 
@@ -99,7 +118,9 @@ def test_the_answer_is_cached_so_repeated_requests_do_not_ask_again(setup):
     setup["holodex"] = [_holodex("cover-premiere")]
     setup["api"] = {"cover-premiere": ("upload", None)}
 
-    assert _ids() == [] and _ids() == [] and _ids() == []
+    assert _statuses() == {"cover-premiere": "premiere"}
+    assert _statuses() == {"cover-premiere": "premiere"}
+    assert _statuses() == {"cover-premiere": "premiere"}
     assert len(setup["asked"]) == 1
 
 
@@ -112,9 +133,11 @@ def test_a_failed_lookup_keeps_the_stream_logs_it_and_is_not_retried_within_the_
 
     monkeypatch.setattr(lc, "_fetch_classifications", boom)
 
-    assert _ids() == ["cover-premiere"]  # fail open: never guessed from the title ("Cover") and never hidden
+    # fail open: never guessed from the title ("Cover"), never hidden, and never relabeled "premiere" on a mere guess -- it
+    # stays an ordinary "upcoming" stream, the existing safe default.
+    assert _statuses() == {"cover-premiere": "upcoming"}
     assert "could not classify" in capsys.readouterr().out
-    assert _ids() == ["cover-premiere"]
+    assert _statuses() == {"cover-premiere": "upcoming"}
     assert len(setup["asked"]) == 1
 
 
@@ -122,8 +145,21 @@ def test_an_id_the_api_did_not_return_or_an_ambiguous_answer_is_unknown_and_kept
     setup["holodex"] = [_holodex("missing"), _holodex("ambiguous")]
     setup["api"] = {"ambiguous": ("live", "completed")}  # not a definitive answer for an UPCOMING candidate
 
-    assert _ids() == ["missing", "ambiguous"]
+    assert _statuses() == {"missing": "upcoming", "ambiguous": "upcoming"}
     assert "no definitive classification" in capsys.readouterr().out
+
+
+def test_a_completed_premiere_the_data_api_now_reports_as_an_ordinary_stored_upload_does_not_become_a_premiere(setup):
+    """Once Video Master has a canonical stored classification for a video (e.g. the regular collector observed it has
+    completed), that stored value wins outright and the request-time classifier is never even asked -- a completed
+    Premiere must not keep reappearing in the Schedule as an upcoming "premiere" just because a stale Holodex snapshot
+    still lists it as "upcoming" for one more refresh."""
+    setup["holodex"] = [_holodex("cover-premiere-done")]
+    setup["stored"] = {"cover-premiere-done": _video("cover-premiere-done", "upload")}
+    setup["api"] = {"cover-premiere-done": ("upload", None)}  # even if asked, YouTube would agree -- but it is never asked
+
+    assert _ids() == []
+    assert setup["asked"] == []
 
 
 def test_the_failure_marker_expires_so_the_lookup_is_retried_later(monkeypatch):

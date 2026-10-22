@@ -1,12 +1,21 @@
 import { apiRequest } from "./apiClient"
 
-export type LiveStreamStatus = "live" | "upcoming"
+export type LiveStreamStatus = "live" | "upcoming" | "premiere"
 
 /** Yobi backend's own GET /live-streams item shape (src/api/read_api.py's
  * get_live_streams) -- already Holodex-sourced, already filtered to eligible
  * Creator Master channels, already windowed to the 168-hour upcoming
  * lookahead server-side. The browser never talks to holodex.net and never
- * sees a Holodex API key -- this is the only shape it ever gets. */
+ * sees a Holodex API key -- this is the only shape it ever gets.
+ *
+ * "premiere" is a backend-only relabeling: Holodex itself never reports it
+ * (it only ever says "live"/"upcoming"). The backend uses it for a
+ * still-upcoming YouTube Premiere -- an uploaded video with a real public
+ * waiting page, not a livestream -- so every consumer here can tell the two
+ * apart without re-deriving it. It never transitions to "live" on this
+ * project's own clock: once the Premiere airs it simply leaves this feed the
+ * same way a real stream's end does, and shows up again later as an ordinary
+ * published video, not as a status change on this record. */
 export interface LiveStreamDto {
   videoId: string
   creatorId: string

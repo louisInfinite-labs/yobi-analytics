@@ -29,14 +29,19 @@ export interface VideoPage {
  * recentVideosSelection.ts's existing selectLivestreamSlots (which only
  * ever looks for "live_now"/"live_archive") needs no changes at all -- an
  * "upcoming" entry is simply not selected by it, exactly as before this
- * migration (a real Holodex "upcoming" item was never surfaced there either). */
+ * migration (a real Holodex "upcoming" item was never surfaced there either).
+ *
+ * A still-upcoming Premiere ("premiere") is deliberately its OWN contentFormat, never "live_upcoming": it is a video,
+ * not a livestream, and newContentTracking.ts's isNewContent hard-excludes "live_upcoming"/"live_now" from ever being
+ * NEW (a livestream cannot be NEW before it is watchable) -- a Premiere does need to be eligible for NEW/unwatched
+ * once its own scheduled start passes, so it must not be caught by that same exclusion. */
 export function toRecentVideo(dto: LiveStreamDto): RecentVideo {
   return {
     videoId: dto.videoId,
     title: dto.title,
     publishedAt: dto.actualStart ?? dto.scheduledStart ?? new Date(0).toISOString(),
     ...((dto.actualStart ?? dto.scheduledStart) ? { eventAt: (dto.actualStart ?? dto.scheduledStart) as string } : {}),
-    contentFormat: dto.status === "live" ? "live_now" : "live_upcoming",
+    contentFormat: dto.status === "live" ? "live_now" : dto.status === "premiere" ? "premiere" : "live_upcoming",
     thumbnailUrl: dto.thumbnailUrl || null,
   }
 }
@@ -144,7 +149,11 @@ export function useLiveStreamVideoPool(creatorId: string): VideoPage {
 
   const videos = useMemo(() => {
     if (!canonicalCreatorId) return []
-    const current = streams.filter((stream) => stream.creatorId === canonicalCreatorId).map(toRecentVideo)
+    // A Premiere's waiting page (status "premiere") is deliberately excluded from THIS pool only: it feeds the central
+    // player's own auto-embed slot, a different surface from Home's ALL feed (useHomeAllFeed.ts) and 最新直播, which do
+    // show Premieres. Auto-embedding a Premiere's waiting room as the hero player is a separate product decision this
+    // task does not make -- toRecentVideo only knows "live"/"upcoming" (live_now/live_upcoming) regardless.
+    const current = streams.filter((stream) => stream.creatorId === canonicalCreatorId && stream.status !== "premiere").map(toRecentVideo)
     const currentIds = new Set(current.map((video) => video.videoId))
     // Defensive dedup: a stream that just ended could in principle appear in
     // both pools on the same day (still in Holodex's own /live response

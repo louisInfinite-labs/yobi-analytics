@@ -36,6 +36,30 @@ describe("countUnwatched", () => {
   it("without an eligibility from the backend only loaded NEW rows can count", () => {
     expect(countUnwatched(undefined, [], state(), NOW)).toEqual({ videos: 0, livestreams: 0 })
   })
+
+  it("a Premiere counts as a VIDEO, never a livestream -- only contentFormat live_archive is a livestream here", () => {
+    const row: RecentVideo = { videoId: "p", title: "p", publishedAt: "2026-10-17T01:00:00Z", contentFormat: "premiere" }
+
+    expect(countUnwatched(undefined, [row], state([], () => true), NOW)).toEqual({ videos: 1, livestreams: 0 })
+  })
+
+  it("the backend eligibility set counts a Premiere from DISCOVERY, even before its scheduled start -- never gated by isNew (which is itself gated by scheduledStart/eventAt)", () => {
+    const eligibility = { videoIds: ["upcoming-premiere"], livestreamIds: [], unclassifiedIds: [] }
+    // isNew would say false for a still-upcoming Premiere (its own eventAt/scheduledStart is in the future) -- the eligibility path
+    // never consults it at all, so the count is correct the moment the backend's discovery-time eligibility includes the id.
+    const never_new = state([], () => false)
+
+    expect(countUnwatched(eligibility, [], never_new, NOW)).toEqual({ videos: 1, livestreams: 0 })
+  })
+
+  it("an archive-pending placeholder never creates a SECOND unwatched credit once the real archived row replaces it", () => {
+    const pendingRow: RecentVideo = { videoId: "e1", title: "e1", publishedAt: "2026-10-17T01:00:00Z", contentFormat: "archive_pending" }
+    const archivedRow: RecentVideo = { ...pendingRow, contentFormat: "normal_video" }
+    const eligibility = { videoIds: ["e1"], livestreamIds: [], unclassifiedIds: [] }
+
+    // Both representations loaded at once (a brief overlap while the catalog refetch lands) still count the one id once.
+    expect(countUnwatched(eligibility, [pendingRow, archivedRow], state([], () => true), NOW)).toEqual({ videos: 1, livestreams: 0 })
+  })
 })
 
 describe("unwatchedVideoIds", () => {

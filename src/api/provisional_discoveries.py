@@ -135,7 +135,10 @@ def with_provisional_discoveries(rows: list[dict[str, Any]], creator_id: str, ge
             event
             for event_date in _event_dates(generated_at, moment_dt.astimezone(JST).date().isoformat())
             for event in _events_for_date(event_date, moment)
-            if event.get("creatorId") == creator_id and event.get("videoId") not in known
+            # An event with an eventPhase (notification_events_store.record_premiere_archived_event) is never a "not yet ranked"
+            # discovery to surface here: its own `videoId` field is phase-qualified, not a real id, and by the time it exists the
+            # video is already visible through _with_verified_completed_streams' own archive overlay.
+            if event.get("creatorId") == creator_id and event.get("videoId") not in known and not event.get("eventPhase")
         ]
     except Exception as exc:  # noqa: BLE001 -- never a reason to fail the Home list
         print(f"Warning: could not read the discovery events ({type(exc).__name__}): {exc}")

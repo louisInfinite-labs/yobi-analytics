@@ -242,7 +242,9 @@ def get_archive_probe(youtube: Resource, video_ids: list[str]) -> dict[str, dict
     recording can be played -- one videos.list call per MAX_IDS_PER_REQUEST ids (1 quota unit each), asking for snippet, liveStreamingDetails, status
     and statistics in that single request.
 
-    Returns videoId -> {"title", "channelId", "publishedAt", "actualEndTime", "privacyStatus", "uploadStatus", "embeddable", "viewCount"}. An id
+    Returns videoId -> {"title", "channelId", "publishedAt", "actualStartTime", "actualEndTime", "privacyStatus", "uploadStatus", "embeddable",
+    "viewCount"}. `actualStartTime` is carried alongside `actualEndTime` so a caller can tell a completed Premiere (is_completed_premiere, below)
+    apart from an ordinary livestream archive without any further request -- liveStreamingDetails already has both fields on this same response. An id
     YouTube does not return (deleted, private or otherwise unavailable -- the API cannot tell these apart) is simply ABSENT from the result; the
     caller decides what that means. `viewCount` is None when the channel hides it, and nothing here depends on it: a missing count never makes an
     item unreadable. Deliberately separate from get_video_statistics/_parse_video_item, which the daily collection and the ranking rows depend on.
@@ -281,6 +283,7 @@ def get_archive_probe(youtube: Resource, video_ids: list[str]) -> dict[str, dict
                 "title": snippet.get("title"),
                 "channelId": snippet.get("channelId"),
                 "publishedAt": snippet.get("publishedAt"),
+                "actualStartTime": live_details.get("actualStartTime"),
                 "actualEndTime": live_details.get("actualEndTime"),
                 "privacyStatus": status.get("privacyStatus"),
                 "uploadStatus": status.get("uploadStatus"),

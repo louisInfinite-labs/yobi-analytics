@@ -172,6 +172,16 @@ describe("what counts as NEW", () => {
     expect(isNewContent(video("a", local(10, 7, 9, 0), { contentFormat: "live_upcoming" }), state())).toBe(false)
   })
 
+  it("a Premiere is NOT yet NEW while its own scheduled start is still in the future -- unlike live_upcoming/live_now it is not hard-excluded, it simply has no eventTime within [baseline, now] yet", () => {
+    const premiereNotYetStarted = video("p", local(10, 9, 9, 0), { contentFormat: "premiere", eventAt: local(10, 9, 9, 0).toISOString() })
+    expect(isNewContent(premiereNotYetStarted, { ...state(), now: local(10, 7, 9, 0) })).toBe(false)
+  })
+
+  it("a Premiere becomes NEW once its own scheduled start has passed -- the Premiere's own start time, never the original announcement time", () => {
+    const premiereStarted = video("p", local(10, 7, 9, 0), { contentFormat: "premiere", eventAt: local(10, 7, 9, 0).toISOString() })
+    expect(isNewContent(premiereStarted, state())).toBe(true)
+  })
+
   it("an item stays NEW on later days: the day it is judged on does not matter, only the baseline", () => {
     const nextDay = { baseline: local(10, 7, 0, 0).toISOString(), seen: new Set<string>(), now: local(10, 9, 8, 0) }
 

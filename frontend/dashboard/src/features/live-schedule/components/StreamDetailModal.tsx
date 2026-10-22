@@ -22,6 +22,7 @@ interface StreamDetailModalProps {
 function StreamThumbnail({ stream, locale }: { stream: ScheduledStream; locale: Locale }) {
   const [thumbFailed, setThumbFailed] = useState(false)
   const isLive = stream.status === "live"
+  const isPremiere = stream.status === "premiere"
 
   return (
     <div className="stream-detail-thumbnail-wrap">
@@ -36,6 +37,7 @@ function StreamThumbnail({ stream, locale }: { stream: ScheduledStream; locale: 
         />
       )}
       {isLive && <div className="thumbnail-live-badge">{t(locale, "liveSchedule.liveBadge")}</div>}
+      {isPremiere && <div className="thumbnail-premiere-badge">{t(locale, "liveSchedule.premiereBadge")}</div>}
     </div>
   )
 }
@@ -48,6 +50,7 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream, 
   const visual = getScheduleCreatorAvatarVisual(stream.channelId, creatorName)
   const showLiveBadge = shouldShowLiveBadge(stream.status, stream.scheduledStartMs, now.getTime())
   const isLive = stream.status === "live"
+  const isPremiere = stream.status === "premiere"
   const started = streamStartText(stream, locale, now.getTime(), displayMode, timeFormat)
 
   return (
@@ -66,6 +69,7 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream, 
 
           <div className="creator-live-state">
             {showLiveBadge && <span className="live-badge">{t(locale, "liveSchedule.liveBadge")}</span>}
+            {isPremiere && <span className="premiere-badge">{t(locale, "liveSchedule.premiereBadge")}</span>}
             {started && <span className="started-time">{started}</span>}
           </div>
         </div>
@@ -73,8 +77,10 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream, 
         <h2 className="stream-detail-title">{stream.title}</h2>
 
         <div className="stream-modal-actions">
-          {/* A stream that is already live has started, so a pre-stream reminder no longer applies: the action is not rendered at all. */}
-          {!isLive && (
+          {/* A stream that is already live has started, so a pre-stream reminder no longer applies; a Premiere's waiting page is
+              never entered into the reminder schedule at all (notification_dispatcher skips it), so offering one here would be
+              a no-op. Neither action is rendered. */}
+          {!isLive && !isPremiere && (
             <button type="button" className="reminder-button" onClick={() => onSetReminder(stream)}>
               {t(locale, "liveSchedule.setReminderButton")}
             </button>

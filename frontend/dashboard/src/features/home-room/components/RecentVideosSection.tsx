@@ -81,7 +81,10 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
   const [thumbFailed, setThumbFailed] = useState(false)
   const [locale] = useLocale()
   const isLiveNow = video.contentFormat === "live_now"
-  const isCurrentStream = isLiveNow || video.contentFormat === "live_upcoming"
+  // A Premiere is not a livestream, but like one it has not happened yet: opening its waiting page is not watching it. A pending-archive
+  // placeholder (ended, archive not yet verified) is not confirmed watchable either -- opening it must not mark the eventual real archive seen.
+  const isNotYetWatchable =
+    isLiveNow || video.contentFormat === "live_upcoming" || video.contentFormat === "premiere" || video.contentFormat === "archive_pending"
   const meta = formatCardMeta(video)
 
   return (
@@ -90,8 +93,8 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
       className="oshi-video-card"
       onClick={() => {
         // No NEW badge here (Oshi Status owns it), but an open still clears the shared NEW state.
-        // A live/upcoming stream is never NEW and a click is not watching it: only an archive/upload counts as opened.
-        if (!isCurrentStream) markContentSeen(video.videoId)
+        // A live/upcoming stream (or a Premiere) is never NEW and a click is not watching it: only an archive/upload counts as opened.
+        if (!isNotYetWatchable) markContentSeen(video.videoId)
         onOpen(video)
       }}
     >
@@ -616,7 +619,14 @@ export function RecentVideosSection({ creatorId, onSelectVideo, allFeed }: Recen
     if (isSearchActive) return search.videos
     if (usesSharedAll) return allFeed.videos
     if (!showsCurrentStreams) return shelf.videos
-    const current = canonicalCreatorId ? streams.filter((stream) => stream.creatorId === canonicalCreatorId).map(toRecentVideo) : []
+    // ALL (content type "all") shows a Premiere's waiting page like any other upcoming video (toRecentVideo maps it
+    // to contentFormat "live_upcoming", sorted by its own scheduledStart). This same branch also serves 最新直播 and
+    // ALL narrowed to content type "live" -- both livestream-only views by definition -- so a Premiere, which is not
+    // a livestream, is excluded from those two specifically.
+    const livestreamOnlyView = selectedTag === "latestLive" || contentType === "live"
+    const current = canonicalCreatorId
+      ? streams.filter((stream) => stream.creatorId === canonicalCreatorId && (!livestreamOnlyView || stream.status !== "premiere")).map(toRecentVideo)
+      : []
     return composeLatestLiveShelf(current, shelf.videos)
   }, [isSearchActive, search.videos, usesSharedAll, allFeed, showsCurrentStreams, canonicalCreatorId, streams, shelf.videos])
 

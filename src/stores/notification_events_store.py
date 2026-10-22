@@ -41,6 +41,11 @@ from tracking.video_master import CONTENT_TYPE_SHORT, Video
 
 NOTIFICATION_EVENTS_TABLE = os.environ.get("YOBI_NOTIFICATION_EVENTS_TABLE") or "YobiNotificationEvents"
 
+# The second, independent notification phase a completed YouTube Premiere gets once tracking.livestream_lifecycle verifies its
+# archive available -- see record_premiere_archived_event for why its own `videoId` attribute is qualified with this suffix
+# rather than reusing the video's bare id.
+PREMIERE_ARCHIVED_PHASE = "premiere_archived"
+
 
 class NotificationEventsStoreError(Exception):
     """Raised when the DynamoDB Notification Events table is unreachable or malformed."""
@@ -147,3 +152,56 @@ def _video_to_event_item(video: Video, discovery_source: str) -> dict[str, Any]:
 def new_video_event_id(video_id: str) -> str:
     """The logical identity of a new-video notification event."""
     return f"new_video:{video_id}"
+
+
+def premiere_archived_event_id(video_id: str) -> str:
+    """The logical identity of a Premiere's archive-confirmation notification event -- distinct from new_video_event_id so the two
+    phases of the same video are never confused by anything reading `eventId`, even though only new_video_event_id's target (the bare
+    videoId) is ever used as this table's own physical sort key for the ordinary discovery-phase row."""
+    return f"{PREMIERE_ARCHIVED_PHASE}:{video_id}"
+
+
+def record_premiere_archived_event(*, video_id: str, creator_id: str, title: str, thumbnail_url: str | None, confirmed_at: str) -> bool:
+    """Append the SECOND, independent notification event for a completed Premiere once its archive is verified available --
+    distinct from the ordinary "new video discovered" event this same videoId already received at upload/announcement time
+    (new_video_event_id, recorded once by main.py's discovery loop and never touched again).
+
+    Both phases flow through the exact same new-video dispatcher and its existing 4-slot delivery schedule
+    (notifications.new_video_dispatcher), independently eligible, because this phase's own `videoId` ATTRIBUTE -- this table's
+    physical sort key -- carries "{video_id}#premiere_archived", a value a real YouTube videoId can never equal (a YouTube video id
+    never contains "#"). That is what lets this event live at the SAME (eventDate, videoId) partition scheme without ever colliding
+    with, suppressing, or being suppressed by that video's own discovery-phase row -- including when both happen to fall on the same
+    calendar day. notifications.new_video_dispatcher.canonical_video_id strips the qualifier back out wherever the real id is needed
+    (the push payload's deep link); the delivery-log dedup key deliberately keeps the qualified form, the same composite-id pattern
+    notification_dispatcher.py's own advance/start reminder dedup already uses against this store's sibling delivery-log table.
+    api.provisional_discoveries skips every event with an `eventPhase` set (never treats this as a newly-discovered, not-yet-ranked
+    video -- by the time this is recorded the real archive is already visible through its own overlay).
+
+    Idempotent: returns False, not an error, if this exact phase's event for this video was already recorded (the conditional
+    write's own primary key) -- a second, independent safety net alongside tracking.livestream_lifecycle's own archive-lookup
+    bookkeeping, which never revisits a video once its archive is ARCHIVE_AVAILABLE.
+    """
+    item: dict[str, Any] = {
+        "eventDate": datetime.fromisoformat(confirmed_at).date().isoformat(),
+        "videoId": f"{video_id}#{PREMIERE_ARCHIVED_PHASE}",
+        "eventId": premiere_archived_event_id(video_id),
+        "eventPhase": PREMIERE_ARCHIVED_PHASE,
+        "creatorId": creator_id,
+        "title": title,
+        "publishedAt": confirmed_at,
+        "discoveredAt": confirmed_at,
+        "discoverySource": "premiere_archive_lookup",
+        "notificationEligible": True,
+    }
+    if thumbnail_url:
+        item["thumbnailUrl"] = thumbnail_url
+    try:
+        table = _resource().Table(NOTIFICATION_EVENTS_TABLE)
+        table.put_item(Item=item, ConditionExpression="attribute_not_exists(videoId)")
+        return True
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise NotificationEventsStoreError(f"Failed to write to {NOTIFICATION_EVENTS_TABLE}: {exc}") from exc
+    except BotoCoreError as exc:
+        raise NotificationEventsStoreError(f"Failed to write to {NOTIFICATION_EVENTS_TABLE}: {exc}") from exc

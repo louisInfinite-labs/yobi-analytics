@@ -35,6 +35,12 @@ export type ContentFormat =
   | "live_upcoming"
   | "live_now"
   | "premiere"
+  /** A stream/Premiere the backend has CONFIRMED ended whose archive is not yet verified available (tracking.livestream_lifecycle's
+   * ARCHIVE_PENDING/ARCHIVE_HANDED_OFF) -- a transitional placeholder (home-room/hooks/useHomeAllFeed.ts) so the video never
+   * disappears from Video List/Oshi Status between going offline and its archive appearing. Same identity (videoId), replaced in
+   * place by the real "live_archive"/"normal_video" row once the overlay confirms it; never shown once YouTube reports it
+   * unavailable (that case is simply dropped, exactly as before this contentFormat existed). */
+  | "archive_pending"
   | "unknown"
 
 export type GrowthStatus = "ok" | "pending" | "not_available"
@@ -96,6 +102,7 @@ export const CONTENT_FORMAT_LABELS: Record<ContentFormat, string> = {
   live_upcoming: "即將直播",
   live_now: "直播中",
   premiere: "Premiere",
+  archive_pending: "處理中",
   unknown: "未知",
 }
 

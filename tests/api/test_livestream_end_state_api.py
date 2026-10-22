@@ -209,6 +209,63 @@ def test_a_video_the_catalog_classifies_as_an_upload_is_left_alone(dynamo, monke
     assert _ids(contentType="upload", liveStatus="all") == ["e1"]
 
 
+# ============ the archive overlay never forces a completed Premiere to contentType="live" ============
+
+
+def _premiere_archive(**overrides) -> dict:
+    """A verified-available archive whose own facts (carried from collection.youtube_client.get_archive_probe, no extra request) show a
+    completed Premiere: actualStartTime sits right at publishedAt, inside is_completed_premiere's own window."""
+    archive = {
+        "status": "available", "attempts": 1, "title": "Premiere Archive", "channelId": f"UC_{CREATOR}",
+        "actualStartTime": "2026-10-15T17:00:00Z", "actualEndTime": "2026-10-15T18:00:00Z", "publishedAt": "2026-10-15T17:00:00Z", "viewCount": 321,
+    }
+    archive.update(overrides)
+    return archive
+
+
+def test_a_newly_discovered_premiere_archive_is_added_as_upload_never_as_a_livestream(dynamo, monkeypatch):
+    """No catalog row at all yet (not in the last daily ranking) -- the append path must not default to contentType="live"."""
+    _wire(monkeypatch, [_row("old", "2026-10-10T00:00:00Z")])
+    _seed(_ended("e1", archive=_premiere_archive()))
+
+    [video] = [video for video in read_api.get_recent_creator_videos({**HOME, "contentType": "upload", "liveStatus": "all"})["videos"] if video["videoId"] == "e1"]
+
+    assert video["contentType"] == "upload" and video.get("liveStatus") is None and video["provisional"] is True
+    assert _ids() == ["old"]  # 最新直播 (contentType=live) never lists it
+
+
+def test_a_stale_catalog_row_still_marked_live_is_corrected_to_upload_when_the_archive_proves_a_premiere(dynamo, monkeypatch):
+    """The catalog row predates completion and still says contentType="live" (inherited from how Holodex listed it while upcoming) -- the
+    overlay must not keep that label once the verified archive proves it was a Premiere."""
+    _wire(monkeypatch, [_row("e1", "2026-10-15T17:00:00Z", live_status="live", views=777, title="From the catalog")])
+    _seed(_ended("e1", archive=_premiere_archive()))
+
+    [video] = [v for v in read_api.get_recent_creator_videos({**HOME, "contentType": "upload", "liveStatus": "all"})["videos"] if v["videoId"] == "e1"]
+
+    assert video["contentType"] == "upload" and video.get("liveStatus") is None and video["provisional"] is True
+    assert video["title"] == "From the catalog"  # every other catalog field is still preserved
+    assert _ids() == []  # never shown under 最新直播
+
+
+def test_an_unclassified_catalog_row_proven_a_premiere_by_the_archive_is_not_guessed_live(dynamo, monkeypatch):
+    """A catalog row with no classification yet (contentType None) -- the overlay's default must not be "live" when the archive says Premiere."""
+    _wire(monkeypatch, [{**_row("e1", "2026-10-15T17:00:00Z"), "contentType": None, "liveStatus": None}])
+    _seed(_ended("e1", archive=_premiere_archive()))
+
+    assert _ids() == []
+    assert _ids(contentType="upload", liveStatus="all") == ["e1"]
+
+
+def test_an_ordinary_livestream_archive_is_unaffected_by_the_premiere_check(dynamo, monkeypatch):
+    """Regression: an ordinary completed livestream (no actualStartTime/publishedAt Premiere shape) keeps contentType="live"/"completed"."""
+    _wire(monkeypatch, [_row("old", "2026-10-10T00:00:00Z")])
+    _seed(_ended("e1"))  # the module default archive carries no actualStartTime at all
+
+    [video] = [v for v in read_api.get_recent_creator_videos({**HOME})["videos"] if v["videoId"] == "e1"]
+
+    assert video["contentType"] == "live" and video["liveStatus"] == "completed"
+
+
 def test_filters_apply_to_overlaid_rows_exactly_like_any_other_row(dynamo, monkeypatch):
     """Filters apply to overlaid rows exactly like any other row."""
     _wire(monkeypatch, [])

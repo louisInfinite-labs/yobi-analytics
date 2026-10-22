@@ -184,6 +184,19 @@ def test_once_the_persisted_contentType_is_upload_it_enters_latest_videos_all_an
     assert VIDEO not in _ids(**SHORT_TAG) and VIDEO not in _ids(**LATEST_LIVE)
 
 
+def test_an_upcoming_premiere_already_classified_upload_enters_latest_videos_before_it_has_even_aired(home):
+    """A still-upcoming Premiere's waiting page (api.read_api._without_known_non_livestreams/_persist_inferred_classification) is
+    classified contentType="upload" in Video Master the moment it is confirmed, independent of whether it has aired yet -- this
+    catalog layer has no "has it finished" concept for an upload at all, so a Premiere's category membership can only ever depend
+    on its classification, never on air status. It must not wait for completion, and must never be guessed into 最新直播/Short."""
+    home["events"] = [_event()]
+    home["records"] = {VIDEO: _record(content_type="upload", topic="mv")}  # the classification an upcoming Premiere already has
+
+    assert VIDEO in _ids(**LATEST_VIDEOS)
+    assert VIDEO in _ids(**ALL_TAG)
+    assert VIDEO not in _ids(**SHORT_TAG) and VIDEO not in _ids(**LATEST_LIVE)
+
+
 def test_a_persisted_short_enters_the_shorts_shelf_only(home):
     home["events"] = [_event()]
     home["records"] = {VIDEO: _record(content_type="short")}
@@ -212,6 +225,28 @@ def test_a_persisted_completed_livestream_enters_latest_live_and_a_running_one_s
 
 def test_another_creators_discovery_is_not_listed(home):
     home["events"] = [_event("other-video", creator_id=OTHER)]
+
+    assert _ids(**ALL_TAG) == ["old1"]
+
+
+def test_a_premiere_archive_confirmation_event_is_never_rendered_as_a_provisional_discovery(home):
+    """notification_events_store.record_premiere_archived_event's own event (eventPhase set, videoId phase-qualified) exists purely
+    for the new-video notification dispatcher -- by the time it is recorded the real archive is already visible through
+    api.read_api._with_verified_completed_streams' own overlay, so this overlay must not also render a second, bogus row for it."""
+    home["events"] = [
+        {
+            "eventDate": "2026-10-16",
+            "videoId": f"{VIDEO}#premiere_archived",
+            "eventId": f"premiere_archived:{VIDEO}",
+            "eventPhase": "premiere_archived",
+            "creatorId": CREATOR,
+            "title": "Premiere Archive",
+            "publishedAt": "2026-10-16T09:00:24Z",
+            "discoveredAt": "2026-10-16T20:00:42+09:00",
+            "discoverySource": "premiere_archive_lookup",
+            "notificationEligible": True,
+        }
+    ]
 
     assert _ids(**ALL_TAG) == ["old1"]
 

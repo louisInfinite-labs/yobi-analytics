@@ -415,6 +415,30 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   pointer-events: none;
 }
 
+/* Same pill shape as .stream-avatar-live-badge, but --neutral-badge (not --live-red): a Premiere's waiting page must never read as
+   an actively running livestream. */
+.stream-avatar-premiere-badge {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+
+  padding: 0 5px;
+  white-space: nowrap; /* プレミア公開 (6 CJK characters) wraps mid-word onto its own vertical stack without this -- "LIVE" never needed it */
+
+  border-radius: 999px;
+  background: var(--neutral-badge);
+
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 10px;
+  letter-spacing: 0.03em;
+
+  pointer-events: none;
+}
+
 .more-streams {
   height: 28px;
   min-width: 35px;
@@ -554,6 +578,20 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   line-height: 12px;
 }
 
+/* Same pill as .hidden-streams-popover__live, but --neutral-badge: a Premiere's waiting page must never read as live. */
+.hidden-streams-popover__premiere {
+  padding: 0 5px;
+  white-space: nowrap;
+
+  border-radius: 999px;
+  background: var(--neutral-badge);
+
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+}
+
 .hidden-streams-popover__thumb {
   width: 96px;
   aspect-ratio: 16 / 9;
@@ -597,6 +635,26 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   color: #ffffff;
   background: linear-gradient(180deg, #ff405d, #e91f43);
   box-shadow: 0 0 10px rgba(255, 33, 70, 0.48);
+
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 750;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+/* Same shape as .live-badge, but --neutral-badge: a Premiere's waiting page must never read as an actively running livestream. */
+.premiere-badge {
+  height: 22px;
+  padding: 0 8px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 5px;
+  color: #ffffff;
+  background: var(--neutral-badge);
 
   font-size: 10px;
   line-height: 1;
@@ -695,6 +753,27 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   font-weight: 750;
 
   box-shadow: 0 4px 14px rgba(241, 34, 67, 0.28);
+}
+
+/* Same shape as .thumbnail-live-badge, but neutral: a Premiere's waiting page must never read as an actively running livestream. */
+.thumbnail-premiere-badge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  height: 25px;
+  padding: 0 10px;
+  white-space: nowrap;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  border-radius: 6px;
+  background: var(--neutral-badge);
+  color: #ffffff;
+
+  font-size: 11px;
+  font-weight: 750;
 }
 
 .stream-creator-header {

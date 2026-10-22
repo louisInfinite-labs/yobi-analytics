@@ -44,8 +44,19 @@ from stores import notification_delivery_log_store
 from stores import notification_events_store
 from stores import notification_slot_store
 from stores import remote_config_store
+from stores.notification_events_store import PREMIERE_ARCHIVED_PHASE
 from tracking.creator_master import load_creators
 from tracking.video_master import CONTENT_TYPE_SHORT
+
+_PREMIERE_ARCHIVED_SUFFIX = f"#{PREMIERE_ARCHIVED_PHASE}"
+
+
+def canonical_video_id(event_video_id: str) -> str:
+    """The real YouTube videoId behind one event's own `videoId` field, stripping the Premiere archive-confirmation phase
+    qualifier when present (notification_events_store.record_premiere_archived_event). Every deep link, creator lookup and
+    Video Master reference must use this, never the raw event field -- only the delivery-log dedup key keeps the qualified
+    form, deliberately, so the two phases of the same video are never confused with each other there."""
+    return event_video_id.split(_PREMIERE_ARCHIVED_SUFFIX, 1)[0]
 
 MODE = "new_video_slots"
 
@@ -234,6 +245,7 @@ def _serve_recipient(
     already_handled = notification_delivery_log_store.delivered_video_ids(
         client_id, [candidate["videoId"] for candidate in candidates], now=tick
     )
+    candidates = _prioritize_archived_over_pending_announcement(candidates, already_handled)
     delivered = 0
     for candidate in candidates:
         if deliver_new_video_if_due(
@@ -250,6 +262,30 @@ def _serve_recipient(
         ):
             delivered += 1
     return delivered
+
+
+def _prioritize_archived_over_pending_announcement(candidates: list[dict[str, Any]], already_handled: set[str]) -> list[dict[str, Any]]:
+    """When a Premiere's announcement and its archive-available event are BOTH still pending for the same client in the same run,
+    deliver only the archive-available one -- by the time the archive is confirmed the plain announcement is stale information the
+    archive message supersedes. Never touches an announcement already delivered in an earlier run (that push already happened and
+    is never hidden after the fact), and never drops the archived-phase candidate itself -- an already-delivered announcement must
+    never block a later archive notification."""
+    archived_by_real_id = {
+        canonical_video_id(candidate["videoId"]): candidate["videoId"]
+        for candidate in candidates
+        if candidate["videoId"].endswith(_PREMIERE_ARCHIVED_SUFFIX)
+    }
+    if not archived_by_real_id:
+        return candidates
+
+    def _is_superseded(candidate: dict[str, Any]) -> bool:
+        video_id = candidate["videoId"]
+        if video_id.endswith(_PREMIERE_ARCHIVED_SUFFIX) or video_id in already_handled:
+            return False
+        archived_id = archived_by_real_id.get(video_id)
+        return archived_id is not None and archived_id not in already_handled
+
+    return [candidate for candidate in candidates if not _is_superseded(candidate)]
 
 
 def deliver_new_video_if_due(
@@ -309,13 +345,16 @@ def deliver_new_video_if_due(
         creator_name=creator.display_name if creator else None,
         video_title=candidate.get("title"),
     )
+    # The deep link and every creator/content lookup always use the REAL videoId -- never the phase-qualified dedup key above,
+    # which only exists for this table's own identity/delivery-log purposes and must never leak into a YouTube link.
+    real_video_id = canonical_video_id(video_id)
     result = push_sender.send_push_notification(
         subscription,
         title=text.title,
         body=text.body,
         data=notification_payload.notification_data(
-            {"videoId": video_id},
-            video_id=video_id,
+            {"videoId": real_video_id},
+            video_id=real_video_id,
             creator_id=candidate["creatorId"],
             creators_by_id=creators_by_id,
             # Only an event that already carries the stored Video Master thumbnail can confirm Maxres; none is looked up or probed here.

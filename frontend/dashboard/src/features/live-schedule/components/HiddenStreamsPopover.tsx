@@ -40,6 +40,7 @@ function HiddenStreamRow({ stream, locale, now, onOpen }: { stream: ScheduledStr
         <span className="hidden-streams-popover__title">{stream.title}</span>
         <span className="hidden-streams-popover__time">
           {stream.status === "live" && <span className="hidden-streams-popover__live">{t(locale, "liveSchedule.liveBadge")}</span>}
+          {stream.status === "premiere" && <span className="hidden-streams-popover__premiere">{t(locale, "liveSchedule.premiereBadge")}</span>}
           {startText}
         </span>
       </span>

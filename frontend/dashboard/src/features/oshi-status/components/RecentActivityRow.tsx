@@ -73,11 +73,17 @@ export function RecentActivityRow({
     { videoId: entry.videoId, publishedAt: entry.publishedAt, eventAt: entry.eventAt, discoveredAt: entry.discoveredAt, contentFormat: entry.contentFormat },
     now,
   )
-  const isCurrentStream = entry.contentFormat === "live_now" || entry.contentFormat === "live_upcoming"
-  // One handler for the title AND the thumbnail, so they can never diverge (same seen-marking, same selected video). A live/upcoming
-  // row never counts as opened by itself (HomePage's openVideo decides), exactly like the same stream in the Video List.
+  // A Premiere is not a livestream, but like one it has not happened yet: opening its waiting page is not watching it. A pending-archive
+  // placeholder (ended, archive not yet verified) is not confirmed watchable either -- opening it must not mark the eventual real archive seen.
+  const isNotYetWatchable =
+    entry.contentFormat === "live_now" ||
+    entry.contentFormat === "live_upcoming" ||
+    entry.contentFormat === "premiere" ||
+    entry.contentFormat === "archive_pending"
+  // One handler for the title AND the thumbnail, so they can never diverge (same seen-marking, same selected video). A live/upcoming or
+  // Premiere row never counts as opened by itself (HomePage's openVideo decides), exactly like the same stream in the Video List.
   const open = () => {
-    if (!isCurrentStream) markContentSeen(entry.videoId)
+    if (!isNotYetWatchable) markContentSeen(entry.videoId)
     onOpen({ videoId: entry.videoId, title: entry.title })
   }
 

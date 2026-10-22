@@ -5,10 +5,13 @@ from moto import mock_aws
 
 from stores.notification_events_store import (
     NOTIFICATION_EVENTS_TABLE,
+    PREMIERE_ARCHIVED_PHASE,
     NotificationEventsStoreError,
     list_events_for_date,
     new_video_event_id,
+    premiere_archived_event_id,
     record_new_video_events,
+    record_premiere_archived_event,
 )
 from tracking.discovery_windows import LEGACY_SOURCE, discovery_source
 from tracking.video_master import Video
@@ -254,3 +257,43 @@ def test_a_rediscovery_on_a_later_date_is_a_second_row_that_consumers_dedupe_by_
     second = list_events_for_date("2026-09-04")
     assert [e["videoId"] for e in first] == [e["videoId"] for e in second] == ["v1"]
     assert first[0]["eventId"] == second[0]["eventId"]  # the logical identity a consumer dedupes on
+
+
+# ============ the Premiere archive-confirmation phase (record_premiere_archived_event) ============
+
+
+def test_the_archived_event_never_collides_with_the_videos_own_announcement_row_even_on_the_same_day(notification_events_table):
+    """Both phases recorded for the same video on the same calendar day: two distinct rows, not a conditional-write collision."""
+    record_new_video_events([_video(video_id="v1", discovered_at="2026-09-03T10:00:00+09:00")])
+
+    recorded = record_premiere_archived_event(
+        video_id="v1", creator_id="aizawa_ema", title="Premiere Archive", thumbnail_url=None, confirmed_at="2026-09-03T20:00:00+09:00"
+    )
+
+    assert recorded is True
+    [announced, archived] = sorted(list_events_for_date("2026-09-03"), key=lambda e: e["videoId"])
+    assert announced["videoId"] == "v1" and "eventPhase" not in announced
+    assert archived["videoId"] == "v1#premiere_archived" and archived["eventPhase"] == PREMIERE_ARCHIVED_PHASE
+    assert archived["eventId"] == premiere_archived_event_id("v1") != new_video_event_id("v1")
+
+
+def test_the_archived_event_is_recorded_once_a_repeat_call_changes_nothing(notification_events_table):
+    first = record_premiere_archived_event(
+        video_id="v1", creator_id="aizawa_ema", title="Premiere Archive", thumbnail_url=None, confirmed_at="2026-09-03T20:00:00+09:00"
+    )
+    second = record_premiere_archived_event(
+        video_id="v1", creator_id="aizawa_ema", title="A different title", thumbnail_url=None, confirmed_at="2026-09-03T20:05:00+09:00"
+    )
+
+    assert first is True and second is False
+    [event] = list_events_for_date("2026-09-03")
+    assert event["title"] == "Premiere Archive"  # the second call never overwrote the first
+
+
+def test_the_archived_event_omits_contentType_so_it_is_treated_as_an_ordinary_video_not_a_short(notification_events_table):
+    record_premiere_archived_event(
+        video_id="v1", creator_id="aizawa_ema", title="Premiere Archive", thumbnail_url=None, confirmed_at="2026-09-03T20:00:00+09:00"
+    )
+
+    [event] = list_events_for_date("2026-09-03")
+    assert "contentType" not in event
