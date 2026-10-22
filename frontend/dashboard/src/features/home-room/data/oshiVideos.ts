@@ -17,6 +17,8 @@ interface ShelfVideoDto {
   currentViewCount: number
   thumbnailUrl?: string | null
   discoveredAt?: string | null
+  /** Only on a completed Premiere's row: when the lifecycle verified its replay available (see read_api's overlay). */
+  archiveAvailableAt?: string | null
 }
 
 /** GET .../videos/recent's `newContent` (only present when the request carried `newSince`): the NEW-eligible part of the WHOLE list as exact
@@ -66,6 +68,7 @@ function toRecentVideo(dto: ShelfVideoDto): RecentVideo {
     viewCount: dto.currentViewCount,
     thumbnailUrl: dto.thumbnailUrl ?? null,
     discoveredAt: dto.discoveredAt ?? null,
+    ...(dto.archiveAvailableAt ? { archiveAvailableAt: dto.archiveAvailableAt } : {}),
   }
 }
 

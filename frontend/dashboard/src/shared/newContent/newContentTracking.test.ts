@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   isNewContent,
+  isNotYetWatchableFormat,
   isUnseenContent,
   markContentSeen,
   markContentSeenMany,
@@ -177,15 +178,54 @@ describe("what counts as NEW", () => {
     expect(isNewContent(premiereNotYetStarted, { ...state(), now: local(10, 7, 9, 0) })).toBe(false)
   })
 
-  it("a Premiere becomes NEW once its own scheduled start has passed -- the Premiere's own start time, never the original announcement time", () => {
-    const premiereStarted = video("p", local(10, 7, 9, 0), { contentFormat: "premiere", eventAt: local(10, 7, 9, 0).toISOString() })
-    expect(isNewContent(premiereStarted, state())).toBe(true)
+  it("a Premiere is never NEW while it is only a Premiere: not before its scheduled start and not after it -- only its confirmed archive (an ordinary archived row) can be", () => {
+    const premiere = video("p", local(10, 7, 9, 0), { contentFormat: "premiere", eventAt: local(10, 7, 9, 0).toISOString() })
+    expect(isNewContent(premiere, state())).toBe(false) // its scheduled start has passed, but the archive is not confirmed
+    expect(isNewContent({ ...premiere, contentFormat: "normal_video" }, state())).toBe(true) // the same video once its archive is confirmed
+  })
+
+  it("every not-yet-watchable stage is out of NEW, and only the confirmed archive format can be NEW", () => {
+    for (const contentFormat of ["live_upcoming", "live_now", "premiere", "archive_pending"]) {
+      expect(isNotYetWatchableFormat(contentFormat)).toBe(true)
+      expect(isNewContent(video("v", local(10, 7, 9, 0), { contentFormat }), state())).toBe(false)
+    }
+    for (const contentFormat of ["normal_video", "live_archive", "shorts", undefined]) expect(isNotYetWatchableFormat(contentFormat)).toBe(false)
   })
 
   it("an item stays NEW on later days: the day it is judged on does not matter, only the baseline", () => {
     const nextDay = { baseline: local(10, 7, 0, 0).toISOString(), seen: new Set<string>(), now: local(10, 9, 8, 0) }
 
     expect(isNewContent(video("a", local(10, 7, 9, 0)), nextDay)).toBe(true)
+  })
+})
+
+describe("a completed Premiere's NEW time is its archive-availability time", () => {
+  const firstVisit = local(10, 7, 18, 50)
+  const announced = local(10, 7, 17, 0).toISOString() // discovered before the first visit (the baseline)
+  const available = local(10, 7, 20, 0).toISOString()
+  const at = (hour: number) => ({ baseline: firstVisit.toISOString(), seen: new Set<string>(), now: local(10, 7, hour, 30) })
+  const replay = { ...video("p", local(10, 7, 17, 0)), contentFormat: "normal_video", discoveredAt: announced }
+
+  it("replaces the discovery time as the event time, and an unusable value falls back to the discovery time", () => {
+    expect(newContentEventTime({ ...replay, archiveAvailableAt: available })).toBe(new Date(available).getTime())
+    expect(newContentEventTime({ ...replay, archiveAvailableAt: "not a time" })).toBe(new Date(announced).getTime())
+    expect(newContentEventTime({ ...replay, archiveAvailableAt: null })).toBe(new Date(announced).getTime())
+  })
+
+  it("first visit 18:50 while the Premiere waits, archive available 20:00: not NEW at 19:30 (nothing watchable), NEW after 20:00, and still NEW on a revisit", () => {
+    const waiting = { ...replay, contentFormat: "premiere" } // 19:30: still a Premiere
+    expect(isNewContent(waiting, at(19))).toBe(false)
+    expect(isNewContent({ ...replay, archiveAvailableAt: available }, at(19))).toBe(false) // the availability time is still in the future
+    expect(isNewContent({ ...replay, archiveAvailableAt: available }, at(20))).toBe(true)
+    expect(isNewContent({ ...replay, archiveAvailableAt: available }, { ...at(20), now: local(10, 8, 9, 0) })).toBe(true) // a later revisit
+  })
+
+  it("without the availability time the announcement predating the baseline keeps it out, exactly as for any ordinary video", () => {
+    expect(isNewContent(replay, at(20))).toBe(false)
+  })
+
+  it("a watched replay is never NEW again", () => {
+    expect(isNewContent({ ...replay, archiveAvailableAt: available }, { ...at(20), seen: new Set(["p"]) })).toBe(false)
   })
 })
 

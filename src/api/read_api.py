@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 
 import os
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -671,7 +672,9 @@ def _recent_creator_videos_new_content(ordered: list[dict[str, Any]], since: dat
 
     Eligible = AWS first discovered (the row's `discoveredAt`, never `publishedAt`) in [since, now], so a long-published video discovered
     after the user's first visit is NEW, and one discovered before it is not. A row with no usable `discoveredAt` is not eligible: that
-    time is never invented. Each videoId is counted once. `contentType` is only read, never changed: upload -> videos, live -> livestreams,
+    time is never invented. A completed YouTube Premiere is the one exception: it is announced (and so discovered) long before its replay can be
+    watched, so its row carries `archiveAvailableAt` (when the lifecycle verified the archive available) and THAT time decides eligibility instead.
+    A visitor whose first visit fell between the announcement and the archive therefore still gets the replay as NEW. Each videoId is counted once. `contentType` is only read, never changed: upload -> videos, live -> livestreams,
     anything else (no contentType yet) -> unclassified.
 
     Work is in memory over rows this request already loaded -- no extra S3 or DynamoDB read, no per-user write. The ids go out as one
@@ -682,7 +685,7 @@ def _recent_creator_videos_new_content(ordered: list[dict[str, Any]], since: dat
     seen: set[str] = set()
     for row in ordered:
         video_id = row["videoId"]
-        discovered = _parse_utc_timestamp(row.get("discoveredAt"))
+        discovered = _parse_utc_timestamp(row.get("archiveAvailableAt")) or _parse_utc_timestamp(row.get("discoveredAt"))
         if video_id in seen or "," in video_id or discovered is None or discovered < since or discovered > now:
             continue
         seen.add(video_id)
@@ -793,6 +796,7 @@ def get_recent_creator_videos(query: dict[str, Any], *, now: datetime | None = N
     if not query.get("reportDate"):
         # Only the latest report is topped up with just-completed streams; an explicitly requested reportDate is a historical view and stays exactly as persisted.
         rows = _with_verified_completed_streams(rows, creator_id)
+        rows = _with_durable_premiere_archive_times(rows)
         rows = _with_provisional_discoveries(rows, creator_id, result.get("generatedAt"))
     if topic != VIDEO_RANKING_TOPIC_ALL:
         # A provisional row with no contentType yet belongs in ALL only: never in a topic tag (including 其他).
@@ -827,6 +831,7 @@ def get_recent_creator_videos(query: dict[str, Any], *, now: datetime | None = N
             "thumbnailUrl": row.get("thumbnailUrl"),
             "publishedAt": row.get("publishedAt"),
             "discoveredAt": row.get("discoveredAt"),
+            **({"archiveAvailableAt": row["archiveAvailableAt"]} if row.get("archiveAvailableAt") else {}),
             **({"provisional": True} if row.get("provisional") else {}),
         }
         for row in page
@@ -1560,6 +1565,44 @@ def _read_available_archives(creator_id: str) -> list[dict[str, Any]]:
         return []
 
 
+_PREMIERE_TIMES_CACHE_SECONDS = 300.0
+_premiere_times_cache: dict[str, Any] = {"at": None, "value": {}}
+
+
+def clear_premiere_archive_times_cache() -> None:
+    """Forget the cached durable Premiere availability times (tests)."""
+    _premiere_times_cache.update({"at": None, "value": {}})
+
+
+def _premiere_archive_times() -> dict[str, str]:
+    """The durable videoId -> archive-availability times of completed Premieres (stores.premiere_archive_times_store), cached per warm Lambda for
+    _PREMIERE_TIMES_CACHE_SECONDS so a page costs no read in the usual case. Best effort: {} when there is none or it cannot be read (Home is served either way)."""
+    fetched_at = _premiere_times_cache["at"]
+    if fetched_at is not None and time.monotonic() - fetched_at < _PREMIERE_TIMES_CACHE_SECONDS:
+        return _premiere_times_cache["value"]
+    try:
+        from stores.premiere_archive_times_store import read_premiere_archive_times
+
+        value = read_premiere_archive_times()
+    except Exception as exc:  # noqa: BLE001 -- never a reason to fail the Home list
+        print(f"Warning: could not read the Premiere archive-availability times ({type(exc).__name__}): {exc}")
+        value = {}
+    _premiere_times_cache.update({"at": time.monotonic(), "value": value})
+    return value
+
+
+def _with_durable_premiere_archive_times(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Give every row of a completed Premiere its archive-availability time from the durable record, so a replay stays NEW-eligible after the lifecycle's own
+    36-hour ended record has been pruned. Matched by the exact canonical videoId; a row that already carries the time (from the lifecycle overlay) keeps it,
+    nothing else about a row changes, and no row is added. Only the DynamoDB-backed deployment has the record."""
+    if os.environ.get("YOBI_STORAGE_BACKEND") != "dynamodb":
+        return rows
+    times = _premiere_archive_times()
+    if not times:
+        return rows
+    return [{**row, "archiveAvailableAt": times[row["videoId"]]} if row.get("videoId") in times and not row.get("archiveAvailableAt") else row for row in rows]
+
+
 def _with_provisional_discoveries(rows: list[dict[str, Any]], creator_id: str, generated_at: Any) -> list[dict[str, Any]]:
     """Overlay the videos discovery found after the persisted ranking was generated, so Home lists them before the next 18:00 JST run
     (see api.provisional_discoveries). Only the DynamoDB-backed deployment records discovery events; everywhere else the list is untouched."""
@@ -1599,11 +1642,17 @@ def _with_verified_completed_streams(rows: list[dict[str, Any]], creator_id: str
         index = by_video_id.get(video_id)
         is_premiere = is_completed_premiere(archive.get("publishedAt"), archive)
         content_type = "upload" if is_premiere else "live"
+        # Only a completed Premiere carries its archive-availability time (the lifecycle's own `availableAt`, persisted with the archive record, never a
+        # request-time guess); an ordinary livestream archive keeps counting from its discovery time exactly as before.
+        available_at = archive.get("availableAt") if is_premiere and _parse_utc_timestamp(archive.get("availableAt")) is not None else None
         if index is not None:
             existing = overlaid[index]
             if existing.get("liveStatus") == "completed" or existing.get("contentType") not in (None, "live"):
+                if available_at and not existing.get("archiveAvailableAt"):
+                    # Already a settled catalog row (for example classified "upload" by the daily run): only the availability time is added.
+                    overlaid[index] = {**existing, "archiveAvailableAt": available_at}
                 continue
-            patched = {**existing, "contentType": content_type, "provisional": True}
+            patched = {**existing, "contentType": content_type, "provisional": True, **({"archiveAvailableAt": available_at} if available_at else {})}
             if is_premiere:
                 patched.pop("liveStatus", None)
             else:
@@ -1623,6 +1672,8 @@ def _with_verified_completed_streams(rows: list[dict[str, Any]], creator_id: str
             "discoveredAt": None,
             "provisional": True,
         }
+        if available_at:
+            new_row["archiveAvailableAt"] = available_at
         if not is_premiere:
             new_row["liveStatus"] = "completed"
         overlaid.append(new_row)

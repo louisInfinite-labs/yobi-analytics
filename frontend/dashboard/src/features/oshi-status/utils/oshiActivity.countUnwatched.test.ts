@@ -37,19 +37,54 @@ describe("countUnwatched", () => {
     expect(countUnwatched(undefined, [], state(), NOW)).toEqual({ videos: 0, livestreams: 0 })
   })
 
-  it("a Premiere counts as a VIDEO, never a livestream -- only contentFormat live_archive is a livestream here", () => {
-    const row: RecentVideo = { videoId: "p", title: "p", publishedAt: "2026-10-17T01:00:00Z", contentFormat: "premiere" }
+  it("a Premiere that is not a confirmed archive yet is never counted, whatever the NEW judgement says -- and counts as a VIDEO (never a livestream) once archived", () => {
+    const row = (contentFormat: RecentVideo["contentFormat"]): RecentVideo => ({ videoId: "p", title: "p", publishedAt: "2026-10-17T01:00:00Z", contentFormat })
 
-    expect(countUnwatched(undefined, [row], state([], () => true), NOW)).toEqual({ videos: 1, livestreams: 0 })
+    expect(countUnwatched(undefined, [row("premiere")], state([], () => true), NOW)).toEqual({ videos: 0, livestreams: 0 })
+    expect(countUnwatched(undefined, [row("normal_video")], state([], () => true), NOW)).toEqual({ videos: 1, livestreams: 0 })
   })
 
-  it("the backend eligibility set counts a Premiere from DISCOVERY, even before its scheduled start -- never gated by isNew (which is itself gated by scheduledStart/eventAt)", () => {
-    const eligibility = { videoIds: ["upcoming-premiere"], livestreamIds: [], unclassifiedIds: [] }
-    // isNew would say false for a still-upcoming Premiere (its own eventAt/scheduledStart is in the future) -- the eligibility path
-    // never consults it at all, so the count is correct the moment the backend's discovery-time eligibility includes the id.
-    const never_new = state([], () => false)
+  it("the backend eligibility lists a Premiere from DISCOVERY, but its still-upcoming row keeps it out of the count until the archive is confirmed", () => {
+    const eligibility = { videoIds: [], livestreamIds: [], unclassifiedIds: ["upcoming-premiere"] }
+    const upcoming: RecentVideo = { videoId: "upcoming-premiere", title: "p", publishedAt: "2026-10-25T10:00:00Z", eventAt: "2026-10-25T10:00:00Z", contentFormat: "premiere" }
 
-    expect(countUnwatched(eligibility, [], never_new, NOW)).toEqual({ videos: 1, livestreams: 0 })
+    expect(countUnwatched(eligibility, [upcoming], state(), NOW)).toEqual({ videos: 0, livestreams: 0 })
+  })
+
+  it("one Premiere keeps one identity through every stage: 0, 0, 0, 0 while upcoming / live / pending / handed off, then exactly 1 once the archive is available, then 0 once watched", () => {
+    const eligibility = { videoIds: [], livestreamIds: [], unclassifiedIds: ["p"] } // listed by the backend from the moment it was discovered
+    const stage = (contentFormat: RecentVideo["contentFormat"]): RecentVideo => ({ videoId: "p", title: "p", publishedAt: "2026-10-25T10:00:00Z", eventAt: "2026-10-25T10:00:00Z", contentFormat })
+    // Like the real judgement, a watched video is never NEW.
+    const counts = (format: RecentVideo["contentFormat"], seen: string[] = []) => countUnwatched(eligibility, [stage(format)], state(seen, (candidate) => !seen.includes(candidate.videoId)), NOW)
+
+    expect(counts("premiere")).toEqual({ videos: 0, livestreams: 0 }) // announced / upcoming
+    expect(counts("live_now")).toEqual({ videos: 0, livestreams: 0 }) // started
+    expect(counts("archive_pending")).toEqual({ videos: 0, livestreams: 0 }) // ended, archive pending
+    expect(counts("archive_pending")).toEqual({ videos: 0, livestreams: 0 }) // handed off for processing is the same placeholder
+    expect(counts("normal_video")).toEqual({ videos: 1, livestreams: 0 }) // archive confirmed available: one credit, unwatched
+    expect(counts("normal_video", ["p"])).toEqual({ videos: 0, livestreams: 0 }) // watched: cleared
+  })
+
+  it("a video visited while it was upcoming or pending (opened without marking it watched) becomes NEW once its archive is confirmed", () => {
+    const eligibility = { videoIds: [], livestreamIds: [], unclassifiedIds: ["p"] }
+    const waitingPage: RecentVideo = { videoId: "p", title: "p", publishedAt: "2026-10-25T10:00:00Z", contentFormat: "premiere" }
+    const archive: RecentVideo = { ...waitingPage, contentFormat: "normal_video" }
+    const nothingSeen = state([], () => true) // opening the waiting page / a pending entry never touches the seen set
+
+    expect(countUnwatched(eligibility, [waitingPage], nothingSeen, NOW).videos).toBe(0)
+    expect(countUnwatched(eligibility, [archive], nothingSeen, NOW).videos).toBe(1)
+  })
+
+  it("other rows keep their behavior: a normal upload and a completed livestream archive still count, a transitional row only removes its own id", () => {
+    const eligibility = { videoIds: ["upload"], livestreamIds: ["archive"], unclassifiedIds: ["pending-one"] }
+    const rows: RecentVideo[] = [
+      { videoId: "upload", title: "u", publishedAt: "2026-10-17T01:00:00Z", contentFormat: "normal_video" },
+      { videoId: "archive", title: "a", publishedAt: "2026-10-17T01:00:00Z", contentFormat: "live_archive" },
+      { videoId: "pending-one", title: "p", publishedAt: "2026-10-17T01:00:00Z", contentFormat: "archive_pending" },
+    ]
+
+    expect(countUnwatched(eligibility, rows, state(), NOW)).toEqual({ videos: 1, livestreams: 1 })
+    expect(unwatchedVideoIds(eligibility, rows, state(), NOW)).toEqual(["upload"]) // mark-all never marks a transitional video either
   })
 
   it("an archive-pending placeholder never creates a SECOND unwatched credit once the real archived row replaces it", () => {

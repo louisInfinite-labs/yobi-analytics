@@ -1,4 +1,3 @@
-import { InstallSetting } from "../../features/pwa/components/InstallSetting"
 import { LanguagePicker } from "../../shared/i18n/components/LanguagePicker"
 import { UpcomingDisplaySettings } from "../../features/live-status/components/UpcomingDisplaySettings"
 import { useLocale } from "../../shared/i18n/hooks/useLocale"
@@ -62,8 +61,6 @@ export function DisplaySettings() {
             </div>
             <LanguagePicker />
           </div>
-
-          <InstallSetting />
         </div>
       </div>
     </section>

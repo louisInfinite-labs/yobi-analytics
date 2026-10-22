@@ -368,3 +368,181 @@ def test_a_just_ended_stream_is_counted_as_new_once_through_its_discovery_time(d
 
     assert response["newContent"]["counts"] == {"videos": 0, "livestreams": 1, "unclassified": 0}
     assert response["newContent"]["livestreamIds"] == "e1"
+
+
+# ============ a completed Premiere carries its archive-availability time, and that time decides NEW eligibility ============
+
+AVAILABLE_AT = "2026-10-15T11:00:00+00:00"  # 20:00 JST: the lifecycle verified the Premiere's archive available
+
+
+def _new_since(since: str, **query) -> dict:
+    """The recent-videos response for the Premiere's own view (uploads), asked with a first-use baseline."""
+    return read_api.get_recent_creator_videos({**HOME, "contentType": "upload", "liveStatus": "all", "newSince": since, **query}, now=NOW)
+
+
+def test_a_completed_premiere_row_carries_the_lifecycles_archive_availability_time(dynamo, monkeypatch):
+    """The overlay hands the lifecycle's own persisted `availableAt` to the row: never a request-time guess."""
+    _wire(monkeypatch, [])
+    _seed(_ended("e1", archive=_premiere_archive(availableAt=AVAILABLE_AT)))
+
+    [video] = [v for v in read_api.get_recent_creator_videos({**HOME, "contentType": "upload", "liveStatus": "all"})["videos"] if v["videoId"] == "e1"]
+
+    assert video["archiveAvailableAt"] == AVAILABLE_AT
+
+
+def test_a_stale_catalog_row_corrected_to_upload_also_gets_the_availability_time(dynamo, monkeypatch):
+    """The patched catalog row keeps every other field and gains the availability time."""
+    _wire(monkeypatch, [_row("e1", "2026-10-15T17:00:00Z", live_status="live", views=777, title="From the catalog")])
+    _seed(_ended("e1", archive=_premiere_archive(availableAt=AVAILABLE_AT)))
+
+    [video] = [v for v in read_api.get_recent_creator_videos({**HOME, "contentType": "upload", "liveStatus": "all"})["videos"] if v["videoId"] == "e1"]
+
+    assert video["archiveAvailableAt"] == AVAILABLE_AT and video["title"] == "From the catalog"
+
+
+def test_a_settled_upload_row_only_gains_the_availability_time_and_nothing_else_changes(dynamo, monkeypatch):
+    """Once the daily run classified the Premiere as an upload the overlay used to leave the row alone; the availability time is still attached, and the
+    row is not marked provisional."""
+    _wire(monkeypatch, [_row("e1", "2026-10-15T17:00:00Z", content_type="upload", live_status=None, views=5, title="Settled")])
+    _seed(_ended("e1", archive=_premiere_archive(availableAt=AVAILABLE_AT)))
+
+    [video] = [v for v in read_api.get_recent_creator_videos({**HOME, "contentType": "upload", "liveStatus": "all"})["videos"] if v["videoId"] == "e1"]
+
+    assert video["archiveAvailableAt"] == AVAILABLE_AT
+    assert video["title"] == "Settled" and video["currentViewCount"] == 5 and "provisional" not in video
+
+
+def test_an_ordinary_livestream_archive_and_an_invalid_time_never_carry_an_availability_time(dynamo, monkeypatch):
+    """Only a completed Premiere gets the field; an unusable `availableAt` is dropped, never repaired."""
+    _wire(monkeypatch, [])
+    _seed(_ended("live1", archive={"status": "available", "attempts": 1, "title": "Stream", "publishedAt": "2026-10-15T17:00:00Z", "availableAt": AVAILABLE_AT}), _ended("p1", archive=_premiere_archive(availableAt="not a time")))
+
+    videos = {v["videoId"]: v for v in read_api.get_recent_creator_videos({**HOME, "contentType": "all", "liveStatus": "all"})["videos"]}
+
+    assert "archiveAvailableAt" not in videos["live1"] and "archiveAvailableAt" not in videos["p1"]
+
+
+def test_first_visit_before_the_archive_still_counts_the_replay_as_new_once_it_is_available(dynamo, monkeypatch):
+    """18:50 JST first visit (the baseline), the Premiere was announced earlier (discovered before the baseline), the archive turned available at 20:00 JST:
+    the replay is NEW, as one unclassified-free video, exactly once."""
+    _wire(monkeypatch, [])
+    _seed(_ended("e1", archive=_premiere_archive(availableAt=AVAILABLE_AT)))
+    _video_master_has(monkeypatch, {"e1": _Record("2026-10-15T08:00:00+00:00")})  # announced at 17:00 JST, before the 18:50 JST baseline
+
+    content = _new_since("2026-10-15T09:50:00Z")["newContent"]
+
+    assert content["counts"] == {"videos": 1, "livestreams": 0, "unclassified": 0}
+    assert content["videoIds"] == "e1"
+
+
+def test_without_the_availability_time_the_discovery_time_still_decides_exactly_as_before(dynamo, monkeypatch):
+    """Ordinary videos keep the first-use baseline semantics: discovered before the baseline means not NEW."""
+    _wire(monkeypatch, [])
+    _seed(_ended("e1", archive=_premiere_archive()))  # no availableAt recorded
+    _video_master_has(monkeypatch, {"e1": _Record("2026-10-15T08:00:00+00:00")})
+
+    assert _new_since("2026-10-15T09:50:00Z")["newContent"]["counts"] == {"videos": 0, "livestreams": 0, "unclassified": 0}
+
+
+# ============ the durable availability time keeps a replay NEW-eligible after the lifecycle's own record has expired ============
+
+
+def _record_durable_time(video_id: str, available_at: str) -> None:
+    """Put one completed Premiere's availability time on the durable record, as the lifecycle does at confirmation."""
+    from stores.premiere_archive_times_store import record_premiere_archive_times
+
+    record_premiere_archive_times({video_id: available_at}, now=NOW)
+    read_api.clear_premiere_archive_times_cache()
+
+
+def _settled_premiere_row(video_id: str = "e1", discovered: str = "2026-10-15T08:00:00+00:00") -> dict:
+    """A settled catalog row of a completed Premiere (classified upload by the daily run), announced long before its replay."""
+    return {**_row(video_id, "2026-10-15T17:00:00Z", content_type="upload", live_status=None, title="Premiere replay"), "discoveredAt": discovered}
+
+
+def test_a_settled_premiere_row_gets_its_availability_time_from_the_durable_record_with_no_lifecycle_record_left(dynamo, monkeypatch):
+    """The lifecycle ended record has expired (nothing is seeded): the time still reaches the normal recent-videos API row, with nothing else changed."""
+    _wire(monkeypatch, [_settled_premiere_row()])
+    _seed()  # an empty ended record: the 36-hour retention has pruned the stream
+    _record_durable_time("e1", AVAILABLE_AT)
+
+    [video] = read_api.get_recent_creator_videos({**HOME, "contentType": "upload", "liveStatus": "all"})["videos"]
+
+    assert video["archiveAvailableAt"] == AVAILABLE_AT
+    assert video["videoId"] == "e1" and video["title"] == "Premiere replay" and video["discoveredAt"] == "2026-10-15T08:00:00+00:00" and "provisional" not in video
+
+
+def test_returning_more_than_36_hours_later_the_unwatched_replay_is_still_counted_as_new(dynamo, monkeypatch):
+    """First visit 18:50 JST (the baseline) while the Premiere was announced earlier, replay available at 20:00 JST -- and the viewer comes back days later,
+    long after the lifecycle record expired: the replay is still NEW-eligible, exactly once."""
+    _wire(monkeypatch, [_settled_premiere_row()])
+    _seed()
+    _record_durable_time("e1", AVAILABLE_AT)
+
+    content = _new_since("2026-10-15T09:50:00Z")["newContent"]
+
+    assert content["counts"] == {"videos": 1, "livestreams": 0, "unclassified": 0}
+    assert content["videoIds"] == "e1"
+
+
+def test_a_premiere_that_was_never_confirmed_available_keeps_the_baseline_rule(dynamo, monkeypatch):
+    """No durable time (announced, upcoming or pending): the discovery time before the baseline means not NEW, exactly as for any ordinary video."""
+    _wire(monkeypatch, [_settled_premiere_row()])
+    _seed()
+
+    assert _new_since("2026-10-15T09:50:00Z")["newContent"]["counts"] == {"videos": 0, "livestreams": 0, "unclassified": 0}
+
+
+def test_an_ordinary_video_is_untouched_by_the_durable_record(dynamo, monkeypatch):
+    """Only the exact recorded videoId gets a time; every other row keeps its first-use baseline behavior."""
+    _wire(monkeypatch, [_settled_premiere_row(), _settled_premiere_row("ordinary", discovered="2026-10-15T08:00:00+00:00")])
+    _seed()
+    _record_durable_time("e1", AVAILABLE_AT)
+
+    response = _new_since("2026-10-15T09:50:00Z")
+    videos = {video["videoId"]: video for video in response["videos"]}
+
+    assert "archiveAvailableAt" not in videos["ordinary"] and videos["e1"]["archiveAvailableAt"] == AVAILABLE_AT
+    assert response["newContent"]["videoIds"] == "e1"
+
+
+def test_the_lifecycle_time_and_the_durable_time_never_double_count_one_video(dynamo, monkeypatch):
+    """While both sources exist for the same videoId the row carries one time (the lifecycle overlay's) and the video is counted once."""
+    _wire(monkeypatch, [])
+    _seed(_ended("e1", archive=_premiere_archive(availableAt=AVAILABLE_AT)))
+    _video_master_has(monkeypatch, {"e1": _Record("2026-10-15T08:00:00+00:00")})
+    _record_durable_time("e1", "2026-10-15T11:00:00+00:00")
+
+    response = _new_since("2026-10-15T09:50:00Z")
+
+    assert [video["videoId"] for video in response["videos"]] == ["e1"]
+    assert response["videos"][0]["archiveAvailableAt"] == AVAILABLE_AT
+    assert response["newContent"]["counts"]["videos"] == 1
+
+
+def test_an_unreadable_durable_record_never_fails_home(dynamo, monkeypatch):
+    """A failed read serves the list without any availability time instead of an error."""
+    _wire(monkeypatch, [_settled_premiere_row()])
+    _seed()
+    monkeypatch.setattr("stores.premiere_archive_times_store.read_premiere_archive_times", lambda: (_ for _ in ()).throw(RuntimeError("table down")))
+
+    [video] = read_api.get_recent_creator_videos({**HOME, "contentType": "upload", "liveStatus": "all"})["videos"]
+
+    assert video["videoId"] == "e1" and "archiveAvailableAt" not in video
+
+
+def test_the_durable_record_is_read_once_per_cache_window_not_once_per_request(dynamo, monkeypatch):
+    """Cost: repeated page requests on a warm Lambda reuse the cached record (one GetItem per window), and a non-DynamoDB backend never reads it."""
+    _wire(monkeypatch, [_settled_premiere_row()])
+    _seed()
+    reads = []
+    monkeypatch.setattr("stores.premiere_archive_times_store.read_premiere_archive_times", lambda: reads.append(1) or {"e1": AVAILABLE_AT})
+
+    for _ in range(5):
+        read_api.get_recent_creator_videos({**HOME, "contentType": "upload", "liveStatus": "all"})
+    assert len(reads) == 1
+
+    monkeypatch.setenv("YOBI_STORAGE_BACKEND", "json")
+    read_api.clear_premiere_archive_times_cache()
+    read_api.get_recent_creator_videos({**HOME, "contentType": "upload", "liveStatus": "all"})
+    assert len(reads) == 1

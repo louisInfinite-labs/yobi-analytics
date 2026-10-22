@@ -64,7 +64,7 @@ export function LatestActivityView({ creatorId, feed, now, onOpen, onClose }: La
         ) : (
           <div className="oshi-status__recent-list" ref={listRef}>
             {rows.map((entry) => (
-              <RecentActivityRow key={entry.videoId} entry={entry} now={now} locale={locale} timeFormat={timeFormat} onOpen={onOpen} />
+              <RecentActivityRow key={entry.videoId} entry={entry} now={now} locale={locale} timeFormat={timeFormat} onOpen={onOpen} newBadgeAllowed={feed.liveStatusSettled !== false} />
             ))}
           </div>
         )}

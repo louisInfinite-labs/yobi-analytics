@@ -109,15 +109,22 @@ export interface NewContentCandidate {
   /** When AWS first discovered this video. Present (a string, or null when unknown) on every archive/list row; undefined only for sources
    * that do not carry the field. When present it alone decides NEW -- see newContentEventTime. */
   discoveredAt?: string | null
+  /** A completed Premiere only: when its replay was verified available (the backend lifecycle's own record, never the render time). When present it
+   * replaces `discoveredAt` as the NEW time, because the announcement long precedes the moment the video can be watched. */
+  archiveAvailableAt?: string | null
   /** An upcoming stream has not happened yet, so it is never NEW. */
   contentFormat?: string
 }
 
 /** The moment the content counts from, in epoch ms, or null when unknown/unparseable.
- * Precedence: `discoveredAt` when the source reports the field, else `eventAt` (the stream's actual start, else its scheduled start), else `publishedAt`. Only the
+ * Precedence: `archiveAvailableAt` (a completed Premiere's replay-available time) when present, else `discoveredAt` when the source reports the field, else `eventAt` (the stream's actual start, else its scheduled start), else `publishedAt`. Only the
  * livestream sources that expose a real start time (GET /live-streams) can supply `eventAt`; the archive and
  * oshi-status read models carry `publishedAt` alone. */
 export function newContentEventTime(candidate: NewContentCandidate): number | null {
+  if (candidate.archiveAvailableAt) {
+    const available = new Date(candidate.archiveAvailableAt).getTime()
+    if (Number.isFinite(available)) return available
+  }
   if (candidate.discoveredAt !== undefined) {
     const discovered = candidate.discoveredAt ? new Date(candidate.discoveredAt).getTime() : Number.NaN
     return Number.isFinite(discovered) ? discovered : null
@@ -130,15 +137,23 @@ export function newContentEventTime(candidate: NewContentCandidate): number | nu
   return null
 }
 
-/** Pure NEW decision: not an upcoming/live stream, not opened yet, not watched while it was live, event at/after the
+/** Whether a row in this content format is not a confirmed watchable archive yet: a live or upcoming stream, an upcoming Premiere, or an ended
+ * stream/Premiere whose archive is still pending or handed off for processing. One rule for every consumer (the NEW badge, the unwatched counts and the
+ * "does opening this mark it watched" decision), so they can never disagree. The video keeps its identity (videoId) through every stage; once the
+ * backend confirms its archive, the real archived row replaces the transitional one and the video becomes NEW-eligible exactly once. */
+export function isNotYetWatchableFormat(contentFormat: string | undefined): boolean {
+  return contentFormat === "live_upcoming" || contentFormat === "live_now" || contentFormat === "premiere" || contentFormat === "archive_pending"
+}
+
+/** Pure NEW decision: not an upcoming/live stream, not watched while it was live, event at/after the
  * tracking baseline, and already happened. */
 export function isNewContent(
   candidate: NewContentCandidate,
   state: { baseline: string; seen: ReadonlySet<string>; watchedDuringLive?: ReadonlySet<string>; now: Date },
 ): boolean {
-  // A pending-archive placeholder (see domain.ts) is not confirmed watchable yet either: it only becomes NEW once the overlay
-  // replaces it with the real archived row, exactly like a livestream only becomes NEW once it is archived, never while live.
-  if (candidate.contentFormat === "live_upcoming" || candidate.contentFormat === "live_now" || candidate.contentFormat === "archive_pending") return false
+  // A pending-archive placeholder (see domain.ts) or an upcoming Premiere is not confirmed watchable yet either: it only becomes NEW once the
+  // overlay replaces it with the real archived row, exactly like a livestream only becomes NEW once it is archived, never while live.
+  if (isNotYetWatchableFormat(candidate.contentFormat)) return false
   if (state.seen.has(candidate.videoId)) return false
   if (state.watchedDuringLive?.has(candidate.videoId)) return false
   const baseline = new Date(state.baseline).getTime()

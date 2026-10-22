@@ -636,3 +636,116 @@ def test_the_snapshot_is_served_across_the_healthy_ten_minute_cycle_and_refused_
     else:
         with pytest.raises(lifecycle.LiveSnapshotStaleError):
             lifecycle.read_serving_snapshot(now=now)
+
+
+# ============ the Premiere's archive-availability time is kept durably, beyond this module's own 36-hour ended record ============
+
+
+def _durable_times() -> dict:
+    """The durable record's videoId -> availability time map."""
+    from stores.premiere_archive_times_store import read_premiere_archive_times
+
+    return read_premiere_archive_times()
+
+
+def _confirmed_available_premiere(world, monkeypatch):
+    """A Premiere whose end AND archive are confirmed in the cycle after it went off air (the notification event store is stubbed)."""
+    monkeypatch.setattr("stores.notification_events_store.record_premiere_archived_event", lambda **kwargs: True)
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _premiere_probe()}
+    world.clock += timedelta(minutes=5)
+    return world.completion()
+
+
+def test_a_confirmed_available_premiere_archive_keeps_its_availability_time_durably(dynamo, monkeypatch):
+    """The lifecycle's own verified availableAt is copied as it is into the durable record the recent-videos API reads."""
+    world = World(monkeypatch)
+
+    _confirmed_available_premiere(world, monkeypatch)
+
+    assert world.ended()["v1"]["archive"]["status"] == lifecycle.ARCHIVE_AVAILABLE
+    assert _durable_times() == {"v1": world.ended()["v1"]["archive"]["availableAt"]}
+
+
+def test_the_durable_time_outlives_the_ended_record_after_its_36_hour_retention(dynamo, monkeypatch):
+    """After RECENTLY_ENDED_RETENTION the lifecycle forgets the stream, but the replay's availability time is still on record."""
+    world = World(monkeypatch)
+    _confirmed_available_premiere(world, monkeypatch)
+    recorded_time = _durable_times()["v1"]
+
+    world.clock += lifecycle.RECENTLY_ENDED_RETENTION + timedelta(hours=1)
+    world.display()
+    world.completion()
+
+    assert "v1" not in world.ended()  # the lifecycle record has expired
+    assert _durable_times() == {"v1": recorded_time}  # the durable time is unchanged
+
+
+def test_an_ordinary_completed_livestream_archive_records_no_premiere_time_and_reads_nothing(dynamo, monkeypatch):
+    """Only a completed Premiere is recorded; a real stream's archive leaves the durable record untouched, and the durable record is not even read."""
+    reads = []
+    monkeypatch.setattr("stores.premiere_archive_times_store.read_premiere_archive_times", lambda: reads.append(1) or {})
+    world = World(monkeypatch)
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _probe()}
+    world.clock += timedelta(minutes=5)
+
+    world.completion()
+
+    assert world.ended()["v1"]["archive"]["status"] == lifecycle.ARCHIVE_AVAILABLE
+    assert reads == []  # no completed Premiere is retained: no extra DynamoDB read at all
+
+
+def test_a_pending_premiere_archive_is_not_recorded_until_it_is_confirmed_available(dynamo, monkeypatch):
+    """No availability time exists while the archive is still processing: nothing is recorded, nothing is invented."""
+    monkeypatch.setattr("stores.notification_events_store.record_premiere_archived_event", lambda **kwargs: True)
+    world = World(monkeypatch)
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _premiere_probe(uploadStatus="uploaded")}
+    world.clock += timedelta(minutes=5)
+    world.completion()
+
+    assert world.ended()["v1"]["archive"]["status"] == lifecycle.ARCHIVE_PENDING
+    assert _durable_times() == {}
+
+    world.probes = {"v1": _premiere_probe(uploadStatus="processed")}
+    world.clock += timedelta(minutes=5)
+    world.completion()
+
+    assert _durable_times() == {"v1": world.ended()["v1"]["archive"]["availableAt"]}
+
+
+def test_a_failed_durable_write_never_blocks_the_archive_and_the_next_cycle_retries_it(dynamo, monkeypatch):
+    """Best-effort and self-healing: while the entry is retained, every cycle re-offers it, and recording is idempotent."""
+    from stores import premiere_archive_times_store as times_store
+
+    real = times_store.record_premiere_archive_times
+    attempts = []
+
+    def flaky(new_times, *, now):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("table down")
+        return real(new_times, now=now)
+
+    monkeypatch.setattr(times_store, "record_premiere_archive_times", flaky)
+    world = World(monkeypatch)
+
+    summary = _confirmed_available_premiere(world, monkeypatch)
+
+    assert summary["confirmedCompleted"] == ["v1"] and world.ended()["v1"]["archive"]["status"] == lifecycle.ARCHIVE_AVAILABLE
+    assert _durable_times() == {}  # the first write failed
+
+    world.clock += timedelta(minutes=5)
+    world.completion()
+
+    assert _durable_times() == {"v1": world.ended()["v1"]["archive"]["availableAt"]}
+    world.clock += timedelta(minutes=5)
+    world.completion()
+    assert len(_durable_times()) == 1  # the same video id, never a second record

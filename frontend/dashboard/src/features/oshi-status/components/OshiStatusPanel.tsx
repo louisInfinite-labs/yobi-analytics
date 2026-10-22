@@ -166,7 +166,10 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
   // Unavailable (not 0) until the list loads or when the backend did not supply the eligibility. The backend's eligibility is exact and uncapped.
   const { isNew: isNewContent, isUnseen } = useNewContent()
   const eligibility = feed.newContent
-  const rowsAvailable = !loading && !error && eligibility !== undefined
+  // The counts and badges wait until the live status has answered (or failed): before that an upcoming Premiere or a pending-archive stream is indistinguishable from
+  // a newly discovered upload and would be counted as unwatched for a moment.
+  const liveStatusSettled = feed.liveStatusSettled !== false
+  const rowsAvailable = !loading && !error && eligibility !== undefined && liveStatusSettled
   const unwatched = countUnwatched(eligibility, recent, { isNew: isNewContent, isUnseen }, now)
   const countLabel = (value: number) => String(value)
   // Mark all watched: marks the videos the "Not watched yet" Videos count counts (never a livestream archive) seen in the shared seen store, the one every NEW badge and count reads,
@@ -331,6 +334,7 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
                   locale={locale}
                   timeFormat={timeFormat}
                   onOpen={onSelectVideo}
+                  newBadgeAllowed={liveStatusSettled}
                 />
               ))}
             </div>

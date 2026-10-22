@@ -14,6 +14,8 @@ import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 // they must also share ONE NEW/seen state, keyed by videoId.
 vi.mock("../data/oshiVideos", () => ({ fetchOshiVideos: vi.fn() }))
 vi.mock("../../oshi-status/data/oshiStatus", () => ({ fetchOshiStatus: vi.fn() }))
+// The live status answers with no streams: the NEW badges and counts wait for the live status to be known (an upcoming Premiere is not NEW), and this file is about NEW state shared between views.
+vi.mock("../../../shared/api/liveStreams", () => ({ fetchLiveStreams: vi.fn().mockResolvedValue(Object.assign([], { recentlyEnded: [] })) }))
 
 Element.prototype.setPointerCapture ??= () => {}
 Element.prototype.releasePointerCapture ??= () => {}
