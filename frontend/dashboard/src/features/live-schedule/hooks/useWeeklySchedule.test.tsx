@@ -102,6 +102,28 @@ describe("useWeeklySchedule real stream data", () => {
     expect(todayStreams[0]).toMatchObject({ videoId: "v1", status: "live", channelId: "ch_aizawa_ema" })
   })
 
+  it("places a Premiere into its scheduled slot with status preserved as premiere (never relabeled upcoming)", () => {
+    startAt(2026, 8, 23, 10, 0, 0)
+    mockStreams([
+      {
+        videoId: "v-premiere",
+        creatorId: CREATOR_ID,
+        channelName: "藍沢エマ",
+        title: "Cover MV",
+        status: "premiere",
+        scheduledStart: new Date(2026, 8, 23, 20, 0, 0).toISOString(),
+        actualStart: null,
+        thumbnailUrl: "https://img.youtube.com/vi/v-premiere/hqdefault.jpg",
+      },
+    ])
+
+    const { result } = renderHook(() => useWeeklySchedule())
+
+    const todayStreams = result.current.days[0].slots.flat()
+    expect(todayStreams).toHaveLength(1)
+    expect(todayStreams[0]).toMatchObject({ videoId: "v-premiere", status: "premiere", channelId: "ch_aizawa_ema" })
+  })
+
   it("carries a stream's canonical backend topic through (so a creator + topic reminder can be resolved), and none when it has none", () => {
     startAt(2026, 8, 23, 10, 0, 0)
     const base = {

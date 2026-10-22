@@ -54,6 +54,16 @@ describe("StreamDetailModal", () => {
     expect(screen.getByRole("button", { name: "Open Stream" })).toBeInTheDocument()
   })
 
+  it("a Premiere has NO reminder action either (it never enters the reminder schedule) but shows its own badge, not the live one", () => {
+    const premiere: ScheduledStream = { ...stream, status: "premiere" }
+    render(<StreamDetailModal stream={premiere} locale="en" now={new Date(0)} onClose={() => {}} onOpenStream={() => {}} onSetReminder={() => {}} />)
+    expect(document.querySelector(".reminder-button")).toBeNull()
+    expect(document.querySelector(".stream-modal-actions")!.children).toHaveLength(1)
+    expect(screen.getByRole("button", { name: "Open Stream" })).toBeInTheDocument()
+    expect(document.querySelector(".premiere-badge")).toHaveTextContent("Premiere")
+    expect(document.querySelector(".live-badge")).toBeNull()
+  })
+
   it("the reminder action is enabled and opens the single-stream notification setting", async () => {
     const user = userEvent.setup()
     const onSetReminder = vi.fn()

@@ -602,6 +602,24 @@ def test_schedule_snapshot_refreshes_on_every_run_independent_of_any_saved_overr
     }
 
 
+def test_a_premiere_from_get_live_streams_never_enters_the_reminder_schedule(monkeypatch):
+    """read_api.get_live_streams now keeps a still-upcoming YouTube Premiere as status "premiere" instead of dropping it (for the
+    Schedule page), but this dispatcher must never treat it like a real stream: it has no actualStart and will never go "live"
+    here, so admitting it into the schedule would let an ordinary stream-start reminder fire for a Premiere's waiting page."""
+    monkeypatch.setattr(remote_config_store, "get_remote_config", lambda client_id, key: None)  # no prior snapshot -- always stale
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
+    monkeypatch.setattr(
+        read_api,
+        "get_live_streams",
+        lambda *_a, **_kw: {"streams": [_holodex_stream(videoId="premiere-1", status="premiere"), _holodex_stream(videoId="real-stream")]},
+    )
+
+    entries = notification_dispatcher._refresh_and_load_stream_schedule(now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+    assert "premiere-1" not in entries
+    assert "real-stream" in entries
+
+
 def test_stale_schedule_entries_are_dropped_on_the_next_successful_refresh(monkeypatch):
     """Item E: a bounded lifecycle with no separate expiry bookkeeping --
     each successful refresh is a full replace, so a stream Holodex stops

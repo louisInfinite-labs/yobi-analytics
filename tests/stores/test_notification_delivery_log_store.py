@@ -236,3 +236,28 @@ def test_a_failed_push_release_lets_the_same_notice_be_claimed_again(delivery_lo
     release_claim("c1", "simul:1:a")
 
     assert mark_delivered("c1", "simul:1:a", NOW.isoformat(), now=NOW) is True
+
+
+def test_a_premiere_archived_phase_key_is_fully_independent_of_the_videos_own_announcement_row(delivery_log_table):
+    """notifications.new_video_dispatcher writes the Premiere archive-confirmation phase under "{videoId}#premiere_archived" --
+    against the real table (not a fake), confirm it round-trips and never shares state with the bare videoId's own row, exactly
+    like the reminder system's own "{videoId}:reminder:{kind}" composite keys already proven above."""
+    assert mark_delivered("c1", "v1", NOW.isoformat(), now=NOW) is True
+    confirm_delivered("c1", "v1", NOW.isoformat())
+
+    assert already_delivered("c1", "v1#premiere_archived") is False  # the announcement's delivery never settles the archive phase
+    assert mark_delivered("c1", "v1#premiere_archived", NOW.isoformat(), now=NOW) is True
+    confirm_delivered("c1", "v1#premiere_archived", NOW.isoformat())
+
+    assert already_delivered("c1", "v1") is True
+    assert already_delivered("c1", "v1#premiere_archived") is True
+
+
+def test_two_concurrent_dispatcher_runs_cannot_both_deliver_the_same_premiere_archived_notification(delivery_log_table):
+    """Two overlapping new_video_dispatcher invocations racing on the same (client, archived-phase) pair: only one wins the claim,
+    the loser must not send -- the same atomic guarantee mark_delivered already gives the bare videoId case, unaffected by the
+    qualifier's extra characters."""
+    first_run_claimed = mark_delivered("c1", "v1#premiere_archived", NOW.isoformat(), now=NOW)
+    second_run_claimed = mark_delivered("c1", "v1#premiere_archived", NOW.isoformat(), now=NOW)
+
+    assert first_run_claimed is True and second_run_claimed is False

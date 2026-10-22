@@ -1,4 +1,4 @@
-export type ScheduledStreamStatus = "live" | "upcoming" | "ended"
+export type ScheduledStreamStatus = "live" | "upcoming" | "ended" | "premiere"
 
 export interface ScheduledStream {
   id: string

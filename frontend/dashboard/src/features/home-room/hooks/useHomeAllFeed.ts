@@ -1,12 +1,36 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import { useLiveStreams } from "../../../shared/api/hooks/useLiveStreams"
+import type { RecentlyEndedStreamDto } from "../../../shared/api/liveStreams"
 import { useNewContent } from "../../../shared/newContent/newContentTracking"
 import { HOME_ALL_DEFAULT_CONTROLS, buildShelfQuery } from "../model/oshiVideosQuery"
-import { composeLatestLiveShelf } from "../utils/latestLiveShelf"
+import { composeHomeAllFeed } from "../utils/latestLiveShelf"
 import { useOshiVideos } from "./useOshiVideos"
 import { toRecentVideo, type VideoPage } from "./useRecentVideos"
+
+/** Archive states the lifecycle is still actively resolving, or will still hand to the daily job to resolve -- the video must stay visible
+ * through both. "unavailable" (YouTube confirms the video is deleted/private/never existed) is excluded on purpose: nothing will ever make it
+ * watchable, so it is simply not shown, exactly as it was before this transitional state existed -- never a dead placeholder forever. */
+const UNRESOLVED_ARCHIVE_STATUSES = new Set(["pending", "handed_off_to_daily_task"])
+
+/** A confirmed-ended stream/Premiere (GET /live-streams `recentlyEnded`) whose archive tracking.livestream_lifecycle has not verified
+ * available yet, as a transitional RecentVideo -- closes the gap between disappearing from the live list and appearing in the archive
+ * overlay (api.read_api._with_verified_completed_streams), both derived from the exact same lifecycle record at zero extra request. Same
+ * videoId throughout, and the same effective time it already sorted by while LIVE/PREMIERE (actualStart, else scheduledStart), so it does
+ * not jump position in Home ALL the moment the real archive row replaces it. contentFormat "archive_pending" keeps it out of
+ * isNewContent/isNotYetWatchable exactly like a livestream is kept out while still live -- never a stale LIVE badge, never a confirmed
+ * watchable archive before the overlay says so. */
+function toPendingRecentVideo(entry: RecentlyEndedStreamDto): RecentVideo {
+  const eventAt = entry.actualStart ?? entry.scheduledStart ?? undefined
+  return {
+    videoId: entry.videoId,
+    title: entry.title || entry.videoId,
+    publishedAt: eventAt ?? new Date(0).toISOString(),
+    ...(eventAt ? { eventAt } : {}),
+    contentFormat: "archive_pending",
+  }
+}
 
 /** The ONE ordered dataset behind Home's Video List ALL and Latest Activity: `videos` is exactly what ALL lists (the creator's current
  * live/upcoming streams first, then the paged archive), and `page` is the archive's own pager. */
@@ -23,12 +47,49 @@ export function useHomeAllFeed(creatorId: string): HomeAllFeed {
   const { baseline } = useNewContent()
   const query = useMemo(() => buildShelfQuery("all", canonicalCreatorId, HOME_ALL_DEFAULT_CONTROLS), [canonicalCreatorId])
   const page = useOshiVideos(query, { newSince: baseline })
-  const { streams } = useLiveStreams()
+  const { streams, recentlyEnded } = useLiveStreams()
+
+  const currentIdsForCreator = useMemo(
+    () => (canonicalCreatorId ? streams.filter((stream) => stream.creatorId === canonicalCreatorId).map((stream) => stream.videoId) : []),
+    [streams, canonicalCreatorId],
+  )
+  const pendingForCreator = useMemo(
+    () =>
+      canonicalCreatorId
+        ? (recentlyEnded ?? []).filter(
+            (entry) => entry.creatorId === canonicalCreatorId && UNRESOLVED_ARCHIVE_STATUSES.has(entry.archive?.status ?? ""),
+          )
+        : [],
+    [recentlyEnded, canonicalCreatorId],
+  )
+
+  // The already-running /live-streams poll (shared, no new polling) is the only signal this needs: once a videoId this hook was
+  // watching -- either still live/upcoming/premiere, OR already ended but not yet archive-verified -- stops being either (it
+  // resolved to a real archive, YouTube confirmed it unavailable, or it was simply cancelled), refetch the catalog once so the
+  // real row -- or its removal -- replaces the placeholder promptly. This also covers the archive becoming available in the SAME
+  // completion cycle that confirms the end (no intermediate "pending" ever observed here): the video leaving `current` with no
+  // matching pending entry picking it up is itself the signal, not only a pending entry resolving. Never fires merely because the
+  // creator switched (useOshiVideos' own key change already refetches that case).
+  const watchedRef = useRef<{ creatorId: string | undefined; ids: Set<string> }>({ creatorId: undefined, ids: new Set() })
+  useEffect(() => {
+    const previous = watchedRef.current
+    const current = new Set([...currentIdsForCreator, ...pendingForCreator.map((entry) => entry.videoId)])
+    const graduated = previous.creatorId === canonicalCreatorId && [...previous.ids].some((videoId) => !current.has(videoId))
+    watchedRef.current = { creatorId: canonicalCreatorId, ids: current }
+    if (graduated) page.refresh?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- page.refresh is a stable callback (useOshiVideos); including `page` itself would refire this every render
+  }, [currentIdsForCreator, pendingForCreator, canonicalCreatorId])
 
   const videos = useMemo<RecentVideo[]>(() => {
+    // ALL is ONE global chronological order by effective time (composeHomeAllFeed), newest first -- never grouped by
+    // LIVE/UPCOMING/PREMIERE/ARCHIVED first. A live stream's own actualStart, an upcoming stream/Premiere's own scheduledStart (never
+    // its announcement/discovery time), and an archive's publishedAt all feed the SAME sort.
     const current = canonicalCreatorId ? streams.filter((stream) => stream.creatorId === canonicalCreatorId).map(toRecentVideo) : []
-    return composeLatestLiveShelf(current, page.videos)
-  }, [canonicalCreatorId, streams, page.videos])
+    // A pending-archive placeholder is appended AFTER the real archive page: composeHomeAllFeed keeps one row per videoId, first
+    // occurrence wins, so the real row (once the overlay has it) always wins over a stale placeholder for the same video.
+    const archives = pendingForCreator.length > 0 ? [...page.videos, ...pendingForCreator.map(toPendingRecentVideo)] : page.videos
+    return composeHomeAllFeed(current, archives)
+  }, [canonicalCreatorId, streams, page.videos, pendingForCreator])
 
   return { ...page, videos, page }
 }

@@ -56,11 +56,23 @@ def test_returns_title_channel_end_time_playability_and_views_per_exact_id():
 
     assert set(probes) == {"a", "b"}  # an id YouTube does not return is absent, not guessed
     assert probes["a"] == {
-        "title": "title a", "channelId": "UC_x", "publishedAt": "2026-10-15T09:00:00Z", "actualEndTime": "2026-10-15T20:00:00Z",
+        "title": "title a", "channelId": "UC_x", "publishedAt": "2026-10-15T09:00:00Z", "actualStartTime": None, "actualEndTime": "2026-10-15T20:00:00Z",
         "privacyStatus": "public", "uploadStatus": "processed", "embeddable": True, "viewCount": 42,
     }
     assert probes["b"]["actualEndTime"] is None  # still live or upcoming: no end time
     assert youtube.calls == [{"part": "snippet,liveStreamingDetails,status,statistics", "id": "a,b,missing"}]  # one request, only the parts it needs
+
+
+def test_actualStartTime_is_preserved_alongside_actualEndTime_for_a_completed_premieres_classification():
+    """liveStreamingDetails.actualStartTime rides in the SAME response as actualEndTime -- is_completed_premiere needs both, at no extra request."""
+    youtube = _FakeYouTube(
+        [{"items": [_item("a", liveStreamingDetails={"actualStartTime": "2026-10-15T19:58:00Z", "actualEndTime": "2026-10-15T20:00:00Z"})]}]
+    )
+
+    probes = get_archive_probe(youtube, ["a"])
+
+    assert probes["a"]["actualStartTime"] == "2026-10-15T19:58:00Z"
+    assert probes["a"]["actualEndTime"] == "2026-10-15T20:00:00Z"
 
 
 @pytest.mark.parametrize("statistics", [{}, {"viewCount": None}, {"viewCount": "not a number"}])

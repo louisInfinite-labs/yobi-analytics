@@ -79,6 +79,16 @@ describe("useLiveStreamVideoPool (player pool: Holodex current + AWS archives)",
     )
   })
 
+  it("excludes a Premiere entirely -- it is an uploaded video with a countdown, not something Home's player auto-selects", async () => {
+    mockStreams([{ ...UPCOMING, status: "premiere" }])
+    mockArchivePage(emptyArchivePage())
+
+    const { result } = renderHook(() => useLiveStreamVideoPool("ch_aizawa_ema"))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.videos).toEqual([])
+  })
+
   it("filters out another creator's streams", async () => {
     mockStreams([{ ...LIVE, creatorId: "shirakami_fubuki" }])
     mockArchivePage(emptyArchivePage())

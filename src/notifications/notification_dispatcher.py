@@ -496,6 +496,12 @@ def _load_schedule(*, now: datetime) -> tuple[dict[str, live_reminder.StreamSche
 
     fresh_entries: dict[str, dict[str, Any]] = {}
     for stream in result["streams"]:
+        if stream.get("status") == "premiere":
+            # read_api.get_live_streams now keeps a still-upcoming YouTube Premiere (status "premiere") instead of dropping it, for
+            # the Schedule page -- but it is an uploaded video with a countdown, not a livestream this project reminds anyone about:
+            # it never goes "live" here, so it must never enter the reminder schedule (that would fire an ordinary stream-start
+            # push for a Premiere's waiting page).
+            continue
         start_iso = stream["scheduledStart"] or stream["actualStart"]
         if not start_iso:
             continue

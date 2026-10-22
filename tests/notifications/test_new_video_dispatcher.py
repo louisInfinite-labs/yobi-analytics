@@ -405,6 +405,111 @@ def test_one_video_recorded_under_two_dates_is_sent_once(monkeypatch):
     assert rows == {("c1", "v1"): "delivered"}
 
 
+# --- Premiere two-phase notifications (announced + archived) -----------------
+
+
+def archived_event(video_id="v1", **overrides) -> dict:
+    """The second, independent notification event tracking.livestream_lifecycle records once a Premiere's archive is confirmed
+    available (notification_events_store.record_premiere_archived_event) -- same shape a real one would have."""
+    fields = {
+        "eventDate": "2026-09-03",
+        "videoId": f"{video_id}#premiere_archived",
+        "eventPhase": "premiere_archived",
+        "creatorId": "aizawa_ema",
+        "title": "Premiere Archive",
+        "discoveredAt": "2026-09-02T18:00:00+09:00",
+    }
+    fields.update(overrides)
+    return fields
+
+
+def test_canonical_video_id_strips_the_premiere_archived_qualifier_only(monkeypatch):
+    assert new_video_dispatcher.canonical_video_id("v1#premiere_archived") == "v1"
+    assert new_video_dispatcher.canonical_video_id("v1") == "v1"
+
+
+def test_pending_events_treats_the_two_phases_of_the_same_video_as_independent(monkeypatch):
+    """pending_events' earliest-by-videoId collapse must not merge an announcement and its archive-confirmation: they have
+    different `videoId` field values by construction (the phase qualifier), so both survive."""
+    announced = due_event(videoId="v1")
+    archived = archived_event("v1", eventDate="2026-09-02")
+    monkeypatch.setattr(notification_events_store, "list_events_for_date", lambda day: [announced, archived] if day == "2026-09-02" else [])
+
+    kept = new_video_dispatcher.pending_events(TICK_1800_JST)
+
+    assert {event["videoId"] for event in kept} == {"v1", "v1#premiere_archived"}
+
+
+def test_a_genuinely_legacy_event_with_no_eventPhase_key_at_all_coexists_with_a_new_phase_qualified_one(monkeypatch):
+    """A row written before eventPhase existed has no such key at all (not even None) -- unlike the test helpers above, which always
+    construct a complete dict. Mixed old/new data in the same date partition must not confuse pending_events or delivery: the
+    legacy row is served exactly as before, and the new phase-qualified row delivers independently alongside it."""
+    rows = fake_delivery_log(monkeypatch)
+    legacy_row = {
+        "eventDate": "2026-09-02",
+        "videoId": "v1",
+        "eventId": "new_video:v1",
+        "creatorId": "aizawa_ema",
+        "title": "New Video",
+        "discoveredAt": "2026-09-02T18:00:00+09:00",
+        "notificationEligible": True,
+        # no "eventPhase" key whatsoever -- a genuine pre-existing production row, not a helper default.
+    }
+    new_phase_row = archived_event("v1", eventDate="2026-09-02")
+
+    sent, summary = _run(monkeypatch, events=[legacy_row, new_phase_row], preferences={"c1": preference_value()})
+
+    assert sorted(sent, key=lambda item: item["videoId"]) == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
+    assert rows == {("c1", "v1#premiere_archived"): "delivered"}  # the legacy announcement was superseded by the pending archive
+    assert summary["delivered"] == 1
+
+
+def test_an_already_delivered_announcement_never_blocks_the_later_archive_notification(monkeypatch):
+    rows = fake_delivery_log(monkeypatch)
+    rows[("c1", "v1")] = "delivered"  # the plain "new video" push for v1 already went out in an earlier run
+
+    sent, summary = _run(monkeypatch, events=[archived_event("v1")], preferences={"c1": preference_value()})
+
+    assert sent == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]  # the deep link uses the REAL id, never the qualified one
+    assert rows[("c1", "v1#premiere_archived")] == "delivered"
+    assert summary["delivered"] == 1
+
+
+def test_the_archived_phase_delivery_log_row_never_collides_with_the_announcements(monkeypatch):
+    rows = fake_delivery_log(monkeypatch)
+
+    sent, summary = _run(monkeypatch, events=[due_event(videoId="v1"), archived_event("v1")], preferences={"c1": preference_value()})
+
+    # Both are due and neither was delivered yet, so the prioritize rule (below) suppresses the stale announcement --
+    # but the two are still tracked under two distinct delivery-log rows, never one shared (clientId, videoId) pair.
+    assert rows == {("c1", "v1#premiere_archived"): "delivered"}
+    assert sent == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
+    assert summary["delivered"] == 1
+
+
+def test_a_pending_announcement_is_superseded_by_a_pending_archive_notification_in_the_same_run(monkeypatch):
+    """Both still pending in the same run: only the archive-available push is sent -- the announcement is already stale by the
+    time the archive exists."""
+    rows = fake_delivery_log(monkeypatch)
+
+    sent, _ = _run(monkeypatch, events=[due_event(videoId="v1"), archived_event("v1")], preferences={"c1": preference_value()})
+
+    assert len(sent) == 1
+    assert ("c1", "v1") not in rows  # the announcement itself was never claimed/sent
+
+
+def test_a_pending_announcement_is_not_superseded_once_its_own_archive_notification_already_went_out(monkeypatch):
+    """The reverse of the previous case: the archive push already happened, so a separately still-pending announcement (an
+    unusual ordering, e.g. it was muted until just now) is delivered normally rather than silently dropped."""
+    rows = fake_delivery_log(monkeypatch)
+    rows[("c1", "v1#premiere_archived")] = "delivered"
+
+    sent, summary = _run(monkeypatch, events=[due_event(videoId="v1")], preferences={"c1": preference_value()})
+
+    assert sent == [{"videoId": "v1", "url": "/creator/aizawa-ema"}]
+    assert summary["delivered"] == 1
+
+
 def test_the_earliest_recording_of_a_video_wins_even_when_the_offsets_differ(monkeypatch):
     """Compared as instants, not strings: 18:00+09:00 is 09:00 UTC, EARLIER than 12:00+00:00, although "T12" sorts before "T18"."""
     earliest = event_item(eventDate="2026-09-02", discoveredAt="2026-09-02T18:00:00+09:00", title="earliest")

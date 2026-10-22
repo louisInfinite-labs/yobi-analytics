@@ -280,6 +280,7 @@ export type TranslationKey =
   | "liveSchedule.filterNoMatch"
   | "liveSchedule.filterSelectedCount"
   | "liveSchedule.liveBadge"
+  | "liveSchedule.premiereBadge"
   | "liveSchedule.noThumbnail"
   | "liveSchedule.moreStreamsAria"
   | "liveSchedule.dayNavAria"
@@ -573,6 +574,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.filterNoMatch": "找不到創作者",
     "liveSchedule.filterSelectedCount": "已選 {{count}} 位",
     "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.premiereBadge": "首播",
     "liveSchedule.noThumbnail": "沒有縮圖",
     "liveSchedule.moreStreamsAria": "還有 {{count}} 個直播",
     "liveSchedule.dayNavAria": "日期切換",
@@ -864,6 +866,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.filterNoMatch": "No creators found",
     "liveSchedule.filterSelectedCount": "{{count}} selected",
     "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.premiereBadge": "Premiere",
     "liveSchedule.noThumbnail": "No thumbnail",
     "liveSchedule.moreStreamsAria": "{{count}} more streams",
     "liveSchedule.dayNavAria": "Day navigation",
@@ -1155,6 +1158,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.filterNoMatch": "クリエイターが見つかりません",
     "liveSchedule.filterSelectedCount": "{{count}}人を選択中",
     "liveSchedule.liveBadge": "LIVE",
+    "liveSchedule.premiereBadge": "プレミア公開",
     "liveSchedule.noThumbnail": "サムネイルなし",
     "liveSchedule.moreStreamsAria": "他に{{count}}件の配信",
     "liveSchedule.dayNavAria": "日付の切り替え",

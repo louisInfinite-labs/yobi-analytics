@@ -24,4 +24,9 @@ describe("shouldShowLiveBadge", () => {
   it("never shows for an ended stream", () => {
     expect(shouldShowLiveBadge("ended", NOW - 999_999, NOW)).toBe(false)
   })
+
+  it("never shows for a Premiere, even one starting imminently -- its own premiere badge is mutually exclusive with this one", () => {
+    expect(shouldShowLiveBadge("premiere", NOW + 30 * 60_000, NOW)).toBe(false)
+    expect(shouldShowLiveBadge("premiere", NOW - 999_999, NOW)).toBe(false)
+  })
 })

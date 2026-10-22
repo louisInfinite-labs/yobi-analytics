@@ -81,6 +81,23 @@ describe("ScheduleGrid avatar LIVE badge", () => {
     const { container } = renderGrid(makeDays({ 45: [soon] }))
     expect(container.querySelector(".stream-avatar-live-badge")).toBeNull()
   })
+})
+
+describe("ScheduleGrid avatar PREMIERE badge", () => {
+  it("shows the premiere badge only on avatars whose own status is premiere, mutually exclusive with the live badge", () => {
+    const { container } = renderGrid(makeDays({ 5: [makeStream("a", "live"), makeStream("b", "premiere"), makeStream("c", "upcoming")] }))
+    const items = Array.from(container.querySelectorAll(".stream-avatar-item"))
+    expect(items.map((item) => item.querySelector(".stream-avatar-premiere-badge") !== null)).toEqual([false, true, false])
+    expect(items.map((item) => item.querySelector(".stream-avatar-live-badge") !== null)).toEqual([true, false, false])
+    expect(container.querySelector(".stream-avatar-premiere-badge")).toHaveTextContent("Premiere")
+  })
+
+  it("never shows both the live and premiere badge on the same avatar", () => {
+    const { container } = renderGrid(makeDays({ 5: [makeStream("a", "premiere")] }))
+    const item = container.querySelector(".stream-avatar-item")!
+    expect(item.querySelector(".stream-avatar-live-badge")).toBeNull()
+    expect(item.querySelector(".stream-avatar-premiere-badge")).not.toBeNull()
+  })
 
   it("the hourly time labels follow the global 12h/24h setting (the same clock format Home shows)", () => {
     const hourLabels = (container: HTMLElement) =>

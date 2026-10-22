@@ -134,7 +134,12 @@ def test_a_stream_youtube_does_not_return_at_all_is_not_treated_as_ended_by_the_
 def test_an_end_already_recorded_is_not_recorded_or_side_written_again_while_holodex_keeps_listing_the_stream(world, monkeypatch):
     """Holodex may keep listing the ended stream for another display interval: later cycles must not re-record it or rewrite Video Master."""
     writes: list[tuple[str, str]] = []
-    monkeypatch.setattr("stores.dynamodb_store.set_video_live_status", lambda video_id, status: writes.append((video_id, status)))
+
+    def _record(video_id, status):
+        writes.append((video_id, status))
+        return True
+
+    monkeypatch.setattr("stores.dynamodb_store.set_video_live_status", _record)
     _on_air(world, "v1")
     world.display()
     world.completion()
@@ -155,7 +160,12 @@ def test_an_end_already_recorded_is_not_recorded_or_side_written_again_while_hol
 def test_a_stream_recorded_ended_while_listed_is_not_a_candidate_again_when_it_finally_disappears(world, monkeypatch):
     """The end is already recorded, so the later disappearance from the snapshot has nothing left to decide."""
     writes: list[str] = []
-    monkeypatch.setattr("stores.dynamodb_store.set_video_live_status", lambda video_id, status: writes.append(video_id))
+
+    def _record(video_id, status):
+        writes.append(video_id)
+        return True
+
+    monkeypatch.setattr("stores.dynamodb_store.set_video_live_status", _record)
     _on_air(world, "v1")
     world.display()
     world.completion()
@@ -184,6 +194,7 @@ def test_a_failed_video_master_write_for_a_still_listed_ended_stream_is_retried_
         attempts["n"] += 1
         if attempts["n"] == 1:
             raise RuntimeError("throttled")
+        return True
 
     monkeypatch.setattr("stores.dynamodb_store.set_video_live_status", _flaky)
     _on_air(world, "v1")
@@ -202,6 +213,223 @@ def test_a_failed_video_master_write_for_a_still_listed_ended_stream_is_retried_
     assert attempts["n"] == 2
     assert lifecycle._read_snapshot_record()["pendingCandidates"] == {}
     assert len(world.ended()) == 1
+
+
+# ============ a confirmed-ended Premiere is classified upload, never forced to contentType="live" ============
+
+
+def _premiere_probe(**overrides):
+    """What YouTube reports for a completed Premiere: actualStartTime sits right at publishedAt (is_completed_premiere's own window)."""
+    probe = _probe(actualStartTime="2026-10-15T09:00:00Z", publishedAt="2026-10-15T09:00:00Z")
+    probe.update(overrides)
+    return probe
+
+
+def test_a_confirmed_ended_premiere_already_classified_upload_is_left_upload_not_forced_live(dynamo, monkeypatch):
+    """Holodex cannot tell a Premiere from a real stream, so it lists v1 as "live" like any other -- but Video Master already has it as
+    contentType="upload" (api.read_api persisted that while it was still upcoming). The completion cycle must not relabel it "live"."""
+    from stores.dynamodb_store import load_videos
+    from stores.dynamodb_store import upsert_videos as upsert_dynamo_videos
+
+    upsert_dynamo_videos([_video("v1", content_type="upload", live_status=None)])
+    world = World(monkeypatch)
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _premiere_probe()}
+    world.clock += timedelta(minutes=5)
+
+    summary = world.completion()
+
+    assert summary["confirmedCompleted"] == ["v1"]  # the end is still recorded exactly like an ordinary stream
+    assert lifecycle._read_snapshot_record()["pendingCandidates"] == {}  # a one-time write, never retried
+    [video] = [video for video in load_videos() if video.video_id == "v1"]
+    assert video.content_type == "upload" and video.live_status is None  # never forced to "live"/"completed"
+
+
+def test_a_confirmed_ended_premiere_with_no_video_master_row_at_all_is_retried_and_warned_not_silently_accepted(dynamo, monkeypatch, capsys):
+    """set_video_classification's conditional write is rejected for TWO different reasons -- already classified (fine) or the row
+    does not exist yet (a real gap, discovery has not reached it). No Video Master row is seeded here at all, so the rejection must
+    be recognized as the genuine gap: warned about, and the candidate kept for a bounded retry, never silently treated as settled."""
+    from stores.dynamodb_store import load_videos
+
+    world = World(monkeypatch)
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _premiere_probe()}
+    world.clock += timedelta(minutes=5)
+
+    summary = world.completion()
+
+    assert summary["confirmedCompleted"] == ["v1"]  # the end itself is still recorded regardless
+    assert lifecycle._read_snapshot_record()["pendingCandidates"]["v1"]["attempts"] == 1  # kept for a bounded retry, not forgotten
+    assert "missing" in capsys.readouterr().out
+    assert load_videos() == []  # no row was fabricated to work around the gap
+
+
+def test_a_retried_premiere_classification_succeeds_once_discovery_creates_the_row(dynamo, monkeypatch):
+    """The bounded retry actually recovers: once a later discovery run creates the Video Master row (independent of this
+    lifecycle), the next completion cycle's retry classifies it and stops retrying."""
+    from stores.dynamodb_store import load_videos
+    from stores.dynamodb_store import upsert_videos as upsert_dynamo_videos
+
+    world = World(monkeypatch)
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _premiere_probe()}
+    world.clock += timedelta(minutes=5)
+    world.completion()
+    assert lifecycle._read_snapshot_record()["pendingCandidates"]["v1"]["attempts"] == 1
+
+    upsert_dynamo_videos([_video("v1", content_type=None, live_status=None)])  # discovery catches up independently
+    world.clock += timedelta(minutes=5)
+    world.completion()
+
+    assert lifecycle._read_snapshot_record()["pendingCandidates"] == {}
+    [video] = [video for video in load_videos() if video.video_id == "v1"]
+    assert video.content_type == "upload" and video.live_status is None
+
+
+def test_an_ordinary_completed_livestream_is_still_classified_live_completed_exactly_as_before(dynamo, monkeypatch):
+    """Regression: a real stream (no actualStartTime/publishedAt Premiere shape) keeps the original contentType="live" behavior."""
+    from stores.dynamodb_store import load_videos
+    from stores.dynamodb_store import upsert_videos as upsert_dynamo_videos
+
+    upsert_dynamo_videos([_video("v1", content_type="live", live_status="live")])
+    world = World(monkeypatch)
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _probe()}  # no actualStartTime: never mistaken for a Premiere
+    world.clock += timedelta(minutes=5)
+
+    summary = world.completion()
+
+    assert summary["confirmedCompleted"] == ["v1"]
+    [video] = [video for video in load_videos() if video.video_id == "v1"]
+    assert video.content_type == "live" and video.live_status == "completed"
+
+
+def test_a_confirmed_available_premiere_archive_records_the_independent_archived_notification(dynamo, monkeypatch):
+    """The SECOND, independent new-video notification phase (notification_events_store.record_premiere_archived_event) is recorded
+    the moment the SAME completion cycle that confirms the end also verifies the archive available -- no extra cycle, no extra probe."""
+    world = World(monkeypatch)
+    recorded = []
+    monkeypatch.setattr(
+        "stores.notification_events_store.record_premiere_archived_event", lambda **kwargs: recorded.append(kwargs) or True
+    )
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _premiere_probe()}
+    world.clock += timedelta(minutes=5)
+
+    summary = world.completion()
+
+    assert summary["confirmedCompleted"] == ["v1"]
+    assert world.ended()["v1"]["archive"]["status"] == lifecycle.ARCHIVE_AVAILABLE
+    assert [call["video_id"] for call in recorded] == ["v1"]
+    assert recorded[0]["creator_id"] == "aizawa_ema"
+
+
+def test_an_ordinary_completed_livestream_archive_never_triggers_the_premiere_archived_notification(dynamo, monkeypatch):
+    """Regression: a real stream's own archive-available confirmation must never generate this second notification -- it already
+    has its own, separate notification path, and must not get a duplicate, unrelated push."""
+    world = World(monkeypatch)
+    recorded = []
+    monkeypatch.setattr(
+        "stores.notification_events_store.record_premiere_archived_event", lambda **kwargs: recorded.append(kwargs) or True
+    )
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _probe()}  # no actualStartTime: an ordinary stream, never mistaken for a Premiere
+    world.clock += timedelta(minutes=5)
+
+    summary = world.completion()
+
+    assert summary["confirmedCompleted"] == ["v1"]
+    assert world.ended()["v1"]["archive"]["status"] == lifecycle.ARCHIVE_AVAILABLE
+    assert recorded == []
+
+
+def test_a_failed_premiere_archived_notification_write_never_blocks_archive_availability(dynamo, monkeypatch):
+    """Best-effort: the archive IS available regardless of whether the extra notification could be recorded."""
+    world = World(monkeypatch)
+    monkeypatch.setattr(
+        "stores.notification_events_store.record_premiere_archived_event",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("table down")),
+    )
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _premiere_probe()}
+    world.clock += timedelta(minutes=5)
+
+    summary = world.completion()
+
+    assert summary["confirmedCompleted"] == ["v1"]
+    assert world.ended()["v1"]["archive"]["status"] == lifecycle.ARCHIVE_AVAILABLE
+
+
+def test_the_premiere_archived_notification_is_never_recorded_while_the_archive_is_still_pending(dynamo, monkeypatch):
+    """Only the cycle that confirms ARCHIVE_AVAILABLE may record the notification -- never while a Premiere's archive is still
+    being retried (ARCHIVE_PENDING), and never for a confirmed-ended-but-not-yet-probed state either."""
+    world = World(monkeypatch)
+    recorded = []
+    monkeypatch.setattr(
+        "stores.notification_events_store.record_premiere_archived_event", lambda **kwargs: recorded.append(kwargs) or True
+    )
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    # Not yet finished processing (YouTube's own uploadStatus): the archive stays ARCHIVE_PENDING this cycle.
+    world.probes = {"v1": _premiere_probe(uploadStatus="uploaded")}
+    world.clock += timedelta(minutes=5)
+    world.completion()
+
+    assert world.ended()["v1"]["archive"]["status"] == lifecycle.ARCHIVE_PENDING
+    assert recorded == []  # not yet -- the archive is not confirmed available
+
+    world.probes = {"v1": _premiere_probe(uploadStatus="processed")}
+    world.clock += timedelta(minutes=5)
+    world.completion()
+
+    assert world.ended()["v1"]["archive"]["status"] == lifecycle.ARCHIVE_AVAILABLE
+    assert [call["video_id"] for call in recorded] == ["v1"]  # recorded exactly once, the cycle it actually became available
+
+
+def test_a_rejected_not_an_exception_video_master_write_is_retried_not_silently_dropped(world, monkeypatch):
+    """set_video_live_status's conditional write can be rejected (return False) without raising -- the bug this task fixes. Previously
+    the return value was never checked, so a persistently-missing/mismatched Video Master record for a real stream was silently
+    dropped forever; now it is retried exactly like a raised exception, bounded by the same _MAX_PENDING_ATTEMPTS."""
+    calls = {"n": 0}
+
+    def _always_rejected(video_id, status):
+        calls["n"] += 1
+        return False
+
+    monkeypatch.setattr("stores.dynamodb_store.set_video_live_status", _always_rejected)
+    _on_air(world, "v1")
+    world.display()
+    world.completion()
+    world.probes = {"v1": _probe()}
+    world.clock += timedelta(minutes=5)
+
+    first = world.completion()
+
+    assert first["confirmedCompleted"] == ["v1"]  # the end itself is still recorded
+    assert calls["n"] == 1
+    assert lifecycle._read_snapshot_record()["pendingCandidates"]["v1"]["attempts"] == 1  # kept for a bounded retry, not forgotten
+
+    world.clock += timedelta(minutes=5)
+    world.completion()
+
+    assert calls["n"] == 2
+    assert lifecycle._read_snapshot_record()["pendingCandidates"]["v1"]["attempts"] == 2
+    assert len(world.ended()) == 1  # the end state itself was never re-recorded or duplicated
 
 
 # ============ a stream shorter than one snapshot interval ============

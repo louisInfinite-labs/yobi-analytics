@@ -136,7 +136,9 @@ export function isNewContent(
   candidate: NewContentCandidate,
   state: { baseline: string; seen: ReadonlySet<string>; watchedDuringLive?: ReadonlySet<string>; now: Date },
 ): boolean {
-  if (candidate.contentFormat === "live_upcoming" || candidate.contentFormat === "live_now") return false
+  // A pending-archive placeholder (see domain.ts) is not confirmed watchable yet either: it only becomes NEW once the overlay
+  // replaces it with the real archived row, exactly like a livestream only becomes NEW once it is archived, never while live.
+  if (candidate.contentFormat === "live_upcoming" || candidate.contentFormat === "live_now" || candidate.contentFormat === "archive_pending") return false
   if (state.seen.has(candidate.videoId)) return false
   if (state.watchedDuringLive?.has(candidate.videoId)) return false
   const baseline = new Date(state.baseline).getTime()

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest"
-import { composeLatestLiveShelf } from "./latestLiveShelf"
+import { composeHomeAllFeed, composeLatestLiveShelf } from "./latestLiveShelf"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 
 const at = (hour: number, minute = 0, day = 9) => new Date(Date.UTC(2026, 9, day, hour, minute)).toISOString()
 
 const live = (videoId: string, startedAt: string): RecentVideo => ({ videoId, title: videoId, publishedAt: startedAt, eventAt: startedAt, contentFormat: "live_now" })
 const upcoming = (videoId: string, scheduledAt: string): RecentVideo => ({ videoId, title: videoId, publishedAt: scheduledAt, eventAt: scheduledAt, contentFormat: "live_upcoming" })
+const premiere = (videoId: string, scheduledAt: string): RecentVideo => ({ videoId, title: videoId, publishedAt: scheduledAt, eventAt: scheduledAt, contentFormat: "premiere" })
 const archive = (videoId: string, publishedAt: string): RecentVideo => ({ videoId, title: videoId, publishedAt, contentFormat: "live_archive" })
+const upload = (videoId: string, publishedAt: string): RecentVideo => ({ videoId, title: videoId, publishedAt, contentFormat: "normal_video" })
+const pending = (videoId: string, eventAt: string): RecentVideo => ({ videoId, title: videoId, publishedAt: eventAt, eventAt, contentFormat: "archive_pending" })
 
 const ids = (videos: RecentVideo[]) => videos.map((video) => video.videoId)
 
@@ -138,5 +141,95 @@ describe("composeLatestLiveShelf: archive paging cannot bury LIVE/UPCOMING", () 
 
     expect(ids(current)).toEqual(["b", "a"])
     expect(ids(archives)).toEqual(["y", "z"])
+  })
+})
+
+describe("composeLatestLiveShelf: PREMIERE -- a Premiere's waiting page (not a livestream, not happened yet)", () => {
+  it("sits after UPCOMING and before ARCHIVED", () => {
+    const current = [upcoming("U", at(21)), live("L", at(15)), premiere("P", at(22))]
+    const archives = [archive("A", at(20))]
+
+    expect(ids(composeLatestLiveShelf(current, archives))).toEqual(["L", "U", "P", "A"])
+  })
+
+  it("future Premieres sort nearest-start-first, same as UPCOMING", () => {
+    const current = [premiere("late", at(23)), premiere("soon", at(10))]
+
+    expect(ids(composeLatestLiveShelf(current, []))).toEqual(["soon", "late"])
+  })
+
+  it("a Premiere is included even with no LIVE/UPCOMING stream and no archives", () => {
+    expect(ids(composeLatestLiveShelf([premiere("P", at(22))], []))).toEqual(["P"])
+  })
+
+  it("a Premiere present in current always wins over a stale same-videoId archive row", () => {
+    const current = [premiere("P", at(22))]
+    const archives = [archive("P", at(1))]
+
+    const result = composeLatestLiveShelf(current, archives)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].contentFormat).toBe("premiere")
+  })
+})
+
+describe("composeHomeAllFeed: Home ALL ignores lifecycle tier, sorts purely by effective time", () => {
+  it("interleaves ongoing streams, uploads, future Premieres, a completed Premiere and a pending archive by one global timeline", () => {
+    const current = [upcoming("future-stream", at(23)), premiere("future-premiere", at(20)), live("ongoing-stream", at(14))]
+    const archives = [upload("newer-upload", at(16)), pending("just-ended", at(12)), upload("completed-premiere", at(10)), archive("old-upload", at(8))]
+
+    expect(ids(composeHomeAllFeed(current, archives))).toEqual([
+      "future-stream",
+      "future-premiere",
+      "newer-upload",
+      "ongoing-stream",
+      "just-ended",
+      "completed-premiere",
+      "old-upload",
+    ])
+  })
+
+  it("a currently LIVE stream that started long ago sorts BELOW a more recently published upload -- lifecycle tier never overrides the timestamp", () => {
+    const current = [live("old-live", at(1))]
+    const archives = [upload("new-upload", at(20))]
+
+    expect(ids(composeHomeAllFeed(current, archives))).toEqual(["new-upload", "old-live"])
+  })
+
+  it("is independent of the order the inputs arrive in", () => {
+    const current = [premiere("p", at(20)), live("l", at(10))]
+    const archives = [upload("u1", at(15)), upload("u2", at(5))]
+
+    expect(ids(composeHomeAllFeed([...current].reverse(), [...archives].reverse()))).toEqual(ids(composeHomeAllFeed(current, archives)))
+  })
+
+  it("one row per videoId: current wins over a stale archive copy of the same video, positioned by current's own time", () => {
+    const current = [live("same", at(20))]
+    const archives = [archive("same", at(1)), upload("other", at(15))]
+
+    const result = composeHomeAllFeed(current, archives)
+
+    expect(result.map((video) => [video.videoId, video.contentFormat])).toEqual([
+      ["same", "live_now"],
+      ["other", "normal_video"],
+    ])
+  })
+
+  it("an archive-pending placeholder sits at the SAME position its real archive later occupies -- no jump on the transition", () => {
+    const whilePending = composeHomeAllFeed([], [upload("older", at(5)), pending("just-ended", at(15)), upload("newer", at(20))])
+    const onceArchived = composeHomeAllFeed([], [upload("older", at(5)), upload("just-ended", at(15)), upload("newer", at(20))])
+
+    expect(ids(whilePending)).toEqual(["newer", "just-ended", "older"])
+    expect(ids(whilePending)).toEqual(ids(onceArchived))
+  })
+
+  it("an unknown/unparseable time sorts last", () => {
+    const result = composeHomeAllFeed([], [upload("no-time", "not-a-date"), upload("known", at(5))])
+
+    expect(ids(result)).toEqual(["known", "no-time"])
+  })
+
+  it("an empty input is an empty list", () => {
+    expect(composeHomeAllFeed([], [])).toEqual([])
   })
 })

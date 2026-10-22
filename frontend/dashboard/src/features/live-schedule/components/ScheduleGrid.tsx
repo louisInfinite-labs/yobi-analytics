@@ -53,6 +53,7 @@ function StreamAvatarGroup({
         return (
           <div key={stream.id} className="stream-avatar-item">
             {stream.status === "live" && <span className="stream-avatar-live-badge">{t(locale, "liveSchedule.liveBadge")}</span>}
+            {stream.status === "premiere" && <span className="stream-avatar-premiere-badge">{t(locale, "liveSchedule.premiereBadge")}</span>}
             <button type="button" className="stream-avatar-button" onClick={() => onSelectStream(stream)} aria-label={stream.title}>
               <span className="creator-avatar-circle stream-avatar" style={visual.avatarUrl ? undefined : { background: visual.background, color: visual.color }}>
                 {visual.avatarUrl ? <img src={visual.avatarUrl} alt="" /> : visual.initial}
