@@ -10,6 +10,7 @@ import { t } from "../../../shared/i18n/translations"
 import { formatUpcomingStart } from "../../live-status/model/creatorStatusFormat"
 import { useUpcomingDisplayMode } from "../../live-status/hooks/useUpcomingDisplayMode"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
+import { creatorCaption } from "../../../entities/creator/utils/creatorCaption"
 import { resetPreviousVisit, usePreviousVisit } from "../hooks/useLastVisit"
 import { useOshiStatus } from "../hooks/useOshiStatus"
 import { useCreatorMilestones } from "../hooks/useCreatorMilestones"
@@ -67,13 +68,24 @@ function Metric({ value, label }: { value: string; label: string }) {
 /** LIVE now, else the nearest upcoming stream, else nothing scheduled. The upcoming start is shown the way the user's one global
  * "upcoming time display" setting says (clock time in the 12h/24h format, or the countdown) -- the same formatter the Live Status dock and
  * the Schedule page use, so one stream reads the same everywhere. */
-function LiveOrNext({ status, now, onOpen }: { status: CreatorStatus; now: Date; onOpen: (video: { videoId: string; title: string }) => void }) {
+function LiveOrNext({
+  status,
+  now,
+  onOpen,
+  settled,
+}: {
+  status: CreatorStatus
+  now: Date
+  onOpen: (video: { videoId: string; title: string }) => void
+  /** Whether the shared live status has answered (or failed): until then "offline" only means "not known yet", so it must not read as "nothing scheduled". */
+  settled: boolean
+}) {
   const [locale] = useLocale()
   const [timeFormat] = useTimeFormat()
   const [displayMode] = useUpcomingDisplayMode()
 
   if (status.kind === "offline") {
-    return <div className="oshi-empty-state">{t(locale, "oshiStatus.noScheduledStream")}</div>
+    return <div className="oshi-empty-state">{settled ? t(locale, "oshiStatus.noScheduledStream") : VALUE_UNAVAILABLE}</div>
   }
   // The title and the thumbnail run this one handler (a live/upcoming pick never counts as watched by itself -- HomePage's openVideo decides).
   const open = status.videoId ? () => onOpen({ videoId: status.videoId, title: status.title }) : undefined
@@ -112,7 +124,8 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
   const creator = mockCreators.find((entry) => entry.channelId === creatorId)
   // The channel icon is the canonical Creator Registry's `avatarUrl` (the backend Creator Master's YouTube channel icon); the mock roster
   // above never carries one, so reading it from there always fell back to the initial.
-  const registryAvatarUrl = resolveCreatorKey(creatorId)?.avatarUrl ?? undefined
+  const registryCreator = resolveCreatorKey(creatorId)
+  const registryAvatarUrl = registryCreator?.avatarUrl ?? undefined
   // Which icon URL failed to load, so the initial (with the creator-colored circle) shows only for that URL, and a different creator is tried again.
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
   const avatarUrl = registryAvatarUrl && registryAvatarUrl !== failedAvatarUrl ? registryAvatarUrl : undefined
@@ -209,8 +222,11 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
               {creator?.channelName.charAt(0)}
             </Avatar>
             <div className="oshi-status__creator-text">
-              <div className="oshi-status__creator-name">{creator?.channelName ?? creatorId}</div>
+              {/* The page's one heading: the creator Home is about this creator. Same look as before (the class sets size, weight and line; h1's margin is reset globally). */}
+              <h1 className="oshi-status__creator-name">{creator?.channelName ?? creatorId}</h1>
               <div className="oshi-status__subscriber-row">
+                {/* Branch and generation from the Creator Registry: stable text that needs no API data, so the header says who this is from the first render. */}
+                {registryCreator && <div className="oshi-status__creator-meta">{creatorCaption(registryCreator)}</div>}
                 {/* The backend's subscriberCount; the count is omitted when it is null (never a fabricated 0). */}
                 {data?.subscriberCount != null && (
                   <div className="oshi-status__subscriber-count">
@@ -277,7 +293,7 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
       <div className="oshi-status__body">
         <section className="oshi-status__section">
           <div className="oshi-status__section-title">{t(locale, "oshiStatus.liveNext")}</div>
-          <LiveOrNext status={status} now={now} onOpen={onSelectVideo} />
+          <LiveOrNext status={status} now={now} onOpen={onSelectVideo} settled={liveStatusSettled} />
         </section>
 
         <section className="oshi-status__section">

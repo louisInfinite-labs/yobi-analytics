@@ -8,6 +8,7 @@ import { MainNavbar } from "./navigation/MainNavbar"
 import { SettingsPage } from "../pages/settings/SettingsPage"
 import { useCurrentPage, useCurrentPath } from "./navigation/useCurrentPage"
 import { usePageViewTracking } from "./navigation/usePageViewTracking"
+import { useDocumentSeo } from "./seo/useDocumentSeo"
 import { MemberThemeProvider } from "../shared/theme/MemberThemeProvider"
 import { PushPermissionHost } from "../features/notifications/components/PushPermissionHost"
 import { useNotificationLocaleSync } from "../features/notifications/hooks/useNotificationLocaleSync"
@@ -35,7 +36,9 @@ function isAdminRoute(): boolean {
  * of the normal MainNavbar-driven nav. */
 function App() {
   const [page] = useCurrentPage()
-  usePageViewTracking(page, useCurrentPath(), !isAdminRoute())
+  const path = useCurrentPath()
+  usePageViewTracking(page, path, !isAdminRoute())
+  useDocumentSeo(path)
   useRetiredTopicResync()
   useNotificationLocaleSync()
   // Moving to another page starts at its top. Home no longer fits one viewport on a phone (it scrolls with the page), so without this
