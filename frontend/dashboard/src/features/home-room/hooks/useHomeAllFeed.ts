@@ -92,9 +92,13 @@ export function useHomeAllFeed(creatorId: string): HomeAllFeed {
     // LIVE/UPCOMING/PREMIERE/ARCHIVED first. A live stream's own actualStart, an upcoming stream/Premiere's own scheduledStart (never
     // its announcement/discovery time), and an archive's publishedAt all feed the SAME sort.
     const current = canonicalCreatorId ? streams.filter((stream) => stream.creatorId === canonicalCreatorId).map(toRecentVideo) : []
-    // A pending-archive placeholder is appended AFTER the real archive page: composeHomeAllFeed keeps one row per videoId, first
-    // occurrence wins, so the real row (once the overlay has it) always wins over a stale placeholder for the same video.
-    const archives = pendingForCreator.length > 0 ? [...page.videos, ...pendingForCreator.map(toPendingRecentVideo)] : page.videos
+    // composeHomeAllFeed keeps ONE row per videoId, first occurrence wins, so the sources are listed strongest first: every page row except an announced Premiere's (the real
+    // rows, exactly as before -- an ordinary provisional row keeps its established place), then the verified archive-pending placeholder, then an announced Premiere's own
+    // provisional row. The announced row is last because it carries no lifecycle state beyond "not watchable yet": it must never hide the placeholder's own effective time
+    // (the Premiere's real start) or its not-yet-watchable state, and it is only the visible row for the Premiere while no stream or placeholder row exists.
+    const pageRows = page.videos.filter((video) => !video.announcedPremiere)
+    const announcedRows = page.videos.filter((video) => video.announcedPremiere)
+    const archives = [...pageRows, ...pendingForCreator.map(toPendingRecentVideo), ...announcedRows]
     return composeHomeAllFeed(current, archives)
   }, [canonicalCreatorId, streams, page.videos, pendingForCreator])
 

@@ -116,9 +116,13 @@ def _provisional_row(event: dict[str, Any], record: Any, creator_id: str) -> dic
         "currentViewCount": (record.last_view_count if record is not None else None) or 0,
         "title": title,
         "thumbnailUrl": (record.thumbnail_url if record is not None else None) or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
-        "publishedAt": (record.published_at if record is not None else None) or event.get("publishedAt"),
+        # An announced Premiere's event keeps YouTube's publishedAt (its creation date) untouched and carries its scheduled start separately; the row presents the
+        # start as its publication time so Home ALL orders it where the Premiere actually airs. A persisted Video Master record, once there, is the authority.
+        "publishedAt": (record.published_at if record is not None else None) or event.get("scheduledStartTime") or event.get("publishedAt"),
         "discoveredAt": (record.discovered_at if record is not None else None) or event.get("discoveredAt"),
         "provisional": True,
+        # Present only for an ANNOUNCED upcoming Premiere (its event carries the scheduled start): the row is then a Premiere that is not watchable yet, never a new video.
+        **({"scheduledStart": event["scheduledStartTime"]} if event.get("scheduledStartTime") else {}),
     }
 
 

@@ -69,8 +69,11 @@ def _resource():
     return _cached_resource
 
 
-def record_new_video_events(videos: list[Video], *, discovery_source: str = LEGACY_SOURCE) -> int:
+def record_new_video_events(videos: list[Video], *, discovery_source: str = LEGACY_SOURCE, scheduled_starts: dict[str, str] | None = None) -> int:
     """Append one notification event per newly discovered video; return how many were newly recorded.
+
+    `scheduled_starts` (videoId -> ISO scheduled start) is given only for an announced upcoming Premiere: the event then also stores `scheduledStartTime`, next to its
+    unchanged `publishedAt` (YouTube's own, which for a Premiere that has not aired is its creation date). Readers that need the video's effective time use the scheduled start.
 
     Every video passed in must carry a discovered_at — main.py always
     stamps one on every video it discovers (see Video.discovered_at) — this
@@ -86,7 +89,7 @@ def record_new_video_events(videos: list[Video], *, discovery_source: str = LEGA
         for video in videos:
             try:
                 table.put_item(
-                    Item=_video_to_event_item(video, discovery_source),
+                    Item=_video_to_event_item(video, discovery_source, (scheduled_starts or {}).get(video.video_id)),
                     ConditionExpression="attribute_not_exists(videoId)",
                 )
                 recorded += 1
@@ -118,8 +121,8 @@ def list_events_for_date(event_date: str) -> list[dict[str, Any]]:
     return [dict(item) for item in items]
 
 
-def _video_to_event_item(video: Video, discovery_source: str) -> dict[str, Any]:
-    """Build one Notification Events item from a newly discovered Video."""
+def _video_to_event_item(video: Video, discovery_source: str, scheduled_start: str | None = None) -> dict[str, Any]:
+    """Build one Notification Events item from a newly discovered Video (plus, for an announced upcoming Premiere, its scheduled start)."""
     if video.discovered_at is None:
         raise NotificationEventsStoreError(
             f"Video {video.video_id!r} has no discovered_at; cannot record a notification event without one"
@@ -146,6 +149,9 @@ def _video_to_event_item(video: Video, discovery_source: str) -> dict[str, Any]:
     # field existed is then simply sent with the HQ thumbnail.
     if video.thumbnail_url:
         item["thumbnailUrl"] = video.thumbnail_url
+    # The announced Premiere's own scheduled start, stored as a separate optional attribute: `publishedAt` above keeps YouTube's value untouched. Omitted otherwise.
+    if scheduled_start:
+        item["scheduledStartTime"] = scheduled_start
     return item
 
 

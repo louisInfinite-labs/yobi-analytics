@@ -20,4 +20,8 @@ export interface RecentVideo {
   /** A completed Premiere only: when its replay was verified available. A Premiere is announced long before its replay can be watched, so NEW counts from this
    * time (never from the announcement) once it is present. */
   archiveAvailableAt?: string | null
+  /** True only for an ANNOUNCED Premiere's row: built by the backend from the announcement event alone (flagged provisional, no persisted contentType, a scheduled start, no
+   * confirmed archive). It is a Premiere that is not watchable yet (contentFormat "premiere", eventAt = its scheduled start) and the weakest source for its videoId: a
+   * live/upcoming stream, an archive-pending placeholder or a confirmed archive row always replaces it. An ordinary provisional (newly discovered) row never carries this. */
+  announcedPremiere?: boolean
 }

@@ -341,3 +341,90 @@ def test_is_unclassified_provisional_is_true_only_for_a_provisional_row_without_
     assert pd.is_unclassified_provisional({"provisional": True})
     assert not pd.is_unclassified_provisional({"provisional": True, "contentType": "upload"})
     assert not pd.is_unclassified_provisional({"contentType": None})  # a persisted row with no contentType is not the overlay's business
+
+
+# ============ an announced upcoming Premiere: the event keeps YouTube's creation date and carries the scheduled start ============
+
+PREMIERE = "Kd0nT-tybTA"
+CREATION_DATE = "2026-10-19T09:12:13Z"  # what YouTube reports as publishedAt for an upcoming Premiere
+SCHEDULED_START = "2026-10-23T10:00:00+00:00"
+
+
+def _announcement_event(**overrides) -> dict:
+    """The event the Collector's Premiere announcement step records: publishedAt untouched, the scheduled start stored beside it."""
+    event = _event(PREMIERE)
+    event.update({"publishedAt": CREATION_DATE, "scheduledStartTime": SCHEDULED_START, "discoveredAt": "2026-10-23T09:00:52+09:00", "eventDate": "2026-10-23"})
+    event.update(overrides)
+    return event
+
+
+def test_an_announced_premiere_row_is_presented_at_its_scheduled_start_not_its_creation_date(home):
+    home["events"] = [_announcement_event()]
+
+    [row] = [v for v in read_api.get_recent_creator_videos(ALL_TAG)["videos"] if v["videoId"] == PREMIERE]
+
+    assert row["provisional"] is True and row["contentType"] is None
+    assert row["publishedAt"] == SCHEDULED_START  # never the 2026-10-19 creation date
+    assert home["events"][0]["publishedAt"] == CREATION_DATE  # the stored source timestamp is untouched
+
+
+def test_an_announced_premiere_sorts_by_its_start_in_the_server_order_too(home):
+    home["rows"] = [_persisted("old1", "2026-10-21T10:00:00Z"), _persisted("old2", "2026-10-15T10:00:00Z")]
+    home["events"] = [_announcement_event()]
+
+    assert _ids(**ALL_TAG) == [PREMIERE, "old1", "old2"]  # by the 2026-10-19 creation date it would have sorted between old1 and old2
+
+
+def test_the_video_master_record_stays_the_authority_once_it_exists(home):
+    home["events"] = [_announcement_event()]
+    home["records"] = {PREMIERE: Video(video_id=PREMIERE, creator_id=CREATOR, title="t", published_at="2026-10-23T10:00:05Z", discovered_at="2026-10-23T10:01:00+09:00")}
+
+    [row] = [v for v in read_api.get_recent_creator_videos(ALL_TAG)["videos"] if v["videoId"] == PREMIERE]
+
+    assert row["publishedAt"] == "2026-10-23T10:00:05Z"
+
+
+def test_an_ordinary_event_without_a_scheduled_start_keeps_its_published_at(home):
+    home["events"] = [_event()]
+
+    [row] = [v for v in read_api.get_recent_creator_videos(ALL_TAG)["videos"] if v["videoId"] == VIDEO]
+
+    assert row["publishedAt"] == "2026-10-16T09:00:24Z"
+
+
+def _new_content(query_extra: dict | None = None) -> dict[str, list[str]]:
+    """The exact NEW eligibility (newContent) Home gets for ALL, at a clock just after the announcement."""
+    query = {**ALL_TAG, "newSince": "2026-10-23T00:00:00Z", **(query_extra or {})}
+    content = read_api.get_recent_creator_videos(query, now=datetime(2026, 10, 23, 1, 0, tzinfo=timezone.utc))["newContent"]
+    return {name: [i for i in content[key].split(",") if i] for name, key in (("videos", "videoIds"), ("livestreams", "livestreamIds"), ("unclassified", "unclassifiedIds"))}
+
+
+def test_an_announced_premiere_row_carries_its_scheduled_start_marker_and_an_ordinary_row_does_not(home):
+    home["events"] = [_announcement_event(), _event()]
+
+    rows = {v["videoId"]: v for v in read_api.get_recent_creator_videos(ALL_TAG)["videos"]}
+
+    assert rows[PREMIERE]["scheduledStart"] == SCHEDULED_START
+    assert "scheduledStart" not in rows[VIDEO]  # an ordinary provisional row is exactly as before
+
+
+def test_an_announced_premiere_is_not_new_eligible_from_its_announcement_but_an_ordinary_new_video_is(home):
+    home["events"] = [_announcement_event(), _event(content_type=None) | {"discoveredAt": "2026-10-23T09:30:00+09:00", "eventDate": "2026-10-23"}]
+
+    eligible = _new_content()
+
+    assert PREMIERE not in sum(eligible.values(), [])  # announced, not watchable yet
+    assert VIDEO in eligible["unclassified"]  # established behavior of an ordinary discovery
+
+
+def test_the_announced_premiere_becomes_new_eligible_once_its_durable_archive_time_is_known(home, monkeypatch):
+    """The durable archive time is applied after the provisional rows exist, so it reaches the announced row even when the lifecycle's own record is gone."""
+    home["events"] = [_announcement_event()]
+    monkeypatch.setattr(read_api, "_premiere_archive_times", lambda: {PREMIERE: "2026-10-23T11:00:00+00:00"})
+
+    [row] = [v for v in read_api.get_recent_creator_videos(ALL_TAG)["videos"] if v["videoId"] == PREMIERE]
+
+    assert row["archiveAvailableAt"] == "2026-10-23T11:00:00+00:00"
+    query = {**ALL_TAG, "newSince": "2026-10-23T00:00:00Z"}
+    content = read_api.get_recent_creator_videos(query, now=datetime(2026, 10, 23, 12, 0, tzinfo=timezone.utc))["newContent"]
+    assert PREMIERE in content["unclassifiedIds"]

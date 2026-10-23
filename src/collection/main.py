@@ -50,7 +50,7 @@ else:
     class NotificationEventsStoreError(Exception):
         """Placeholder so main.py's except clause is valid locally; never raised (see below)."""
 
-    def record_new_video_events(videos: list[Video], *, discovery_source: str = LEGACY_SOURCE) -> int:
+    def record_new_video_events(videos: list[Video], *, discovery_source: str = LEGACY_SOURCE, scheduled_starts: dict[str, str] | None = None) -> int:
         """No-op locally — the Roadmap 4.6 notification dispatcher only exists once deployed to AWS."""
         return 0
 

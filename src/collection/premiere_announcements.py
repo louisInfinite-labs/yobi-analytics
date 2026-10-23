@@ -162,6 +162,7 @@ def announce_upcoming_premieres(
 
     discovered_at = run_time.isoformat()
     to_announce: list[Video] = []
+    scheduled_by_id: dict[str, str] = {}
     new_decisions: dict[str, bool] = {}
     for stream in undecided:
         facts = facts_by_id.get(stream["videoId"])
@@ -173,10 +174,12 @@ def announce_upcoming_premieres(
             summary["ordinary"] += 1
         else:
             to_announce.append(video)
+            scheduled_by_id[video.video_id] = facts["scheduledStartTime"]
             new_decisions[video.video_id] = True
 
     if to_announce:
-        record_events(to_announce, discovery_source=source)
+        # Each event also carries the Premiere's scheduled start so readers can use it as the video's effective time instead of its creation date.
+        record_events(to_announce, discovery_source=source, scheduled_starts={video.video_id: scheduled_by_id[video.video_id] for video in to_announce})
         summary["announced"] = len(to_announce)
     premiere_announcements_store.record_decisions(new_decisions, now=run_time)
     return summary

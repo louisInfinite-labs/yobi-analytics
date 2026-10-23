@@ -101,6 +101,22 @@ def test_the_event_carries_the_discovery_time_thumbnail_url_only_when_the_video_
     }
 
 
+def test_an_announced_premiere_event_stores_its_scheduled_start_beside_the_untouched_published_at(notification_events_table):
+    """The scheduled start is a separate optional attribute: publishedAt keeps YouTube's value, and an event recorded without one has no such field."""
+    announced = _video(video_id="announced0001")
+    ordinary = _video(video_id="ordinary0001")
+
+    record_new_video_events([announced, ordinary], scheduled_starts={"announced0001": "2026-10-23T10:00:00+00:00"})
+
+    events = {event["videoId"]: event for event in list_events_for_date("2026-09-03")}
+    assert events["announced0001"]["scheduledStartTime"] == "2026-10-23T10:00:00+00:00"
+    assert events["announced0001"]["publishedAt"] == announced.published_at
+    assert "scheduledStartTime" not in events["ordinary0001"]
+    assert {key: value for key, value in events["announced0001"].items() if key not in {"scheduledStartTime", "videoId", "eventId"}} == {
+        key: value for key, value in events["ordinary0001"].items() if key not in {"videoId", "eventId"}
+    }
+
+
 class _CountingTable:
     """Delegates to the real moto table and records every method the store calls on it."""
 

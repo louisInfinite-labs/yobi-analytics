@@ -41,6 +41,7 @@ STARTS = {
 DAY1_RUN = datetime(2026, 10, 22, 20, 0, tzinfo=JST)  # the 20:00 JST discovery window
 DAY2_0900 = datetime(2026, 10, 23, 9, 0, tzinfo=JST)
 CHANNEL = "UC_test"
+CREATION_DATE = "2026-10-19T09:12:13+00:00"
 WINDOW = "2000"
 
 
@@ -64,7 +65,7 @@ def _premiere_facts(video_id: str, *, channel: str = CHANNEL) -> dict:
         "kind": "premiere",
         "title": f"Premiere {video_id}",
         "channelId": channel,
-        "publishedAt": start,
+        "publishedAt": CREATION_DATE,  # what YouTube reports for an upcoming Premiere: the day it was created, long before it airs
         "scheduledStartTime": start,
         "thumbnailUrl": f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg",
     }
@@ -177,7 +178,8 @@ def test_each_premiere_gets_one_ordinary_new_video_event(world, monkeypatch):
     assert event["eventId"] == f"new_video:{KD0NT}"
     assert event["creatorId"] == "aizawa_ema"
     assert event["title"] == f"Premiere {KD0NT}"
-    assert event["publishedAt"] == STARTS[KD0NT].isoformat()
+    assert event["publishedAt"] == CREATION_DATE  # YouTube's own value, stored untouched
+    assert event["scheduledStartTime"] == STARTS[KD0NT].isoformat()  # the effective time travels beside it
     assert event["notificationEligible"] is True
     assert "eventPhase" not in event and "contentType" not in event
     assert event["thumbnailUrl"].endswith(f"{KD0NT}/maxresdefault.jpg")
@@ -371,6 +373,8 @@ def test_the_announcement_shows_under_its_original_video_id_without_duplicates(w
     rows = provisional_discoveries.with_provisional_discoveries([], "aizawa_ema", DAY1_RUN.isoformat(), now=now)
     assert sorted(row["videoId"] for row in rows) == sorted([KD0NT, XDYWW, GSQ])
     assert all(row["discoveredAt"] == DAY1_RUN.isoformat() for row in rows)
+    assert {row["videoId"]: row["publishedAt"] for row in rows} == {video_id: start.isoformat() for video_id, start in STARTS.items()}  # effective time = scheduled start, never the creation date
+    assert all(event["publishedAt"] == CREATION_DATE for event in events)  # while the stored source timestamp is untouched
 
     ranked = [{"videoId": KD0NT, "creatorId": "aizawa_ema", "title": "ranked"}]  # the playlist later added the Video Master row
     rows = provisional_discoveries.with_provisional_discoveries(ranked, "aizawa_ema", DAY1_RUN.isoformat(), now=now)
@@ -827,3 +831,93 @@ def test_call_youtube_api_keeps_its_default_retries_and_honours_a_smaller_budget
 
     assert len(default_calls) == MAX_RETRIES == 3
     assert len(single_calls) == 1
+
+
+# Notification eligibility of the announcement events: the creator's NEW VIDEO switch decides, and delivery waits for each client's own slots.
+FOUR_WINDOWS = ["08:00", "12:00", "18:00", "22:00"]
+
+
+def test_a_live_only_subscription_never_receives_a_premiere_announcement_and_a_new_video_one_does(world, monkeypatch):
+    """Live-only (the creator's new-video switch off) is suppressed for good; a client with the new-video switch on gets each announcement once at its slot."""
+    _run(world, monkeypatch)
+    rows = fake_delivery_log(monkeypatch)
+    sent = install_world(
+        monkeypatch,
+        events=_all_events("2026-10-22"),
+        preferences={
+            "c_new": preference_value(deliveryWindows=FOUR_WINDOWS),
+            "c_live_only": preference_value(deliveryWindows=FOUR_WINDOWS, newVideoCreatorOverride={}, newVideoActivatedAt={}),
+            "c_live_creator_off": preference_value(deliveryWindows=FOUR_WINDOWS, creatorOverride={"aizawa_ema": False}),
+        },
+    )
+
+    new_video_dispatcher.run({}, None, now=datetime(2026, 10, 22, 22, 5, tzinfo=JST))
+
+    assert sorted(payload["videoId"] for payload in sent) == sorted([KD0NT, XDYWW, GSQ])  # exactly one client's three pushes
+    assert {key for key, status in rows.items() if status == "delivered"} == {("c_new", KD0NT), ("c_new", XDYWW), ("c_new", GSQ)}
+    assert {client for (client, _video), status in rows.items() if status == "suppressed"} == {"c_live_only"}
+    assert not any(client == "c_live_creator_off" for (client, _video) in rows)  # a creator switched off for the client is simply not delivered
+
+
+@pytest.mark.parametrize(
+    ("windows", "tick", "expected_pushes"),
+    [
+        (FOUR_WINDOWS, datetime(2026, 10, 22, 18, 5, tzinfo=JST), 0),  # before the 20:00 discovery: nothing exists yet
+        (FOUR_WINDOWS, datetime(2026, 10, 22, 22, 5, tzinfo=JST), 3),  # the first of the client's four slots after discovery
+        (["18:00"], datetime(2026, 10, 22, 22, 5, tzinfo=JST), 0),  # not this client's slot
+        (["18:00"], datetime(2026, 10, 23, 18, 5, tzinfo=JST), 3),  # its only slot, the next evening
+        (["08:00"], datetime(2026, 10, 23, 8, 5, tzinfo=JST), 3),  # its only slot, the next morning
+    ],
+)
+def test_the_announcement_is_delivered_at_the_clients_own_slot_and_never_by_the_discovery_run(world, monkeypatch, windows, tick, expected_pushes):
+    """Delivery depends only on the client's configured slots and the discovery time, never on the Premiere's own start."""
+    _run(world, monkeypatch)
+    fake_delivery_log(monkeypatch)
+    sent = install_world(monkeypatch, events=_all_events("2026-10-22"), preferences={"c1": preference_value(deliveryWindows=windows)})
+
+    new_video_dispatcher.run({}, None, now=tick)
+
+    assert len(sent) == expected_pushes
+
+
+def test_a_client_with_four_slots_receives_each_announcement_exactly_once_across_all_of_them(world, monkeypatch):
+    """The delivery log keys (client, videoId): later slots, later days and repeated runs never send the same announcement again."""
+    _run(world, monkeypatch)
+    fake_delivery_log(monkeypatch)
+    sent = install_world(monkeypatch, events=_all_events("2026-10-22"), preferences={"c1": preference_value(deliveryWindows=FOUR_WINDOWS)})
+
+    for tick in (
+        datetime(2026, 10, 22, 22, 5, tzinfo=JST),
+        datetime(2026, 10, 22, 22, 35, tzinfo=JST),
+        datetime(2026, 10, 23, 8, 5, tzinfo=JST),
+        datetime(2026, 10, 23, 12, 5, tzinfo=JST),
+        datetime(2026, 10, 23, 18, 5, tzinfo=JST),
+    ):
+        new_video_dispatcher.run({}, None, now=tick)
+
+    assert sorted(payload["videoId"] for payload in sent) == sorted([KD0NT, XDYWW, GSQ])
+
+
+def test_switching_the_flag_off_stops_new_announcements_but_never_recalls_pending_ones(world, monkeypatch):
+    """The flag only gates event CREATION in the Collector: pending announcement events stay deliverable at the clients' slots, and the dispatcher never reads the flag."""
+    _run(world, monkeypatch)  # flag on: three events recorded, none delivered yet
+    pending = _all_events("2026-10-22")
+    assert len(pending) == 3
+
+    monkeypatch.delenv(premiere_announcements.ENABLED_ENV)  # the rollback
+    world.streams = world.streams + [_stream("NEWPREMIERE1", STARTS[GSQ])]
+    world.facts["NEWPREMIERE1"] = _premiere_facts(GSQ)
+    _run(world, monkeypatch, at=DAY1_RUN + timedelta(hours=2), window="2200")
+    assert {event["videoId"] for event in _all_events("2026-10-22")} == {KD0NT, XDYWW, GSQ}  # nothing new is announced once the flag is off
+
+    fake_delivery_log(monkeypatch)
+    sent = install_world(monkeypatch, events=pending, preferences={"c1": preference_value(deliveryWindows=FOUR_WINDOWS)})
+    new_video_dispatcher.run({}, None, now=datetime(2026, 10, 22, 22, 5, tzinfo=JST))
+    assert len(sent) == 3  # the already-recorded announcements are still delivered
+
+    import inspect
+
+    from notifications import new_video_dispatcher as dispatcher_module, notification_dispatch
+
+    for module in (dispatcher_module, notification_dispatch, notification_events_store):
+        assert premiere_announcements.ENABLED_ENV not in inspect.getsource(module)  # no delivery-side code depends on the flag

@@ -686,7 +686,10 @@ def _recent_creator_videos_new_content(ordered: list[dict[str, Any]], since: dat
     for row in ordered:
         video_id = row["videoId"]
         discovered = _parse_utc_timestamp(row.get("archiveAvailableAt")) or _parse_utc_timestamp(row.get("discoveredAt"))
-        if video_id in seen or "," in video_id or discovered is None or discovered < since or discovered > now:
+        # An announced Premiere (a provisional row with a scheduled start, no contentType and no confirmed archive yet) is not a watchable video yet: it joins the NEW
+        # eligibility only once its archive is confirmed (archiveAvailableAt), never from its announcement.
+        announced = bool(row.get("provisional") and row.get("scheduledStart") and not row.get("contentType") and not row.get("archiveAvailableAt"))
+        if announced or video_id in seen or "," in video_id or discovered is None or discovered < since or discovered > now:
             continue
         seen.add(video_id)
         groups[_NEW_CONTENT_GROUP_BY_CONTENT_TYPE.get(row.get("contentType"), "unclassified")].append(video_id)
@@ -796,8 +799,9 @@ def get_recent_creator_videos(query: dict[str, Any], *, now: datetime | None = N
     if not query.get("reportDate"):
         # Only the latest report is topped up with just-completed streams; an explicitly requested reportDate is a historical view and stays exactly as persisted.
         rows = _with_verified_completed_streams(rows, creator_id)
-        rows = _with_durable_premiere_archive_times(rows)
         rows = _with_provisional_discoveries(rows, creator_id, result.get("generatedAt"))
+        # After the provisional rows are added, so an announced Premiere whose archive was confirmed long ago (its lifecycle record pruned) still gets its durable time.
+        rows = _with_durable_premiere_archive_times(rows)
     if topic != VIDEO_RANKING_TOPIC_ALL:
         # A provisional row with no contentType yet belongs in ALL only: never in a topic tag (including 其他).
         rows = [row for row in rows if row.get("topic") == topic and not is_unclassified_provisional(row)]
@@ -833,6 +837,7 @@ def get_recent_creator_videos(query: dict[str, Any], *, now: datetime | None = N
             "discoveredAt": row.get("discoveredAt"),
             **({"archiveAvailableAt": row["archiveAvailableAt"]} if row.get("archiveAvailableAt") else {}),
             **({"provisional": True} if row.get("provisional") else {}),
+            **({"scheduledStart": row["scheduledStart"]} if row.get("scheduledStart") else {}),
         }
         for row in page
     ]

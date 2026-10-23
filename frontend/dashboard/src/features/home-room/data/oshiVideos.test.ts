@@ -91,3 +91,33 @@ describe("fetchOshiVideos", () => {
     }
   })
 })
+
+describe("fetchOshiVideos: provisional rows", () => {
+  const fetchRows = async (videos: unknown[]) => {
+    vi.mocked(apiRequest).mockResolvedValue({ videos, hasMore: false })
+    return (await fetchOshiVideos({ ...query, contentType: "all" })).videos
+  }
+
+  it("an announced Premiere's provisional row (scheduled start, no contentType, no confirmed archive) is a not-watchable premiere ordered by its scheduled start", async () => {
+    const [row] = await fetchRows([
+      { videoId: "p1", title: "t", publishedAt: "2026-10-23T10:00:00+00:00", scheduledStart: "2026-10-23T10:00:00+00:00", contentType: null, provisional: true, currentViewCount: 0, discoveredAt: "2026-10-23T04:00:00+09:00" },
+    ])
+
+    expect(row).toMatchObject({ videoId: "p1", contentFormat: "premiere", eventAt: "2026-10-23T10:00:00+00:00", announcedPremiere: true })
+  })
+
+  it("an ordinary provisional row (no scheduled start) and the verified-archive overlay row keep their established mapping", async () => {
+    const [ordinary, overlay, withArchiveTime] = await fetchRows([
+      { videoId: "o1", title: "t", publishedAt: "2026-10-23T03:00:00Z", contentType: null, provisional: true, currentViewCount: 0 },
+      { videoId: "a1", title: "t", publishedAt: "2026-10-23T03:00:00Z", contentType: "upload", provisional: true, archiveAvailableAt: "2026-10-23T05:00:00Z", currentViewCount: 0 },
+      { videoId: "p2", title: "t", publishedAt: "2026-10-23T10:00:00Z", scheduledStart: "2026-10-23T10:00:00Z", contentType: null, provisional: true, archiveAvailableAt: "2026-10-23T12:00:00Z", currentViewCount: 0 },
+    ])
+
+    expect(ordinary).toMatchObject({ contentFormat: "normal_video" })
+    expect(ordinary.announcedPremiere).toBeUndefined()
+    expect(overlay).toMatchObject({ contentFormat: "normal_video", archiveAvailableAt: "2026-10-23T05:00:00Z" })
+    expect(overlay.announcedPremiere).toBeUndefined()
+    expect(withArchiveTime).toMatchObject({ contentFormat: "normal_video" }) // a confirmed archive time makes the announced row a normal, watchable video
+    expect(withArchiveTime.announcedPremiere).toBeUndefined()
+  })
+})
