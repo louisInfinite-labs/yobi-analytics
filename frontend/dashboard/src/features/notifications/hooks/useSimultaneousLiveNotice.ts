@@ -26,7 +26,7 @@ function loadOnce(): void {
     })
 }
 
-/** 同時開播預告 (the notice that several followed creators start at the same time): the opt-in lives on the backend, so a change is backend-first --
+/** 同時直播預告 (the notice that several followed creators start at the same time): the opt-in lives on the backend, so a change is backend-first --
  * the switch only moves once the write was accepted, and a rejected one raises the page's shared "couldn't save" alert instead. */
 export function useSimultaneousLiveNotice() {
   const [enabled] = useSharedState(simultaneousLiveNoticeStore)

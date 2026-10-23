@@ -2382,6 +2382,12 @@
   appearance: none;
   -webkit-appearance: none;
 
+  /* This control is also used OUTSIDE the drawer (the Simultaneous Livestream Notice in the notification panel), where the drawer-scoped --drawer-* aliases are
+     not defined: a var() without a fallback made the whole border declaration invalid there, so the unchecked box drew no border at all and was invisible.
+     Every token it reads therefore carries the global --oshi-* value it aliases, and it declares the dark scheme itself so --oshi-select-highlight (the system
+     `Highlight` keyword, resolved where it is used) is the same blue as inside the drawer. */
+  color-scheme: dark;
+
   display: grid;
   place-content: center;
 
@@ -2389,7 +2395,7 @@
   height: 22px;
   margin: 0;
 
-  border: 2px solid var(--drawer-text-tertiary);
+  border: 2px solid var(--drawer-text-tertiary, var(--oshi-text-3));
   border-radius: 3px;
 
   background: transparent;
@@ -2425,7 +2431,7 @@
 }
 
 .topic-creator-drawer__checkbox-input:focus-visible {
-  outline: 2px solid var(--drawer-text-primary);
+  outline: 2px solid var(--drawer-text-primary, var(--oshi-text-1));
   outline-offset: 2px;
 }
 
@@ -2443,9 +2449,26 @@
   width: 100%;
 }
 
-/* Home's own native select (.oshi-videos__sort) fills the grid's reminder column; every other look is Home's. */
+/* Home's own native select (.oshi-videos__sort) fills the grid's reminder column; every other look is Home's, except the arrow: the column widths below are
+   fixed per locale (the longest timing label plus this padding), but a native <select> reserves a platform-specific amount for its own arrow -- about 16px on
+   desktop, roughly 24px on Android and iOS -- so on a phone the label lost that difference and its last character ("30 分鐘前" -> "30 分鐘") was clipped under the
+   arrow. The select therefore draws ONE arrow of its own with a fixed 18px of room, the same on every platform, which leaves about 12px of slack beyond the
+   longest label in every locale. The wrapper-qualified selector (class + element) outranks .oshi-videos__sort's `background` / `padding` shorthands whatever the
+   stylesheet order, without this stylesheet naming the shared select class (its colors stay Home's alone). */
 .topic-creator-drawer__reminder-select {
   width: 100%;
+}
+
+.topic-creator-drawer__reminder-select-wrap > select {
+  appearance: none;
+  -webkit-appearance: none;
+
+  padding-right: 18px;
+
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23ffffffa8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 10px 6px;
 }
 
 /* A member with no reminder yet has NOTHING selected (so the open list is just the five real timings, 開播時 once); the closed select shows

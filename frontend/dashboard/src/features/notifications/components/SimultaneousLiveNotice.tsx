@@ -7,7 +7,7 @@ import { useNotificationSaveFailed } from "../hooks/notificationSaveStatus"
 import { useSimultaneousLiveNotice } from "../hooks/useSimultaneousLiveNotice"
 import { NotificationCheckbox } from "./TopicCreatorManagementDrawer"
 
-/** The opt-in for 同時開播預告: a notice (not a schedule view -- Schedule already has the 24-hour timeline) when two or more creators the user has
+/** The opt-in for 同時直播預告: a notice (not a schedule view -- Schedule already has the 24-hour timeline) when two or more creators the user has
  * live notifications for are scheduled to start at the same time. One switch, off until the user turns it on; the choice is stored on the backend.
  * Like every other on/off control in Settings it is a square checkbox on a phone and an ON/OFF switch elsewhere (same value, same write). */
 export function SimultaneousLiveNotice() {

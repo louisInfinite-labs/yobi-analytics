@@ -2,7 +2,7 @@ import { apiRequest } from "../../../shared/api/apiClient"
 import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
 import { getOrCreateClientId } from "../../../shared/api/clientId"
 
-/** The backend's sparse opt-in item for 同時開播預告 (src/notifications/simultaneous_live.py's OPT_IN_KEY): present with {enabled: true} = on, absent = off. */
+/** The backend's sparse opt-in item for 同時直播預告 (src/notifications/simultaneous_live.py's OPT_IN_KEY): present with {enabled: true} = on, absent = off. */
 export const SIMULTANEOUS_LIVE_NOTICE_KEY = "simultaneousLiveNotice"
 
 interface RemoteConfigReadResponse {
