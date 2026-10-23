@@ -431,6 +431,29 @@
   height: 13px;
 }
 
+/* The registry's branch/generation caption in the same 13px line, styled like the count it sits beside; it truncates first so the count stays whole. */
+.oshi-status__creator-meta {
+  min-width: 0;
+  overflow: hidden;
+
+  color: var(--oshi-text-3);
+
+  font-size: 11px;
+  line-height: 13px;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.oshi-status__creator-meta + .oshi-status__subscriber-count {
+  flex-shrink: 0;
+}
+
+/* The separator is drawn, not text, so the count's own text ("123.5K subscribers") is unchanged for everything that reads it. */
+.oshi-status__creator-meta + .oshi-status__subscriber-count::before {
+  content: "· ";
+}
+
 .oshi-status__milestone-trigger {
   appearance: none;
 

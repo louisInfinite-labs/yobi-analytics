@@ -4,12 +4,20 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "cleanUrls": false,
     "trailingSlash": false,
-    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "redirects": [
+      { "source": "/index.html", "destination": "/", "type": 301 },
+      { "source": "/creator", "destination": "/", "type": 301 }
+    ],
     "headers": [
-      {
-        "source": "/index.html",
-        "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }]
-      },
+      { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }] },
+      { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }] },
+      { "source": "/schedule", "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }] },
+      { "source": "/about", "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }] },
+      { "source": "/setting", "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }] },
+      { "source": "/creator/**", "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }] },
+      { "source": "/404.html", "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }] },
+      { "source": "/setting", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
+      { "source": "/404.html", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }] },
       {
         "source": "/sw.js",
         "headers": [

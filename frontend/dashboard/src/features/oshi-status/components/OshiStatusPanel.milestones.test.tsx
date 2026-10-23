@@ -159,7 +159,8 @@ describe("calendar icon", () => {
     const count = await screen.findByText(/123\.5K/)
     const row = count.parentElement as HTMLElement
     expect(row).toHaveClass("oshi-status__subscriber-row") // the row (fixed 13px high in home.css) still exists, so nothing moves
-    expect(row.children).toHaveLength(1)
+    // The row holds the registry caption and the count -- and, with the milestone hidden, nothing else (no calendar button).
+    expect([...row.children].map((child) => child.className)).toEqual(["oshi-status__creator-meta", "oshi-status__subscriber-count"])
     expect(row.previousElementSibling).toHaveClass("oshi-status__creator-name")
     expect(row.parentElement).toHaveClass("oshi-status__creator-text")
   })

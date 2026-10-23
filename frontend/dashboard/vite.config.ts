@@ -4,7 +4,14 @@ import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 import { configDefaults } from 'vitest/config'
-import { buildSitemapPaths, buildSitemapXml, STATIC_SITEMAP_PATHS, type SitemapCreator } from './src/app/seo/sitemap.ts'
+import { buildSitemapPaths, buildSitemapXml, STATIC_SITEMAP_PATHS } from './src/app/seo/sitemap.ts'
+import { NOT_FOUND_SEO, pageFileName, renderSeoPage, resolvePageSeo, type SeoCreator } from './src/app/seo/pageSeo.ts'
+
+/** The Creator Registry's creators, read from the generated JSON the app's router resolves slugs from. */
+function readRegistryCreators(): SeoCreator[] {
+  const registryPath = fileURLToPath(new URL('./src/entities/creator/data/generated/creatorMaster.json', import.meta.url))
+  return (JSON.parse(readFileSync(registryPath, 'utf8')) as { creators: SeoCreator[] }).creators
+}
 
 /** Emits dist/sitemap.xml at build time from the generated Creator Registry (the same file the app's router resolves /creator/:slug from), so
  * the sitemap can never drift from the roster and needs no runtime or API call. Build only; dev and tests are unaffected. */
@@ -13,18 +20,44 @@ function sitemapPlugin(): Plugin {
     name: 'oshiyobi-sitemap',
     apply: 'build',
     generateBundle() {
-      const registryPath = fileURLToPath(new URL('./src/entities/creator/data/generated/creatorMaster.json', import.meta.url))
-      const { creators } = JSON.parse(readFileSync(registryPath, 'utf8')) as { creators: SitemapCreator[] }
-      const paths = buildSitemapPaths(creators)
+      const paths = buildSitemapPaths(readRegistryCreators())
       if (paths.length <= STATIC_SITEMAP_PATHS.length) throw new Error('sitemap: the Creator Registry produced no creator URLs')
       this.emitFile({ type: 'asset', fileName: 'sitemap.xml', source: buildSitemapXml(paths) })
     },
   }
 }
 
+/** Static SEO pages, generated from the built index.html (so every page carries the real hashed script/style tags): one HTML file per public route
+ * (/ -> index.html, /schedule, /about, /setting, and /creator/<slug> for every sitemap Creator -> <path>/index.html, which Firebase Hosting serves
+ * at the extensionless URL) plus 404.html for unknown routes. Each file has its own title/description/canonical/Open Graph tags and real text and
+ * links inside #root; React replaces that on first render. The page set is the sitemap's own path list plus /setting, so sitemap and pages cannot
+ * disagree. Runs after Vite's html plugin (enforce: 'post') so it sees the final index.html. */
+function seoPagesPlugin(): Plugin {
+  return {
+    name: 'oshiyobi-seo-pages',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      const shellAsset = bundle['index.html']
+      if (!shellAsset || shellAsset.type !== 'asset') throw new Error('seo: the built index.html was not found in the bundle')
+      const shell = String(shellAsset.source)
+      const creators = readRegistryCreators()
+      const paths = [...buildSitemapPaths(creators), '/setting']
+      for (const path of paths) {
+        const seo = resolvePageSeo(path, creators)
+        if (!seo) throw new Error(`seo: ${path} has no page metadata`)
+        const source = renderSeoPage(shell, seo, creators)
+        if (path === '/') shellAsset.source = source
+        else this.emitFile({ type: 'asset', fileName: pageFileName(path), source })
+      }
+      this.emitFile({ type: 'asset', fileName: '404.html', source: renderSeoPage(shell, NOT_FOUND_SEO, creators) })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), sitemapPlugin()],
+  plugins: [react(), sitemapPlugin(), seoPagesPlugin()],
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
