@@ -312,6 +312,7 @@ jobs:
           src/features/notifications/components/NotificationSettings.test.tsx
           src/features/notifications/api/simultaneousLiveNoticeApi.test.ts
           src/features/notifications/components/SimultaneousLiveNotice.test.tsx
+          src/features/notifications/components/mobileNotificationControls.css.test.ts
           src/features/notifications/components/NotificationToggle.test.tsx
           src/features/notifications/hooks/useNotificationLocaleSync.test.tsx
           src/features/notifications/hooks/notificationDisabledMasterSwitch.test.tsx

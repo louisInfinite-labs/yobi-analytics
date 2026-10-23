@@ -434,7 +434,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "notificationSettings.deliveryTimes.timeAriaLabel": "通知時間 {{index}}",
     "notificationSettings.deliveryTimes.removeAriaLabel": "刪除通知時間 {{time}}",
     "notificationSettings.deliveryTimes.addAriaLabel": "新增通知時間",
-    "notificationSettings.simultaneousLive.title": "同時開播預告",
+    "notificationSettings.simultaneousLive.title": "同時直播預告",
     "notificationSettings.simultaneousLive.description": "當你開啟直播通知的兩位以上創作者預定在完全相同的時間開播時，在開播前通知你。預設關閉。",
     "oshiSettings.pageDescription": "管理你收藏的成員，並用於直播狀態、通知設定等功能。",
     "oshiSettings.selectedCountLabel": "已選 {{count}} 人",

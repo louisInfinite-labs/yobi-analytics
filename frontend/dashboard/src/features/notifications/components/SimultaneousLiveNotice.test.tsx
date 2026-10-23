@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { SimultaneousLiveNotice } from "./SimultaneousLiveNotice"
 import { fetchSimultaneousLiveNotice, saveSimultaneousLiveNotice } from "../api/simultaneousLiveNoticeApi"
+import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
 
 vi.mock("../api/simultaneousLiveNoticeApi", () => ({
   fetchSimultaneousLiveNotice: vi.fn(),
@@ -127,3 +128,50 @@ describe("SimultaneousLiveNotice", () => {
     setViewport(1024)
   })
 })
+
+describe("SimultaneousLiveNotice labels", () => {
+  it.each([
+    ["zh-TW", "同時直播預告"],
+    ["ja", "同時配信のお知らせ"],
+    ["en", "Simultaneous stream heads-up"],
+  ] as const)("shows the exact %s label as the heading and as the control's accessible name, on a phone and on a desktop", async (locale, label) => {
+    window.localStorage.setItem("yobi.locale", locale)
+    resetAllSharedStateForTests() // the locale store reads localStorage once; re-read it for this locale
+    for (const [width, role] of [
+      [390, "checkbox"],
+      [1366, "switch"],
+    ] as const) {
+      setViewport(width)
+      const view = render(<SimultaneousLiveNotice />)
+
+      expect(await screen.findByRole("heading", { name: label })).toBeInTheDocument()
+      expect(screen.getByRole(role, { name: label })).toBeInTheDocument()
+      view.unmount()
+    }
+    setViewport(1024)
+    window.localStorage.setItem("yobi.locale", "en")
+    resetAllSharedStateForTests()
+  })
+
+  it("the old zh-TW label 同時開播預告 is gone from every zh-TW UI string", async () => {
+    const { t } = await import("../../../shared/i18n/translations")
+    expect(t("zh-TW", "notificationSettings.simultaneousLive.title")).toBe("同時直播預告")
+    expect(t("zh-TW", "notificationSettings.simultaneousLive.title")).not.toContain("同時開播預告")
+  })
+
+  it("on a phone the stored setting decides the checkbox state, and a tap writes the new value through the existing preference call", async () => {
+    setViewport(390)
+    vi.mocked(fetchSimultaneousLiveNotice).mockResolvedValue(true)
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    render(<SimultaneousLiveNotice />)
+
+    const box = await screen.findByRole("checkbox", { name: "Simultaneous stream heads-up" })
+    await waitFor(() => expect(box).toBeChecked())
+    await user.click(box)
+
+    await waitFor(() => expect(box).not.toBeChecked())
+    expect(saveSimultaneousLiveNotice).toHaveBeenLastCalledWith(false)
+    setViewport(1024)
+  })
+})
+
