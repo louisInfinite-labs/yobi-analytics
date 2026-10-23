@@ -1,6 +1,9 @@
-/** A YouTube Premiere's NEW / unwatched behavior on the REAL HomePage. The backend's newContent eligibility lists a Premiere from the moment it was discovered,
- * but the video only becomes NEW (and counts as unwatched) once its archive is confirmed available; opening its waiting page or a pending-archive entry never
- * marks it watched. The same videoId is used at every stage, and each stage is a separate render over the same persisted browser state (as a revisit would be).
+/** A YouTube Premiere's NEW / unwatched behavior on the REAL HomePage. The backend's newContent eligibility lists a Premiere from the moment it was discovered, but the video only
+ * becomes NEW (and counts as unwatched) once its archive is confirmed available; at every earlier stage (announced/upcoming, airing, archive pending or handed off) it is visible
+ * but neither counted nor badged, so the count never moves until a watchable archive exists. Opening its waiting page or a pending-archive entry never marks it watched. At every
+ * pre-archive stage the API also serves a bare provisional row for the same videoId (built from the announcement event, carrying the Premiere's scheduled start): it must never
+ * hide the stream/placeholder row, nor be counted or badged itself. The same videoId is used at every stage, and each stage is a separate render over the same persisted
+ * browser state (as a revisit would be).
  * Only `fetch` and the YouTube IFrame API are faked. */
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -34,13 +37,15 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const inHours = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString()
 
 /** The lifecycle stage the faked backend is in for the one Premiere under test. */
-type Stage = "upcoming" | "pending" | "handedOff" | "archived"
+type Stage = "upcoming" | "airing" | "pending" | "handedOff" | "archived"
 let stage: Stage
 /** When set, /live-streams answers only after it resolves (a delayed response); when true it fails with a server error. */
 let liveStreamsGate: Promise<void> | null
 let liveStreamsFails: boolean
 /** Extra fields for the Premiere replay row of the "archived" stage (for example the archive-availability time the backend attaches). */
 let replayRowFields: Record<string, unknown>
+/** Whether the API also serves the bare provisional row built from the announcement event while the Premiere has no archive yet (what it does for an announced Premiere). */
+let provisionalRow: boolean
 
 /** Videos the faked /videos/recent archive page serves, and the ids its newContent eligibility lists (the Premiere is always listed: it has been discovered). */
 function archivePage() {
@@ -48,6 +53,12 @@ function archivePage() {
     { videoId: OTHER_UPLOAD, title: "Ordinary upload", publishedAt: "2026-10-20T10:00:00Z", contentType: "upload", currentViewCount: 1, discoveredAt: "2026-10-20T10:00:00Z" },
     { videoId: LIVE_ARCHIVE, title: "Completed livestream", publishedAt: "2026-10-19T10:00:00Z", contentType: "live", liveStatus: "completed", currentViewCount: 1, discoveredAt: "2026-10-19T10:00:00Z" },
   ]
+  if (provisionalRow && stage !== "archived") {
+    // The announcement's provisional row: no contentType, the creation date as publishedAt (long before the Premiere airs), discovered now.
+    // The API presents the scheduled start as publishedAt and also serves it as scheduledStart (the marker of an announced Premiere); the creation date is never exposed.
+    const start = stage === "upcoming" ? inHours(48) : stage === "airing" ? inHours(-1) : inHours(-3)
+    rows.push({ videoId: PREMIERE, title: "Premiere announced (provisional)", publishedAt: start, scheduledStart: start, contentType: null, currentViewCount: 0, discoveredAt: inHours(-1), provisional: true })
+  }
   if (stage === "archived") {
     rows.unshift({ videoId: PREMIERE, title: "Premiere replay", publishedAt: inHours(-3), contentType: "upload", currentViewCount: 1, discoveredAt: "2026-10-18T10:00:00Z", ...replayRowFields })
   }
@@ -119,6 +130,7 @@ beforeEach(() => {
   liveStreamsGate = null
   liveStreamsFails = false
   replayRowFields = {}
+  provisionalRow = true
   installApi()
   vi.mocked(loadYouTubeIframeApi).mockReset()
   vi.mocked(loadYouTubeIframeApi).mockResolvedValue({ PlayerState: { PLAYING: 1 }, Player: class {} } as never)
@@ -183,6 +195,7 @@ describe("a Premiere before its archive is confirmed", () => {
     expect(hasBadge(row)).toBe(false)
     expect(unwatchedCounts()).toEqual(["1", "1"]) // only the ordinary upload and the completed livestream
     expect(screen.getAllByRole("button", { name: /Premiere waiting page/ }).length).toBeGreaterThan(0) // also visible in the Video List
+    expect(() => activityRow("Premiere announced (provisional)")).toThrow() // the provisional row never replaces or duplicates the stream row
   })
 
   it.each([
@@ -194,7 +207,23 @@ describe("a Premiere before its archive is confirmed", () => {
 
     const row = await waitFor(() => activityRow("Premiere ended, archive pending"))
     expect(hasBadge(row)).toBe(false)
-    expect(unwatchedCounts()).toEqual(["1", "1"])
+    expect(unwatchedCounts()).toEqual(["1", "1"]) // the pending placeholder wins over the provisional announcement row, so the Premiere stays out of the count
+    expect(() => activityRow("Premiere announced (provisional)")).toThrow()
+  })
+
+  it("the provisional announcement row never decides the Premiere's position: it sorts by its real start, first in Recent Activity, not by its creation date", async () => {
+    for (const next of ["upcoming", "pending"] as const) {
+      stage = next
+      resetHomeSelectedVideoForTests()
+      const view = await renderHome()
+      const titles = await waitFor(() => {
+        const found = Array.from(document.querySelectorAll(".oshi-status__recent-video-link")).map((node) => node.textContent)
+        if (!found.some((title) => title?.startsWith("Premiere"))) throw new Error("not rendered yet")
+        return found
+      })
+      expect(titles[0]?.startsWith("Premiere")).toBe(true) // 2026-10-01 (creation date) would have put it last
+      view.unmount()
+    }
   })
 
   it("opening the waiting page selects it in the player but never marks it watched", async () => {
@@ -228,6 +257,27 @@ describe("a Premiere before its archive is confirmed", () => {
       expect(seen()).not.toContain(PREMIERE)
       view.unmount()
     }
+  })
+})
+
+describe("the airing window: the Premiere has left the live list and no ended record exists yet", () => {
+  it("only the provisional announcement row is served for the videoId: it is visible, but neither counted nor badged, and sorts by the Premiere's start", async () => {
+    stage = "airing" // /live-streams lists nothing for it, recentlyEnded is empty, the API still serves the provisional row
+    await renderHome()
+
+    const row = await waitFor(() => activityRow("Premiere announced (provisional)"))
+    expect(hasBadge(row)).toBe(false)
+    expect(unwatchedCounts()).toEqual(["1", "1"]) // the count stays exactly where it was while announced
+    expect(Array.from(document.querySelectorAll(".oshi-status__recent-video-link")).map((node) => node.textContent)[0]).toBe("Premiere announced (provisional)") // not at its creation date
+  })
+
+  it("opening it from there never marks it watched", async () => {
+    stage = "airing"
+    await renderHome()
+    await userEvent.setup().click(await waitFor(() => titleButton(activityRow("Premiere announced (provisional)"))))
+
+    await waitFor(() => expect(playerSrc()).toContain(`/embed/${PREMIERE}?`))
+    expect(seen()).not.toContain(PREMIERE)
   })
 })
 
@@ -292,6 +342,8 @@ describe("mark all watched", () => {
     await userEvent.setup().click(await screen.findByRole("button", { name: "Mark all watched" }))
     await waitFor(() => expect(seen()).toContain(OTHER_UPLOAD))
     expect(seen()).not.toContain(PREMIERE)
+    expect(unwatchedCounts()).toEqual(["0", "1"]) // the upload was marked; the Premiere was never in the count
+    expect(screen.getByRole("button", { name: "Mark all watched" })).toBeDisabled() // nothing outstanding any more
     upcoming.unmount()
 
     stage = "archived"
@@ -412,7 +464,7 @@ describe("before the live status has answered", () => {
     expect(hasBadge(activityRow("Premiere waiting page"))).toBe(false)
   })
 
-  it("a pending-archive stream is not counted at any moment of the load either", async () => {
+  it("a pending-archive Premiere is not counted at any moment of the load either", async () => {
     stage = "pending"
     let openGate: () => void = () => undefined
     liveStreamsGate = new Promise<void>((resolve) => (openGate = resolve))
@@ -424,10 +476,51 @@ describe("before the live status has answered", () => {
     await waitFor(() => expect(unwatchedCounts()).toEqual(["1", "1"]))
     seenCounts.push(unwatchedCounts())
 
+    expect(seenCounts[0]).toEqual(["—", "—"]) // unavailable until the live status is known
     expect(seenCounts.flat().filter((value) => value === "2")).toHaveLength(0) // the Premiere was never added on top of the upload
   })
 })
 
+
+describe("one fixed videoId through the whole lifecycle", () => {
+  it("is not counted and has no NEW badge at any pre-archive stage, becomes counted once and NEW only on the confirmed archive, is never marked by a waiting-page click, and stops counting once watched", async () => {
+    const trail: Array<{ stage: Stage; count: string; badge: boolean; title: string }> = []
+    for (const next of ["upcoming", "airing", "pending", "handedOff", "archived"] as const) {
+      stage = next
+      replayRowFields = next === "archived" ? { archiveAvailableAt: inHours(-2) } : {}
+      resetAllSharedStateForTests()
+      selectCreatorA()
+      resetHomeSelectedVideoForTests()
+      const view = await renderHome()
+      const title = next === "upcoming" ? "Premiere waiting page" : next === "archived" ? "Premiere replay" : next === "airing" ? "Premiere announced (provisional)" : "Premiere ended, archive pending"
+      const row = await waitFor(() => activityRow(title))
+      await waitFor(() => expect(unwatchedCounts()[0]).toMatch(/^\d+$/))
+      trail.push({ stage: next, count: unwatchedCounts()[0], badge: hasBadge(row), title })
+      if (next !== "archived") {
+        await userEvent.setup().click(titleButton(row)) // a click on the waiting page / pending entry is not watching the finished video
+        await waitFor(() => expect(playerSrc()).toContain(`/embed/${PREMIERE}?`))
+        expect(seen()).not.toContain(PREMIERE)
+      }
+      view.unmount()
+    }
+    expect(trail.map((entry) => [entry.stage, entry.count, entry.badge])).toEqual([
+      ["upcoming", "1", false],
+      ["airing", "1", false],
+      ["pending", "1", false],
+      ["handedOff", "1", false],
+      ["archived", "2", true],
+    ])
+
+    stage = "archived"
+    resetAllSharedStateForTests()
+    selectCreatorA()
+    resetHomeSelectedVideoForTests()
+    await renderHome()
+    await userEvent.setup().click(await waitFor(() => titleButton(activityRow("Premiere replay"))))
+    await waitFor(() => expect(seen()).toEqual([PREMIERE]))
+    expect(unwatchedCounts()).toEqual(["1", "1"]) // watched once: no longer counted, and nothing else changed
+  })
+})
 
 describe("returning long after the archive became available", () => {
   const FIRST_VISIT = "2026-10-19T09:50:00.000Z"
@@ -457,10 +550,10 @@ describe("returning long after the archive became available", () => {
     expect(unwatchedCounts()).toEqual(["1", "1"])
   })
 
-  it("the same videoId is counted once through every stage of a revisit sequence", async () => {
+  it("the same videoId is counted once through every stage of a revisit sequence ", async () => {
     window.localStorage.setItem(BASELINE_KEY, FIRST_VISIT)
     const countsAtEachStage: string[] = []
-    for (const next of ["upcoming", "pending", "handedOff", "archived"] as const) {
+    for (const next of ["upcoming", "airing", "pending", "handedOff", "archived"] as const) {
       stage = next
       replayRowFields = next === "archived" ? { archiveAvailableAt: "2026-10-19T11:00:00Z" } : {}
       resetAllSharedStateForTests()
@@ -472,6 +565,6 @@ describe("returning long after the archive became available", () => {
       view.unmount()
     }
 
-    expect(countsAtEachStage).toEqual(["1", "1", "1", "2"]) // only the ordinary upload until the archive is available, then the replay joins once
+    expect(countsAtEachStage).toEqual(["1", "1", "1", "1", "2"]) // only the ordinary upload until the archive is available (no dip, no rise), then the replay joins once
   })
 })

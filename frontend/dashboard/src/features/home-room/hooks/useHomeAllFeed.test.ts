@@ -308,3 +308,98 @@ describe("useHomeAllFeed: the archive-pending gap (ended, not yet verified avail
     ])
   })
 })
+
+describe("useHomeAllFeed: one row per videoId when the sources collide", () => {
+  beforeEach(() => {
+    vi.mocked(newContentTrackingModule.useNewContent).mockReturnValue({ isNew: () => false, isUnseen: () => false, markSeen: () => {}, baseline: "2026-01-01T00:00:00.000Z" })
+  })
+
+  /** The row the API builds from an ANNOUNCEMENT event: a not-watchable premiere ordered by its scheduled start (never its creation date). */
+  const announced = (videoId: string, start = "2026-10-23T10:00:00Z") => ({
+    videoId,
+    title: "Announced Premiere (provisional)",
+    publishedAt: start,
+    eventAt: start,
+    contentFormat: "premiere" as const,
+    discoveredAt: "2026-10-23T04:00:00Z",
+    announcedPremiere: true,
+  })
+  /** An ordinary newly discovered video's provisional row: no scheduled start, mapped as a normal video. */
+  const ordinaryProvisional = (videoId: string, overrides: Record<string, unknown> = {}) => ({
+    videoId,
+    title: "Fresh upload",
+    publishedAt: "2026-10-23T03:00:00Z",
+    contentFormat: "normal_video" as const,
+    discoveredAt: "2026-10-23T04:00:00Z",
+    ...overrides,
+  })
+
+  it("an archive-pending placeholder replaces the announced Premiere's row and keeps the Premiere's real start as its time", () => {
+    mockStreams([], [ended("p1", "pending", { actualStart: "2026-10-23T10:00:00Z", scheduledStart: "2026-10-23T10:00:00Z" })])
+    emptyPage({ videos: [announced("p1"), { videoId: "other", title: "Other", publishedAt: "2026-10-22T10:00:00Z", contentFormat: "normal_video" as const }] })
+
+    const { result } = renderHook(() => useHomeAllFeed(CREATOR.creatorId))
+
+    const rows = result.current.videos
+    expect(rows.map((v) => v.videoId)).toEqual(["p1", "other"]) // one p1, ordered by its real start
+    expect(rows[0]).toMatchObject({ contentFormat: "archive_pending", eventAt: "2026-10-23T10:00:00Z" })
+    expect(rows[0].announcedPremiere).toBeUndefined()
+  })
+
+  it("the same holds for a handed-off archive", () => {
+    mockStreams([], [ended("p1", "handed_off_to_daily_task", { actualStart: "2026-10-23T10:00:00Z" })])
+    emptyPage({ videos: [announced("p1")] })
+
+    const { result } = renderHook(() => useHomeAllFeed(CREATOR.creatorId))
+
+    expect(result.current.videos).toHaveLength(1)
+    expect(result.current.videos[0].contentFormat).toBe("archive_pending")
+  })
+
+  it("an upcoming Premiere stream row wins over the announced row and sorts by its scheduled start", () => {
+    mockStreams([{ ...UPCOMING, videoId: "p1", status: "premiere", scheduledStart: "2026-10-25T10:00:00Z" }])
+    emptyPage({ videos: [announced("p1"), { videoId: "other", title: "Other", publishedAt: "2026-10-22T10:00:00Z", contentFormat: "normal_video" as const }] })
+
+    const { result } = renderHook(() => useHomeAllFeed(CREATOR.creatorId))
+
+    expect(result.current.videos.map((v) => [v.videoId, v.contentFormat])).toEqual([["p1", "premiere"], ["other", "normal_video"]])
+  })
+
+  it("while the Premiere is airing (no stream row, no ended record yet) the announced row is the one visible, not-watchable row, ordered by its start", () => {
+    mockStreams([], [])
+    emptyPage({ videos: [{ videoId: "other", title: "Other", publishedAt: "2026-10-22T10:00:00Z", contentFormat: "normal_video" as const }, announced("p1", "2026-10-23T09:00:00Z")] })
+
+    const { result } = renderHook(() => useHomeAllFeed(CREATOR.creatorId))
+
+    expect(result.current.videos.map((v) => [v.videoId, v.contentFormat])).toEqual([["p1", "premiere"], ["other", "normal_video"]])
+  })
+
+  it("a confirmed archive row wins over a stale placeholder", () => {
+    mockStreams([], [ended("p1", "pending")])
+    const confirmed = { videoId: "p1", title: "Replay", publishedAt: "2026-10-23T10:00:00Z", contentFormat: "normal_video" as const, archiveAvailableAt: "2026-10-23T12:00:00Z" }
+    emptyPage({ videos: [confirmed] })
+
+    const { result } = renderHook(() => useHomeAllFeed(CREATOR.creatorId))
+
+    expect(result.current.videos).toHaveLength(1)
+    expect(result.current.videos[0]).toMatchObject({ title: "Replay", contentFormat: "normal_video", archiveAvailableAt: "2026-10-23T12:00:00Z" })
+  })
+
+  it("ordinary livestream behavior is unchanged: an ordinary provisional row keeps beating a pending placeholder exactly as before, and a live-now stream is one row", () => {
+    mockStreams([{ ...UPCOMING, videoId: "now", status: "live", actualStart: "2026-10-23T09:00:00Z", scheduledStart: "2026-10-23T09:00:00Z" }], [ended("done", "pending")])
+    emptyPage({ videos: [ordinaryProvisional("done", { title: "Done stream" })] })
+
+    const { result } = renderHook(() => useHomeAllFeed(CREATOR.creatorId))
+
+    expect(result.current.videos.map((v) => [v.videoId, v.contentFormat, v.title])).toEqual([["now", "live_now", "Anniversary goods"], ["done", "normal_video", "Done stream"]])
+  })
+
+  it("a provisional row with no other source is shown exactly as before", () => {
+    mockStreams([])
+    emptyPage({ videos: [ordinaryProvisional("fresh")] })
+
+    const { result } = renderHook(() => useHomeAllFeed(CREATOR.creatorId))
+
+    expect(result.current.videos).toEqual([expect.objectContaining({ videoId: "fresh", title: "Fresh upload", publishedAt: "2026-10-23T03:00:00Z" })])
+  })
+})

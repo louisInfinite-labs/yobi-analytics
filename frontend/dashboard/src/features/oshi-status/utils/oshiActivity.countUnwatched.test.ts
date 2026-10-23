@@ -114,3 +114,32 @@ describe("unwatchedVideoIds", () => {
     expect(unwatchedVideoIds(undefined, [], state(), NOW)).toEqual([])
   })
 })
+
+describe("an announced Premiere row and ordinary livestreams", () => {
+  it("an announced Premiere's own row (not watchable yet) is never counted, whatever the backend eligibility or the NEW judgement says", () => {
+    const row: RecentVideo = { videoId: "announced", title: "p", publishedAt: "2026-10-17T01:00:00Z", eventAt: "2026-10-17T01:00:00Z", contentFormat: "premiere", announcedPremiere: true, discoveredAt: "2026-10-17T00:00:00Z" }
+
+    expect(countUnwatched({ videoIds: [], livestreamIds: [], unclassifiedIds: ["announced"] }, [row], state([], () => true), NOW)).toEqual({ videos: 0, livestreams: 0 })
+    expect(unwatchedVideoIds({ videoIds: [], livestreamIds: [], unclassifiedIds: ["announced"] }, [row], state([], () => true), NOW)).toEqual([])
+  })
+
+  it("live-upcoming and live-now ordinary streams keep their established behavior: never counted", () => {
+    const eligibility = { videoIds: [], livestreamIds: ["upcoming-stream", "live-stream"], unclassifiedIds: [] }
+    const rows: RecentVideo[] = [
+      { videoId: "upcoming-stream", title: "u", publishedAt: "2026-10-18T10:00:00Z", eventAt: "2026-10-18T10:00:00Z", contentFormat: "live_upcoming" },
+      { videoId: "live-stream", title: "l", publishedAt: "2026-10-17T02:00:00Z", eventAt: "2026-10-17T02:00:00Z", contentFormat: "live_now" },
+    ]
+
+    expect(countUnwatched(eligibility, rows, state(), NOW)).toEqual({ videos: 0, livestreams: 0 })
+  })
+
+  it("a completed livestream archive is still counted as a livestream and an ordinary provisional (normal) row as a video", () => {
+    const eligibility = { videoIds: [], livestreamIds: ["archive"], unclassifiedIds: ["fresh"] }
+    const rows: RecentVideo[] = [
+      { videoId: "archive", title: "a", publishedAt: "2026-10-17T01:00:00Z", contentFormat: "live_archive" },
+      { videoId: "fresh", title: "f", publishedAt: "2026-10-17T01:30:00Z", contentFormat: "normal_video" },
+    ]
+
+    expect(countUnwatched(eligibility, rows, state(), NOW)).toEqual({ videos: 1, livestreams: 1 })
+  })
+})

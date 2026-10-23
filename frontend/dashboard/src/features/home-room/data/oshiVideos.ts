@@ -19,6 +19,10 @@ interface ShelfVideoDto {
   discoveredAt?: string | null
   /** Only on a completed Premiere's row: when the lifecycle verified its replay available (see read_api's overlay). */
   archiveAvailableAt?: string | null
+  /** The backend marks a row it assembled from a discovery event (or the verified-archive overlay) until the daily run replaces it. */
+  provisional?: boolean | null
+  /** Only on an announced upcoming Premiere's provisional row: its scheduled start. */
+  scheduledStart?: string | null
 }
 
 /** GET .../videos/recent's `newContent` (only present when the request carried `newSince`): the NEW-eligible part of the WHOLE list as exact
@@ -60,15 +64,20 @@ export interface OshiVideosPage {
  * A video whose publishedAt is unknown gets the epoch: it still renders (with
  * no date) rather than being dropped. */
 function toRecentVideo(dto: ShelfVideoDto): RecentVideo {
+  // An announced Premiere (a provisional row with a scheduled start, no contentType and no confirmed archive time) is not a watchable video yet: it is the Premiere's row, in
+  // the not-yet-watchable "premiere" format and ordered by its scheduled start, exactly like its live-list row -- so it is never counted, never NEW and never marked watched
+  // while the Premiere is airing or its end is not confirmed yet. Any other provisional row (an ordinary new video) is mapped as before.
+  const announced = Boolean(dto.provisional && !dto.contentType && dto.scheduledStart && !dto.archiveAvailableAt)
   return {
     videoId: dto.videoId,
     title: dto.title ?? "",
     publishedAt: dto.publishedAt ?? new Date(0).toISOString(),
-    contentFormat: dto.contentType === "live" ? "live_archive" : dto.contentType === "short" ? "shorts" : "normal_video",
+    contentFormat: announced ? "premiere" : dto.contentType === "live" ? "live_archive" : dto.contentType === "short" ? "shorts" : "normal_video",
     viewCount: dto.currentViewCount,
     thumbnailUrl: dto.thumbnailUrl ?? null,
     discoveredAt: dto.discoveredAt ?? null,
     ...(dto.archiveAvailableAt ? { archiveAvailableAt: dto.archiveAvailableAt } : {}),
+    ...(announced ? { announcedPremiere: true, eventAt: dto.scheduledStart as string } : {}),
   }
 }
 
