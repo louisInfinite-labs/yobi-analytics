@@ -334,6 +334,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     # The one-time Premiere reminders: an optional, separate step that must never turn a finished livestream-reminder run into a failed one.
     premiere: dict[str, int] | None = None
     premiere_unserved = 0
+    premiere_failed = False
     try:
         premiere = _deliver_premiere_reminders(
             premiere_schedule,
@@ -347,6 +348,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         premiere_unserved = premiere["unserved"]
     except Exception as exc:  # noqa: BLE001 -- the Premiere reminders are separate from the livestream reminders; whatever goes wrong there stays there
         print(f"Warning: Premiere reminders failed ({type(exc).__name__}): {exc}")
+        premiere_failed = True  # the minute was not served: leave the gap for the next run's recovery instead of moving the marker past it
     if candidates_total and len(failures) + unserved == candidates_total and failures:
         raise failures[-1]  # nothing worked for anybody: a systemic fault must reach the Lambda's error metric, not hide in a 200
     if unserved or premiere_unserved:
@@ -354,8 +356,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             f"Warning: {unserved + premiere_unserved} due recipient(s) were not started before the Lambda deadline; the next run serves them as recovered reminders "
             f"(an advance reminder with the real time left, a start reminder for {int(_START_RECOVERY_GRACE.total_seconds() // 60)} minutes)"
         )
-    else:
-        # Only a COMPLETE run moves the container's memory forward; a cut-short one leaves the gap for the next run to cover.
+    elif not premiere_failed:
+        # Only a COMPLETE run moves the container's memory forward; a cut-short one -- or one whose Premiere step failed as a whole -- leaves the gap
+        # for the next run to cover.
         anchor_ms = int(instants[-1].timestamp() * 1000)
         _last_served_ms = anchor_ms if _last_served_ms is None else max(_last_served_ms, anchor_ms)
 

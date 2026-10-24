@@ -456,6 +456,110 @@ def test_the_premiere_schedule_rides_in_the_existing_record_with_no_extra_read(w
     assert not any(key.startswith(premiere_reminder.PREMIERE_REMINDER_KEY_PREFIX) for key in reads)
 
 
+# ============ a failed Premiere step never moves the recovery marker ============
+
+
+def _marker_ms(moment: datetime) -> int:
+    """The epoch-millisecond value the dispatcher's recovery marker takes for a run whose own instant is `moment`."""
+    return int(moment.timestamp() * 1000)
+
+
+def test_a_failed_premiere_step_leaves_the_minute_for_recovery_and_the_next_run_delivers_it_once(world, recovery, monkeypatch):
+    """A DynamoDB index-query failure while finding the holders of a due Premiere must not make the reminder vanish: the failure is swallowed (it never
+    fails the livestream reminders) but the recovery marker stays put, so the next run serves the minute again and the reminder is delivered exactly once."""
+    from stores.remote_config_store import RemoteConfigStoreError
+
+    _choose(world, "10min")
+    first_run = _target("10min") - timedelta(seconds=60)
+    world.run(first_run)  # an ordinary served minute: the marker is now at this run's instant
+    assert notification_dispatcher._last_served_ms == _marker_ms(first_run)
+
+    original = world._list_by_key
+    broken = {"on": True}
+
+    def flaky(key):
+        """The configKey-index Query of the Premiere reminder holders fails while `broken` is on; every other key is served normally."""
+        if broken["on"] and key.startswith(premiere_reminder.PREMIERE_REMINDER_KEY_PREFIX):
+            raise RemoteConfigStoreError("Failed to query YobiRemoteConfig by configKey: throttled")
+        return original(key)
+
+    monkeypatch.setattr(remote_config_store, "list_by_key", flaky)
+
+    failed_run = _target("10min") + timedelta(seconds=10)
+    world.run(failed_run)  # the due minute: the Premiere step fails as a whole
+
+    assert world.pushes == []
+    assert notification_dispatcher._last_served_ms == _marker_ms(first_run)  # NOT advanced past the failed minute
+    assert _stored(world) is not None  # nothing was delivered, so nothing is consumed
+
+    broken["on"] = False
+    world.run(failed_run + timedelta(seconds=60))  # the next run recovers the minute that was never served
+
+    assert [push["data"]["reminderKind"] for push in world.pushes] == ["premiere_advance"]
+    assert notification_dispatcher._last_served_ms == _marker_ms(failed_run + timedelta(seconds=60))  # served completely now: the marker moves on
+    assert _stored(world) is None
+
+    world.run(failed_run + timedelta(seconds=120))
+    assert len(world.pushes) == 1  # and never again
+
+
+def test_a_failed_premiere_step_does_not_stop_a_livestream_reminder_in_the_same_minute(world, recovery, monkeypatch):
+    """The Premiere step is separate: a livestream reminder due in the same run is still delivered, and its own claim stops the recovery from re-sending it."""
+    from stores.remote_config_store import RemoteConfigStoreError
+
+    world.add_client("c1", creator_reminders={"aizawa_ema": AT_START})
+    world.refresh_snapshot([_stream("live1"), _premiere()], SNAPSHOT_AT)
+    _choose(world, "at_start")
+    world.run(START - timedelta(seconds=60))
+    original = world._list_by_key
+
+    def flaky(key):
+        """Fails only for the Premiere holders' Query."""
+        if key.startswith(premiere_reminder.PREMIERE_REMINDER_KEY_PREFIX):
+            raise RemoteConfigStoreError("throttled")
+        return original(key)
+
+    monkeypatch.setattr(remote_config_store, "list_by_key", flaky)
+
+    world.run(START + timedelta(seconds=10))
+    assert [(push["data"]["videoId"], push["data"]["reminderKind"]) for push in world.pushes] == [("live1", "start")]  # the livestream reminder went out
+    assert notification_dispatcher._last_served_ms == _marker_ms(START - timedelta(seconds=60))  # the Premiere minute stays recoverable
+
+    monkeypatch.setattr(remote_config_store, "list_by_key", original)
+    world.run(START + timedelta(seconds=70))
+
+    assert sorted((push["data"]["videoId"], push["data"]["reminderKind"]) for push in world.pushes) == [("live1", "start"), ("p1", "premiere_start")]
+
+
+def test_recovery_after_a_partly_served_run_never_sends_a_reminder_twice(world, recovery, monkeypatch):
+    """The first instant of a run delivers, the Premiere step then fails on the second one: the next run re-serves the first instant, but the delivery
+    row claimed by the first send stops a second push -- even when the delivered reminder could not be consumed (deleted)."""
+    _choose(world, "10min")
+    first_run = _target("10min") - timedelta(seconds=60)
+    world.run(first_run)
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", lambda client_id, key: (_ for _ in ()).throw(RuntimeError("store down")))  # never consumed
+    original_due = premiere_reminder.due_entries
+    calls = {"count": 0}
+
+    def due_then_fail(entries, *, now_ms, window_ms):
+        """The second instant of the first recovering run raises, as a store or runtime error in the middle of the step would."""
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise RuntimeError("failure after the first instant was served")
+        return original_due(entries, now_ms=now_ms, window_ms=window_ms)
+
+    monkeypatch.setattr(premiere_reminder, "due_entries", due_then_fail)
+
+    world.run(_target("10min") + timedelta(seconds=150))  # instants: the missed fire minute (delivers), then the failing one
+    assert len(world.pushes) == 1
+    assert notification_dispatcher._last_served_ms == _marker_ms(first_run)  # the failed step kept the gap
+
+    world.run(_target("10min") + timedelta(seconds=210))  # recovers the same minutes again
+
+    assert len(world.pushes) == 1  # no duplicate: the claim of the first delivery holds
+    assert _stored(world) is not None  # the unconsumed item is inert
+
+
 # ============ the pure rules ============
 
 
