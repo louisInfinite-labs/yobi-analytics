@@ -2,7 +2,7 @@ import { apiRequest } from "../../../shared/api/apiClient"
 import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
 import { getOrCreateClientId } from "../../../shared/api/clientId"
 import { ALL_TOPICS_ID } from "../model/notificationTopicCatalog"
-import { REMINDER_TIME_VALUES, type ReminderSetting, type ReminderTimeValue } from "../model/notificationTopics"
+import { REMINDER_TIME_VALUES, type PremiereReminderTime, type ReminderSetting, type ReminderTimeValue } from "../model/notificationTopics"
 
 /** The backend's own reminder setting shape (src/notifications/live_reminder.py)
  * -- notifyAtStart and advanceReminder are independent, both-can-apply fields
@@ -35,7 +35,8 @@ export interface ReminderSettingsSnapshot {
   creatorAll: Record<string, LiveReminderSetting>
   creatorTopics: Record<string, Record<string, LiveReminderSetting>>
   streamOverrides: Record<string, StreamNotificationOverride>
-  /** The client's one-time Premiere reminders (videoId -> the ONE chosen time): a mechanism separate from the livestream settings above. */
+  /** The client's one-time Premiere reminders (videoId -> the ONE chosen time): a mechanism separate from the livestream settings above. A reminder saved
+   * before the 1-minute choice was retired can still read "1min": it is kept as stored (never converted) so it can be shown as retired and cancelled. */
   premiereReminders: Record<string, ReminderTimeValue>
 }
 
@@ -158,10 +159,10 @@ export async function saveStreamNotificationOverride(videoId: string, override: 
   })
 }
 
-/** Sets this client's ONE one-time reminder for one Premiere: exactly one of the five times (the same values as the Schedule control). The request
+/** Sets this client's ONE one-time reminder for one Premiere: exactly one of the four Premiere times (at the start, 10 minutes, 30 minutes, 1 hour). The request
  * carries the choice and the creator only -- never a start time: the backend always resolves the Premiere's CURRENT scheduled start itself. It is a
  * separate backend item from every livestream setting and is consumed by the backend once it has been delivered. */
-export async function savePremiereReminder(videoId: string, creatorId: string, reminder: ReminderTimeValue): Promise<void> {
+export async function savePremiereReminder(videoId: string, creatorId: string, reminder: PremiereReminderTime): Promise<void> {
   const clientId = getOrCreateClientId()
   await apiRequest(`/clients/${encodeURIComponent(clientId)}/premiere-reminder/${encodeURIComponent(videoId)}`, {
     method: "PUT",

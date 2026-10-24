@@ -4,7 +4,8 @@ A client picks ONE reminder time for ONE upcoming YouTube Premiere (from the Sch
 from the livestream reminders, because a Premiere is an uploaded video with a countdown, not a livestream:
 
     "premiereReminder#<videoId>"  -- {creatorId, reminder}; `reminder` is one of REMINDER_VALUES (exactly one: at the Premiere's scheduled start, or
-                                     1 minute / 10 minutes / 30 minutes / 1 hour before it). It is its OWN (clientId, configKey) item, so it is a
+                                     10 minutes / 30 minutes / 1 hour before it; a reminder already stored with the retired 1-minute choice,
+                                     LEGACY_REMINDER_VALUES, is still honored until delivered or cancelled but can no longer be saved). It is its OWN (clientId, configKey) item, so it is a
                                      single-item write that never reads or touches any other setting, and the existing configKey-index answers
                                      "which clients hold a reminder for this Premiere" with no new index or table.
 
@@ -44,9 +45,13 @@ PREMIERES_FIELD = "premieres"
 # The snapshot status of a still-upcoming YouTube Premiere (read_api._without_known_non_livestreams relabels it).
 STATUS_PREMIERE = "premiere"
 
-# Exactly the five choices of the Schedule control (frontend REMINDER_TIME_VALUES): at the scheduled start, or 1 / 10 / 30 / 60 minutes before it.
-REMINDER_VALUES: tuple[str, ...] = ("at_start", "1min", "10min", "30min", "1hour")
-REMINDER_OFFSET_MINUTES: dict[str, int] = {"at_start": 0, "1min": 1, "10min": 10, "30min": 30, "1hour": 60}
+# The choices a client can SAVE (the Schedule's Premiere control, frontend PREMIERE_REMINDER_TIME_VALUES): at the scheduled start, or 10 / 30 / 60 minutes
+# before it. The livestream reminders keep their own list (live_reminder.ADVANCE_REMINDER_OFFSET_MINUTES), which still includes 1 minute.
+REMINDER_VALUES: tuple[str, ...] = ("at_start", "10min", "30min", "1hour")
+# The retired 1-minute Premiere choice: no longer accepted when saving, but an item already stored with it keeps its delivery behavior (it is neither
+# converted to another time nor ignored) and can still be cancelled.
+LEGACY_REMINDER_VALUES: tuple[str, ...] = ("1min",)
+REMINDER_OFFSET_MINUTES: dict[str, int] = {"at_start": 0, "1min": 1, "10min": 10, "30min": 30, "1hour": 60}  # every offset a STORED item can hold
 
 # How long a Premiere whose scheduled start has passed stays in the stored schedule although the snapshot has relabeled it (see the module docstring).
 # It must outlast the at-start window plus the dispatcher's start-recovery grace, and it is dropped by the next derivation after that.
@@ -78,15 +83,18 @@ def premiere_reminder_key(video_id: str) -> str:
     return f"{PREMIERE_REMINDER_KEY_PREFIX}{live_reminder.parse_key_part(video_id, name='videoId')}"
 
 
-def parse_premiere_reminder(raw: Any, *, context: str = "premiere reminder") -> PremiereReminder:
-    """Validate an incoming/stored reminder value {creatorId, reminder}; raises live_reminder.ClientError (a safe 4xx message) otherwise."""
+def parse_premiere_reminder(raw: Any, *, context: str = "premiere reminder", allow_legacy: bool = False) -> PremiereReminder:
+    """Validate a reminder value {creatorId, reminder}; raises live_reminder.ClientError (a safe 4xx message) otherwise.
+
+    An INCOMING value (the API) accepts only REMINDER_VALUES. A STORED one is read with `allow_legacy`, which also accepts LEGACY_REMINDER_VALUES so a
+    reminder saved before the 1-minute choice was retired is still delivered."""
     if not isinstance(raw, dict):
         raise live_reminder.ClientError(f"{context} must be an object")
     creator_id = raw.get("creatorId")
     if not isinstance(creator_id, str) or not creator_id:
         raise live_reminder.ClientError(f"{context}.creatorId is required and must be a non-empty string")
     reminder = raw.get("reminder")
-    if reminder not in REMINDER_VALUES:
+    if reminder not in REMINDER_VALUES and not (allow_legacy and reminder in LEGACY_REMINDER_VALUES):
         raise live_reminder.ClientError(f"{context}.reminder must be one of {list(REMINDER_VALUES)}, got {reminder!r}")
     return PremiereReminder(creator_id=creator_id, reminder=reminder)
 
@@ -171,11 +179,11 @@ def derive_entries(streams: Iterable[Mapping[str, Any]], *, previous: Mapping[st
 
 
 def due_entries(entries: Mapping[str, PremiereEntry], *, now_ms: int, window_ms: int) -> dict[str, PremiereEntry]:
-    """The Premieres for which now_ms is the on-time minute of at least one of the five choices (in memory, no I/O)."""
+    """The Premieres for which now_ms is the on-time minute of at least one offset a stored reminder can hold (in memory, no I/O)."""
     return {
         video_id: entry
         for video_id, entry in entries.items()
-        if any(is_due(reminder, entry.scheduled_start_ms, now_ms=now_ms, window_ms=window_ms) for reminder in REMINDER_VALUES)
+        if any(is_due(reminder, entry.scheduled_start_ms, now_ms=now_ms, window_ms=window_ms) for reminder in REMINDER_OFFSET_MINUTES)
     }
 
 
@@ -191,7 +199,7 @@ def find_candidates(
     for video_id, entry in due.items():
         for record in remote_config_store.list_by_key(premiere_reminder_key(video_id)):
             try:
-                reminder = parse_premiere_reminder(record["value"], context=record.get("key", "premiere reminder"))
+                reminder = parse_premiere_reminder(record["value"], context=record.get("key", "premiere reminder"), allow_legacy=True)
             except live_reminder.ClientError as exc:
                 print(f"Warning: skipping invalid stored Premiere reminder for client {record.get('clientId')!r}: {exc}")
                 continue

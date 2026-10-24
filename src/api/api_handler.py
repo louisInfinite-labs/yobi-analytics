@@ -403,7 +403,7 @@ def _handle_put_premiere_reminder(event: dict[str, Any]) -> dict[str, Any]:
 
     One remote-config item per Premiere (premiere_reminder.premiere_reminder_key), written on its own and replacing the previous choice for that
     Premiere: it never reads or changes any livestream reminder, override or notification preference. The body is {creatorId, reminder} with exactly
-    one of the five reminder choices; the Premiere's start time is never stored here (the dispatcher uses the schedule's current one).
+    one of the four Premiere reminder choices (the retired 1-minute choice is refused); the Premiere's start time is never stored here (the dispatcher uses the schedule's current one).
     """
     params = _merged_params(event)
     client_id = heartbeat_api.parse_client_id(params.get("clientId"))
