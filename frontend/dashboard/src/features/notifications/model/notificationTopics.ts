@@ -22,6 +22,17 @@ export type ReminderSetting = ReminderTimeValue | null
 
 export const REMINDER_TIME_VALUES: readonly ReminderTimeValue[] = ["at_start", "1min", "10min", "30min", "1hour"]
 
+/** The times a ONE-TIME PREMIERE reminder can be saved with: the shared list without 1 minute (a Premiere reminder is never offered or accepted at that
+ * offset). The livestream reminders keep REMINDER_TIME_VALUES. A Premiere reminder saved earlier with "1min" can still exist (see
+ * liveReminderApi.fetchReminderSettings): it is read but never offered again. */
+export type PremiereReminderTime = Exclude<ReminderTimeValue, "1min">
+
+export const PREMIERE_REMINDER_TIME_VALUES: readonly PremiereReminderTime[] = ["at_start", "10min", "30min", "1hour"]
+
+export function isPremiereReminderTime(value: unknown): value is PremiereReminderTime {
+  return (PREMIERE_REMINDER_TIME_VALUES as readonly unknown[]).includes(value)
+}
+
 export const REMINDER_TIME_LABEL_KEYS: Record<ReminderTimeValue, TranslationKey> = {
   at_start: "notificationSettings.reminder.atStart",
   "1min": "notificationSettings.reminder.1min",

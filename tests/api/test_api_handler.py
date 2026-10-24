@@ -1186,15 +1186,15 @@ def test_put_premiere_reminder_writes_exactly_one_item_holding_one_choice_and_no
     assert [(r["clientId"], r["key"], r["value"]) for r in puts] == [("c1", "premiereReminder#p1", {"creatorId": "aizawa_ema", "reminder": "10min"})]
 
 
-@pytest.mark.parametrize("reminder", ["at_start", "1min", "10min", "30min", "1hour"])
-def test_put_premiere_reminder_accepts_exactly_the_five_choices(monkeypatch, client_secret, reminder):
+@pytest.mark.parametrize("reminder", ["at_start", "10min", "30min", "1hour"])
+def test_put_premiere_reminder_accepts_exactly_the_four_choices(monkeypatch, client_secret, reminder):
     monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
 
     assert _put_premiere_reminder("p1", {"creatorId": "aizawa_ema", "reminder": reminder}, client_secret)["statusCode"] == 200
 
 
-@pytest.mark.parametrize("reminder", ["off", "5min", "2hour", "", None, ["10min", "30min"], {"advanceReminder": "10min"}])
-def test_put_premiere_reminder_rejects_anything_but_one_of_the_five_choices(monkeypatch, client_secret, reminder):
+@pytest.mark.parametrize("reminder", ["1min", "off", "5min", "2hour", "", None, ["10min", "30min"], {"advanceReminder": "10min"}])
+def test_put_premiere_reminder_rejects_the_retired_one_minute_choice_and_anything_but_one_of_the_four(monkeypatch, client_secret, reminder):
     """Only ONE choice can be stored: a list of choices, a livestream-style {notifyAtStart, advanceReminder} object and an unknown value are all refused."""
     monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
 

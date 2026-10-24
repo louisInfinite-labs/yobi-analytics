@@ -6,6 +6,7 @@ import * as liveReminderApi from "../../notifications/api/liveReminderApi"
 import { ensurePushEnabled } from "../../notifications/push/pushGate"
 import { getCreatorById, toLegacyRosterId } from "../../../entities/creator/data/creatorRegistry"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
+import { readStylesheet, ruleBody } from "../../../test/readStylesheet"
 import type { ScheduledStream } from "../model/scheduledStream"
 
 // The one-time Premiere reminder in the SAME reminder panel the livestream reminder uses. The push gate is mocked (its own behavior is covered in
@@ -36,11 +37,11 @@ const premiere: ScheduledStream = {
 }
 const livestream: ScheduledStream = { ...premiere, id: "s2", videoId: "v1", status: "upcoming" }
 
-const CHOICES = ["at_start", "1min", "10min", "30min", "1hour"] as const
+const CHOICES = ["at_start", "10min", "30min", "1hour"] as const
 const LABELS = {
-  "zh-TW": ["首播時", "1 分鐘前", "10 分鐘前", "30 分鐘前", "1 小時前"],
-  ja: ["プレミア公開時", "1分前", "10分前", "30分前", "1時間前"],
-  en: ["At Premiere start", "1 minute before", "10 minutes before", "30 minutes before", "1 hour before"],
+  "zh-TW": ["首播時", "10 分鐘前", "30 分鐘前", "1 小時前"],
+  ja: ["プレミア公開時", "10分前", "30分前", "1時間前"],
+  en: ["At Premiere start", "10 minutes before", "30 minutes before", "1 hour before"],
 } as const
 const setting = (advanceReminder: "1min" | "10min" | "30min" | "1hour" | null) => ({ notifyAtStart: true, advanceReminder })
 
@@ -64,15 +65,16 @@ beforeEach(() => {
 })
 
 describe("StreamNotificationPanel for a Premiere", () => {
-  it.each(Object.entries(LABELS))("offers exactly the five timing choices in order, in %s", async (locale, labels) => {
+  it.each(Object.entries(LABELS))("offers exactly the four timing choices in order (no 1 minute), in %s", async (locale, labels) => {
     localStorage.setItem("yobi.locale", locale)
     resetAllSharedStateForTests() // the locale is cached by the shared state: re-read what was just stored
     render(<StreamNotificationPanel stream={premiere} onClose={() => {}} />)
 
     const radios = await screen.findAllByRole("radio")
 
-    expect(radios).toHaveLength(5)
+    expect(radios).toHaveLength(4)
     expect(radios.map((radio) => radio.closest("label")?.textContent)).toEqual([...labels])
+    expect(screen.queryByRole("radio", { name: /1 分鐘前|1分前|1 minute before/ })).not.toBeInTheDocument()
   })
 
   it("uses the Premiere wording, not the livestream wording, and the same drawer title and Save action", async () => {
@@ -246,12 +248,50 @@ describe("StreamNotificationPanel for a Premiere", () => {
     render(<StreamNotificationPanel stream={premiere} onClose={onClose} />)
     await screen.findAllByRole("radio")
 
-    await user.click(screen.getByRole("radio", { name: "1 minute before" }))
+    await user.click(screen.getByRole("radio", { name: "10 minutes before" }))
     await user.click(screen.getByRole("button", { name: /Save/ }))
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't save this reminder. Please try again.")
     expect(onClose).not.toHaveBeenCalled()
-    expect(screen.getByRole("radio", { name: "1 minute before" })).toBeChecked()
+    expect(screen.getByRole("radio", { name: "10 minutes before" })).toBeChecked()
+  })
+
+  it("a reminder saved earlier with the retired 1-minute choice shows nothing selected plus a retired hint, can be cancelled, and is never converted", async () => {
+    mockSettings({ premiereReminders: { p1: "1min" } })
+    const onClose = vi.fn()
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    render(<StreamNotificationPanel stream={premiere} onClose={onClose} />)
+    await screen.findAllByRole("radio")
+
+    expect(checkedLabels()).toHaveLength(0)
+    expect(await screen.findByText(/saved 1-minute reminder \(that option has been retired\)/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Save/ })).toBeDisabled() // nothing is sent unless the user picks a new time
+    expect(liveReminderApi.savePremiereReminder).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole("button", { name: "Cancel reminder" }))
+    await waitFor(() => expect(liveReminderApi.deletePremiereReminder).toHaveBeenCalledWith("p1"))
+    expect(liveReminderApi.savePremiereReminder).not.toHaveBeenCalled()
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
+  it("replacing a retired 1-minute reminder saves only the new time the user picked", async () => {
+    mockSettings({ premiereReminders: { p1: "1min" } })
+    const user = userEvent.setup({ pointerEventsCheck: 0 })
+    render(<StreamNotificationPanel stream={premiere} onClose={() => {}} />)
+    await screen.findAllByRole("radio")
+
+    await user.click(screen.getByRole("radio", { name: "10 minutes before" }))
+    await user.click(screen.getByRole("button", { name: /Save/ }))
+
+    await waitFor(() => expect(liveReminderApi.savePremiereReminder).toHaveBeenCalledWith("p1", "aizawa_ema", "10min"))
+    expect(liveReminderApi.savePremiereReminder).toHaveBeenCalledTimes(1)
+  })
+
+  it("the ordinary livestream panel still offers the 1-minute choice", async () => {
+    render(<StreamNotificationPanel stream={livestream} onClose={() => {}} />)
+
+    expect(await screen.findByRole("radio", { name: "1 minute before" })).toBeInTheDocument()
+    expect(screen.getAllByRole("radio")).toHaveLength(5)
   })
 
   it("regression: saving a reminder for an ordinary livestream still writes the livestream override and never a Premiere reminder", async () => {
@@ -264,5 +304,29 @@ describe("StreamNotificationPanel for a Premiere", () => {
 
     await waitFor(() => expect(liveReminderApi.saveStreamNotificationOverride).toHaveBeenCalledWith("v1", { creatorId: "aizawa_ema", notifyAtStart: true, advanceReminder: "10min" }))
     expect(liveReminderApi.savePremiereReminder).not.toHaveBeenCalled()
+  })
+})
+
+describe("the Premiere reminder's two-by-two option grid", () => {
+  it("marks only the Premiere panel's options control with the two-column modifier", async () => {
+    const { rerender } = render(<StreamNotificationPanel stream={premiere} onClose={() => {}} />)
+    await screen.findAllByRole("radio")
+    expect(document.querySelector(".stream-reminder-options")).toHaveClass("stream-reminder-options--premiere")
+
+    rerender(<StreamNotificationPanel stream={null} onClose={() => {}} />)
+    rerender(<StreamNotificationPanel stream={livestream} onClose={() => {}} />)
+    await screen.findAllByRole("radio")
+    expect(document.querySelector(".stream-reminder-options")).not.toHaveClass("stream-reminder-options--premiere")
+  })
+
+  it("is a balanced two-column grid of equal-width columns with a 44px touch height, while the livestream grid keeps three columns", async () => {
+    const css = await readStylesheet("src/pages/schedule/styles/schedule.css")
+    const base = ".stream-reminder-drawer .stream-reminder-options .ant-segmented-group"
+    const premiereGroup = ".stream-reminder-drawer .stream-reminder-options--premiere .ant-segmented-group"
+
+    expect(ruleBody(css, premiereGroup)).toMatch(/grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/)
+    expect(ruleBody(css, ".stream-reminder-drawer .stream-reminder-options--premiere .ant-segmented-item")).toMatch(/min-height:\s*44px/)
+    expect(ruleBody(css, base)).toMatch(/grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/) // the livestream reminder is unchanged
+    expect(css.indexOf(premiereGroup)).toBeGreaterThan(css.indexOf(base)) // equal specificity: the later Premiere rule wins
   })
 })

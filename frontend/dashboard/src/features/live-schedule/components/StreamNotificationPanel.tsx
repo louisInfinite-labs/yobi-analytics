@@ -3,7 +3,7 @@ import { Button, Drawer, Segmented } from "antd"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t } from "../../../shared/i18n/translations"
 import { ensurePushEnabled } from "../../notifications/push/pushGate"
-import { REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES } from "../../notifications/model/notificationTopics"
+import { isPremiereReminderTime, PREMIERE_REMINDER_TIME_VALUES, REMINDER_TIME_LABEL_KEYS, REMINDER_TIME_VALUES } from "../../notifications/model/notificationTopics"
 import { STREAM_REMINDER_OFF, usePremiereReminder, useStreamNotificationOverride, type StreamReminderChoice } from "../hooks/useStreamNotificationOverride"
 import type { ScheduledStream } from "../model/scheduledStream"
 
@@ -31,7 +31,7 @@ const NO_SELECTION = "__none__"
  * the creator's 全部 and topic reminders for this stream only and never changes them.
  *
  * For a Premiere (stream.status === "premiere") the SAME panel sets a different thing: the ONE-TIME Premiere reminder (usePremiereReminder). The control, the
- * five times and the Save / Remove interaction are identical, but the value is only this Premiere's own saved reminder (there is no creator fallback and no
+ * Save / Remove interaction and the times (except 1 minute, which a Premiere reminder no longer offers) are identical, but the value is only this Premiere's own saved reminder (there is no creator fallback and no
  * "advance and start" pair), the first choice reads 首播時 instead of 開播時, the texts say Premiere, and Remove cancels the reminder. */
 export function StreamNotificationPanel({ stream, onClose }: StreamNotificationPanelProps) {
   const [locale] = useLocale()
@@ -60,12 +60,15 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
   if (!stream) return null
 
   const isPremiere = stream.status === "premiere"
-  const options = REMINDER_TIME_VALUES.map((value) => ({
+  const options = (isPremiere ? PREMIERE_REMINDER_TIME_VALUES : REMINDER_TIME_VALUES).map((value) => ({
     value: value as StreamReminderChoice,
     label: t(locale, isPremiere && value === "at_start" ? "liveSchedule.premiereReminder.atStart" : REMINDER_TIME_LABEL_KEYS[value]),
   }))
   // A previously stored per-stream OFF override is not an offered choice any more: it reads as "nothing selected" here (Remove still clears it).
-  const shown = draft === STREAM_REMINDER_OFF ? null : draft
+  // A Premiere reminder saved before the 1-minute choice was retired still reads "1min": it matches no offered choice, so it shows as nothing selected
+  // (with its own hint and Cancel), is never converted to another time, and is replaced only by a choice the user picks and saves.
+  const retiredPremiereChoice = isPremiere && draft === "1min"
+  const shown = draft === STREAM_REMINDER_OFF || retiredPremiereChoice ? null : draft
   const hasOwnOverride = isPremiere ? getPremiereReminder(stream.videoId) !== null : getOverride(stream.videoId) !== null
 
   async function handleSave() {
@@ -77,7 +80,12 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
       // explanation + browser prompt on first use). Cancelled / denied / unavailable: nothing is saved, and the drawer stays open
       // with the user's pick intact (the gate already showed why).
       if ((await ensurePushEnabled()) !== "ready") return
-      await (isPremiere ? savePremiereReminder(stream, shown) : saveOverride(stream, shown))
+      if (isPremiere) {
+        if (!isPremiereReminderTime(shown)) return
+        await savePremiereReminder(stream, shown)
+      } else {
+        await saveOverride(stream, shown)
+      }
       onClose()
     } catch {
       // Keep the drawer open (the user's pick is still in `draft`) and say so,
@@ -112,7 +120,7 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
           {t(locale, isPremiere ? "liveSchedule.premiereReminderExplanationLine2" : "liveSchedule.streamReminderExplanationLine2")}
         </p>
         <Segmented
-          className="stream-reminder-options shared-filter-segmented"
+          className={`stream-reminder-options shared-filter-segmented${isPremiere ? " stream-reminder-options--premiere" : ""}`}
           value={shown ?? NO_SELECTION}
           options={options}
           onChange={(value) => {
@@ -123,7 +131,7 @@ export function StreamNotificationPanel({ stream, onClose }: StreamNotificationP
         />
         {shown === null ? (
           <p className="stream-reminder-section__description">
-            {t(locale, isPremiere ? "liveSchedule.premiereReminderUnsetHint" : "liveSchedule.streamReminderUnsetHint")}
+            {t(locale, retiredPremiereChoice ? "liveSchedule.premiereReminderRetiredHint" : isPremiere ? "liveSchedule.premiereReminderUnsetHint" : "liveSchedule.streamReminderUnsetHint")}
           </p>
         ) : null}
       </section>

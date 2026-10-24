@@ -17,7 +17,7 @@ from tests.notifications.test_notification_dispatcher import _preference_value
 from tests.notifications.test_scheduled_start_notifications import AT_START, SNAPSHOT_AT, START, Harness, _stream
 
 UTC = timezone.utc
-CHOICES = ("at_start", "1min", "10min", "30min", "1hour")
+CHOICES = ("at_start", "10min", "30min", "1hour")  # what a client can save (the retired 1-minute choice is in OFFSET only, for stored legacy items)
 OFFSET = {"at_start": 0, "1min": 1, "10min": 10, "30min": 30, "1hour": 60}
 URL = "/creator/aizawa-ema"
 
@@ -77,7 +77,7 @@ def test_the_exact_target_times_of_the_five_choices_for_a_local_evening_premiere
     def local(choice):
         return datetime.fromtimestamp(premiere_reminder.fire_at_ms(choice, start_ms) / 1000, tz=timezone(timedelta(hours=9))).strftime("%H:%M")
 
-    assert {choice: local(choice) for choice in CHOICES} == {"at_start": "19:00", "1min": "18:59", "10min": "18:50", "30min": "18:30", "1hour": "18:00"}
+    assert {choice: local(choice) for choice in CHOICES} == {"at_start": "19:00", "10min": "18:50", "30min": "18:30", "1hour": "18:00"}
 
 
 def test_an_advance_choice_sends_one_notification_and_no_additional_start_notification(world):
@@ -92,13 +92,13 @@ def test_an_advance_choice_sends_one_notification_and_no_additional_start_notifi
 
 def test_only_one_choice_exists_per_client_and_premiere_so_saving_again_replaces_it(world):
     _choose(world, "1hour")
-    _choose(world, "1min")  # the same item is overwritten by the next PUT
+    _choose(world, "10min")  # the same item is overwritten by the next PUT
 
     for minute in range(-70, 5):
         world.run(START + timedelta(minutes=minute, seconds=10))
 
     assert [push["data"]["reminderKind"] for push in world.pushes] == ["premiere_advance"]
-    assert world.pushes[0]["title"].endswith("1 分鐘後開始") or "1 minute" in world.pushes[0]["title"]
+    assert world.pushes[0]["title"].endswith("10 分鐘後開始") or "10 minutes" in world.pushes[0]["title"]
 
 
 def test_the_wording_is_premiere_specific_in_every_locale_and_never_claims_it_is_live(world):
@@ -122,7 +122,7 @@ def test_the_wording_is_premiere_specific_in_every_locale_and_never_claims_it_is
         ("en", "10min", "Premiere starts in 10 minutes"),
         ("ja", "30min", "のプレミア公開は30分後に開始"),
         ("zh-TW", "1hour", "的首播將於 1 小時後開始"),
-        ("zh-TW", "1min", "的首播將於 1 分鐘後開始"),
+        ("zh-TW", "10min", "的首播將於 10 分鐘後開始"),
     ],
 )
 def test_the_advance_wording_names_the_chosen_offset(world, locale, choice, expected):
@@ -312,7 +312,7 @@ def test_a_recovered_advance_reminder_names_the_real_time_left(world, recovery):
 
 
 def test_a_recovered_advance_reminder_is_dropped_once_the_start_is_too_close(world, recovery):
-    """1 minute before: a run that serves the minute late, after the 2-minute limit, sends nothing -- a stale 'in 1 minute' is never delivered."""
+    """A stored legacy 1-minute reminder: a run that serves the minute late, after the 2-minute limit, sends nothing -- a stale 'in 1 minute' is never delivered."""
     _choose(world, "1min")
     world.run(_target("1min") - timedelta(seconds=60))
 
@@ -565,7 +565,37 @@ def test_recovery_after_a_partly_served_run_never_sends_a_reminder_twice(world, 
 
 def test_the_five_choices_and_their_offsets_are_exactly_the_schedule_controls():
     assert premiere_reminder.REMINDER_VALUES == CHOICES
-    assert premiere_reminder.REMINDER_OFFSET_MINUTES == OFFSET
+    assert "1min" not in premiere_reminder.REMINDER_VALUES and premiere_reminder.LEGACY_REMINDER_VALUES == ("1min",)
+    assert premiere_reminder.REMINDER_OFFSET_MINUTES == OFFSET  # every offset a stored item can hold, the retired 1 minute included
+
+
+def test_the_retired_one_minute_choice_is_refused_when_saving_but_read_when_stored():
+    with pytest.raises(live_reminder.ClientError):
+        premiere_reminder.parse_premiere_reminder({"creatorId": "aizawa_ema", "reminder": "1min"})
+    assert premiere_reminder.parse_premiere_reminder({"creatorId": "aizawa_ema", "reminder": "1min"}, allow_legacy=True).reminder == "1min"
+    with pytest.raises(live_reminder.ClientError):  # the legacy allowance covers 1 minute only
+        premiere_reminder.parse_premiere_reminder({"creatorId": "aizawa_ema", "reminder": "5min"}, allow_legacy=True)
+
+
+def test_a_stored_legacy_one_minute_reminder_is_still_delivered_once_and_then_consumed(world):
+    """Existing behavior is preserved for a reminder saved before the choice was retired: it is not converted to another time and not ignored."""
+    _choose(world, "1min")
+
+    assert world.run(_target("10min") + timedelta(seconds=10))["delivered"] == 0  # never at another time
+    world.run(_target("1min") + timedelta(seconds=10))
+
+    assert [push["data"]["reminderKind"] for push in world.pushes] == ["premiere_advance"]
+    assert "1 minute" in world.pushes[0]["title"] or "1 分鐘" in world.pushes[0]["title"] or "1分後" in world.pushes[0]["title"]
+    assert _stored(world) is None
+    world.run(START + timedelta(seconds=10))
+    assert len(world.pushes) == 1
+
+
+def test_the_due_minute_of_a_stored_legacy_one_minute_reminder_is_still_found():
+    start_ms = 1_000_000_000_000
+    entries = {"p1": premiere_reminder.PremiereEntry("aizawa_ema", start_ms)}
+    assert premiere_reminder.due_entries(entries, now_ms=start_ms - 60_000, window_ms=60_000) == entries
+    assert premiere_reminder.due_entries(entries, now_ms=start_ms - 120_000, window_ms=60_000) == {}
 
 
 def test_parse_premiere_reminder_accepts_one_choice_and_a_creator_only():

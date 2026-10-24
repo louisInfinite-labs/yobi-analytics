@@ -998,6 +998,18 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   color: var(--oshi-text-1);
 }
 
+/* The one-time Premiere reminder offers four choices, so its grid is a balanced two-column, two-row one with equal-width columns (three columns
+   would leave a single orphan option on the second row). The livestream reminder keeps the three-column grid above. The 44px height keeps a
+   comfortable touch target for the larger two-column buttons. These rules sit after the base item rules on purpose: same specificity, the later
+   rule wins. */
+.stream-reminder-drawer .stream-reminder-options--premiere .ant-segmented-group {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stream-reminder-drawer .stream-reminder-options--premiere .ant-segmented-item {
+  min-height: 44px;
+}
+
 .stream-reminder-error {
   margin: 12px 0 0;
   color: var(--live-red);

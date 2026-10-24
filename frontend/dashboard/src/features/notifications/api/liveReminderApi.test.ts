@@ -163,7 +163,13 @@ describe("one-time Premiere reminders", () => {
     expect(settings.streamOverrides).toEqual({ p1: { creatorId: "aizawa_ema", ...setting("30min") } }) // a separate setting, never merged
   })
 
-  it("skips a stored Premiere reminder that is not exactly one of the five times", async () => {
+  it("keeps a Premiere reminder saved with the retired 1-minute choice as stored (never converted), so it can be shown as retired and cancelled", async () => {
+    vi.mocked(apiClient.apiRequest).mockResolvedValue({ configs: [item("premiereReminder#p1", { creatorId: "aizawa_ema", reminder: "1min" })] })
+
+    expect((await fetchReminderSettings()).premiereReminders).toEqual({ p1: "1min" })
+  })
+
+  it("skips a stored Premiere reminder that is not exactly one of the known times", async () => {
     vi.mocked(apiClient.apiRequest).mockResolvedValue({
       configs: [
         item("premiereReminder#p1", { creatorId: "aizawa_ema", reminder: "2hours" }),
@@ -178,7 +184,7 @@ describe("one-time Premiere reminders", () => {
     expect((await fetchReminderSettings()).premiereReminders).toEqual({ p5: "1hour" })
   })
 
-  it.each(["at_start", "1min", "10min", "30min", "1hour"] as const)("PUTs the single choice %s to the Premiere's own path with the creator and NO start time", async (reminder) => {
+  it.each(["at_start", "10min", "30min", "1hour"] as const)("PUTs the single choice %s to the Premiere's own path with the creator and NO start time", async (reminder) => {
     await savePremiereReminder("p 1", "aizawa_ema", reminder)
 
     expect(apiClient.apiRequest).toHaveBeenCalledWith("/clients/client%201/premiere-reminder/p%201", {
