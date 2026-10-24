@@ -67,6 +67,16 @@ DEV_ONLY_PACKAGES = {"pytest", "moto"}
 # (Roadmap 4.6's push_sender.py).
 SDIST_ONLY_PACKAGES = {"http-ece"}
 
+# GHSA-6q48-6c7w-9gw2 (October 2026): certifi releases before 2026.10.19 bundle the emSign ECC Root CA - G3, whose intermediate CA keys are compromised
+# (a forged certificate chain could be accepted by every HTTPS client that trusts certifi: botocore, requests/pywebpush, httplib2/google-api-python-client).
+# The Lambda package ships certifi itself, so neither the Lambda runtime nor pip protects it: the build refuses to produce a package containing it.
+MIN_CERTIFI_VERSION = (2026, 10, 19)
+FORBIDDEN_CA_LABELS = ("emSign ECC Root CA - G3",)
+
+
+class PackagingSecurityError(RuntimeError):
+    """The package would ship a vulnerable certifi (too old, or still carrying a distrusted root certificate)."""
+
 
 def _load_runtime_dependencies() -> list[str]:
     """Read requirements.txt, excluding dev/test-only packages not needed at runtime."""
@@ -76,6 +86,40 @@ def _load_runtime_dependencies() -> list[str]:
         for line in lines
         if line.strip() and line.split("==")[0].strip() not in DEV_ONLY_PACKAGES
     ]
+
+
+def _parse_version(text: str) -> tuple[int, ...]:
+    """Dotted numeric version ("2026.10.23") as a tuple of ints; any non-numeric tail is rejected rather than guessed."""
+    parts = text.strip().split(".")
+    if not parts or not all(part.isdigit() for part in parts):
+        raise PackagingSecurityError(f"cannot parse certifi version {text!r}")
+    return tuple(int(part) for part in parts)
+
+
+def check_certifi_security(site_dir: Path) -> str:
+    """Fail unless the certifi installed under `site_dir` (a build directory or a site-packages directory) is safe; returns its version.
+
+    Safe means: present, at least MIN_CERTIFI_VERSION, and its cacert.pem carries none of FORBIDDEN_CA_LABELS. Both conditions are checked because the
+    version alone could be spoofed by a hand-edited dist-info, and the bundle alone does not tell which release it came from.
+    """
+    metadata_files = sorted(site_dir.glob("certifi-*.dist-info/METADATA"))
+    if not metadata_files:
+        raise PackagingSecurityError(f"no certifi dist-info under {site_dir}: every HTTPS client in the package depends on it")
+    version_line = next((line for line in metadata_files[0].read_text(encoding="utf-8").splitlines() if line.startswith("Version: ")), None)
+    if version_line is None:
+        raise PackagingSecurityError(f"{metadata_files[0]} has no Version field")
+    version_text = version_line.removeprefix("Version: ").strip()
+    if _parse_version(version_text) < MIN_CERTIFI_VERSION:
+        minimum = ".".join(str(part) for part in MIN_CERTIFI_VERSION)
+        raise PackagingSecurityError(f"certifi {version_text} is older than {minimum} (GHSA-6q48-6c7w-9gw2: compromised emSign intermediates)")
+    bundle = site_dir / "certifi" / "cacert.pem"
+    if not bundle.is_file():
+        raise PackagingSecurityError(f"{bundle} is missing")
+    bundle_text = bundle.read_text(encoding="utf-8")
+    for label in FORBIDDEN_CA_LABELS:
+        if label in bundle_text:
+            raise PackagingSecurityError(f"certifi {version_text} still bundles the distrusted root certificate {label!r}")
+    return version_text
 
 
 def prune_discovery_documents(build_dir: Path) -> None:
@@ -148,6 +192,8 @@ def main() -> int:
         ],
         check=True,
     )
+
+    print(f"certifi {check_certifi_security(BUILD_DIR)}: no distrusted root certificate")
 
     prune_discovery_documents(BUILD_DIR)
 

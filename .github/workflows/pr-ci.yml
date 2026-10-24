@@ -54,8 +54,20 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.txt
+      # emSign CA incident (GHSA-6q48-6c7w-9gw2): pip vendors its own certifi, so a pip older than 26.2.2 keeps trusting the compromised intermediates
+      # whatever the OS trust store says. pip is replaced FIRST, pinned by the SHA-256 Python's own advisory publishes (and PyPI shows), so even a pip
+      # that still trusts a bad CA can only install exactly this file.
+      - name: Upgrade pip to 26.2.2 (hash-pinned)
+        run: |
+          printf 'pip==26.2.2 --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70\n' > "$RUNNER_TEMP/pip-bootstrap.txt"
+          python -m pip install --require-hashes --no-deps -r "$RUNNER_TEMP/pip-bootstrap.txt"
+          python -m pip --version
       - name: Install backend dependencies
         run: python -m pip install -r requirements.txt
+      - name: Verify the installed certifi is not the vulnerable one
+        run: >
+          python -c "import pathlib, sys, sysconfig; sys.path.insert(0, 'scripts/deploy'); import package_lambda;
+          print('certifi', package_lambda.check_certifi_security(pathlib.Path(sysconfig.get_paths()['purelib'])))"
       - name: Run the focused Home endpoint and pipeline tests (explicit files only, not the full suite)
         run: >
           python -m pytest -q -p no:cacheprovider
@@ -154,6 +166,7 @@ jobs:
           tests/stores/test_premiere_announcements_store.py
           tests/collection/test_premiere_announcements.py
           tests/notifications/test_premiere_reminder.py
+          tests/scripts/deploy/test_package_security.py
 
   frontend-focused-tests:
     needs: detect-scope
