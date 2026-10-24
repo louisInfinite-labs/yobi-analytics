@@ -674,7 +674,7 @@ def test_the_reminder_run_no_longer_delivers_new_videos_or_reads_new_video_event
 
     monkeypatch.setattr(notification_events_store, "list_events_for_date", _boom)
     monkeypatch.setattr(notification_slot_store, "list_recipients", _boom)
-    monkeypatch.setattr(notification_dispatcher, "_load_schedule", lambda *, now: ({}, []))
+    monkeypatch.setattr(notification_dispatcher, "_load_schedule", lambda *, now: ({}, [], {}))
     monkeypatch.setattr(remote_config_store, "list_remote_config_by_prefix", lambda client_id, key_prefix: [])
     monkeypatch.setattr(notification_dispatcher, "load_creators", lambda: [])
     monkeypatch.setattr(notification_dispatcher, "get_vapid_credentials", lambda: ("pem", {"sub": "mailto:a@b.com"}))

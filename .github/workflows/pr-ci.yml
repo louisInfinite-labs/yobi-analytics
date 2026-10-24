@@ -153,6 +153,7 @@ jobs:
           tests/stores/test_premiere_archive_times_store.py
           tests/stores/test_premiere_announcements_store.py
           tests/collection/test_premiere_announcements.py
+          tests/notifications/test_premiere_reminder.py
 
   frontend-focused-tests:
     needs: detect-scope
@@ -302,6 +303,7 @@ jobs:
           src/pages/schedule/scheduleResponsive.css.test.ts
           src/features/home-room/components/RecentVideosSection.layout.test.tsx
           src/features/live-schedule/components/StreamNotificationPanel.test.tsx
+          src/features/live-schedule/components/StreamNotificationPanel.premiere.test.tsx
           src/features/live-schedule/components/StreamDetailModal.test.tsx
           src/features/notifications/api/liveReminderApi.test.ts
           src/features/oshi/components/OshiSettings.test.tsx

@@ -302,6 +302,11 @@ export type TranslationKey =
   | "liveSchedule.saveReminderButton"
   | "liveSchedule.saveReminderFailed"
   | "liveSchedule.streamReminderUnsetHint"
+  | "liveSchedule.premiereReminder.atStart"
+  | "liveSchedule.premiereReminderExplanationLine1"
+  | "liveSchedule.premiereReminderExplanationLine2"
+  | "liveSchedule.premiereReminderUnsetHint"
+  | "liveSchedule.removePremiereReminderButton"
 
 const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
   "zh-TW": {
@@ -602,6 +607,11 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.saveReminderButton": "儲存",
     "liveSchedule.saveReminderFailed": "無法儲存提醒設定,請稍後再試。",
     "liveSchedule.streamReminderUnsetHint": "這場直播目前沒有提醒。選擇時間後按儲存，即可只為這一場設定。開播時固定發送通知。",
+    "liveSchedule.premiereReminder.atStart": "首播時",
+    "liveSchedule.premiereReminderExplanationLine1": "此設定只適用於這一場首播。",
+    "liveSchedule.premiereReminderExplanationLine2": "只會在你選擇的時間通知一次，不會在其他時間另外通知，也不會影響直播通知設定。",
+    "liveSchedule.premiereReminderUnsetHint": "這場首播目前沒有提醒。選擇一個時間後按儲存。",
+    "liveSchedule.removePremiereReminderButton": "取消提醒",
   },
   en: {
     "common.cancel": "Cancel",
@@ -900,6 +910,11 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.saveReminderButton": "Save",
     "liveSchedule.saveReminderFailed": "Couldn't save this reminder. Please try again.",
     "liveSchedule.streamReminderUnsetHint": "This livestream has no reminder right now. Pick a time and save to set one for this stream only. A notification is always sent when the stream starts.",
+    "liveSchedule.premiereReminder.atStart": "At Premiere start",
+    "liveSchedule.premiereReminderExplanationLine1": "This setting applies only to this Premiere.",
+    "liveSchedule.premiereReminderExplanationLine2": "You get one notification at the time you choose and none at any other time. Your livestream notification settings are not affected.",
+    "liveSchedule.premiereReminderUnsetHint": "This Premiere has no reminder right now. Pick one time and save.",
+    "liveSchedule.removePremiereReminderButton": "Cancel reminder",
   },
   ja: {
     "common.cancel": "キャンセル",
@@ -1198,6 +1213,11 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.saveReminderButton": "保存",
     "liveSchedule.saveReminderFailed": "リマインダーを保存できませんでした。もう一度お試しください。",
     "liveSchedule.streamReminderUnsetHint": "この配信には現在リマインダーがありません。時間を選んで保存すると、この配信だけに設定できます。配信開始時には必ず通知が送られます。",
+    "liveSchedule.premiereReminder.atStart": "プレミア公開時",
+    "liveSchedule.premiereReminderExplanationLine1": "この設定はこのプレミア公開にのみ適用されます。",
+    "liveSchedule.premiereReminderExplanationLine2": "選んだ時間に1回だけ通知します。ほかの時間には通知せず、配信通知の設定にも影響しません。",
+    "liveSchedule.premiereReminderUnsetHint": "このプレミア公開には現在リマインダーがありません。時間を1つ選んで保存してください。",
+    "liveSchedule.removePremiereReminderButton": "リマインダーを解除",
   },
 }
 

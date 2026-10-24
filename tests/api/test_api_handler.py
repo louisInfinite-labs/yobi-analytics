@@ -1146,6 +1146,96 @@ def test_delete_stream_notification_override_requires_the_client_secret_and_a_cl
     assert _delete_stream_override("a#b", client_secret)["statusCode"] == 400
 
 
+# --- PUT/DELETE /clients/{clientId}/premiere-reminder/{videoId} (client-scoped one-time Premiere reminder) ---
+
+
+def _put_premiere_reminder(video_id, body, secret, *, with_secret=True):
+    return lambda_handler(
+        _event(
+            "PUT /clients/{clientId}/premiere-reminder/{videoId}",
+            path={"clientId": "c1", "videoId": video_id},
+            body=json.dumps(body),
+            headers={"x-client-secret": secret} if with_secret else {},
+        ),
+        None,
+    )
+
+
+def _delete_premiere_reminder(video_id, secret, *, with_secret=True):
+    return lambda_handler(
+        _event(
+            "DELETE /clients/{clientId}/premiere-reminder/{videoId}",
+            path={"clientId": "c1", "videoId": video_id},
+            headers={"x-client-secret": secret} if with_secret else {},
+        ),
+        None,
+    )
+
+
+def test_put_premiere_reminder_writes_exactly_one_item_holding_one_choice_and_no_start_time(monkeypatch, client_secret):
+    """The reminder is its own item under its own key prefix: it never reads or writes a livestream override, a creator reminder or the preference,
+    and it carries no start time (the dispatcher always uses the schedule's current one, so a reschedule is never stale)."""
+    puts = []
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: puts.append(record))
+    for reader in ("get_remote_config", "list_remote_config", "list_remote_config_by_prefix", "delete_remote_config"):
+        monkeypatch.setattr(remote_config_store, reader, _boom)
+
+    response = _put_premiere_reminder("p1", {"creatorId": "aizawa_ema", "reminder": "10min"}, client_secret)
+
+    assert response["statusCode"] == 200
+    assert [(r["clientId"], r["key"], r["value"]) for r in puts] == [("c1", "premiereReminder#p1", {"creatorId": "aizawa_ema", "reminder": "10min"})]
+
+
+@pytest.mark.parametrize("reminder", ["at_start", "1min", "10min", "30min", "1hour"])
+def test_put_premiere_reminder_accepts_exactly_the_five_choices(monkeypatch, client_secret, reminder):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", lambda record: None)
+
+    assert _put_premiere_reminder("p1", {"creatorId": "aizawa_ema", "reminder": reminder}, client_secret)["statusCode"] == 200
+
+
+@pytest.mark.parametrize("reminder", ["off", "5min", "2hour", "", None, ["10min", "30min"], {"advanceReminder": "10min"}])
+def test_put_premiere_reminder_rejects_anything_but_one_of_the_five_choices(monkeypatch, client_secret, reminder):
+    """Only ONE choice can be stored: a list of choices, a livestream-style {notifyAtStart, advanceReminder} object and an unknown value are all refused."""
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    assert _put_premiere_reminder("p1", {"creatorId": "aizawa_ema", "reminder": reminder}, client_secret)["statusCode"] == 400
+
+
+def test_put_premiere_reminder_rejects_a_livestream_override_body_a_missing_creator_and_an_ambiguous_video_id(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    assert _put_premiere_reminder("p1", {"creatorId": "aizawa_ema", "notifyAtStart": True, "advanceReminder": "10min"}, client_secret)["statusCode"] == 400
+    assert _put_premiere_reminder("p1", {"reminder": "10min"}, client_secret)["statusCode"] == 400
+    assert _put_premiere_reminder("a#b", {"creatorId": "aizawa_ema", "reminder": "10min"}, client_secret)["statusCode"] == 400
+
+
+def test_put_premiere_reminder_without_a_client_secret_returns_403(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "put_remote_config", _boom)
+
+    assert _put_premiere_reminder("p1", {"creatorId": "aizawa_ema", "reminder": "10min"}, client_secret, with_secret=False)["statusCode"] == 403
+
+
+def test_delete_premiere_reminder_deletes_only_that_premieres_item_and_is_idempotent(monkeypatch, client_secret):
+    deleted = []
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", lambda client_id, key: deleted.append((client_id, key)))
+    for other in ("put_remote_config", "get_remote_config", "list_remote_config", "list_remote_config_by_prefix"):
+        monkeypatch.setattr(remote_config_store, other, _boom)
+
+    first = _delete_premiere_reminder("p1", client_secret)
+    second = _delete_premiere_reminder("p1", client_secret)  # nothing stored any more (e.g. already delivered and consumed): still a success
+
+    assert first["statusCode"] == second["statusCode"] == 200
+    assert json.loads(first["body"]) == {"clientId": "c1", "key": "premiereReminder#p1", "deleted": True}
+    assert deleted == [("c1", "premiereReminder#p1")] * 2
+
+
+def test_delete_premiere_reminder_requires_the_client_secret_and_a_clean_video_id(monkeypatch, client_secret):
+    monkeypatch.setattr(remote_config_store, "delete_remote_config", _boom)
+
+    assert _delete_premiere_reminder("p1", client_secret, with_secret=False)["statusCode"] == 403
+    assert _delete_premiere_reminder("a#b", client_secret)["statusCode"] == 400
+
+
 # --- GET /admin/heartbeat-stats (admin-protected) ---
 
 

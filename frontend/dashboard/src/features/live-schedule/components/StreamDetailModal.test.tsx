@@ -54,14 +54,17 @@ describe("StreamDetailModal", () => {
     expect(screen.getByRole("button", { name: "Open Stream" })).toBeInTheDocument()
   })
 
-  it("a Premiere has NO reminder action either (it never enters the reminder schedule) but shows its own badge, not the live one", () => {
+  it("a Premiere offers the same Set Reminder action next to Open Stream, and keeps its own badge, not the live one", async () => {
+    const user = userEvent.setup()
+    const onSetReminder = vi.fn()
     const premiere: ScheduledStream = { ...stream, status: "premiere" }
-    render(<StreamDetailModal stream={premiere} locale="en" now={new Date(0)} onClose={() => {}} onOpenStream={() => {}} onSetReminder={() => {}} />)
-    expect(document.querySelector(".reminder-button")).toBeNull()
-    expect(document.querySelector(".stream-modal-actions")!.children).toHaveLength(1)
+    render(<StreamDetailModal stream={premiere} locale="en" now={new Date(0)} onClose={() => {}} onOpenStream={() => {}} onSetReminder={onSetReminder} />)
+    expect(document.querySelectorAll(".stream-modal-actions button")).toHaveLength(2)
     expect(screen.getByRole("button", { name: "Open Stream" })).toBeInTheDocument()
     expect(document.querySelector(".premiere-badge")).toHaveTextContent("Premiere")
     expect(document.querySelector(".live-badge")).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Set Reminder" }))
+    expect(onSetReminder).toHaveBeenCalledWith(premiere)
   })
 
   it("the reminder action is enabled and opens the single-stream notification setting", async () => {

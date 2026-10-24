@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import * as apiClient from "../../../shared/api/apiClient"
 import {
   deleteCreatorReminder,
+  deletePremiereReminder,
   deleteStreamNotificationOverride,
   fetchReminderSettings,
   reminderValueToSetting,
   saveCreatorReminder,
+  savePremiereReminder,
   saveStreamNotificationOverride,
   settingToReminderValue,
 } from "./liveReminderApi"
@@ -122,7 +124,7 @@ describe("fetchReminderSettings", () => {
   it("returns empty settings when nothing is stored", async () => {
     vi.mocked(apiClient.apiRequest).mockResolvedValue({ configs: [] })
 
-    expect(await fetchReminderSettings()).toEqual({ creatorAll: {}, creatorTopics: {}, streamOverrides: {} })
+    expect(await fetchReminderSettings()).toEqual({ creatorAll: {}, creatorTopics: {}, streamOverrides: {}, premiereReminders: {} })
   })
 
   it("skips a stored item that doesn't parse, without affecting the others", async () => {
@@ -142,5 +144,53 @@ describe("fetchReminderSettings", () => {
     expect(settings.creatorAll).toEqual({})
     expect(settings.creatorTopics).toEqual({ aizawa_ema: { apex: setting("30min") } })
     expect(settings.streamOverrides).toEqual({})
+  })
+})
+
+describe("one-time Premiere reminders", () => {
+  it("reads each stored Premiere reminder as the ONE chosen time, apart from every livestream setting", async () => {
+    vi.mocked(apiClient.apiRequest).mockResolvedValue({
+      configs: [
+        item("premiereReminder#p1", { creatorId: "aizawa_ema", reminder: "10min" }),
+        item("premiereReminder#p2", { creatorId: "aizawa_ema", reminder: "at_start" }),
+        item("streamOverride#p1", { creatorId: "aizawa_ema", ...setting("30min") }),
+      ],
+    })
+
+    const settings = await fetchReminderSettings()
+
+    expect(settings.premiereReminders).toEqual({ p1: "10min", p2: "at_start" })
+    expect(settings.streamOverrides).toEqual({ p1: { creatorId: "aizawa_ema", ...setting("30min") } }) // a separate setting, never merged
+  })
+
+  it("skips a stored Premiere reminder that is not exactly one of the five times", async () => {
+    vi.mocked(apiClient.apiRequest).mockResolvedValue({
+      configs: [
+        item("premiereReminder#p1", { creatorId: "aizawa_ema", reminder: "2hours" }),
+        item("premiereReminder#p2", { creatorId: "aizawa_ema", reminder: ["10min", "30min"] }),
+        item("premiereReminder#p3", { creatorId: "aizawa_ema" }),
+        item("premiereReminder#p4", null),
+        item("premiereReminder#", { creatorId: "aizawa_ema", reminder: "10min" }),
+        item("premiereReminder#p5", { creatorId: "aizawa_ema", reminder: "1hour" }),
+      ],
+    })
+
+    expect((await fetchReminderSettings()).premiereReminders).toEqual({ p5: "1hour" })
+  })
+
+  it.each(["at_start", "1min", "10min", "30min", "1hour"] as const)("PUTs the single choice %s to the Premiere's own path with the creator and NO start time", async (reminder) => {
+    await savePremiereReminder("p 1", "aizawa_ema", reminder)
+
+    expect(apiClient.apiRequest).toHaveBeenCalledWith("/clients/client%201/premiere-reminder/p%201", {
+      method: "PUT",
+      headers: { "X-Client-Secret": "secret-1" },
+      body: { creatorId: "aizawa_ema", reminder },
+    })
+  })
+
+  it("DELETEs only that Premiere's own item", async () => {
+    await deletePremiereReminder("p1")
+
+    expect(apiClient.apiRequest).toHaveBeenCalledWith("/clients/client%201/premiere-reminder/p1", { method: "DELETE", headers: { "X-Client-Secret": "secret-1" } })
   })
 })

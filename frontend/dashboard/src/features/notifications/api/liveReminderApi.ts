@@ -35,10 +35,12 @@ export interface ReminderSettingsSnapshot {
   creatorAll: Record<string, LiveReminderSetting>
   creatorTopics: Record<string, Record<string, LiveReminderSetting>>
   streamOverrides: Record<string, StreamNotificationOverride>
+  /** The client's one-time Premiere reminders (videoId -> the ONE chosen time): a mechanism separate from the livestream settings above. */
+  premiereReminders: Record<string, ReminderTimeValue>
 }
 
 export function emptyReminderSettings(): ReminderSettingsSnapshot {
-  return { creatorAll: {}, creatorTopics: {}, streamOverrides: {} }
+  return { creatorAll: {}, creatorTopics: {}, streamOverrides: {}, premiereReminders: {} }
 }
 
 interface RemoteConfigReadResponse {
@@ -47,6 +49,7 @@ interface RemoteConfigReadResponse {
 
 const CREATOR_REMINDER_KEY_PREFIX = "creatorReminder#"
 const STREAM_OVERRIDE_KEY_PREFIX = "streamOverride#"
+const PREMIERE_REMINDER_KEY_PREFIX = "premiereReminder#"
 const KEY_SEPARATOR = "#"
 
 async function clientSecretHeaders(clientId: string): Promise<Record<string, string> | undefined> {
@@ -65,6 +68,10 @@ function isLiveReminderSetting(value: unknown): value is LiveReminderSetting {
 
 function isStreamOverride(value: unknown): value is StreamNotificationOverride {
   return isLiveReminderSetting(value) && typeof (value as unknown as Record<string, unknown>).creatorId === "string"
+}
+
+function isPremiereReminderChoice(value: unknown): value is ReminderTimeValue {
+  return typeof value === "string" && (REMINDER_TIME_VALUES as readonly string[]).includes(value)
 }
 
 /** Every reminder setting this client has stored on the backend -- real
@@ -86,6 +93,10 @@ export async function fetchReminderSettings(): Promise<ReminderSettingsSnapshot>
     } else if (key.startsWith(STREAM_OVERRIDE_KEY_PREFIX)) {
       const videoId = key.slice(STREAM_OVERRIDE_KEY_PREFIX.length)
       if (videoId && isStreamOverride(value)) snapshot.streamOverrides[videoId] = value
+    } else if (key.startsWith(PREMIERE_REMINDER_KEY_PREFIX)) {
+      const videoId = key.slice(PREMIERE_REMINDER_KEY_PREFIX.length)
+      const reminder = (value as { reminder?: unknown } | null)?.reminder
+      if (videoId && isPremiereReminderChoice(reminder)) snapshot.premiereReminders[videoId] = reminder
     }
   }
   return snapshot
@@ -144,5 +155,26 @@ export async function saveStreamNotificationOverride(videoId: string, override: 
     method: "PUT",
     headers: await clientSecretHeaders(clientId),
     body: override,
+  })
+}
+
+/** Sets this client's ONE one-time reminder for one Premiere: exactly one of the five times (the same values as the Schedule control). The request
+ * carries the choice and the creator only -- never a start time: the backend always resolves the Premiere's CURRENT scheduled start itself. It is a
+ * separate backend item from every livestream setting and is consumed by the backend once it has been delivered. */
+export async function savePremiereReminder(videoId: string, creatorId: string, reminder: ReminderTimeValue): Promise<void> {
+  const clientId = getOrCreateClientId()
+  await apiRequest(`/clients/${encodeURIComponent(clientId)}/premiere-reminder/${encodeURIComponent(videoId)}`, {
+    method: "PUT",
+    headers: await clientSecretHeaders(clientId),
+    body: { creatorId, reminder },
+  })
+}
+
+/** Cancels this client's one-time reminder for one Premiere (deleting only that item; cancelling one that no longer exists is a no-op). */
+export async function deletePremiereReminder(videoId: string): Promise<void> {
+  const clientId = getOrCreateClientId()
+  await apiRequest(`/clients/${encodeURIComponent(clientId)}/premiere-reminder/${encodeURIComponent(videoId)}`, {
+    method: "DELETE",
+    headers: await clientSecretHeaders(clientId),
   })
 }

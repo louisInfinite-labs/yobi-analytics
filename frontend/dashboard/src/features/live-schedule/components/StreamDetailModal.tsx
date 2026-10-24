@@ -77,10 +77,9 @@ export function StreamDetailModal({ stream, locale, now, onClose, onOpenStream, 
         <h2 className="stream-detail-title">{stream.title}</h2>
 
         <div className="stream-modal-actions">
-          {/* A stream that is already live has started, so a pre-stream reminder no longer applies; a Premiere's waiting page is
-              never entered into the reminder schedule at all (notification_dispatcher skips it), so offering one here would be
-              a no-op. Neither action is rendered. */}
-          {!isLive && !isPremiere && (
+          {/* A stream that is already live has started, so a pre-stream reminder no longer applies. An upcoming Premiere offers the SAME button: it
+              opens the reminder panel in its Premiere mode (the one-time Premiere reminder, a separate mechanism from the livestream reminders). */}
+          {!isLive && (
             <button type="button" className="reminder-button" onClick={() => onSetReminder(stream)}>
               {t(locale, "liveSchedule.setReminderButton")}
             </button>
