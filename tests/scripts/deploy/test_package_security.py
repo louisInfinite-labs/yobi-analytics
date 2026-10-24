@@ -37,6 +37,7 @@ def _fake_site(tmp_path: Path, version: str | None, bundle: str | None = SAFE_BU
 
 
 def test_the_pinned_requirement_is_the_fixed_certifi_and_reaches_the_lambda_package():
+    """requirements.txt pins exactly the fixed certifi and the packaging script hands that pin to pip."""
     pinned = [line.strip() for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines() if line.strip().startswith("certifi")]
     assert pinned == ["certifi==2026.10.23"]
     assert tuple(int(part) for part in pinned[0].split("==")[1].split(".")) >= package_lambda.MIN_CERTIFI_VERSION
@@ -51,11 +52,13 @@ def test_nothing_else_in_the_requirements_changed_with_the_certifi_pin():
 
 @pytest.mark.parametrize("version", ["2026.10.19", "2026.10.23", "2027.1.1"])
 def test_a_fixed_certifi_with_a_clean_bundle_is_accepted(tmp_path, version):
+    """A certifi at or above the fix with a clean bundle passes the packaging check."""
     assert package_lambda.check_certifi_security(_fake_site(tmp_path, version)) == version
 
 
 @pytest.mark.parametrize("version", ["2026.10.18", "2026.7.22", "2025.11.12", "2019.3.9"])
 def test_a_certifi_older_than_the_fix_is_refused(tmp_path, version):
+    """A certifi older than 2026.10.19 fails the packaging check with the advisory id in the message."""
     with pytest.raises(package_lambda.PackagingSecurityError, match="GHSA-6q48-6c7w-9gw2"):
         package_lambda.check_certifi_security(_fake_site(tmp_path, version))
 
@@ -67,6 +70,7 @@ def test_a_new_looking_certifi_that_still_bundles_the_emsign_ecc_root_is_refused
 
 
 def test_a_package_without_certifi_or_without_its_bundle_is_refused(tmp_path):
+    """A package with no certifi dist-info, or a certifi without its cacert.pem, fails the packaging check."""
     empty = tmp_path / "empty"
     empty.mkdir()
     with pytest.raises(package_lambda.PackagingSecurityError, match="no certifi dist-info"):
@@ -78,17 +82,20 @@ def test_a_package_without_certifi_or_without_its_bundle_is_refused(tmp_path):
 
 
 def test_an_unparseable_certifi_version_is_refused_rather_than_guessed(tmp_path):
+    """A version string the check cannot parse is refused instead of being assumed safe."""
     with pytest.raises(package_lambda.PackagingSecurityError, match="cannot parse"):
         package_lambda.check_certifi_security(_fake_site(tmp_path, "2026.10.23rc1"))
 
 
 def test_the_packaging_run_checks_certifi_before_it_builds_the_zip():
+    """main() runs the certifi check after pip installs the dependencies and before the zip is assembled."""
     source = (ROOT / "scripts" / "deploy" / "package_lambda.py").read_text(encoding="utf-8")
     assert source.index("check_certifi_security(BUILD_DIR)") < source.index("copy_source_files(BUILD_DIR)")
     assert source.index("check_certifi_security(BUILD_DIR)") > source.index('"--only-binary=:all:"')  # after pip installed the dependencies
 
 
 def test_ci_replaces_pip_with_the_hash_pinned_26_2_2_before_installing_anything_else():
+    """The CI backend job installs the hash-pinned pip 26.2.2 first and verifies the installed certifi afterwards."""
     workflow = (ROOT / ".github" / "workflows" / "pr-ci.yml").read_text(encoding="utf-8")
     bootstrap = workflow.index("pip==26.2.2 --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70")  # the hash Python's advisory publishes
     assert "--require-hashes" in workflow[bootstrap : bootstrap + 400]
