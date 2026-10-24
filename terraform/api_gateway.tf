@@ -55,6 +55,8 @@ locals {
     "DELETE /clients/{clientId}/creator-reminder/{creatorId}/{scope}",
     "PUT /clients/{clientId}/stream-notification-override/{videoId}",
     "DELETE /clients/{clientId}/stream-notification-override/{videoId}",
+    "PUT /clients/{clientId}/premiere-reminder/{videoId}",
+    "DELETE /clients/{clientId}/premiere-reminder/{videoId}",
     "PUT /clients/{clientId}/simultaneous-live-notice",
     "DELETE /clients/{clientId}/simultaneous-live-notice",
     # RETIRED routes, deliberately kept: api_handler answers each with 410 ENDPOINT_RETIRED (see its

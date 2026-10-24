@@ -3,7 +3,7 @@ import type { ReminderSettingsSnapshot } from "../../notifications/api/liveRemin
 export type StreamNotificationOverrideCache = ReminderSettingsSnapshot
 
 function emptyCache(): StreamNotificationOverrideCache {
-  return { creatorAll: {}, creatorTopics: {}, streamOverrides: {} }
+  return { creatorAll: {}, creatorTopics: {}, streamOverrides: {}, premiereReminders: {} }
 }
 
 /** Module-scoped singleton cache of the REAL backend-persisted reminder settings

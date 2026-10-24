@@ -18,7 +18,11 @@ Each reminder run (docs/notification-dispatch-due-candidates.md):
    quiet hours, the master switch, locale and the subscription) and sends through the unchanged claim -> send -> confirm/release delivery code. A client
    with a stored preference but no push subscription is skipped (nothing to deliver to), not treated as an error. One client's failure never stops
    the others; only a run in which EVERY candidate client failed raises, so a systemic outage still shows up in the Lambda's error metric.
-4. Then the simultaneous-livestream notices (simultaneous_dispatcher.py): collisions among the schedule's upcoming streams, derived in memory, and
+4. The one-time Premiere reminders (premiere_reminder.py), a separate mechanism from the livestream reminders above: the Premiere schedule rides in the
+   same "streamSchedule" record (so it costs no extra read), the due Premieres are found in memory, their holders through the same configKey-index, and
+   each reminder is sent once through the same claim -> send -> confirm code under its own delivery-log ids, then consumed. It shares nothing with the
+   creator / topic / stream-override resolution, the simultaneous notice or the four new-video slots.
+5. Then the simultaneous-livestream notices (simultaneous_dispatcher.py): collisions among the schedule's upcoming streams, derived in memory, and
    delivered only to clients that opted in. An idle day costs this step nothing.
 
 The CURRENT scheduledStartMs and the stream's topic always come from the "streamSchedule" snapshot (live_reminder.StreamScheduleEntry), never from
@@ -77,6 +81,7 @@ from notifications import new_video_dispatcher
 from notifications import notification_text
 from notifications import parallel
 from notifications import push_sender
+from notifications import premiere_reminder
 from notifications import push_ttl
 from notifications import reminder_candidates
 from notifications import simultaneous_dispatcher
@@ -256,7 +261,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         raise UnsupportedModeError(f"Unsupported mode {mode!r}; expected {new_video_dispatcher.MODE!r} or omitted")
 
     now = datetime.now(timezone.utc)
-    stream_schedule, pending_notice_ids = _load_schedule(now=now)
+    stream_schedule, pending_notice_ids, premiere_schedule = _load_schedule(now=now)
     window_ms = int(_REMINDER_WINDOW.total_seconds() * 1000)
     instants = _evaluation_instants(event, now)
 
@@ -326,21 +331,42 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             else:
                 checked += result[0]
                 delivered += result[1]
+    # The one-time Premiere reminders: an optional, separate step that must never turn a finished livestream-reminder run into a failed one.
+    premiere: dict[str, int] | None = None
+    premiere_unserved = 0
+    premiere_failed = False
+    try:
+        premiere = _deliver_premiere_reminders(
+            premiere_schedule,
+            instants=instants,
+            now=now,
+            window_ms=window_ms,
+            creators_by_id=creators_by_id,
+            vapid_credentials=vapid_credentials,
+            context=context,
+        )
+        premiere_unserved = premiere["unserved"]
+    except Exception as exc:  # noqa: BLE001 -- the Premiere reminders are separate from the livestream reminders; whatever goes wrong there stays there
+        print(f"Warning: Premiere reminders failed ({type(exc).__name__}): {exc}")
+        premiere_failed = True  # the minute was not served: leave the gap for the next run's recovery instead of moving the marker past it
     if candidates_total and len(failures) + unserved == candidates_total and failures:
         raise failures[-1]  # nothing worked for anybody: a systemic fault must reach the Lambda's error metric, not hide in a 200
-    if unserved:
+    if unserved or premiere_unserved:
         print(
-            f"Warning: {unserved} due recipient(s) were not started before the Lambda deadline; the next run serves them as recovered reminders "
+            f"Warning: {unserved + premiere_unserved} due recipient(s) were not started before the Lambda deadline; the next run serves them as recovered reminders "
             f"(an advance reminder with the real time left, a start reminder for {int(_START_RECOVERY_GRACE.total_seconds() // 60)} minutes)"
         )
-    else:
-        # Only a COMPLETE run moves the container's memory forward; a cut-short one leaves the gap for the next run to cover.
+    elif not premiere_failed:
+        # Only a COMPLETE run moves the container's memory forward; a cut-short one -- or one whose Premiere step failed as a whole -- leaves the gap
+        # for the next run to cover.
         anchor_ms = int(instants[-1].timestamp() * 1000)
         _last_served_ms = anchor_ms if _last_served_ms is None else max(_last_served_ms, anchor_ms)
 
     response: dict[str, Any] = {"statusCode": 200, "checked": checked, "delivered": delivered}
     if unserved:
         response["unserved"] = unserved
+    if premiere and (premiere["checked"] or premiere["unserved"]):
+        response["premiere"] = premiere
     if len(instants) > 1:
         response["recoveredInstants"] = len(instants) - 1
     try:
@@ -457,8 +483,18 @@ def _stored_pending_notices(record: dict[str, Any] | None) -> list[str]:
     return [item for item in raw if isinstance(item, str)] if isinstance(raw, list) else []
 
 
-def _load_schedule(*, now: datetime) -> tuple[dict[str, live_reminder.StreamScheduleEntry], list[str]]:
-    """Return the system-wide "streamSchedule" snapshot's entries and the ids of the pending simultaneous-livestream notices, re-deriving
+def _stored_premieres(record: dict[str, Any] | None) -> dict[str, premiere_reminder.PremiereEntry]:
+    """The Premiere schedule stored in a "streamSchedule" record ({} when absent or malformed): the one-time Premiere reminders' own entries, kept out
+    of the livestream `entries` on purpose (see premiere_reminder.py)."""
+    value = record.get("value") if isinstance(record, dict) else None
+    return premiere_reminder.parse_entries(value.get(premiere_reminder.PREMIERES_FIELD) if isinstance(value, dict) else None)
+
+
+def _load_schedule(
+    *, now: datetime
+) -> tuple[dict[str, live_reminder.StreamScheduleEntry], list[str], dict[str, premiere_reminder.PremiereEntry]]:
+    """Return the system-wide "streamSchedule" snapshot's entries, the ids of the pending simultaneous-livestream notices and the Premiere schedule
+    (all three live in the one record, so none costs an extra read), re-deriving
     them from the existing live/upcoming read path (read_api.get_live_streams,
     which reads the SHARED snapshot -- never Holodex) ONLY when that shared
     snapshot is newer than the one the stored entries came from -- a
@@ -484,15 +520,16 @@ def _load_schedule(*, now: datetime) -> tuple[dict[str, live_reminder.StreamSche
     # and the next run re-derives -- never the reverse (claiming newer data than was actually read).
     source_refreshed_at = _read_source_refreshed_at()
     existing_pending = _stored_pending_notices(existing_record)
+    existing_premieres = _stored_premieres(existing_record)
     if existing_snapshot is not None and _stream_schedule_is_current(existing_snapshot, source_refreshed_at, now=now):
-        return existing_snapshot.entries, existing_pending
+        return existing_snapshot.entries, existing_pending, existing_premieres
 
     try:
         result = read_api.get_live_streams()
     except (HolodexAPIError, HolodexNormalizationError, MissingHolodexApiKeyError) as exc:
         print(f"Warning: Holodex live-stream fetch failed ({exc}); reusing the last persisted stream schedule")
         # The previous schedule AND its pending notices are reused untouched: a failed refresh destroys and invents nothing.
-        return (existing_snapshot.entries if existing_snapshot is not None else {}), existing_pending
+        return (existing_snapshot.entries if existing_snapshot is not None else {}), existing_pending, existing_premieres
 
     fresh_entries: dict[str, dict[str, Any]] = {}
     for stream in result["streams"]:
@@ -522,7 +559,10 @@ def _load_schedule(*, now: datetime) -> tuple[dict[str, live_reminder.StreamSche
         if isinstance(stream.get("status"), str) and stream["status"]:
             fresh_entries[stream["videoId"]]["status"] = stream["status"]  # only a still-"upcoming" stream can get a late-discovery catch-up
 
+    # The Premiere schedule is derived from the very same snapshot read (no extra request) and stored beside the livestream entries, never inside them.
+    fresh_premieres = premiere_reminder.derive_entries(result["streams"], previous=existing_premieres, now_ms=int(now.timestamp() * 1000))
     fresh_value: dict[str, Any] = {"entries": fresh_entries, "refreshedAt": now.isoformat()}
+    fresh_value[premiere_reminder.PREMIERES_FIELD] = premiere_reminder.entries_to_value(fresh_premieres)
     # When each stream's CURRENT start was first observed (and its earlier starts), for the late-discovery catch-up: derived from the PREVIOUS record,
     # so it is computed on every derivation and carried forward. It never changes which streams or start times are scheduled.
     fresh_value[live_reminder.FIRST_SEEN_KEY] = live_reminder.first_seen_to_value(
@@ -560,17 +600,17 @@ def _load_schedule(*, now: datetime) -> tuple[dict[str, live_reminder.StreamSche
         newer = remote_config_store.get_remote_config(live_reminder.SYSTEM_CLIENT_ID, live_reminder.STREAM_SCHEDULE_KEY)
         if newer is not None:
             try:
-                return live_reminder.parse_stream_schedule_snapshot(newer["value"]).entries, _stored_pending_notices(newer)
+                return live_reminder.parse_stream_schedule_snapshot(newer["value"]).entries, _stored_pending_notices(newer), _stored_premieres(newer)
             except live_reminder.ClientError:
                 pass  # unusable: fall through to what this run derived
-        return fresh_snapshot.entries, list(fresh_value["pendingNotices"])
+        return fresh_snapshot.entries, list(fresh_value["pendingNotices"]), fresh_premieres
     # The schedule changed: a simultaneous-livestream notice whose collision is gone (cancelled, rescheduled, a member added or removed) is
     # invalidated. An identical schedule has no such collision and costs nothing here.
     try:
         simultaneous_dispatcher.invalidate_removed(existing_snapshot.entries if existing_snapshot is not None else {}, fresh_snapshot.entries)
     except Exception as exc:  # noqa: BLE001 -- cleanup of derived state must never fail the schedule refresh itself
         print(f"Warning: could not invalidate superseded simultaneous-livestream notices ({type(exc).__name__}): {exc}")
-    return fresh_snapshot.entries, list(fresh_value["pendingNotices"])
+    return fresh_snapshot.entries, list(fresh_value["pendingNotices"]), fresh_premieres
 
 
 def _resolve_reminders_for_client(
@@ -747,6 +787,175 @@ def _deliver_reminders_if_due(
     return sent_any
 
 
+def _deliver_premiere_reminders(
+    premieres: dict[str, premiere_reminder.PremiereEntry],
+    *,
+    instants: list[datetime],
+    now: datetime,
+    window_ms: int,
+    creators_by_id: Any,
+    vapid_credentials: Any,
+    context: Any,
+) -> dict[str, int]:
+    """Serve every one-time Premiere reminder due at the instants of this run; returns {checked, delivered, unserved}.
+
+    The same instants, recovery tolerance and deadline handling as the livestream reminders, but none of their resolution: the due Premieres are found
+    in memory from the stored Premiere schedule (an idle minute, with no Premiere due, reads nothing), their holders through one configKey-index Query
+    per due Premiere, and each holder's choice is judged on its own (premiere_reminder.py). `creators_by_id` / `vapid_credentials` are the lazy
+    loaders of the run, called only when a reminder is really due.
+    """
+    checked = delivered = unserved = 0
+    if not premieres:
+        return {"checked": 0, "delivered": 0, "unserved": 0}
+    for instant in instants:
+        instant_ms = int(instant.timestamp() * 1000)
+        recovered = (now - instant) > _RECOVERY_TOLERANCE
+        due = premiere_reminder.due_entries(premieres, now_ms=instant_ms, window_ms=window_ms)
+        if not due:
+            continue
+        candidates = premiere_reminder.find_candidates(due, now_ms=instant_ms, window_ms=window_ms)
+        if not candidates:
+            continue
+        creators = creators_by_id()
+        vapid = vapid_credentials()
+
+        def serve(item: tuple[str, dict[str, tuple[premiere_reminder.PremiereEntry, premiere_reminder.PremiereReminder]]], *, instant=instant, recovered=recovered):
+            """One candidate client's due Premiere reminders; _UNSERVED when the deadline is too close to start it."""
+            if _near_deadline(context):
+                return _UNSERVED
+            client_id, reminders = item
+            return _serve_premiere_client(
+                client_id, reminders, now=now, evaluate_at=instant, recovered=recovered, creators_by_id=creators, vapid=vapid
+            )
+
+        items = list(candidates.items())
+        for (client_id, _), result in zip(items, parallel.run_ordered(serve, items, workers=_SEND_WORKERS)):
+            if result is _UNSERVED:
+                unserved += 1
+            elif isinstance(result, BaseException):
+                print(f"Warning: Premiere reminders for client {client_id!r} failed ({type(result).__name__}): {result}")
+            else:
+                checked += result[0]
+                delivered += result[1]
+    return {"checked": checked, "delivered": delivered, "unserved": unserved}
+
+
+def _serve_premiere_client(
+    client_id: str,
+    reminders: dict[str, tuple[premiere_reminder.PremiereEntry, premiere_reminder.PremiereReminder]],
+    *,
+    now: datetime,
+    evaluate_at: datetime,
+    recovered: bool,
+    creators_by_id: dict[str, Any],
+    vapid: tuple[str, dict[str, str]],
+) -> tuple[int, int]:
+    """Deliver one client's due Premiere reminders; returns (checked, delivered). Reads only this client's stored preference and push subscription,
+    exactly like _serve_client: a reminder without a stored preference or without a subscription has nothing to be delivered to."""
+    preference_record = remote_config_store.get_remote_config(client_id, _NOTIFICATION_PREFERENCE_KEY)
+    if preference_record is None:
+        return 0, 0
+    try:
+        preference = notification_dispatch.parse_notification_preference(preference_record["value"])
+    except notification_dispatch.ClientError as exc:
+        print(f"Warning: skipping client {client_id!r} with an invalid stored notification preference: {exc}")
+        return 0, 0
+    subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
+    if subscription_record is None:
+        return 0, 0
+    vapid_private_key, vapid_claims = vapid
+    checked = delivered = 0
+    for video_id, (entry, reminder) in reminders.items():
+        checked += 1
+        if _deliver_premiere_reminder_if_due(
+            video_id,
+            entry,
+            reminder,
+            client_id=client_id,
+            preference=preference,
+            subscription=subscription_record["value"],
+            creators_by_id=creators_by_id,
+            now=now,
+            evaluate_at=evaluate_at,
+            recovered=recovered,
+            vapid_private_key=vapid_private_key,
+            vapid_claims=vapid_claims,
+            subscription_updated_at=live_reminder.parse_timestamp(subscription_record.get("updatedAt")),
+            preference_updated_at=live_reminder.parse_timestamp(preference_record.get("updatedAt")),
+        ):
+            delivered += 1
+    return checked, delivered
+
+
+def _deliver_premiere_reminder_if_due(
+    video_id: str,
+    entry: premiere_reminder.PremiereEntry,
+    reminder: premiere_reminder.PremiereReminder,
+    *,
+    client_id: str,
+    preference: notification_dispatch.NotificationPreference,
+    subscription: Any,
+    creators_by_id: dict[str, Any],
+    now: datetime,
+    evaluate_at: datetime,
+    recovered: bool,
+    vapid_private_key: str,
+    vapid_claims: dict[str, str],
+    subscription_updated_at: datetime | None,
+    preference_updated_at: datetime | None,
+) -> bool:
+    """Send the ONE reminder this client chose for this Premiere if its moment is now; returns whether a push went out.
+
+    Exactly one moment exists (the chosen time before the CURRENT scheduled start, or the start itself) -- never an "advance and start" pair. The same
+    suppression as every reminder: master switch / creator switch, and mute or quiet hours at the moment it was meant to fire AND right now (skipped,
+    never delayed). A recovered minute follows the livestream reminders' recovery rules (_recovery_allows). The delivery is claimed under its own id
+    (`<videoId>:reminder:premiere_<kind>@<start minute>`, never a livestream reminder's), and once the push is confirmed the stored reminder is consumed
+    (deleted): it stops being eligible, and a later reschedule of the Premiere cannot send it a second time.
+    """
+    if not notification_dispatch.should_notify_now(preference, entry.creator_id, now=now):
+        return False
+    window_ms = int(_REMINDER_WINDOW.total_seconds() * 1000)
+    now_ms = int(now.timestamp() * 1000)
+    eval_ms = int(evaluate_at.timestamp() * 1000)
+    start_ms = entry.scheduled_start_ms
+    if not premiere_reminder.is_due(reminder.reminder, start_ms, now_ms=eval_ms, window_ms=window_ms):
+        return False
+    fire_at_ms = premiere_reminder.fire_at_ms(reminder.reminder, start_ms)
+    if _suppressed_at(preference, entry.creator_id, fire_at_ms):
+        return False
+    advance = premiere_reminder.is_advance(reminder.reminder)
+    if recovered and not _recovery_allows(
+        notification_text.KIND_ADVANCE if advance else notification_text.KIND_START,
+        start_ms,
+        fire_at_ms,
+        now_ms,
+        (reminder.updated_at, subscription_updated_at, preference_updated_at),
+    ):
+        return False
+    if not _send_reminder(
+        video_id,
+        notification_text.KIND_PREMIERE_ADVANCE if advance else notification_text.KIND_PREMIERE_START,
+        scheduled_start_ms=start_ms,
+        advance=reminder.reminder if advance else None,
+        stream_title=entry.title,
+        locale=preference.locale,
+        client_id=client_id,
+        creator_id=entry.creator_id,
+        creators_by_id=creators_by_id,
+        subscription=subscription,
+        now=now,
+        vapid_private_key=vapid_private_key,
+        vapid_claims=vapid_claims,
+        remaining_minutes=live_reminder.catch_up_remaining_minutes(start_ms, now_ms) if recovered and advance else None,
+    ):
+        return False
+    try:
+        remote_config_store.delete_remote_config(client_id, premiere_reminder.premiere_reminder_key(video_id))
+    except Exception as exc:  # noqa: BLE001 -- the push already went out and its delivery row is permanent; an unconsumed item only stays inert
+        print(f"Warning: could not consume the delivered Premiere reminder for client {client_id!r}, video {video_id!r}: {exc}")
+    return True
+
+
 def _deliver_catch_up_advance_if_due(
     video_id: str,
     override: live_reminder.ResolvedReminder,
@@ -859,7 +1068,7 @@ def _reminder_dedupe_ids(video_id: str, kind: str, scheduled_start_ms: int) -> t
 
 def _reminder_ttl_seconds(kind: str, scheduled_start_ms: int, now: datetime) -> int:
     """The push TTL for a reminder: a start reminder lives a short grace past the scheduled start, an advance reminder only until it (push_ttl)."""
-    if kind == notification_text.KIND_START:
+    if kind in (notification_text.KIND_START, notification_text.KIND_PREMIERE_START):
         return push_ttl.start_reminder_ttl_seconds(scheduled_start_ms=scheduled_start_ms, now=now)
     return push_ttl.advance_reminder_ttl_seconds(scheduled_start_ms=scheduled_start_ms, now=now)
 
@@ -896,7 +1105,9 @@ def _send_reminder(
     window can still deliver, and a confirmed delivery is permanent.
     """
     dedupe_id, legacy_id = _reminder_dedupe_ids(video_id, kind, scheduled_start_ms)
-    if notification_delivery_log_store.handled_within(client_id, legacy_id, _LEGACY_DEDUPE_WINDOW, now=now):
+    is_premiere = kind in (notification_text.KIND_PREMIERE_START, notification_text.KIND_PREMIERE_ADVANCE)
+    # A legacy (start-less) row only exists for the livestream kinds an older version wrote; a Premiere reminder never had one, so it skips that read.
+    if not is_premiere and notification_delivery_log_store.handled_within(client_id, legacy_id, _LEGACY_DEDUPE_WINDOW, now=now):
         return False
     if notification_delivery_log_store.already_delivered(client_id, dedupe_id):
         return False
@@ -904,14 +1115,24 @@ def _send_reminder(
         return False
 
     creator = creators_by_id.get(creator_id)
-    text = notification_text.reminder_notification(
-        locale=locale,
-        kind=kind,
-        advance=advance,
-        creator_name=creator.display_name if creator else None,
-        stream_title=stream_title,
-        remaining_minutes=remaining_minutes,
-    )
+    if is_premiere:
+        text = notification_text.premiere_reminder_notification(
+            locale=locale,
+            kind=kind,
+            advance=advance,
+            creator_name=creator.display_name if creator else None,
+            video_title=stream_title,
+            remaining_minutes=remaining_minutes,
+        )
+    else:
+        text = notification_text.reminder_notification(
+            locale=locale,
+            kind=kind,
+            advance=advance,
+            creator_name=creator.display_name if creator else None,
+            stream_title=stream_title,
+            remaining_minutes=remaining_minutes,
+        )
     # One immediate re-send after a plausibly transient failure (a transport error, 429/5xx); the reminder's own window is a minute, so a longer
     # retry would only be late. A failure that persists releases the claim below, exactly as before.
     result = push_sender.send_with_bounded_retry(

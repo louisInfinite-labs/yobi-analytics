@@ -65,6 +65,7 @@ from api.holodex_client import HolodexAPIError
 from api.holodex_normalization import HolodexNormalizationError
 from notifications import notification_dispatch
 from notifications import live_reminder
+from notifications import premiere_reminder
 from notifications import push_sender
 from notifications import simultaneous_live
 from api import read_api
@@ -397,6 +398,35 @@ def _handle_delete_stream_notification_override(event: dict[str, Any]) -> dict[s
     return {"clientId": client_id, "key": key, "deleted": True}
 
 
+def _handle_put_premiere_reminder(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: a client sets (or changes) its ONE one-time reminder for one exact Premiere, from the Schedule's Premiere details.
+
+    One remote-config item per Premiere (premiere_reminder.premiere_reminder_key), written on its own and replacing the previous choice for that
+    Premiere: it never reads or changes any livestream reminder, override or notification preference. The body is {creatorId, reminder} with exactly
+    one of the five reminder choices; the Premiere's start time is never stored here (the dispatcher uses the schedule's current one).
+    """
+    params = _merged_params(event)
+    client_id = heartbeat_api.parse_client_id(params.get("clientId"))
+    key = premiere_reminder.premiere_reminder_key(params.get("videoId"))
+    _require_client_secret(event, client_id)
+    raw_reminder = _json_body(event)
+    premiere_reminder.parse_premiere_reminder(raw_reminder)
+    record = remote_config_api.write_remote_config({"clientId": client_id, "key": key, "value": raw_reminder})
+    remote_config_store.put_remote_config(record)
+    return {"clientId": client_id, "key": key, "value": raw_reminder}
+
+
+def _handle_delete_premiere_reminder(event: dict[str, Any]) -> dict[str, Any]:
+    """Self-service: cancel this client's one-time reminder for one exact Premiere by deleting only its own item (idempotent: cancelling a reminder
+    that does not exist -- for instance one already delivered and consumed -- is a successful no-op)."""
+    params = _merged_params(event)
+    client_id = heartbeat_api.parse_client_id(params.get("clientId"))
+    key = premiere_reminder.premiere_reminder_key(params.get("videoId"))
+    _require_client_secret(event, client_id)
+    remote_config_store.delete_remote_config(client_id, key)
+    return {"clientId": client_id, "key": key, "deleted": True}
+
+
 def _handle_put_simultaneous_live_notice(event: dict[str, Any]) -> dict[str, Any]:
     """Self-service: a client opts IN to 同時開播預告 (a notice when several creators it follows are scheduled to start at the same time).
 
@@ -522,6 +552,8 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "DELETE /clients/{clientId}/creator-reminder/{creatorId}/{scope}": _handle_delete_creator_reminder,
     "PUT /clients/{clientId}/stream-notification-override/{videoId}": _handle_put_stream_notification_override,
     "DELETE /clients/{clientId}/stream-notification-override/{videoId}": _handle_delete_stream_notification_override,
+    "PUT /clients/{clientId}/premiere-reminder/{videoId}": _handle_put_premiere_reminder,
+    "DELETE /clients/{clientId}/premiere-reminder/{videoId}": _handle_delete_premiere_reminder,
     "PUT /clients/{clientId}/simultaneous-live-notice": _handle_put_simultaneous_live_notice,
     "DELETE /clients/{clientId}/simultaneous-live-notice": _handle_delete_simultaneous_live_notice,
     "GET /admin/heartbeat-stats": _handle_get_admin_heartbeat_stats,

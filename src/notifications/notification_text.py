@@ -25,6 +25,9 @@ SUPPORTED_LOCALES = ("zh-TW", "ja", "en")
 KIND_START = "start"
 KIND_ADVANCE = "advance"
 ADVANCE_KEYS = ("1hour", "30min", "10min", "1min")
+# One-time Premiere reminders (premiere_reminder.py) have their own kinds and wording: a Premiere starts, it does not "go live".
+KIND_PREMIERE_START = "premiere_start"
+KIND_PREMIERE_ADVANCE = "premiere_advance"
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,10 @@ class _LocaleStrings:
     simultaneous_title: str  # {names} are the creators starting together
     names_separator: str
     more_names: str  # {count} further creators beyond the two named
+    premiere_advance_titles: dict[str, str]
+    premiere_late_advance_title: str  # {minutes} is the actual whole minutes left
+    premiere_start_title: str
+    fallback_premiere_body: str
 
 
 _STRINGS: dict[str, _LocaleStrings] = {
@@ -66,6 +73,15 @@ _STRINGS: dict[str, _LocaleStrings] = {
         simultaneous_title="{names} 預定同時開播",
         names_separator="、",
         more_names="等 {count} 位",
+        premiere_advance_titles={
+            "1hour": "{name} 的首播將於 1 小時後開始",
+            "30min": "{name} 的首播將於 30 分鐘後開始",
+            "10min": "{name} 的首播將於 10 分鐘後開始",
+            "1min": "{name} 的首播將於 1 分鐘後開始",
+        },
+        premiere_late_advance_title="{name} 的首播將於約 {minutes} 分鐘後開始",
+        premiere_start_title="{name} 的首播預定現在開始",
+        fallback_premiere_body="首播",
     ),
     "ja": _LocaleStrings(
         new_video_title="{name} が新しい動画を公開しました",
@@ -83,6 +99,15 @@ _STRINGS: dict[str, _LocaleStrings] = {
         simultaneous_title="{names} の配信開始予定が重なっています",
         names_separator="、",
         more_names="ほか{count}人",
+        premiere_advance_titles={
+            "1hour": "{name} のプレミア公開は1時間後に開始",
+            "30min": "{name} のプレミア公開は30分後に開始",
+            "10min": "{name} のプレミア公開は10分後に開始",
+            "1min": "{name} のプレミア公開は1分後に開始",
+        },
+        premiere_late_advance_title="{name} のプレミア公開は約{minutes}分後に開始",
+        premiere_start_title="{name} のプレミア公開の開始予定時刻です",
+        fallback_premiere_body="プレミア公開",
     ),
     "en": _LocaleStrings(
         new_video_title="{name} posted a new video",
@@ -100,6 +125,15 @@ _STRINGS: dict[str, _LocaleStrings] = {
         simultaneous_title="{names} are scheduled to go live at the same time",
         names_separator=", ",
         more_names="and {count} more",
+        premiere_advance_titles={
+            "1hour": "{name}'s Premiere starts in 1 hour",
+            "30min": "{name}'s Premiere starts in 30 minutes",
+            "10min": "{name}'s Premiere starts in 10 minutes",
+            "1min": "{name}'s Premiere starts in 1 minute",
+        },
+        premiere_late_advance_title="{name}'s Premiere starts in about {minutes} minutes",
+        premiere_start_title="{name}'s Premiere is scheduled to start now",
+        fallback_premiere_body="Premiere",
     ),
 }
 
@@ -165,4 +199,27 @@ def reminder_notification(
     else:
         raise ValueError(f"unknown reminder notification: kind={kind!r}, advance={advance!r}, remaining_minutes={remaining_minutes!r}")
     body = stream_title if _present(stream_title) else strings.fallback_stream_body
+    return NotificationText(title=template.replace("{name}", _name(strings, creator_name)), body=body)
+
+
+def premiere_reminder_notification(
+    *, locale: Any, kind: str, advance: str | None, creator_name: Any, video_title: Any, remaining_minutes: int | None = None
+) -> NotificationText:
+    """The notification for a one-time Premiere reminder: kind KIND_PREMIERE_START (the Premiere's SCHEDULED start has arrived -- not a claim that it is
+    airing), or KIND_PREMIERE_ADVANCE with one of ADVANCE_KEYS.
+
+    `remaining_minutes` (advance only) marks a RECOVERED reminder (served after its own minute): the title then names the actual minutes left instead
+    of the configured offset; it must be a whole number of at least 2. `video_title` is shown exactly as given. Raises ValueError for a kind / advance
+    value this module does not know (a programming error, never user data).
+    """
+    strings = _STRINGS[normalize_locale(locale)]
+    if kind == KIND_PREMIERE_START and remaining_minutes is None:
+        template = strings.premiere_start_title
+    elif kind == KIND_PREMIERE_ADVANCE and advance in strings.premiere_advance_titles and remaining_minutes is None:
+        template = strings.premiere_advance_titles[advance]
+    elif kind == KIND_PREMIERE_ADVANCE and advance in strings.premiere_advance_titles and isinstance(remaining_minutes, int) and not isinstance(remaining_minutes, bool) and remaining_minutes >= 2:
+        template = strings.premiere_late_advance_title.replace("{minutes}", str(remaining_minutes))
+    else:
+        raise ValueError(f"unknown Premiere reminder notification: kind={kind!r}, advance={advance!r}, remaining_minutes={remaining_minutes!r}")
+    body = video_title if _present(video_title) else strings.fallback_premiere_body
     return NotificationText(title=template.replace("{name}", _name(strings, creator_name)), body=body)

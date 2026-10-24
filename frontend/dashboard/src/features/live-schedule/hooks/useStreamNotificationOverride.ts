@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react"
 import { resolveCreatorKey } from "../../../entities/creator/data/creatorRegistry"
 import {
+  deletePremiereReminder,
   deleteStreamNotificationOverride,
   fetchReminderSettings,
   reminderValueToSetting,
+  savePremiereReminder as savePremiereReminderRequest,
   saveStreamNotificationOverride,
   settingToReminderValue,
   type StreamNotificationOverride,
@@ -104,4 +106,30 @@ export function useStreamNotificationOverride() {
   }, [])
 
   return { getOverride, getEffectiveReminderValue, saveOverride, removeOverride }
+}
+
+/** The Schedule's ONE-TIME reminder for a single YouTube Premiere, backed by the same real backend settings cache as the livestream override above but a
+ * completely separate setting: it is never resolved against the creator 全部 / topic reminders and has no "off" state (a Premiere reminder either exists or
+ * does not). It stores exactly one of the five times and no start time (the backend always uses the Premiere's CURRENT scheduled start, so a reschedule is
+ * followed automatically); the backend consumes it once it has been delivered. Writes go to the backend first; the cache only changes once they succeeded. */
+export function usePremiereReminder() {
+  const state = useCache()
+
+  /** The ONE time saved for this Premiere, or `null` when none is (never defaulted). */
+  const getPremiereReminder = useCallback((videoId: string): ReminderTimeValue | null => state.premiereReminders[videoId] ?? null, [state])
+
+  const savePremiereReminder = useCallback(async (stream: ScheduledStream, value: ReminderTimeValue): Promise<void> => {
+    const creator = resolveCreatorKey(stream.channelId)
+    if (!creator) throw new Error(`Cannot save a reminder for a Premiere with no resolvable creator (channelId ${stream.channelId})`)
+    await savePremiereReminderRequest(stream.videoId, creator.creatorId, value)
+    setCache({ ...getCache(), premiereReminders: { ...getCache().premiereReminders, [stream.videoId]: value } })
+  }, [])
+
+  const removePremiereReminder = useCallback(async (stream: ScheduledStream): Promise<void> => {
+    await deletePremiereReminder(stream.videoId)
+    const { [stream.videoId]: _removed, ...rest } = getCache().premiereReminders
+    setCache({ ...getCache(), premiereReminders: rest })
+  }, [])
+
+  return { getPremiereReminder, savePremiereReminder, removePremiereReminder }
 }
