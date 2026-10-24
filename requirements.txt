@@ -6,3 +6,4 @@ moto==5.2.3
 pyarrow==20.0.0
 tzdata==2026.3
 pywebpush==2.5.0
+certifi==2026.10.23
