@@ -59,6 +59,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/** The headers of one request. The JSON `Content-Type` is added only when there is a body to describe: on a bodyless GET it is not a CORS-safelisted
+ * header, so it made the browser send an OPTIONS preflight before every data GET (a second round trip per request, and one more thing a crawler's renderer
+ * has to support) while describing nothing. Headers the caller supplies are always kept as given, and a caller's own Content-Type (any spelling) is never
+ * duplicated or overridden. The backend does not read the request Content-Type (api_handler._json_body reads the body only). */
+function requestHeaders(options: ApiRequestOptions): Record<string, string> {
+  const supplied = options.headers ?? {}
+  const callerSetsContentType = Object.keys(supplied).some((name) => name.toLowerCase() === "content-type")
+  if (options.body === undefined || callerSetsContentType) return { ...supplied }
+  return { "Content-Type": "application/json", ...supplied }
+}
+
 /** Call one Yobi Analytics backend endpoint and return its parsed JSON body.
  *
  * Throws `ApiError` for any non-2xx response (the backend always returns a
@@ -79,10 +90,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(`${baseUrl}${path}`, {
       method: options.method ?? "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
+      headers: requestHeaders(options),
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: options.signal,
     })
