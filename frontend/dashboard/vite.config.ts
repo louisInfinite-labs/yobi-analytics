@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 import { configDefaults } from 'vitest/config'
 import { buildSitemapPaths, buildSitemapXml, STATIC_SITEMAP_PATHS } from './src/app/seo/sitemap.ts'
+import { apiPreconnectTags } from './src/app/seo/apiPreconnect.ts'
 import { NOT_FOUND_SEO, pageFileName, renderSeoPage, resolvePageSeo, type SeoCreator } from './src/app/seo/pageSeo.ts'
 
 /** The Creator Registry's creators, read from the generated JSON the app's router resolves slugs from. */
@@ -24,6 +25,21 @@ function sitemapPlugin(): Plugin {
       if (paths.length <= STATIC_SITEMAP_PATHS.length) throw new Error('sitemap: the Creator Registry produced no creator URLs')
       this.emitFile({ type: 'asset', fileName: 'sitemap.xml', source: buildSitemapXml(paths) })
     },
+  }
+}
+
+/** Adds one `<link rel="preconnect" crossorigin>` for the API origin to the built HTML, so the browser (and a crawler's renderer) opens that connection while
+ * the bundle downloads instead of after it starts. The origin comes from the build's own VITE_API_BASE_URL; with none configured (or an unusable one) no
+ * tag is added. The static SEO pages are rendered from this HTML, so every page carries it. Build only. */
+function apiPreconnectPlugin(): Plugin {
+  let apiBaseUrl: unknown
+  return {
+    name: 'oshiyobi-api-preconnect',
+    apply: 'build',
+    configResolved(config) {
+      apiBaseUrl = config.env.VITE_API_BASE_URL
+    },
+    transformIndexHtml: () => apiPreconnectTags(apiBaseUrl),
   }
 }
 
@@ -57,7 +73,7 @@ function seoPagesPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), sitemapPlugin(), seoPagesPlugin()],
+  plugins: [react(), apiPreconnectPlugin(), sitemapPlugin(), seoPagesPlugin()],
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

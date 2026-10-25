@@ -39,16 +39,96 @@ describe("apiRequest", () => {
     )
   })
 
-  it("merges caller-supplied headers alongside the default Content-Type", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) })
-    vi.stubGlobal("fetch", fetchMock)
+  describe("request headers", () => {
+    const okFetch = () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) })
+      vi.stubGlobal("fetch", fetchMock)
+      return fetchMock
+    }
+    const sentHeaders = (fetchMock: ReturnType<typeof okFetch>, call = 0) => (fetchMock.mock.calls[call][1] as RequestInit).headers as Record<string, string>
 
-    await apiRequest("/foo", { headers: { "X-Admin-Key": "secret" } })
+    it("adds no Content-Type to a bodyless GET, so the browser needs no CORS preflight for it", async () => {
+      const fetchMock = okFetch()
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.example.com/foo",
-      expect.objectContaining({ headers: expect.objectContaining({ "Content-Type": "application/json", "X-Admin-Key": "secret" }) }),
-    )
+      await apiRequest("/live-streams")
+
+      expect(sentHeaders(fetchMock)).toEqual({})
+      expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBeUndefined()
+    })
+
+    it.each(["POST", "PUT", "DELETE"] as const)("sends the JSON Content-Type with a %s that has a body", async (method) => {
+      const fetchMock = okFetch()
+
+      await apiRequest("/foo", { method, body: { a: 1 } })
+
+      expect(sentHeaders(fetchMock)).toEqual({ "Content-Type": "application/json" })
+      expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(JSON.stringify({ a: 1 }))
+    })
+
+    it("also types a falsy but present body (0, false, empty string, null) as JSON", async () => {
+      for (const body of [0, false, "", null]) {
+        const fetchMock = okFetch()
+        await apiRequest("/foo", { method: "PUT", body })
+        expect(sentHeaders(fetchMock)).toEqual({ "Content-Type": "application/json" })
+      }
+    })
+
+    it("adds no Content-Type to a bodyless POST or DELETE either (credential registration, push unsubscribe): there is nothing to describe", async () => {
+      for (const method of ["POST", "DELETE"] as const) {
+        const fetchMock = okFetch()
+        await apiRequest("/clients/c1/credential", { method })
+        expect(sentHeaders(fetchMock)).toEqual({})
+        expect(fetchMock).toHaveBeenCalledWith("https://api.example.com/clients/c1/credential", expect.objectContaining({ method, body: undefined }))
+      }
+    })
+
+    it("keeps the headers a caller supplies exactly as given on a bodyless GET (admin key, remote-config client secret)", async () => {
+      const admin = okFetch()
+      await apiRequest("/foo", { headers: { "X-Admin-Key": "secret" } })
+      expect(sentHeaders(admin)).toEqual({ "X-Admin-Key": "secret" })
+
+      const remoteConfig = okFetch()
+      await apiRequest("/remote-config?clientId=c%201", { headers: { "X-Client-Secret": "s3cret" } })
+      expect(remoteConfig).toHaveBeenCalledWith("https://api.example.com/remote-config?clientId=c%201", expect.objectContaining({ method: "GET" }))
+      expect(sentHeaders(remoteConfig)).toEqual({ "X-Client-Secret": "s3cret" })
+    })
+
+    it("merges caller-supplied headers alongside the Content-Type of a request that has a body", async () => {
+      const fetchMock = okFetch()
+
+      await apiRequest("/remote-config", { method: "POST", body: { key: "k" }, headers: { "X-Admin-Key": "secret" } })
+
+      expect(sentHeaders(fetchMock)).toEqual({ "Content-Type": "application/json", "X-Admin-Key": "secret" })
+    })
+
+    it("never duplicates or overrides a Content-Type the caller supplies, in any spelling", async () => {
+      for (const name of ["Content-Type", "content-type", "CONTENT-TYPE"]) {
+        const withBody = okFetch()
+        await apiRequest("/foo", { method: "PUT", body: { a: 1 }, headers: { [name]: "application/merge-patch+json" } })
+        expect(sentHeaders(withBody)).toEqual({ [name]: "application/merge-patch+json" })
+
+        const bodyless = okFetch()
+        await apiRequest("/foo", { headers: { [name]: "text/plain" } })
+        expect(sentHeaders(bodyless)).toEqual({ [name]: "text/plain" })
+      }
+    })
+
+    it("passes the Home data paths to fetch verbatim: same URLs, same query strings, no extra header", async () => {
+      const paths = [
+        "/creators/aizawa_ema/oshi-status?recentLimit=1",
+        "/creators/aizawa_ema/videos/recent?contentType=live&liveStatus=completed&limit=20&offset=0",
+        "/creators/aizawa_ema/videos/recent?topic=all&contentType=all&liveStatus=archived&sort=newest&limit=20&offset=0&excludeShorts=true&newSince=2026-10-24T05%3A59%3A38.011Z",
+        "/live-streams",
+        "/topics",
+        "/milestones",
+      ]
+      const fetchMock = okFetch()
+
+      for (const path of paths) await apiRequest(path)
+
+      expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(paths.map((path) => `https://api.example.com${path}`))
+      for (let call = 0; call < paths.length; call++) expect(sentHeaders(fetchMock, call)).toEqual({})
+    })
   })
 
   it("throws an ApiError carrying the backend's own error message for a non-2xx response", async () => {
@@ -111,6 +191,22 @@ describe("apiRequest", () => {
 
     expect(result).toEqual({ hello: "world" })
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("retries a 429 with the very same request (URL, method, headers, body), still adding no Content-Type to a bodyless GET", async () => {
+    vi.useFakeTimers()
+    const throttled = { ok: false, status: 429, json: () => Promise.resolve({ error: "Too Many Requests" }) }
+    const fetchMock = vi.fn().mockResolvedValueOnce(throttled).mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ ok: 1 }) })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const pending = apiRequest("/topics", { headers: { "X-Client-Secret": "s" } })
+    await vi.runAllTimersAsync()
+
+    await expect(pending).resolves.toEqual({ ok: 1 })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1]).toEqual(fetchMock.mock.calls[0])
+    expect((fetchMock.mock.calls[1][1] as RequestInit).headers).toEqual({ "X-Client-Secret": "s" })
+    vi.useRealTimers()
   })
 
   it("gives up and throws ApiError after exhausting 429 retries", async () => {
