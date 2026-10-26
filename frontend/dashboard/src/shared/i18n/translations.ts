@@ -292,6 +292,10 @@ export type TranslationKey =
   | "liveSchedule.dayNavAria"
   | "liveSchedule.previousDayAria"
   | "liveSchedule.nextDayAria"
+  | "liveSchedule.resultsTitle"
+  | "liveSchedule.resultsCollapseAria"
+  | "liveSchedule.resultsExpandAria"
+  | "liveSchedule.resultsEmpty"
   | "liveSchedule.closeAria"
   | "liveSchedule.setReminderButton"
   | "liveSchedule.openStreamButton"
@@ -598,6 +602,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.dayNavAria": "日期切換",
     "liveSchedule.previousDayAria": "前一天",
     "liveSchedule.nextDayAria": "後一天",
+    "liveSchedule.resultsTitle": "篩選結果（{{count}}）",
+    "liveSchedule.resultsCollapseAria": "收合篩選結果",
+    "liveSchedule.resultsExpandAria": "展開篩選結果",
+    "liveSchedule.resultsEmpty": "本週沒有符合的直播",
     "liveSchedule.closeAria": "關閉",
     "liveSchedule.setReminderButton": "設定提醒",
     "liveSchedule.openStreamButton": "開啟直播",
@@ -902,6 +910,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.dayNavAria": "Day navigation",
     "liveSchedule.previousDayAria": "Previous day",
     "liveSchedule.nextDayAria": "Next day",
+    "liveSchedule.resultsTitle": "Results ({{count}})",
+    "liveSchedule.resultsCollapseAria": "Collapse results",
+    "liveSchedule.resultsExpandAria": "Expand results",
+    "liveSchedule.resultsEmpty": "No matching streams this week",
     "liveSchedule.closeAria": "Close",
     "liveSchedule.setReminderButton": "Set Reminder",
     "liveSchedule.openStreamButton": "Open Stream",
@@ -1206,6 +1218,10 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "liveSchedule.dayNavAria": "日付の切り替え",
     "liveSchedule.previousDayAria": "前の日",
     "liveSchedule.nextDayAria": "次の日",
+    "liveSchedule.resultsTitle": "絞り込み結果（{{count}}）",
+    "liveSchedule.resultsCollapseAria": "絞り込み結果を閉じる",
+    "liveSchedule.resultsExpandAria": "絞り込み結果を開く",
+    "liveSchedule.resultsEmpty": "今週は該当する配信がありません",
     "liveSchedule.closeAria": "閉じる",
     "liveSchedule.setReminderButton": "リマインダーを設定",
     "liveSchedule.openStreamButton": "配信を開く",

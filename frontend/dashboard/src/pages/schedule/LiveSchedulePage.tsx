@@ -71,6 +71,7 @@ export function LiveSchedulePage() {
         selectedStreamId={selectedStream?.id ?? null}
         onSelectStream={setSelectedStream}
         holdPreviousDay={holdPreviousDay}
+        creatorFilterActive={selectedCreators.length > 0}
       />
 
       <StreamDetailModal
