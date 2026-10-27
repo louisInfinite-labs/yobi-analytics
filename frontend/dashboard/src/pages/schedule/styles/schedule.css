@@ -20,6 +20,9 @@
      than shrinking this back down to force everything into one viewport. */
   /* Tall enough for a Live Status-sized (--creator-avatar-size) avatar plus the LIVE badge above it. */
   --schedule-time-slot-height: 56px;
+  /* The phone date navigator's height: the one value both the navigator itself and the results drawer's max-height read, so the drawer always
+     leaves the grid room BELOW the real chrome (app top bar + this navigator) rather than a guess. */
+  --schedule-day-nav-height: 48px;
 }
 
 /* Page renders inside the existing app-shell's content area (next to
@@ -1297,7 +1300,7 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
   justify-content: space-between;
   gap: 8px;
 
-  height: 48px;
+  height: var(--schedule-day-nav-height);
   padding: 0 4px;
 
   background: var(--schedule-bg-page);
@@ -1386,4 +1389,308 @@ html.schedule-page-scroll:hover::-webkit-scrollbar-corner {
     padding-left: 8px;
     font-size: 11px;
   }
+}
+
+/* ============ Phone: results drawer (Creator Filter applied) ============
+   A bottom sheet sized to its content (ScheduleResultsDrawer.tsx), above the Schedule and below the antd drawers / dialogs (z-index 1000+),
+   so the filter drawer and the stream dialog still cover it.
+
+   Layering against the Live Status dock (home.css), all in the one root stacking context (no ancestor of either creates its own): the dock's
+   floating button is z-index 220 and its full sheet 300. EXPANDED, the drawer is 250 -- above the button, so it covers it and the covered button
+   takes no taps, and below the sheet. COLLAPSED it stays 50, below the button, so Live Status keeps working beside the slim bar (the bar's
+   right side is empty). The dock itself is untouched, and nothing here applies off this page. Same surface as the creator filter drawer (#0b1521, strong border). It is
+   position: fixed, so opening, collapsing or reopening it never moves the page; the page only gains bottom padding so the last rows can still
+   scroll above it. Its list is its own scroller and uses the Schedule page's scrollbar look (constant 7px track, colors only on hover). */
+.schedule-results {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 50;
+
+  box-sizing: border-box;
+  /* Height follows the content (ScheduleResultsDrawer.tsx measures it and fixes it); this only caps it, by BOTH rules: at most 85% of the visible
+     viewport, and never so tall that less than 100px of the Schedule GRID stays visible above it -- below the app top bar and the date navigator
+     (both sticky, so they are always there), not merely 100px from the top of the screen. The 96px floor only matters on an absurdly short
+     viewport, where a usable header plus a row beats honouring the 100px. Past the cap the list scrolls and the header stays. */
+  max-height: min(85vh, max(96px, calc(100vh - var(--main-topbar-height, 0px) - var(--schedule-day-nav-height) - 100px)));
+  max-height: min(85dvh, max(96px, calc(100dvh - var(--main-topbar-height, 0px) - var(--schedule-day-nav-height) - 100px)));
+
+  display: flex;
+  flex-direction: column;
+
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+
+  background: #0b1521;
+  border-top: 1px solid var(--oshi-border-strong);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.4);
+
+  color: var(--oshi-text-1);
+}
+
+.schedule-results:not(.is-collapsed) {
+  z-index: 250;
+}
+
+.schedule-results.is-collapsed {
+  height: auto;
+}
+
+/* The one measured block (header excluded): its height is the list's natural height, whatever size the scrolling list itself currently has. */
+.schedule-results__content {
+  display: flow-root;
+}
+
+.schedule-results__header {
+  appearance: none;
+
+  flex: 0 0 auto;
+
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+
+  /* The chevron sits right after the title, not at the far edge: the app's floating bottom-right chip would cover it there. */
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+
+  border: 0;
+  border-bottom: 1px solid var(--oshi-border);
+  border-radius: 12px 12px 0 0;
+  background: transparent;
+
+  color: var(--oshi-text-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+
+  cursor: pointer;
+}
+
+.schedule-results.is-collapsed .schedule-results__header {
+  border-bottom: 0;
+}
+
+.schedule-results__header:focus-visible,
+.schedule-results__goto:focus-visible {
+  outline: 1px solid var(--creator-main, var(--oshi-text-1));
+  outline-offset: -2px;
+}
+
+.schedule-results__list {
+  flex: 1 1 auto;
+  min-height: 0;
+
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  /* The sticky date heading (31px) covers the top of the list; without this, keyboard focus moving UP (Shift+Tab) scrolls a row only to the very
+     edge, i.e. under the heading. With it, focus and scrollIntoView keep the row below the heading. */
+  scroll-padding-top: 32px;
+
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.schedule-results__list:hover {
+  scrollbar-color: var(--oshi-surface-scrollbar-thumb) var(--oshi-bg);
+}
+
+.schedule-results__list::-webkit-scrollbar {
+  width: 7px;
+  background: transparent;
+}
+
+.schedule-results__list::-webkit-scrollbar-button {
+  display: none;
+}
+
+.schedule-results__list::-webkit-scrollbar-track {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.schedule-results__list::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  border-radius: 999px;
+}
+
+.schedule-results__list:hover::-webkit-scrollbar-track {
+  background: var(--oshi-bg);
+}
+
+.schedule-results__list:hover::-webkit-scrollbar-thumb {
+  background: var(--oshi-surface-scrollbar-thumb);
+}
+
+.schedule-results__list:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--oshi-surface-scrollbar-thumb-hover);
+}
+
+.schedule-results__empty {
+  padding: 24px 16px;
+
+  color: var(--oshi-text-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Sticky inside the list, so the date a row belongs to stays in view while its group scrolls. */
+.schedule-results__date {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+
+  margin: 0;
+  padding: 6px 16px;
+
+  background: #0b1521;
+  border-bottom: 1px solid var(--oshi-border);
+
+  color: var(--oshi-text-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.schedule-results__date.is-today {
+  color: #79c8ff;
+}
+
+.schedule-results__rows {
+  margin: 0;
+  padding: 0;
+
+  list-style: none;
+}
+
+.schedule-results__row {
+  display: grid;
+  grid-template-columns: var(--creator-avatar-size) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+
+  padding: 4px 8px 4px 16px;
+}
+
+.schedule-results__goto {
+  appearance: none;
+
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 6px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+
+  color: inherit;
+  font: inherit;
+  text-align: left;
+
+  cursor: pointer;
+}
+
+.schedule-results__goto:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.schedule-results__meta {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.schedule-results__time {
+  flex: 0 0 auto;
+
+  color: var(--oshi-text-3);
+}
+
+.schedule-results__creator {
+  min-width: 0;
+  overflow: hidden;
+
+  color: var(--oshi-text-1);
+  font-size: 12px;
+  font-weight: 650;
+
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.schedule-results__badge {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  white-space: nowrap;
+
+  border-radius: 999px;
+
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+}
+
+.schedule-results__badge.is-live {
+  background: var(--live-red);
+}
+
+.schedule-results__badge.is-premiere {
+  background: var(--neutral-badge);
+}
+
+.schedule-results__stream-title {
+  display: -webkit-box;
+  overflow: hidden;
+
+  color: var(--oshi-text-2);
+  font-size: 11px;
+  line-height: 1.35;
+
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Room under the grid for the drawer, so the last time rows can scroll above it: the drawer's real height while it is open (the page-level
+   --schedule-results-height that ScheduleResultsDrawer publishes; half the viewport only before it has measured), just its header while it
+   is collapsed (no permanent half-screen of blank page). Padding only. Collapsing shortens the page, which can make the browser pull the scroll
+   position up when the page was scrolled near its end; ScheduleResultsDrawer.tsx puts the page back where it was when the drawer reopens. */
+.schedule-page:has(.schedule-results:not(.is-collapsed)) {
+  padding-bottom: calc(var(--schedule-results-height, 50dvh) + 16px);
+}
+
+.schedule-page:has(.schedule-results.is-collapsed) {
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px) + 16px);
+}
+
+/* Desktop / tablet, Creator Filter matching nothing: a compact message in place of the empty grid. */
+.schedule-grid-empty {
+  padding: 40px 16px;
+
+  color: var(--schedule-text-secondary);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* The shell normally stretches to the viewport (.schedule-grid-shell's flex: 1); around the empty message it hugs the message instead. */
+.schedule-grid-shell:has(> .schedule-grid-empty) {
+  flex: 0 0 auto;
 }
