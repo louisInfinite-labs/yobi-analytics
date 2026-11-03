@@ -38,6 +38,7 @@ locals {
     "GET /creators/{creatorId}/videos/ranking",
     "GET /creators/{creatorId}/videos/recent",
     "GET /creators/{creatorId}/videos/search",
+    "GET /creators/{creatorId}/videos/on-this-day",
     "GET /creators/{creatorId}/oshi-status",
     "GET /creators/{creatorId}/milestones",
     "GET /milestones",

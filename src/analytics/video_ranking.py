@@ -119,6 +119,8 @@ class VideoRankingRow:
     thumbnail_url: str | None = None
     published_at: str | None = None
     discovered_at: str | None = None
+    # F37: a started livestream's real start (manifest/Video Master actual_start_at); None when not known -- never published_at.
+    actual_start_at: str | None = None
 
 
 def _topic_for(video_id: str, topic_by_video: Mapping[str, str]) -> str:
@@ -161,6 +163,7 @@ def build_creator_video_catalog(
     thumbnail_by_video: Mapping[str, str] | None = None,
     published_at_by_video: Mapping[str, str] | None = None,
     discovered_at_by_video: Mapping[str, str] | None = None,
+    actual_start_at_by_video: Mapping[str, str] | None = None,
 ) -> list[VideoRankingRow]:
     """Build one creator's own-video canonical ranking catalog: one row per
     video with today's own lifetime view count plus every growth metric's
@@ -204,6 +207,7 @@ def build_creator_video_catalog(
     thumbnail_by_video = thumbnail_by_video or {}
     published_at_by_video = published_at_by_video or {}
     discovered_at_by_video = discovered_at_by_video or {}
+    actual_start_at_by_video = actual_start_at_by_video or {}
 
     rows: list[VideoRankingRow] = []
     for row in sorted(creator_today_rows, key=lambda r: r.video_id):
@@ -221,6 +225,7 @@ def build_creator_video_catalog(
                 thumbnail_url=thumbnail_by_video.get(row.video_id),
                 published_at=published_at_by_video.get(row.video_id),
                 discovered_at=discovered_at_by_video.get(row.video_id),
+                actual_start_at=actual_start_at_by_video.get(row.video_id),
             )
         )
     return rows

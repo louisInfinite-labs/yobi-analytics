@@ -755,7 +755,7 @@ def _parse_video_item(item: dict) -> dict:
                 live_status = "upcoming"
         else:
             live_status = None
-        return {
+        parsed = {
             "videoId": item["id"],
             "title": snippet["title"],
             "publishedAt": snippet["publishedAt"],
@@ -763,5 +763,12 @@ def _parse_video_item(item: dict) -> dict:
             "contentType": "live" if is_live else "upload",
             "liveStatus": live_status,
         }
+        # F37: the stream's real start, from the same liveStreamingDetails already paid for. Only a livestream that has started carries one
+        # (an upcoming one has none; a Premiere/upload keeps publishedAt as its date), and a malformed value is dropped, never repaired.
+        if is_live and live_status != "upcoming":
+            actual_start = live_details.get("actualStartTime")
+            if _parse_timestamp(actual_start) is not None:
+                parsed["actualStartTime"] = actual_start
+        return parsed
     except (KeyError, TypeError, ValueError) as exc:
         raise YouTubeAPIError(f"Malformed video item, missing field: {exc}") from exc

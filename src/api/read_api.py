@@ -64,7 +64,7 @@ from search.video_search import VALID_SEARCH_SORTS as VALID_VIDEO_SEARCH_SORTS
 from search.video_search import search_creator_video_rows
 from stores import creator_milestones_store
 from stores.video_ranking_store import S3VideoRankingStore
-from tracking.video_master import VALID_LIVE_STATUSES, Video
+from tracking.video_master import VALID_LIVE_STATUSES, Video, normalize_actual_start
 from tracking.video_master import is_known_non_livestream
 from tracking.video_topics import OTHER_TOPIC, classify_video_topic
 from analytics.view_growth_analytics import (
@@ -838,6 +838,7 @@ def get_recent_creator_videos(query: dict[str, Any], *, now: datetime | None = N
             **({"archiveAvailableAt": row["archiveAvailableAt"]} if row.get("archiveAvailableAt") else {}),
             **({"provisional": True} if row.get("provisional") else {}),
             **({"scheduledStart": row["scheduledStart"]} if row.get("scheduledStart") else {}),
+            **({"actualStartAt": row["actualStartAt"]} if row.get("actualStartAt") else {}),
         }
         for row in page
     ]
@@ -856,6 +857,150 @@ def get_recent_creator_videos(query: dict[str, Any], *, now: datetime | None = N
     if new_since is not None:
         response["newContent"] = _recent_creator_videos_new_content(ordered, new_since, now or datetime.now(timezone.utc))
     return response
+
+
+# F37 "On this day": the creator's videos whose LOCAL calendar date (in the requested zone) is the given month/day in an earlier year.
+ON_THIS_DAY_MAX_ROWS = 500
+# 2024 is a leap year, so "2/29" is a valid input; it simply matches no row in a non-leap year (the date does not exist there).
+_ON_THIS_DAY_CALENDAR_YEAR = 2024
+
+
+def parse_on_this_day_month_day(raw_month: Any, raw_day: Any) -> tuple[int, int]:
+    """Validate the required month/day pair of GET .../videos/on-this-day (February 29 is accepted)."""
+    if isinstance(raw_month, bool) or isinstance(raw_day, bool):
+        raise ClientError("month and day must be integers")
+    try:
+        month, day = int(raw_month), int(raw_day)
+        date(_ON_THIS_DAY_CALENDAR_YEAR, month, day)
+    except (TypeError, ValueError):
+        raise ClientError(f"month and day must form a real calendar date, got month={raw_month!r} day={raw_day!r}") from None
+    return month, day
+
+
+def _on_this_day_instant(row: dict[str, Any]) -> tuple[datetime | None, str | None]:
+    """The (instant, dateKind) a catalog row is remembered by, or (None, reason) when it has no trustworthy date.
+
+    A completed livestream is dated by its verified actual start (`actualStartAt`); without one it is undated, never given
+    publishedAt (which is not its start). An upload/Short/Premiere keeps publishedAt (a Premiere is published at its start). An
+    unclassified row cannot be told apart from a livestream, so it is undated too.
+    """
+    content_type = row.get("contentType")
+    if content_type == "live":
+        raw = row.get("actualStartAt")
+        kind, missing = "actualStart", "undatedLivestream"
+    elif content_type in ("upload", VIDEO_RANKING_CONTENT_TYPE_SHORT):
+        raw = row.get("publishedAt")
+        kind, missing = "published", "undatedUpload"
+    else:
+        return None, "unclassified"
+    if not isinstance(raw, str):
+        return None, missing
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")), kind
+    except ValueError:
+        return None, missing
+
+
+def get_creator_videos_on_this_day(query: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
+    """`GET /creators/{creatorId}/videos/on-this-day?month=M&day=D[&timeZone=][&topic=][&contentType=][&excludeShorts=]` (F37).
+
+    One creator's videos whose local date (default Asia/Tokyo, the cache's canonical zone) is month/day in an EARLIER local date than
+    today, grouped by year, newest year first, from the same persisted per-creator catalog every Home endpoint reads (one S3 read,
+    all years in one response -- no paging). Upcoming and currently live streams are never returned. Filters mean what they mean on
+    /videos/recent. Rows that cannot be dated honestly are counted in `coverage`, never placed by a guessed date.
+    """
+    creator_id = parse_creator_id(query.get("creatorId"))
+    month, day = parse_on_this_day_month_day(query.get("month"), query.get("day"))
+    time_zone = parse_time_zone(query["timeZone"]) if query.get("timeZone") else CANONICAL_CACHE_TIME_ZONE
+    zone = ZoneInfo(time_zone)
+    topic = parse_video_ranking_topic(query.get("topic"))
+    content_type = parse_video_ranking_content_type(query.get("contentType"))
+    exclude_shorts = parse_exclude_shorts(query.get("excludeShorts"))
+    moment = now or datetime.now(timezone.utc)
+    today_local = moment.astimezone(zone).date()
+
+    if _find_creator(creator_id) is None:
+        raise ClientError(f"No creator found for creatorId {creator_id!r}")
+    store = S3VideoRankingStore.from_environment_or_default()
+    result = None
+    for candidate_date in _leaderboard_report_dates(None):
+        result = store.read_result(candidate_date, creator_id)
+        if result is not None:
+            break
+    if result is None:
+        _raise_no_result(creator_id, f"On-this-day videos for creatorId={creator_id!r} are not yet computed")
+
+    rows = [row for row in result["videos"] if row.get("creatorId") == creator_id]
+    if topic != VIDEO_RANKING_TOPIC_ALL:
+        rows = [row for row in rows if row.get("topic") == topic]
+    if content_type != VIDEO_RANKING_CONTENT_TYPE_ALL:
+        rows = [row for row in rows if row.get("contentType") == content_type]
+    if exclude_shorts:
+        rows = [row for row in rows if row.get("contentType") != VIDEO_RANKING_CONTENT_TYPE_SHORT]
+    # Upcoming / currently live streams are not memories (a stream has no completed date yet).
+    rows = [row for row in rows if row.get("liveStatus") not in ("upcoming", "live")]
+
+    undated = {"undatedLivestream": 0, "undatedUpload": 0, "unclassified": 0}
+    catalog_start: date | None = None
+    seen: set[str] = set()
+    matches: list[tuple[datetime, str, dict[str, Any]]] = []
+    for row in sorted(rows, key=lambda r: r["videoId"]):
+        if row["videoId"] in seen:
+            continue
+        seen.add(row["videoId"])
+        instant, kind = _on_this_day_instant(row)
+        if instant is None:
+            undated[kind] += 1
+            continue
+        local = instant.astimezone(zone).date()
+        if catalog_start is None or local < catalog_start:
+            catalog_start = local
+        if (local.month, local.day) == (month, day) and local < today_local:
+            matches.append((instant, kind, row))
+    matches.sort(key=lambda item: (item[0], item[2]["videoId"]), reverse=True)
+    truncated = len(matches) > ON_THIS_DAY_MAX_ROWS
+    matches = matches[:ON_THIS_DAY_MAX_ROWS]
+
+    years: list[dict[str, Any]] = []
+    for instant, kind, row in matches:
+        local = instant.astimezone(zone).date()
+        if not years or years[-1]["year"] != local.year:
+            years.append({"year": local.year, "videos": []})
+        years[-1]["videos"].append(
+            {
+                "videoId": row["videoId"],
+                "title": row.get("title"),
+                "thumbnailUrl": row.get("thumbnailUrl"),
+                "topic": row.get("topic"),
+                "contentType": row.get("contentType"),
+                "liveStatus": row.get("liveStatus"),
+                "currentViewCount": row.get("currentViewCount"),
+                "publishedAt": row.get("publishedAt"),
+                "date": local.isoformat(),
+                "eventAt": instant.isoformat(),
+                "dateKind": kind,
+            }
+        )
+    return {
+        "reportDate": result["reportDate"],
+        "generatedAt": result["generatedAt"],
+        "creatorId": creator_id,
+        "month": month,
+        "day": day,
+        "timeZone": time_zone,
+        "topic": topic,
+        "contentType": content_type,
+        "years": years,
+        "total": len(matches),
+        "truncated": truncated,
+        "coverage": {
+            "catalogStart": catalog_start.isoformat() if catalog_start else None,
+            "catalogRows": len(rows),
+            "undatedLivestreams": undated["undatedLivestream"],
+            "undatedUploads": undated["undatedUpload"],
+            "unclassified": undated["unclassified"],
+        },
+    }
 
 
 def parse_search_query(raw: Any) -> str:
@@ -1698,6 +1843,8 @@ def _with_verified_completed_streams(rows: list[dict[str, Any]], creator_id: str
         index = by_video_id.get(video_id)
         is_premiere = is_completed_premiere(archive.get("publishedAt"), archive)
         content_type = "upload" if is_premiere else "live"
+        # F37: a livestream archive's verified real start (YouTube's actualStartTime from the same lifecycle probe); a Premiere keeps publishedAt.
+        overlay_start = None if is_premiere else normalize_actual_start(archive.get("actualStartTime"))
         # Only a completed Premiere carries its archive-availability time (the lifecycle's own `availableAt`, persisted with the archive record, never a
         # request-time guess); an ordinary livestream archive keeps counting from its discovery time exactly as before.
         available_at = archive.get("availableAt") if is_premiere and _parse_utc_timestamp(archive.get("availableAt")) is not None else None
@@ -1713,6 +1860,8 @@ def _with_verified_completed_streams(rows: list[dict[str, Any]], creator_id: str
                 patched.pop("liveStatus", None)
             else:
                 patched["liveStatus"] = "completed"
+                if overlay_start and not existing.get("actualStartAt"):
+                    patched["actualStartAt"] = overlay_start
             overlaid[index] = patched
             continue
         title = archive.get("title") or ""
@@ -1732,6 +1881,8 @@ def _with_verified_completed_streams(rows: list[dict[str, Any]], creator_id: str
             new_row["archiveAvailableAt"] = available_at
         if not is_premiere:
             new_row["liveStatus"] = "completed"
+            if overlay_start:
+                new_row["actualStartAt"] = overlay_start
         overlaid.append(new_row)
     # An added row has no catalog entry, so its ORIGINAL AWS first-discovery time comes from its Video Master record (when discovery has recorded
     # one). Without it the stream could never count as NEW; with none on file it stays unknown (None) -- publishedAt is never substituted.

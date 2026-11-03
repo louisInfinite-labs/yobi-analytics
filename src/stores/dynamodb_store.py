@@ -246,6 +246,31 @@ def scan_video_classification_items() -> list[dict[str, Any]]:
     return items
 
 
+def scan_video_actual_start_items() -> list[dict[str, Any]]:
+    """Scan Video Master for each item's videoId/creatorId/contentType/liveStatus/actualStartAt only (the F37 backfill's planning scan, not a request path)."""
+    table = _resource().Table(VIDEO_MASTER_TABLE)
+    scan_kwargs = {
+        "ProjectionExpression": "#videoId, #creatorId, #contentType, #liveStatus, #actualStartAt",
+        "ExpressionAttributeNames": {
+            "#videoId": "videoId",
+            "#creatorId": "creatorId",
+            "#contentType": "contentType",
+            "#liveStatus": "liveStatus",
+            "#actualStartAt": "actualStartAt",
+        },
+    }
+    items: list[dict[str, Any]] = []
+    try:
+        response = table.scan(**scan_kwargs)
+        items.extend(response.get("Items", []))
+        while "LastEvaluatedKey" in response:
+            response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"], **scan_kwargs)
+            items.extend(response.get("Items", []))
+    except ClientError as exc:
+        raise VideoMasterError(f"Failed to scan {VIDEO_MASTER_TABLE}: {exc}") from exc
+    return items
+
+
 # DynamoDB's own per-call cap for BatchGetItem's Keys list.
 _BATCH_GET_ITEM_LIMIT = 100
 
@@ -427,8 +452,11 @@ def set_video_classification(video_id: str, content_type: str, live_status: str 
     return True
 
 
-def set_video_live_status(video_id: str, live_status: str) -> bool:
+def set_video_live_status(video_id: str, live_status: str, actual_start_at: str | None = None) -> bool:
     """Set only `liveStatus` on an existing content_type="live" video, leaving every other field untouched.
+
+    `actual_start_at` (F37, a normalized UTC instant, see tracking.video_master.normalize_actual_start) rides in this SAME UpdateItem -- no extra write --
+    and only fills a missing `actualStartAt` (`if_not_exists`): a stored start is never replaced, and a call without one never touches the attribute.
 
     The livestream-completion-lifecycle job's targeted write for a status transition that happens AFTER initial
     classification (upcoming -> live -> completed), unlike set_video_classification above which only ever fills a
@@ -439,13 +467,20 @@ def set_video_live_status(video_id: str, live_status: str) -> bool:
     if live_status not in VALID_LIVE_STATUSES:
         raise ValueError(f"Unknown live status: {live_status!r}")
     table = _resource().Table(VIDEO_MASTER_TABLE)
+    names = {"#videoId": "videoId", "#contentType": "contentType", "#liveStatus": "liveStatus"}
+    values: dict[str, Any] = {":live": "live", ":liveStatus": live_status}
+    update = "SET #liveStatus = :liveStatus"
+    if actual_start_at is not None:
+        names["#actualStartAt"] = "actualStartAt"
+        values[":start"] = actual_start_at
+        update += ", #actualStartAt = if_not_exists(#actualStartAt, :start)"
     try:
         table.update_item(
             Key={"videoId": video_id},
-            UpdateExpression="SET #liveStatus = :liveStatus",
+            UpdateExpression=update,
             ConditionExpression="attribute_exists(#videoId) AND #contentType = :live",
-            ExpressionAttributeNames={"#videoId": "videoId", "#contentType": "contentType", "#liveStatus": "liveStatus"},
-            ExpressionAttributeValues={":live": "live", ":liveStatus": live_status},
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
         )
     except ClientError as exc:
         if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
@@ -477,6 +512,29 @@ def set_video_short(video_id: str) -> bool:
         if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
             return False
         raise VideoMasterError(f"Failed to mark a Short in {VIDEO_MASTER_TABLE}: {exc}") from exc
+    return True
+
+
+def set_video_actual_start(video_id: str, actual_start_at: str) -> bool:
+    """Set only `actualStartAt` on an existing livestream that has none yet; nothing else is touched (F37 backfill).
+
+    A targeted UpdateItem rather than upsert_videos' whole-item put, conditional on the video existing, being a livestream
+    (contentType = "live") and having NO stored start, so a stored start is never overwritten and re-running the same write is a
+    harmless rejection. Returns False when the condition rejects the write (missing video, not a livestream, or already set).
+    """
+    table = _resource().Table(VIDEO_MASTER_TABLE)
+    try:
+        table.update_item(
+            Key={"videoId": video_id},
+            UpdateExpression="SET #actualStartAt = :start",
+            ConditionExpression="attribute_exists(#videoId) AND #contentType = :live AND attribute_not_exists(#actualStartAt)",
+            ExpressionAttributeNames={"#videoId": "videoId", "#contentType": "contentType", "#actualStartAt": "actualStartAt"},
+            ExpressionAttributeValues={":live": "live", ":start": actual_start_at},
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise VideoMasterError(f"Failed to set actual start in {VIDEO_MASTER_TABLE}: {exc}") from exc
     return True
 
 

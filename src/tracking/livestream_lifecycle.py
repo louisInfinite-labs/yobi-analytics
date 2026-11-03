@@ -576,6 +576,7 @@ def _resolve_candidates(
     """
     from collection.youtube_client import is_completed_premiere
     from stores.dynamodb_store import get_video, set_video_classification, set_video_live_status
+    from tracking.video_master import normalize_actual_start
 
     newly_ended: list[str] = []
     next_pending: dict[str, dict[str, Any]] = {}
@@ -628,7 +629,10 @@ def _resolve_candidates(
                         if attempts < _MAX_PENDING_ATTEMPTS:
                             next_pending[video_id] = {**state, "attempts": attempts}
             else:
-                persisted = set_video_live_status(video_id, "completed")
+                # F37: the probe that confirmed the end already carries YouTube's actualStartTime; it is written inside this same completion
+                # update (no extra request, no extra write) and only when YouTube reported one -- never scheduledStart or publishedAt.
+                actual_start = normalize_actual_start(probe.get("actualStartTime"))
+                persisted = set_video_live_status(video_id, "completed", actual_start) if actual_start else set_video_live_status(video_id, "completed")
                 if not persisted:
                     attempts = int(state.get("attempts", 0)) + 1
                     print(f"Warning: Video Master has no contentType=\"live\" record to complete for {video_id!r} (attempt {attempts})")

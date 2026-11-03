@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
@@ -118,6 +118,10 @@ class Video:
     # otherwise (an "upload", or a "live" video whose lifecycle hasn't been
     # observed since this field existed). See VALID_LIVE_STATUSES above.
     live_status: str | None = None
+    # F37: the livestream's real start (YouTube liveStreamingDetails.actualStartTime, ISO 8601 with offset) for a content_type="live" video
+    # that has started. Written once and never overwritten (a stream starts once); None for uploads/Shorts/Premieres, for an upcoming stream
+    # and for a record not observed since this field existed -- never defaulted to published_at.
+    actual_start_at: str | None = None
 
 
 class VideoMasterStore(Protocol):
@@ -251,6 +255,7 @@ def _parse_video(raw: dict) -> Video:
             topic=_optional_topic(raw, video_id),
             content_type=_optional_content_type(raw, video_id),
             live_status=_optional_live_status(raw, video_id),
+            actual_start_at=_optional_iso_datetime_str(raw, "actualStartAt", video_id),
         )
     except (KeyError, TypeError) as exc:
         raise VideoMasterError(f"Malformed Video Master record, missing/invalid field: {exc}") from exc
@@ -317,6 +322,21 @@ def _validated_live_status(value: object, video_id: str) -> str | None:
     if not isinstance(value, str) or value not in VALID_LIVE_STATUSES:
         raise VideoMasterError(f"Video {video_id!r} has invalid 'liveStatus': {value!r}")
     return value
+
+
+def normalize_actual_start(value: object) -> str | None:
+    """A YouTube actualStartTime as the one stored shape: the same instant as an ISO 8601 UTC string ("+00:00" for YouTube's "Z"), or None when absent/malformed.
+
+    The instant is kept exactly (second precision); an input carrying another offset is converted to UTC, never shifted. It is only ever converted to JST at presentation
+    time. Never derived from scheduledStartTime or publishedAt, and a value without an offset is rejected (its instant would be a guess).
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc).isoformat() if parsed.tzinfo is not None else None
 
 
 def _optional_iso_datetime_str(raw: dict, field: str, video_id: str) -> str | None:
@@ -409,4 +429,6 @@ def _to_raw(video: Video) -> dict:
     live_status = _validated_live_status(video.live_status, video.video_id)
     if live_status is not None:
         raw["liveStatus"] = live_status
+    if video.actual_start_at is not None:
+        raw["actualStartAt"] = video.actual_start_at
     return raw
