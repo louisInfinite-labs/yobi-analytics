@@ -149,6 +149,8 @@ _RECOVERY_TOLERANCE = timedelta(seconds=15)  # an instant served later than this
 # Two runs a little more than a minute apart are ordinary scheduling jitter, not a missed run: the pre-recovery dispatcher had the same property (a
 # window as wide as its cadence), and treating a 61-second spacing as a gap would double the candidate reads of every second due minute.
 _RECOVERY_JITTER = timedelta(seconds=30)
+# The Scheduler's own scheduledTime is trusted only for an invocation at least this late (a Scheduler retry, a delayed start); see _scheduled_instant.
+_SCHEDULED_TIME_MIN_LAG = timedelta(seconds=30)
 _START_RECOVERY_GRACE = timedelta(minutes=5)
 # The last instant this warm container finished serving completely (epoch ms); None in a cold container.
 _last_served_ms: int | None = None
@@ -199,9 +201,11 @@ def _near_deadline(context: Any) -> bool:
 
 
 def _scheduled_instant(event: dict[str, Any] | None, now: datetime) -> datetime | None:
-    """The Scheduler's own scheduledTime for this invocation when it is sane (not in the future, not older than the recovery lookback), else None.
+    """The Scheduler's own scheduledTime for this invocation when it is sane (not in the future, not older than the recovery lookback) AND the
+    invocation is clearly late (at least _SCHEDULED_TIME_MIN_LAG after it), else None.
 
-    With it, a delayed or retried invocation serves the minute it was scheduled for instead of the minute it happened to run in.
+    With it, a delayed or retried invocation serves the minute it was scheduled for instead of the minute it happened to run in. An ordinary
+    invocation (a few seconds after its nominal time) serves the wall clock, exactly as before the Scheduler input existed.
     """
     raw = (event or {}).get("scheduledTime")
     if not isinstance(raw, str):
@@ -214,6 +218,12 @@ def _scheduled_instant(event: dict[str, Any] | None, now: datetime) -> datetime 
         return None
     lag = now - scheduled
     if lag < timedelta(0) or lag > max(_MAX_RECOVERY_LOOKBACK, timedelta(0)):
+        return None
+    if lag < _SCHEDULED_TIME_MIN_LAG:
+        # An ordinary invocation: the Scheduler's nominal time is a few seconds BEFORE the run actually starts (observed in production by the
+        # `Dispatch timing` log: nominal at :58 of the previous minute, run at :04.7, a 6.7 s lag). Serving that
+        # nominal time instead of `now` puts the evaluation instant just before the minute boundary, so a start or advance moment ON the boundary
+        # (almost every one) is not yet due and waits for the NEXT run -- every reminder a full minute late (+64.7 s in the delivery log).
         return None
     return scheduled
 
