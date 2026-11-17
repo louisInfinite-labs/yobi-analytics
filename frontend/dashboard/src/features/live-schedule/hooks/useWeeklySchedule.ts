@@ -59,7 +59,7 @@ export interface ScheduleDay {
 export function useWeeklySchedule(selectedChannelIds: ReadonlySet<string> = NO_CREATOR_FILTER, organization: ScheduleOrganizationFilter = "all") {
   // The one shared minute clock (also used by Home): the same stream reads the same countdown on both pages.
   const now = useMinuteClock()
-  const { streams, recentlyEnded } = useLiveStreams()
+  const { streams, recentlyEnded, fetchedThisSession } = useLiveStreams()
 
   // Local calendar parts (not a UTC/ISO string) so a tick that crosses local
   // midnight yields a new `today`, and with it a new displayed window.
@@ -70,7 +70,7 @@ export function useWeeklySchedule(selectedChannelIds: ReadonlySet<string> = NO_C
   // Normally the window starts today. While an overnight stream is unresolved (still live, or dropped from the live list but not yet CONFIRMED ended by the backend -- never waiting on an archive)
   // it starts on that stream's ORIGINAL local start day instead, however many midnights ago that was, and stays there until the stream is resolved --
   // never moved forward to keep today in view. Always exactly seven calendar days from that start (so today can fall outside them after six days).
-  const heldStart = useOvernightHold({ streams, recentlyEnded, today, now })
+  const heldStart = useOvernightHold({ streams, recentlyEnded, today, now, fetched: fetchedThisSession !== false })
   const weekStart = heldStart ?? today
   const holdPreviousDay = weekStart.getTime() < today.getTime()
 
