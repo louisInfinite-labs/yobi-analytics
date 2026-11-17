@@ -32,11 +32,11 @@ describe("liveStreamsStore recentlyEnded", () => {
     vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue(Object.assign([STREAM], { recentlyEnded }))
     const release = acquireLiveStreamsPolling()
     await vi.waitFor(() => expect(liveStreamsStore.get().isLoading).toBe(false))
-    expect(liveStreamsStore.get()).toEqual({ streams: [STREAM], recentlyEnded, isLoading: false, error: null })
+    expect(liveStreamsStore.get()).toEqual({ streams: [STREAM], recentlyEnded, isLoading: false, error: null, fetchedThisSession: true })
 
     vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue([STREAM])
     await vi.advanceTimersByTimeAsync(60_000)
-    expect(liveStreamsStore.get()).toEqual({ streams: [STREAM], isLoading: false, error: null }) // unknown again, not "none ended"
+    expect(liveStreamsStore.get()).toEqual({ streams: [STREAM], isLoading: false, error: null, fetchedThisSession: true }) // unknown again, not "none ended"
 
     release()
   })
@@ -51,6 +51,16 @@ describe("liveStreamsStore recentlyEnded", () => {
 
     expect(liveStreamsStore.get().error).toBe("offline")
     expect(liveStreamsStore.get().recentlyEnded).toEqual(recentlyEnded)
+    expect(liveStreamsStore.get().fetchedThisSession).toBe(true) // a later failed refresh does not un-confirm the earlier data
+    release()
+  })
+})
+describe("liveStreamsStore fetchedThisSession", () => {
+  it("stays false when the session's first request fails", async () => {
+    vi.mocked(liveStreams.fetchLiveStreams).mockRejectedValue(new Error("offline"))
+    const release = acquireLiveStreamsPolling()
+    await vi.waitFor(() => expect(liveStreamsStore.get().isLoading).toBe(false))
+    expect(liveStreamsStore.get()).toMatchObject({ isLoading: false, error: "offline", fetchedThisSession: false })
     release()
   })
 })
@@ -60,7 +70,7 @@ describe("liveStreamsStore polling", () => {
     await vi.waitFor(() => expect(liveStreamsStore.get().isLoading).toBe(false))
 
     expect(liveStreams.fetchLiveStreams).toHaveBeenCalledTimes(1)
-    expect(liveStreamsStore.get()).toEqual({ streams: [STREAM], isLoading: false, error: null })
+    expect(liveStreamsStore.get()).toEqual({ streams: [STREAM], isLoading: false, error: null, fetchedThisSession: true })
 
     release()
   })

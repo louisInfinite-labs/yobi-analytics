@@ -11,6 +11,9 @@ interface PendingOvernightStream {
   startMs: number
   /** When this stream was last observed live (refreshed at most every LAST_SEEN_RESOLUTION_MS). A stream the backend never confirms is forgotten END_SIGNAL_WINDOW_MS after this. */
   lastSeenMs?: number
+  /** True once the stream was seen live in a response fetched in THIS page session. Entries stored before this existed, or stamped from the previous session's cached
+   * response, lack it: they hold the date only while a fresh response shows the stream live (which then verifies them), and are otherwise dropped. */
+  verified?: true
 }
 
 type PendingOvernight = Record<string, PendingOvernightStream>
@@ -77,11 +80,15 @@ export function useOvernightHold({
   recentlyEnded,
   today,
   now,
+  fetched = true,
 }: {
   streams: LiveStreamDto[]
   recentlyEnded: RecentlyEndedStreamDto[] | undefined
   today: Date
   now: Date
+  /** Whether `streams` come from a /live-streams request made in this page session. liveStreamsStore starts every page load from the PREVIOUS session's cached
+   * response, so until the first fetch lands `streams` can list streams that ended days ago as live: they may be shown, but are no evidence of anything. */
+  fetched?: boolean
 }): Date | null {
   const [pending, setPending] = useSharedState(pendingStore)
   const supported = recentlyEnded !== undefined
@@ -108,25 +115,34 @@ export function useOvernightHold({
     return new Set((recentlyEnded ?? []).map((ended) => ended.videoId).filter((videoId) => !liveIds.has(videoId)))
   }, [streams, recentlyEnded])
 
-  // Remember every stream seen live overnight (and its start); forget what the backend has confirmed ended, and what is too old to ever be told.
+  // The remembered streams that still hold the date: not confirmed ended, a member channel, seen live within the last 24 h -- and VERIFIED, i.e. seen live in a
+  // response fetched in this page session (or live in the current fresh one, which verifies it below). A stream listed live only by the previous session's
+  // cache proves nothing about now: stamping it re-armed the 24 h clock on every cold load, so a stream that had ended days earlier pinned the window to its start day.
+  const remembered = useMemo(() => {
+    const liveIds = new Set(liveOvernight.map((entry) => entry.videoId))
+    return Object.entries(pending).filter(
+      ([videoId, entry]) => !resolvedIds.has(videoId) && holdsDate(entry.creatorId) && lastSeenOf(entry) >= horizonMs && (entry.verified === true || (fetched && liveIds.has(videoId))),
+    )
+  }, [pending, liveOvernight, resolvedIds, horizonMs, fetched])
+
+  // Remember every stream seen live overnight (and its start) in a FRESH response; forget what the backend has confirmed ended, what is too old to ever be told, and
+  // what was never verified. Nothing is written from the cached first render of a page load.
   useEffect(() => {
-    if (!supported) return
-    const next: PendingOvernight = {}
-    for (const [videoId, entry] of Object.entries(pending)) if (!resolvedIds.has(videoId) && holdsDate(entry.creatorId) && lastSeenOf(entry) >= horizonMs) next[videoId] = entry
+    if (!supported || !fetched) return
+    const next: PendingOvernight = Object.fromEntries(remembered)
     for (const entry of liveOvernight) {
       const seen = next[entry.videoId]?.lastSeenMs
-      next[entry.videoId] = { creatorId: entry.creatorId, startMs: entry.startMs, lastSeenMs: seen !== undefined && nowMs - seen < LAST_SEEN_RESOLUTION_MS ? seen : nowMs }
+      next[entry.videoId] = { creatorId: entry.creatorId, startMs: entry.startMs, lastSeenMs: seen !== undefined && nowMs - seen < LAST_SEEN_RESOLUTION_MS ? seen : nowMs, verified: true }
     }
-    const same = Object.keys(next).length === Object.keys(pending).length && Object.entries(next).every(([videoId, entry]) => pending[videoId]?.startMs === entry.startMs && pending[videoId]?.lastSeenMs === entry.lastSeenMs)
+    const same = Object.keys(next).length === Object.keys(pending).length && Object.entries(next).every(([videoId, entry]) => pending[videoId]?.startMs === entry.startMs && pending[videoId]?.lastSeenMs === entry.lastSeenMs && pending[videoId]?.verified === entry.verified)
     if (!same) setPending(next)
-  }, [supported, pending, liveOvernight, resolvedIds, horizonMs, nowMs, setPending])
+  }, [supported, fetched, remembered, pending, liveOvernight, nowMs, setPending])
 
   const earliestStartMs = useMemo(() => {
     if (!supported) return null
-    const remembered = Object.entries(pending).filter(([videoId, entry]) => !resolvedIds.has(videoId) && holdsDate(entry.creatorId) && lastSeenOf(entry) >= horizonMs).map(([, entry]) => entry.startMs)
-    const starts = [...liveOvernight.map((entry) => entry.startMs), ...remembered].filter((ms) => ms < todayMs)
+    const starts = [...liveOvernight.map((entry) => entry.startMs), ...remembered.map(([, entry]) => entry.startMs)].filter((ms) => ms < todayMs)
     return starts.length > 0 ? Math.min(...starts) : null
-  }, [supported, liveOvernight, pending, resolvedIds, horizonMs, todayMs])
+  }, [supported, liveOvernight, remembered, todayMs])
 
   return useMemo(() => (earliestStartMs === null ? null : localDayStart(earliestStartMs)), [earliestStartMs])
 }

@@ -161,7 +161,7 @@ describe.each(ZONES)("member-only date hold -- viewer timezone %s", (tz) => {
 
     window.localStorage.setItem(
       "yobi.schedule.overnightPending",
-      JSON.stringify({ "old-member": { creatorId: MEMBER, startMs: wed2200().getTime(), lastSeenMs: recent } }),
+      JSON.stringify({ "old-member": { creatorId: MEMBER, startMs: wed2200().getTime(), lastSeenMs: recent, verified: true } }),
     )
     resetAllSharedStateForTests()
     const again = renderHook(() => useWeeklySchedule())
