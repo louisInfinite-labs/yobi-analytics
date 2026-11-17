@@ -8,12 +8,16 @@ export interface LiveStreamsState {
   recentlyEnded?: RecentlyEndedStreamDto[]
   isLoading: boolean
   error: string | null
+  /** False until a /live-streams request has succeeded in THIS page session: `streams` is then empty or a previous session's cache, so no
+   * consumer may present a creator as verified live/offline from it. Set false by the initial and cached states (never restored from storage),
+   * true by every successful refresh; a state without it (e.g. a test fixture) counts as fetched. */
+  fetchedThisSession?: boolean
 }
 
 const STORAGE_KEY = "yobi.liveStreams.cache"
 const POLL_INTERVAL_MS = 60_000
 
-const INITIAL_STATE: LiveStreamsState = { streams: [], isLoading: true, error: null }
+const INITIAL_STATE: LiveStreamsState = { streams: [], isLoading: true, error: null, fetchedThisSession: false }
 
 /** Reads the last successfully cached response so a reload shows it
  * immediately while a fresh fetch is in flight, instead of a blank/offline
@@ -24,7 +28,7 @@ function readCached(): LiveStreamsState {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return INITIAL_STATE
     const parsed = JSON.parse(raw) as LiveStreamsState
-    return { ...parsed, isLoading: true }
+    return { ...parsed, isLoading: true, fetchedThisSession: false }
   } catch {
     return INITIAL_STATE
   }
@@ -44,7 +48,7 @@ async function refresh(): Promise<void> {
   try {
     const result = await fetchLiveStreams()
     const { recentlyEnded } = result
-    liveStreamsStore.set({ streams: [...result], ...(recentlyEnded ? { recentlyEnded } : {}), isLoading: false, error: null })
+    liveStreamsStore.set({ streams: [...result], ...(recentlyEnded ? { recentlyEnded } : {}), isLoading: false, error: null, fetchedThisSession: true })
   } catch (err) {
     liveStreamsStore.set({ ...liveStreamsStore.get(), isLoading: false, error: err instanceof Error ? err.message : "Unknown error" })
   }
