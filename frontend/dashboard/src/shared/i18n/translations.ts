@@ -246,6 +246,9 @@ export type TranslationKey =
   | "push.failedBody"
   | "push.failedDiagnosticLabel"
   | "push.close"
+  | "push.repairTitle"
+  | "push.repairDescription"
+  | "push.repairAction"
   | "videoLink.titleUnavailable"
   | "videoLink.titleUnknown"
   | "videoLink.membersOnly"
@@ -548,7 +551,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.deniedHelpIos": "iPhone／iPad：開啟「設定」→「通知」→「OshiYobi」，並開啟「允許通知」。",
     "push.deniedHelpInstalled": "開啟裝置的「設定」→「應用程式」→「OshiYobi」→「通知」，並允許通知。",
     "push.deniedHelpBrowser": "點選網址列旁的網站設定圖示（鎖頭或調整圖示）→「通知」→ 選擇「允許」，然後回到此頁面。",
-    "push.deniedReturnHint": "設定完成後回到 OshiYobi，畫面會自動更新，不需要重新整理。",
+    "push.deniedReturnHint": "允許通知後請回到 OshiYobi，再把這個通知重新開啟（這個畫面會自動更新，不需要重新整理）。只有在確認這台裝置登記成功後，通知才會顯示為開啟。",
     "push.unsupportedTitle": "此裝置目前無法接收通知",
     "push.unsupportedBody": "這個瀏覽器不支援網頁推播通知。",
     "push.unsupportedIosBody": "在 iPhone／iPad 上，請先用 Safari 將 OshiYobi 加入主畫面，再從主畫面開啟 OshiYobi 並設定通知。",
@@ -556,6 +559,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.failedBody": "請稍後再試。這次的變更未套用。",
     "push.failedDiagnosticLabel": "診斷碼",
     "push.close": "關閉",
+    "push.repairTitle": "這台裝置可能收不到通知",
+    "push.repairDescription": "OshiYobi 無法確認這台裝置已成功登記通知。請按「重新連線」重新登記；若之後仍收不到，請也檢查手機設定中 OshiYobi 的通知是否已開啟。",
+    "push.repairAction": "重新連線",
     "videoLink.titleUnavailable": "無法顯示影片",
     "videoLink.titleUnknown": "無法確認影片狀態",
     "videoLink.membersOnly": "這部影片已改為會員限定，無法顯示。",
@@ -856,7 +862,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.deniedHelpIos": "iPhone / iPad: open Settings → Notifications → OshiYobi, then turn on Allow Notifications.",
     "push.deniedHelpInstalled": "Open your device's Settings → Apps → OshiYobi → Notifications, then allow notifications.",
     "push.deniedHelpBrowser": "Open the site settings icon next to the address bar (lock or tune icon) → Notifications → Allow, then come back to this page.",
-    "push.deniedReturnHint": "When you come back to OshiYobi this updates automatically — no reload needed.",
+    "push.deniedReturnHint": "After you allow notifications, come back to OshiYobi and switch this notification on again (this page updates by itself, no reload needed). It shows as on only once this device is confirmed as registered.",
     "push.unsupportedTitle": "Notifications aren't available here",
     "push.unsupportedBody": "This browser doesn't support web push notifications.",
     "push.unsupportedIosBody": "On iPhone / iPad, add OshiYobi to your Home Screen from Safari first, then open it from the Home Screen to set up notifications.",
@@ -864,6 +870,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.failedBody": "Please try again later. This change wasn't applied.",
     "push.failedDiagnosticLabel": "Diagnostic code",
     "push.close": "Close",
+    "push.repairTitle": "This device may not receive notifications",
+    "push.repairDescription": "OshiYobi can't confirm this device is registered for notifications. Tap Reconnect to register it again. If you still receive nothing, also check that notifications for OshiYobi are on in your phone's Settings.",
+    "push.repairAction": "Reconnect",
     "videoLink.titleUnavailable": "This video can't be shown",
     "videoLink.titleUnknown": "Couldn't check the video",
     "videoLink.membersOnly": "This video was changed to members-only and can't be shown.",
@@ -1164,7 +1173,7 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.deniedHelpIos": "iPhone／iPad：「設定」→「通知」→「OshiYobi」を開き、「通知を許可」をオンにします。",
     "push.deniedHelpInstalled": "端末の「設定」→「アプリ」→「OshiYobi」→「通知」を開き、通知を許可します。",
     "push.deniedHelpBrowser": "アドレスバー横のサイト設定アイコン（鍵または調整アイコン）→「通知」→「許可」を選び、このページに戻ってください。",
-    "push.deniedReturnHint": "設定後にOshiYobiへ戻ると自動で更新されます。再読み込みは不要です。",
+    "push.deniedReturnHint": "通知を許可したらOshiYobiに戻り、この通知をもう一度オンにしてください（この画面は自動で更新されます。再読み込みは不要です）。この端末の登録が確認できた後にのみオンと表示されます。",
     "push.unsupportedTitle": "この端末では通知を利用できません",
     "push.unsupportedBody": "このブラウザはウェブプッシュ通知に対応していません。",
     "push.unsupportedIosBody": "iPhone／iPadでは、まずSafariでOshiYobiをホーム画面に追加し、ホーム画面から開いて通知を設定してください。",
@@ -1172,6 +1181,9 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "push.failedBody": "しばらくしてからもう一度お試しください。今回の変更は適用されていません。",
     "push.failedDiagnosticLabel": "診断コード",
     "push.close": "閉じる",
+    "push.repairTitle": "この端末では通知が届かない可能性があります",
+    "push.repairDescription": "この端末が通知に登録されていることを確認できません。「再接続」を押して登録し直してください。それでも届かない場合は、端末の設定でOshiYobiの通知がオンになっているかも確認してください。",
+    "push.repairAction": "再接続",
     "videoLink.titleUnavailable": "動画を表示できません",
     "videoLink.titleUnknown": "動画の状態を確認できません",
     "videoLink.membersOnly": "この動画はメンバー限定に変更されたため、表示できません。",

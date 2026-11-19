@@ -5,6 +5,7 @@ import { NotificationToggle } from "./NotificationToggle"
 import * as apiClient from "../../../shared/api/apiClient"
 import * as pushNotifications from "../push/pushNotifications"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
+import { installFakePushBackend } from "../../../test/fakePushBackend"
 
 vi.mock("../push/pushNotifications", () => ({
   getPushSubscriptionStatus: vi.fn(),
@@ -17,7 +18,8 @@ vi.mock("../../../shared/api/apiClient", () => ({ apiRequest: vi.fn() }))
 describe("NotificationToggle", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(apiClient.apiRequest).mockResolvedValue(undefined)
+    // A backend that stores the subscription it is given and returns it on the confirming read (enabling is only reported after that read).
+    installFakePushBackend(vi.mocked(apiClient.apiRequest))
   })
 
   it("renders an unsupported message and never calls subscribe when push isn't supported", async () => {
@@ -203,7 +205,8 @@ describe("NotificationToggle", () => {
     vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
     const subscription = { endpoint: "https://fcm.example.com/x", keys: { p256dh: "p", auth: "a" } }
     vi.mocked(pushNotifications.subscribeToPush).mockResolvedValue(subscription)
-    vi.mocked(apiClient.apiRequest).mockRejectedValue(new Error("network error"))
+    const backend = installFakePushBackend(vi.mocked(apiClient.apiRequest))
+    backend.failures.push({ match: /PUT \/clients\/:id\/push-subscription/, times: 5 }) // the write is lost; the read before it still works
 
     render(<NotificationToggle />)
     const button = await screen.findByRole("button", { name: /enable notifications/i })
@@ -212,6 +215,24 @@ describe("NotificationToggle", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/couldn't sync/i))
     expect(screen.getByRole("button", { name: /enable notifications/i })).toBeInTheDocument()
     expect(pushNotifications.unsubscribeFromPush).toHaveBeenCalled()
+  })
+
+  it("when the backend cannot even be READ before anything is written, it reports the failure, shows 'enable' and leaves the existing subscription alone", async () => {
+    // Nothing on the server was touched, so there is nothing to undo -- and a subscription that may well be working must not be torn down because of a
+    // transient read failure (offline): the toggle still never claims "on".
+    const user = userEvent.setup()
+    vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
+    vi.mocked(pushNotifications.subscribeToPush).mockResolvedValue({ endpoint: "https://fcm.example.com/x", keys: { p256dh: "p", auth: "a" } })
+    const backend = installFakePushBackend(vi.mocked(apiClient.apiRequest))
+    backend.failures.push({ match: /GET \/remote-config/, times: 5 })
+
+    render(<NotificationToggle />)
+    await user.click(await screen.findByRole("button", { name: /enable notifications/i }))
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/couldn't sync/i))
+    expect(screen.getByRole("button", { name: /enable notifications/i })).toBeInTheDocument()
+    expect(pushNotifications.unsubscribeFromPush).not.toHaveBeenCalled()
+    expect(backend.calls.some((call) => call.startsWith("PUT"))).toBe(false)
   })
 
   it("shows an error and rolls back when the subscription write succeeds but the preference write fails", async () => {

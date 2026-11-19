@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react"
 import { isNotificationDisabledByUser } from "../api/notificationPreferenceApi"
 import { enablePushNotifications, type EnablePushFailure } from "./pushEnrollment"
 import { getNotificationPermission } from "./pushNotifications"
+import { checkPushHealth } from "./pushHealth"
 import { refreshPushState } from "./pushState"
 
 /** How a "the user is turning a notification on" attempt ended. Only "ready" means the change may be saved/applied.
@@ -84,8 +85,8 @@ async function enableAndReport(): Promise<PushGateResult> {
 }
 
 /** The one entry point every production "turn a notification on" action goes through (a one-time Schedule reminder, a creator's Live
- * or New Video notification, a creator reminder time): resolves "ready" only when this browser really can deliver Web Push, so the
- * caller saves the change only then and the UI never shows a notification as active that cannot be delivered.
+ * or New Video notification, a creator reminder time): resolves "ready" only when this browser really can deliver Web Push AND the backend confirms it
+ * holds this browser's active subscription, so the caller saves the change only then and the UI never shows a notification as active that cannot be delivered.
  *
  * It never asks the browser for permission on its own: with permission still undecided it first shows OshiYobi's explanation and
  * waits for an explicit Continue; only then does the browser prompt appear. A denied permission is NOT re-requested -- the help for
@@ -109,7 +110,10 @@ async function runGate(): Promise<PushGateResult> {
     return "denied"
   }
   if (state.permission === "granted") {
-    if (state.subscribed && !isNotificationDisabledByUser()) return "ready"
+    // A browser subscription alone proves nothing: it may be one the push service already rejected, or one the backend never received. "ready" needs the backend
+    // to confirm this very subscription; anything else (inactive, missing, different endpoint, unreadable) goes through enableAndReport, which repairs it and
+    // reads it back, or reports the failure -- never "ready".
+    if (state.subscribed && !isNotificationDisabledByUser() && (await checkPushHealth()) === "healthy") return "ready"
     return enableAndReport()
   }
   if (!(await askToContinue())) return "cancelled"

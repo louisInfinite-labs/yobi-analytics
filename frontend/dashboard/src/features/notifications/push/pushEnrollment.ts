@@ -4,6 +4,7 @@ import { getOrCreateClientId } from "../../../shared/api/clientId"
 import { putNotificationPreference } from "../api/notificationPreferenceApi"
 import { getEffectiveNewVideoCreatorIds, getEffectiveShortCreatorIds } from "../hooks/useTopicNotificationPreferences"
 import { subscribeToPush, unsubscribeFromPush } from "./pushNotifications"
+import { readBackendSubscription } from "./pushHealth"
 import { VAPID_PUBLIC_KEY } from "./vapidPublicKey"
 
 /** Persist this browser's own push subscription under its own clientId (Roadmap 4.6, self-service). `clientSecret` (PR #18
@@ -38,8 +39,10 @@ export type EnablePushOutcome = "enabled" | "not-granted" | "failed" | "uncertai
  * failure on a real device is diagnosable. Never carries an endpoint, key, secret or server message.
  * - "subscribe": the service worker never became active, or PushManager.subscribe() threw (the browser/OS side);
  * - "register-subscription": PUT /clients/{id}/push-subscription was rejected (a missing client credential also lands here, as a 403);
- * - "save-preference": PUT /clients/{id}/notification-preference was rejected. */
-export type EnablePushFailureStep = "subscribe" | "register-subscription" | "save-preference"
+ * - "save-preference": PUT /clients/{id}/notification-preference was rejected;
+ * - "verify-subscription": the backend's stored subscription could not be read, or did not match this browser's after the write (never reported as enabled);
+ * - "stale-subscription": the backend had marked this browser's subscription gone and the browser handed out the same endpoint again, so it cannot receive anything. */
+export type EnablePushFailureStep = "subscribe" | "register-subscription" | "save-preference" | "verify-subscription" | "stale-subscription"
 
 export interface EnablePushFailure {
   step: EnablePushFailureStep
@@ -79,15 +82,35 @@ export async function enablePushNotifications(): Promise<EnablePushResult> {
   // Declared outside the try so the catch below can still use it for best-effort reconciliation (see catch's own comment) even when
   // the failure happened partway through, after a secret was obtained.
   let clientSecret: string | null = null
-  let step: EnablePushFailureStep = "register-subscription"
+  let step: EnablePushFailureStep = "verify-subscription"
+  let writesStarted = false
   try {
     clientSecret = await getOrCreateClientSecret(clientId)
+    // What does the backend think of the subscription this browser is about to use? A read that fails is NOT "fine": nothing is claimed enabled.
+    const stored = await readBackendSubscription(clientId, clientSecret)
+    if (stored?.inactive && stored.endpoint === subscription.endpoint) {
+      // The push service reported this very endpoint gone, yet the browser still hands it out: registering it again would only look healthy. Subscribe anew.
+      step = "stale-subscription"
+      await unsubscribeFromPush()
+      const renewed = await subscribeToPush(VAPID_PUBLIC_KEY)
+      if (!renewed?.endpoint || renewed.endpoint === stored.endpoint) throw new Error("the browser returned the same, already rejected subscription")
+      subscription = renewed
+    }
+    writesStarted = true
+    step = "register-subscription"
     await syncSubscriptionToBackend(clientId, clientSecret, subscription)
     step = "save-preference"
     await syncNotificationEnabledToBackend(clientId, clientSecret, true)
+    // Enabled only when the backend itself says it now holds THIS browser's subscription, active.
+    step = "verify-subscription"
+    const confirmed = await readBackendSubscription(clientId, clientSecret)
+    if (!confirmed || confirmed.inactive || confirmed.endpoint !== subscription.endpoint) throw new Error("the backend does not hold this browser's subscription")
     return { outcome: "enabled" }
   } catch (error) {
     const failure = failureOf(step, error)
+    // Nothing was written yet (the backend could not be read, or a dead endpoint could not be renewed): there is nothing on the server to undo, and a
+    // subscription that may well still work is not torn down because of a failed read. The caller still gets "failed", so nothing is shown as ON.
+    if (!writesStarted) return { outcome: "failed", failure }
     // Neither backend write is confirmed from this call's own point of view, so undo the local browser subscription rather than
     // showing "on" for a subscription the backend might not actually have. But "not confirmed here" isn't the same as "didn't
     // happen": a write can commit server-side even though this call's own promise rejected (e.g. its response was lost after the

@@ -9,6 +9,8 @@ export interface FakePushDeviceOptions {
   subscribed?: boolean
   /** The push service the subscription points to (default: Chrome / FCM). iOS and iPadOS Home Screen apps use https://web.push.apple.com/... */
   endpoint?: string
+  /** Endpoints handed out by the NEXT calls to subscribe() (a browser that renews a subscription gets a new one); once used up, subscribe() keeps returning `endpoint`. */
+  renewedEndpoints?: string[]
 }
 
 const DEFAULT_ENDPOINT = "https://fcm.example.com/device-1"
@@ -19,17 +21,29 @@ const DEFAULT_ENDPOINT = "https://fcm.example.com/device-1"
  * the device's settings while the app is in the background. */
 export function installFakePushDevice(options: FakePushDeviceOptions = {}) {
   const SUBSCRIPTION_JSON = { endpoint: options.endpoint ?? DEFAULT_ENDPOINT, keys: { p256dh: "p", auth: "a" } }
+  const renewed = [...(options.renewedEndpoints ?? [])]
   const device = {
     permission: options.permission ?? "default",
-    subscription: options.subscribed ? { toJSON: () => SUBSCRIPTION_JSON, unsubscribe: vi.fn(async () => true) } : (null as null | { toJSON: () => unknown; unsubscribe: () => Promise<boolean> }),
+    subscription: null as null | { toJSON: () => unknown; unsubscribe: () => Promise<boolean> },
+  }
+  // A real PushSubscription.unsubscribe() removes the subscription from the registration, so the next getSubscription() is null.
+  if (options.subscribed) {
+    device.subscription = {
+      toJSON: () => SUBSCRIPTION_JSON,
+      unsubscribe: vi.fn(async () => {
+        device.subscription = null
+        return true
+      }),
+    }
   }
   const requestPermission = vi.fn(async () => {
     device.permission = options.promptAnswer ?? "granted"
     return device.permission
   })
   const subscribe = vi.fn(async () => {
+    const created = { ...SUBSCRIPTION_JSON, endpoint: renewed.shift() ?? SUBSCRIPTION_JSON.endpoint }
     device.subscription = {
-      toJSON: () => SUBSCRIPTION_JSON,
+      toJSON: () => created,
       unsubscribe: vi.fn(async () => {
         device.subscription = null
         return true
