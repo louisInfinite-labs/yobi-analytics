@@ -202,6 +202,39 @@ def delete_remote_config(client_id: str, key: str) -> None:
         raise RemoteConfigStoreError(f"Failed to delete from {REMOTE_CONFIG_TABLE}: {exc}") from exc
 
 
+def is_inactive(record: dict[str, Any] | None) -> bool:
+    """Whether a stored pushSubscription record was marked inactive (its push service confirmed it gone). A re-subscribe writes a brand-new item, which has no marker."""
+    return isinstance(record, dict) and bool(record.get("inactiveAt"))
+
+
+def mark_push_subscription_inactive(client_id: str, endpoint: str, *, at: str, reason: str) -> bool:
+    """Mark a client's stored push subscription inactive, but ONLY if it still is the subscription (same endpoint, same save) the push service just rejected.
+
+    The marker is two attributes on the item itself (`inactiveAt`, `inactiveReason`); `value` (the subscription), `updatedAt` and every other record are
+    untouched, so nothing is lost and the marker can be removed by hand. Implemented with a GetItem and a CONDITIONAL PutItem of the same item plus the
+    marker -- the two operations this role already performs on this table (no new IAM action): the put succeeds only while the stored item still has the same
+    endpoint AND the same updatedAt and no marker, so a subscription the client replaced in the meantime (the re-subscribe PutItem replaces the whole item,
+    which is exactly how a user recovers) is never marked, and an item can never be created. Returns True when the marker was written, False otherwise.
+    """
+    table = _resource().Table(REMOTE_CONFIG_TABLE)
+    key = {"clientId": client_id, "configKey": "pushSubscription"}
+    try:
+        item = table.get_item(Key=key, ConsistentRead=True).get("Item")
+        if not item or item.get("inactiveAt") or (item.get("value") or {}).get("endpoint") != endpoint:
+            return False
+        table.put_item(
+            Item={**item, "inactiveAt": at, "inactiveReason": reason},
+            ConditionExpression="#value.#endpoint = :endpoint AND updatedAt = :updated AND attribute_not_exists(inactiveAt)",
+            ExpressionAttributeNames={"#value": "value", "#endpoint": "endpoint"},
+            ExpressionAttributeValues={":endpoint": endpoint, ":updated": item["updatedAt"]},
+        )
+        return True
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise RemoteConfigStoreError(f"Failed to mark the push subscription inactive in {REMOTE_CONFIG_TABLE}: {exc}") from exc
+
+
 def list_by_key(key: str) -> list[dict[str, Any]]:
     """Return every stored record across all clients for one config key.
 
@@ -235,12 +268,16 @@ def list_by_key(key: str) -> list[dict[str, Any]]:
 
 def _item_to_record(item: dict[str, Any]) -> dict[str, Any]:
     """Convert a DynamoDB Remote Config item back into a {clientId, key, value, updatedAt} record."""
-    return {
+    record = {
         "clientId": item["clientId"],
         "key": item["configKey"],
         "value": _decimal_to_number(item["value"]),
         "updatedAt": item["updatedAt"],
     }
+    if item.get("inactiveAt"):  # only a pushSubscription item ever carries it (mark_push_subscription_inactive)
+        record["inactiveAt"] = item["inactiveAt"]
+        record["inactiveReason"] = item.get("inactiveReason")
+    return record
 
 
 def _floats_to_decimal(value: Any) -> Any:
