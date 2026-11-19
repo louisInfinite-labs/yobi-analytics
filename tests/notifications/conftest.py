@@ -46,4 +46,5 @@ def deterministic_dispatcher_defaults(monkeypatch):
     monkeypatch.setattr(notification_dispatcher, "_SEND_WORKERS", 1)
     monkeypatch.setattr(notification_dispatcher, "_MAX_RECOVERY_LOOKBACK", timedelta(0))
     monkeypatch.setattr(notification_dispatcher, "_last_served_ms", None)
+    monkeypatch.setattr(notification_dispatcher, "_retry_pending", False)  # the durable retry queue is known empty (an idle minute reads nothing); its own tests turn it on
     monkeypatch.setattr(simultaneous_dispatcher, "_ATTEMPT_WORKERS", 1)
