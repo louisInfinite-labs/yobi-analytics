@@ -133,34 +133,42 @@ def read_state() -> tuple[int | None, dict[str, RetryItem]]:
     return int(value.get("version", 0)), items
 
 
-def commit(changes: dict[str, RetryItem | None], now: datetime) -> dict[str, RetryItem]:
-    """Apply `changes` ({key: new item, or None to remove}) to the stored record with a compare-and-set, re-reading and re-applying on a lost race.
+class QueueUnavailable(RuntimeError):
+    """The retry record could not be read or written (store errors or lost races on every attempt): the caller keeps what it wanted to store and tries again next run."""
 
-    Returns the open items after the write. A change to an item some other writer already settled is applied anyway: removing is idempotent, and an
-    update of a vanished item re-creates it only if the caller passed one (the caller never does for an item it did not read)."""
+
+def commit(changes: dict[str, RetryItem | None], now: datetime) -> dict[str, RetryItem]:
+    """Apply `changes` ({key: new item, or None to remove}) to the stored record with a compare-and-set, re-reading and re-applying on a lost race or a store error.
+
+    Returns the open items after the write. Raises QueueUnavailable when no attempt stored it (nothing was written then, so the caller can keep the changes and offer
+    them again). A change to an item some other writer already settled is applied anyway: removing is idempotent, and an update of a vanished item re-creates it only
+    if the caller passed one (the caller never does for an item it did not read)."""
     now_ms = int(now.timestamp() * 1000)
-    items: dict[str, RetryItem] = {}
+    last_error: Exception | None = None
     for _ in range(_CAS_ATTEMPTS):
-        version, items = read_state()
-        for key, item in changes.items():
-            if item is None:
-                items.pop(key, None)
-            else:
-                items[key] = item
-        items = {key: item for key, item in items.items() if item.expires_at_ms > now_ms}
-        if len(items) > MAX_ITEMS:
-            for key in sorted(items, key=lambda k: items[k].expires_at_ms)[: len(items) - MAX_ITEMS]:
-                items.pop(key)
-            print(f"Warning: reminder retry queue over {MAX_ITEMS} items; the oldest-expiring were dropped")
-        record = remote_config_api.write_remote_config(
-            {
-                "clientId": live_reminder.SYSTEM_CLIENT_ID,
-                "key": RETRY_KEY,
-                "value": {"version": (version or 0) + 1, "items": {key: item.to_value() for key, item in items.items()}},
-            },
-            now=now,
-        )
-        if remote_config_store.put_remote_config_versioned(record, expected_version=version):
-            return items
-    print("Warning: could not store the reminder retry queue after concurrent writers; the changes are retried next run")
-    return items
+        try:
+            version, items = read_state()
+            for key, item in changes.items():
+                if item is None:
+                    items.pop(key, None)
+                else:
+                    items[key] = item
+            items = {key: item for key, item in items.items() if item.expires_at_ms > now_ms}
+            if len(items) > MAX_ITEMS:
+                for key in sorted(items, key=lambda k: items[k].expires_at_ms)[: len(items) - MAX_ITEMS]:
+                    items.pop(key)
+                print(f"Warning: reminder retry queue over {MAX_ITEMS} items; the oldest-expiring were dropped")
+            record = remote_config_api.write_remote_config(
+                {
+                    "clientId": live_reminder.SYSTEM_CLIENT_ID,
+                    "key": RETRY_KEY,
+                    "value": {"version": (version or 0) + 1, "items": {key: item.to_value() for key, item in items.items()}},
+                },
+                now=now,
+            )
+            if remote_config_store.put_remote_config_versioned(record, expected_version=version):
+                return items
+            last_error = None  # a lost race: read again and re-apply
+        except Exception as exc:  # noqa: BLE001 -- a throttled or failed read/write is attempted again; the caller keeps the changes if every attempt fails
+            last_error = exc
+    raise QueueUnavailable(f"the reminder retry queue was not stored after {_CAS_ATTEMPTS} attempts" + (f" ({type(last_error).__name__}: {last_error})" if last_error else " (concurrent writers)"))

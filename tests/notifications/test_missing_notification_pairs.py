@@ -37,11 +37,11 @@ CREATOR_KEY_ARGS = ("aizawa_ema", "all")
 
 @pytest.fixture
 def world(monkeypatch):
-    """Production-like dispatcher: recovery ON, cold container, durable retry queue unknown; one subscriber with BOTH reminders (10 minutes before + at start)."""
+    """Production-like dispatcher: recovery ON, cold container; one subscriber with BOTH reminders (10 minutes before + at start)."""
     monkeypatch.setattr(notification_dispatcher, "_MAX_RECOVERY_LOOKBACK", timedelta(minutes=10))
     monkeypatch.setattr(notification_dispatcher, "_last_served_ms", None)
-    if hasattr(notification_dispatcher, "_retry_pending"):
-        monkeypatch.setattr(notification_dispatcher, "_retry_pending", None)
+    if hasattr(notification_dispatcher, "_unsaved_retry_items"):
+        monkeypatch.setattr(notification_dispatcher, "_unsaved_retry_items", {})
     monkeypatch.setattr(push_sender, "_RETRY_PAUSE_SECONDS", 0)
     harness = CatchUpHarness(monkeypatch)
     harness.add_client("c1", creator_reminders={"aizawa_ema": ADV10})

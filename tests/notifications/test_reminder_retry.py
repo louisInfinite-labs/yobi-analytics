@@ -26,10 +26,10 @@ CREATOR_KEY = live_reminder.creator_reminder_key("aizawa_ema", "all")
 
 @pytest.fixture
 def world(monkeypatch):
-    """Production-like: recovery ON, a cold container that has never read the retry record, two subscribers (c1, c2) who want the start of the stream."""
+    """Production-like: recovery ON, a cold container with nothing waiting to be stored, two subscribers (c1, c2) who want the start of the stream."""
     monkeypatch.setattr(notification_dispatcher, "_MAX_RECOVERY_LOOKBACK", timedelta(minutes=10))
     monkeypatch.setattr(notification_dispatcher, "_last_served_ms", None)
-    monkeypatch.setattr(notification_dispatcher, "_retry_pending", None)
+    monkeypatch.setattr(notification_dispatcher, "_unsaved_retry_items", {})
     harness = CountingHarness(monkeypatch)
     harness.add_client("c1", creator_reminders={"aizawa_ema": AT_START})
     harness.add_client("c2", creator_reminders={"aizawa_ema": AT_START})
@@ -304,15 +304,15 @@ def test_a_store_error_while_serving_one_recipient_is_retried_for_that_recipient
 # ============ cost and safety of the queue itself ============
 
 
-def test_an_idle_warm_container_never_reads_the_retry_record_and_a_cold_one_reads_it_once(world):
-    """Zero extra reads in the steady state: a cold container looks once, learns the queue is empty and stops looking."""
+def test_every_run_reads_the_retry_record_exactly_once_even_when_the_queue_is_empty(world):
+    """The queue is never cached as "empty" across runs (that is what let another execution environment's retry go unseen): one small read per run, idle or not."""
     world.take_ops()
-    world.run(START - timedelta(minutes=30))
-    cold_ops = [op for op in world.take_ops() if op[:3] == ("get", live_reminder.SYSTEM_CLIENT_ID, reminder_retry.RETRY_KEY)]
-    world.run(START - timedelta(minutes=29))
-    warm_ops = [op for op in world.take_ops() if op[:3] == ("get", live_reminder.SYSTEM_CLIENT_ID, reminder_retry.RETRY_KEY)]
+    reads = []
+    for minute in (-30, -29, -28):
+        world.run(START + timedelta(minutes=minute))
+        reads.append(len([op for op in world.take_ops() if op[:3] == ("get", live_reminder.SYSTEM_CLIENT_ID, reminder_retry.RETRY_KEY)]))
 
-    assert len(cold_ops) == 1 and warm_ops == []
+    assert reads == [1, 1, 1]
 
 
 def test_a_lost_compare_and_set_is_re_read_and_re_applied(world, monkeypatch):
@@ -377,8 +377,8 @@ def test_backoff_and_expiry_arithmetic():
 
 
 def test_a_run_that_has_nothing_to_do_never_strands_the_pending_reminders(world):
-    """The regression the backoff test first exposed: a minute in which no item is due yet (and nothing changes) must leave the container knowing the queue is NOT empty,
-    otherwise the next due retry would never be read and the reminder would be silently lost. With the real cadence the no-op minute is the one between the 2nd retry
+    """The regression the backoff test first exposed: a minute in which no item is due yet (and nothing changes) must leave the pending item untouched, otherwise the next
+    due retry would never be served and the reminder would be silently lost. With the real cadence the no-op minute is the one between the 2nd retry
     (due at +124.7 s) and the 3rd (due at +244.7 s): the run at +184.7 s has nothing due."""
     world.config.pop(("c2", CREATOR_KEY))
     world.push_results = [TRANSIENT] * 40
@@ -391,7 +391,219 @@ def test_a_run_that_has_nothing_to_do_never_strands_the_pending_reminders(world)
     noop = world.run(START + timedelta(minutes=3) + RUN)  # +184.7 s: nothing is due
 
     assert "retries" not in noop and _attempts_to(world, "c1") == attempts_before  # truly a no-op for the queue
-    assert notification_dispatcher._retry_pending is True and len(_queue(world)) == 1  # ... and it still knows the item is waiting
+    assert len(_queue(world)) == 1  # ... and the item is still waiting in the durable record
 
     world.run(START + timedelta(minutes=4) + RUN)  # +244.7 s: the 3rd retry IS read and attempted
     assert _attempts_to(world, "c1") > attempts_before
+
+
+# ============ the queue is shared by every Lambda execution environment ============
+
+
+class _Containers:
+    """Two (or more) warm Lambda execution environments of the same function: each has its OWN module-level state, the durable store is shared."""
+
+    STATE = ("_last_served_ms", "_unsaved_retry_items")
+
+    def __init__(self, world, monkeypatch, names=("A", "B")):
+        """Every environment starts cold; the dispatcher's recovery look-back is off so a run serves only its own minute (a retry is then the only way a failed send is repeated)."""
+        monkeypatch.setattr(notification_dispatcher, "_MAX_RECOVERY_LOOKBACK", timedelta(0))
+        self.world = world
+        self.saved = {name: {"_last_served_ms": None, "_unsaved_retry_items": {}} for name in names}
+
+    def run(self, name, at):
+        """Run one scheduled invocation on environment `name`."""
+        for key, value in self.saved[name].items():
+            setattr(notification_dispatcher, key, value)
+        try:
+            return self.world.run(at)
+        finally:
+            for key in self.STATE:
+                self.saved[name][key] = getattr(notification_dispatcher, key)
+
+
+def _retry_reads(world) -> int:
+    """How many times the retry record was read since the last call."""
+    return len([op for op in world.take_ops() if op[:3] == ("get", live_reminder.SYSTEM_CLIENT_ID, reminder_retry.RETRY_KEY)])
+
+
+def test_a_retry_queued_by_one_environment_is_served_by_another_on_its_next_scheduled_run(world, monkeypatch):
+    """The cross-container gap: environment A read an EMPTY queue (and used to remember that), then environment B queued a failed recipient. A is the one serving the
+    next minute; it must see the item and deliver it."""
+    containers = _Containers(world, monkeypatch)
+    world.take_ops()
+
+    containers.run("A", START - timedelta(minutes=1) + RUN)  # A: nothing due, the queue is empty
+    assert _queue(world) == {} and _retry_reads(world) == 1
+
+    world.push_results = [OK, TRANSIENT, TRANSIENT]
+    first = containers.run("B", START + RUN)  # B: c1 gets it, c2 hits a 503 twice and is queued
+    assert first["retries"] == {"queued": 1} and _endpoints(world) == ["c1"]
+
+    second = containers.run("A", START + timedelta(minutes=1) + RUN)  # the next scheduled run lands on A
+
+    assert second["retries"]["sent"] == 1 and _endpoints(world) == ["c1", "c2"] and _queue(world) == {}
+
+
+def test_the_environment_that_saw_an_empty_queue_reads_again_on_every_later_run(world, monkeypatch):
+    """No cached 'empty': each run of each environment reads the record, so a later enqueue by anyone is visible at once."""
+    containers = _Containers(world, monkeypatch)
+    world.take_ops()
+
+    reads = []
+    for name, minute in (("A", -3), ("B", -2), ("A", -1), ("B", 0), ("A", 1)):
+        containers.run(name, START + timedelta(minutes=minute) + RUN)
+        reads.append(_retry_reads(world))
+
+    assert reads == [1, 1, 1, 1, 1]
+
+
+def test_environments_alternating_every_minute_still_complete_a_multi_step_back_off(world, monkeypatch):
+    """The item fails on A, fails again on B, again on A ...: each environment continues the same durable item (attempt counter and back-off are in the record)."""
+    world.config.pop(("c2", CREATOR_KEY))
+    containers = _Containers(world, monkeypatch)
+    world.push_results = [TRANSIENT] * 40
+
+    for minute, name in enumerate(("A", "B", "A", "B", "A", "B", "A", "B")):
+        containers.run(name, START + timedelta(minutes=minute) + RUN)
+
+    assert _attempts_to(world, "c1") == 8 and _queue(world) == {}  # the same schedule as one container (2 + 2 + 2 + 2), then given up at the 5-minute grace
+
+
+def test_two_environments_that_both_find_the_same_due_retry_send_it_once(world, monkeypatch):
+    """Overlapping invocations: A delivers but cannot store the settled item (store down), so B reads the very same open item in the same minute; the delivery claim makes
+    B's attempt a no-op: exactly one push."""
+    world.config.pop(("c2", CREATOR_KEY))
+    containers = _Containers(world, monkeypatch)
+    world.push_results = [TRANSIENT, TRANSIENT]
+    containers.run("A", START + RUN)
+    assert len(_queue(world)) == 1
+
+    real_put = remote_config_store.put_remote_config_versioned
+
+    def down(record, *, expected_version):
+        """The retry record cannot be written (the settled item stays open)."""
+        if record["key"] == reminder_retry.RETRY_KEY:
+            raise remote_config_store.RemoteConfigStoreError("down")
+        return real_put(record, expected_version=expected_version)
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config_versioned", down)
+    containers.run("A", START + timedelta(minutes=1) + RUN)  # delivers c1, then fails to store the settled state
+    monkeypatch.setattr(remote_config_store, "put_remote_config_versioned", real_put)
+    assert _endpoints(world) == ["c1"] and len(_queue(world)) == 1
+
+    containers.run("B", START + timedelta(minutes=1) + RUN)  # B sees the item that is still open
+
+    assert _endpoints(world) == ["c1"] and _queue(world) == {}  # not a second push, and the item is finally settled
+
+
+def test_concurrent_queue_updates_from_two_environments_are_both_kept(world, monkeypatch):
+    """A write that loses the compare-and-set to another environment's write re-reads and re-applies on top of it: neither environment's item is lost."""
+    now = START + RUN
+    start_ms = int(START.timestamp() * 1000)
+    mine = reminder_retry.first_item("c1", "v1", start_ms, start_ms, {"start"}, int(now.timestamp() * 1000), "mine")
+    theirs = reminder_retry.first_item("c2", "v1", start_ms, start_ms, {"start"}, int(now.timestamp() * 1000), "theirs")
+    real = remote_config_store.put_remote_config_versioned
+    state = {"raced": False}
+
+    def racing(record, *, expected_version):
+        """Just before my first write lands, the other environment's write lands."""
+        if not state["raced"]:
+            state["raced"] = True
+            reminder_retry.commit({theirs.key: theirs}, now)
+        return real(record, expected_version=expected_version)
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config_versioned", racing)
+    stored = reminder_retry.commit({mine.key: mine}, now)
+
+    assert state["raced"] and set(stored) == {mine.key, theirs.key} and set(_queue(world)) == {mine.key, theirs.key}
+
+
+# ============ a store hiccup delays a retry, it never loses one ============
+
+
+def test_a_failed_read_of_the_queue_delays_the_retry_by_one_run_and_never_fails_the_minute(world, monkeypatch):
+    """The read of the record throttles in the run in which the retry is due: that run still answers 200 and serves everything else; the retry is taken by the next run, still
+    inside its window (back-off 30 s, grace 5 min)."""
+    world.config.pop(("c2", CREATOR_KEY))
+    world.push_results = [TRANSIENT, TRANSIENT]
+    world.run(START + RUN)
+    assert len(_queue(world)) == 1
+
+    real_get = remote_config_store.get_remote_config
+
+    def get(client_id, key):
+        """The retry record's read fails while the hiccup lasts."""
+        if (client_id, key) == (live_reminder.SYSTEM_CLIENT_ID, reminder_retry.RETRY_KEY):
+            raise remote_config_store.RemoteConfigStoreError("throttled")
+        return real_get(client_id, key)
+
+    monkeypatch.setattr(remote_config_store, "get_remote_config", get)
+    failed = world.run(START + timedelta(minutes=1) + RUN)
+
+    assert failed["statusCode"] == 200 and failed["retries"] == {"read_failed": 1} and _endpoints(world) == [] and len(_queue(world)) == 1
+
+    monkeypatch.setattr(remote_config_store, "get_remote_config", real_get)
+    world.run(START + timedelta(minutes=2) + RUN)
+
+    assert _endpoints(world) == ["c1"] and _queue(world) == {}
+
+
+def test_a_new_failure_that_cannot_be_stored_is_kept_and_stored_by_the_next_run(world, monkeypatch):
+    """The queue is down exactly when a recipient fails: the item is kept by the container, written by the next run's commit, and then served normally."""
+    world.config.pop(("c2", CREATOR_KEY))
+    real_put = remote_config_store.put_remote_config_versioned
+
+    def down(record, *, expected_version):
+        """The retry record cannot be written."""
+        if record["key"] == reminder_retry.RETRY_KEY:
+            raise remote_config_store.RemoteConfigStoreError("down")
+        return real_put(record, expected_version=expected_version)
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config_versioned", down)
+    world.push_results = [TRANSIENT, TRANSIENT]
+    first = world.run(START + RUN)
+
+    assert first["statusCode"] == 200 and first["retries"] == {"unsaved": 1} and _queue(world) == {}
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config_versioned", real_put)
+    world.run(START + timedelta(minutes=1) + RUN)  # the queue is back: the kept item is written ...
+    assert len(_queue(world)) == 1 and notification_dispatcher._unsaved_retry_items == {}
+
+    world.run(START + timedelta(minutes=2) + RUN)  # ... and served by the run after
+
+    assert _endpoints(world) == ["c1"] and _queue(world) == {}
+
+
+def test_an_item_kept_after_a_store_outage_is_dropped_once_it_expired(world, monkeypatch):
+    """A carried item is judged by the same expiry as a stored one: if the outage outlasts the reminder it is never stored and nothing is sent late."""
+    world.config.pop(("c2", CREATOR_KEY))
+
+    def down(record, *, expected_version):
+        """The retry record cannot be written."""
+        raise remote_config_store.RemoteConfigStoreError("down")
+
+    real_put = remote_config_store.put_remote_config_versioned
+    monkeypatch.setattr(remote_config_store, "put_remote_config_versioned", down)
+    world.push_results = [TRANSIENT, TRANSIENT]
+    world.run(START + RUN)
+    assert len(notification_dispatcher._unsaved_retry_items) == 1
+
+    monkeypatch.setattr(remote_config_store, "put_remote_config_versioned", real_put)
+    pushes_before = len(world.pushes)
+    world.run(START + timedelta(minutes=7) + RUN)  # long after START + 5 min
+
+    assert _queue(world) == {} and notification_dispatcher._unsaved_retry_items == {} and len(world.pushes) == pushes_before
+
+
+def test_an_expired_item_found_by_another_environment_is_removed_without_a_push(world, monkeypatch):
+    """Expiry is stored with the item, so every environment applies it identically."""
+    world.config.pop(("c2", CREATOR_KEY))
+    containers = _Containers(world, monkeypatch)
+    world.push_results = [TRANSIENT, TRANSIENT]
+    containers.run("A", START + RUN)
+    pushes_before = len(world.pushes)
+
+    summary = containers.run("B", START + timedelta(minutes=6) + RUN)
+
+    assert summary["retries"]["expired"] == 1 and len(world.pushes) == pushes_before and _queue(world) == {}

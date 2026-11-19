@@ -312,9 +312,10 @@ def _log_dispatch_timing(
         print(f"Warning: could not log dispatch timing ({type(exc).__name__})")
 
 
-# Whether the durable reminder-retry record may hold open items: None = unknown (a cold container reads it once), False = known empty (an idle minute reads
-# nothing), True = something is open (read every run until it settles). See notifications/reminder_retry.py.
-_retry_pending: bool | None = None
+# New retry items a run could not store (the queue record was unreadable or unwritable on every attempt). They stay in THIS container and are offered again to the
+# next run's write, so a short store outage delays them instead of losing them. The durable record itself is read on EVERY run (never cached across runs):
+# a retry queued by another Lambda execution environment is then visible to whichever environment serves the next minute. See notifications/reminder_retry.py.
+_unsaved_retry_items: dict[str, reminder_retry.RetryItem] = {}
 
 # What every push attempt of the CURRENT recipient came to, per thread: the dispatcher serves recipients from a small thread pool, and the retry queue needs
 # to know -- without changing the delivery code's signatures -- which attempts failed for a reason that may pass.
@@ -571,47 +572,56 @@ def _run_reminder_retries(
     catch_up_switch: _CatchUpSwitch,
     context: Any,
 ) -> dict[str, int]:
-    """Retry whatever is due, store this run's new failures, and keep the idle path free: returns {} when nothing was open and nothing was added.
+    """Retry whatever is due and store this run's new failures. The durable queue is read on EVERY run: one small GetItem per minute is cheaper than a retry another
+    Lambda execution environment queued and this one never saw (a retry has only minutes to live).
 
-    Never raises -- the retry queue is a safety net, and a failure in it must not fail a reminder minute. A run that cannot reach the queue leaves it as
-    it was (its new items are lost with that run only; the Scheduler-retry and recovery paths still cover a failed run)."""
-    global _retry_pending
+    Never raises -- the retry queue is a safety net, and a failure in it must not fail a reminder minute. If the record cannot be read this run's due retries wait
+    for the next run (still inside their window thanks to DUE_SLACK and the 30 s .. 4 min back-off); if it cannot be written the new items are kept in this
+    container and offered to the next run's write."""
+    global _unsaved_retry_items
     summary: dict[str, int] = {}
     try:
         now_ms = int(now.timestamp() * 1000)
-        changes: dict[str, reminder_retry.RetryItem | None] = dict(new_items)
-        still_open = False  # items that were read, are not settled by this run and need no write
-        if _retry_pending is not False:
+        carried = {key: item for key, item in _unsaved_retry_items.items() if item.expires_at_ms > now_ms and key not in new_items}
+        _unsaved_retry_items = dict(carried)  # an expired kept item is forgotten at once, whether or not this run writes
+        changes: dict[str, reminder_retry.RetryItem | None] = {**carried, **new_items}
+        try:
             _version, open_items = reminder_retry.read_state()
-            still_open = any(item.expires_at_ms > now_ms for item in open_items.values())
-            for item in open_items.values():
-                if item.expires_at_ms <= now_ms:
-                    changes[item.key] = None
-                    summary["expired"] = summary.get("expired", 0) + 1
-            due = sorted(
-                (item for item in open_items.values() if item.next_at_ms <= now_ms + reminder_retry.DUE_SLACK_MS and now_ms < item.expires_at_ms and item.key not in new_items),
-                key=lambda item: item.next_at_ms,
+        except Exception as exc:  # noqa: BLE001 -- see the docstring
+            print(f"Warning: could not read the reminder retry queue ({type(exc).__name__}): {exc}")
+            open_items = {}
+            summary["read_failed"] = 1
+        for item in open_items.values():
+            if item.expires_at_ms <= now_ms:
+                changes[item.key] = None
+                summary["expired"] = summary.get("expired", 0) + 1
+        due = sorted(
+            (item for item in open_items.values() if item.next_at_ms <= now_ms + reminder_retry.DUE_SLACK_MS and now_ms < item.expires_at_ms and item.key not in changes),
+            key=lambda item: item.next_at_ms,
+        )
+        if due:
+            creators = creators_by_id()
+            vapid = vapid_credentials()
+        for item in due:
+            if _near_deadline(context):
+                break
+            kept, label = _process_retry_item(
+                item, now=now, stream_schedule=stream_schedule, creators_by_id=creators, vapid=vapid, catch_up_switch=catch_up_switch
             )
-            if due:
-                creators = creators_by_id()
-                vapid = vapid_credentials()
-            for item in due:
-                if _near_deadline(context):
-                    break
-                kept, label = _process_retry_item(
-                    item, now=now, stream_schedule=stream_schedule, creators_by_id=creators, vapid=vapid, catch_up_switch=catch_up_switch
-                )
-                changes[item.key] = kept
-                summary[label] = summary.get(label, 0) + 1
-                if kept is None and label in ("transient", "store_error"):
-                    summary["given_up"] = summary.get("given_up", 0) + 1
+            changes[item.key] = kept
+            summary[label] = summary.get(label, 0) + 1
+            if kept is None and label in ("transient", "store_error"):
+                summary["given_up"] = summary.get("given_up", 0) + 1
         if changes:
-            open_after = reminder_retry.commit(changes, now)
-            _retry_pending = bool(open_after)
-            if new_items:
-                summary["queued"] = len(new_items)
-        else:
-            _retry_pending = still_open
+            try:
+                reminder_retry.commit(changes, now)
+                _unsaved_retry_items = {}
+                if new_items:
+                    summary["queued"] = len(new_items)
+            except reminder_retry.QueueUnavailable as exc:
+                print(f"Warning: {exc}; its new items are kept for the next run")
+                _unsaved_retry_items = {key: item for key, item in {**carried, **new_items}.items() if item.expires_at_ms > now_ms}
+                summary["unsaved"] = len(_unsaved_retry_items)
     except Exception as exc:  # noqa: BLE001 -- see the docstring
         print(f"Warning: reminder retry queue failed ({type(exc).__name__}): {exc}")
         return {}
