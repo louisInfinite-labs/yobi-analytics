@@ -86,6 +86,7 @@ from notifications import push_sender
 from notifications import premiere_reminder
 from notifications import push_ttl
 from notifications import reminder_retry
+from notifications import subscription_state
 from notifications import reminder_candidates
 from notifications import simultaneous_dispatcher
 from stores import remote_config_store
@@ -644,7 +645,7 @@ def _serve_client(
         return 0, 0
 
     subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
-    if subscription_record is None:
+    if subscription_record is None or remote_config_store.is_inactive(subscription_record):
         return 0, 0  # nothing to send a reminder to (a client whose global switch is OFF has its subscription removed)
     subscription = subscription_record["value"]
     subscription_updated_at = live_reminder.parse_timestamp(subscription_record.get("updatedAt"))
@@ -1092,7 +1093,7 @@ def _serve_premiere_client(
         print(f"Warning: skipping client {client_id!r} with an invalid stored notification preference: {exc}")
         return 0, 0
     subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
-    if subscription_record is None:
+    if subscription_record is None or remote_config_store.is_inactive(subscription_record):
         return 0, 0
     vapid_private_key, vapid_claims = vapid
     checked = delivered = 0
@@ -1396,8 +1397,9 @@ def _send_reminder(
         ttl_seconds=_reminder_ttl_seconds(kind, scheduled_start_ms, now),
     )
     if result.subscription_expired:
-        print(f"Push subscription expired for client {client_id!r}; leaving cleanup to a future pass")
+        print(f"Push subscription expired for client {client_id!r}")
         notification_delivery_log_store.release_claim(client_id, dedupe_id)
+        subscription_state.mark_inactive_after_expiry(client_id, subscription, result.status_code, now)
         _trace(video_id, kind, scheduled_start_ms, "expired")
         return False
     if not result.sent:

@@ -80,6 +80,8 @@ class PushResult:
     # True only for a failure that is plausibly transient and worth one more immediate attempt: a transport error, a 429 or a 5xx from the push
     # service. A permanently bad subscription, an unusable key or a 4xx rejection is never retryable.
     retryable: bool = False
+    # The push service's HTTP status when it answered with one (a rejection), else None; only used to record WHY a subscription was marked inactive.
+    status_code: int | None = None
 
 
 def parse_subscription(raw: Any) -> dict[str, Any]:
@@ -188,7 +190,7 @@ def send_push_notification(
     except WebPushException as exc:
         status_code = exc.response.status_code if exc.response is not None else None
         retryable = status_code is None or status_code == 429 or status_code >= 500
-        return PushResult(sent=False, subscription_expired=status_code in (404, 410), error=str(exc), retryable=retryable)
+        return PushResult(sent=False, subscription_expired=status_code in (404, 410), error=str(exc), retryable=retryable, status_code=status_code)
     except (ValueError, VapidException) as exc:
         # Signing the VAPID claims or encrypting for a malformed stored subscription key failed before anything was sent: a failed send
         # for THIS subscription, never an exception that ends the caller's whole run.

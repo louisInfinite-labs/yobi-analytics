@@ -38,6 +38,7 @@ from notifications import notification_dispatch
 from notifications import notification_text
 from notifications import push_sender
 from notifications import push_ttl
+from notifications import subscription_state
 from notifications.delivery_slots import due_local_slots, floor_to_tick, slot_start_time
 from ops.config import get_vapid_credentials
 from stores import notification_delivery_log_store
@@ -228,8 +229,8 @@ def _serve_recipient(
         return None
 
     subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
-    if subscription_record is None:
-        return 0  # nothing to deliver to
+    if subscription_record is None or remote_config_store.is_inactive(subscription_record):
+        return 0  # nothing to deliver to (no subscription, or one its push service reported gone)
     subscription = subscription_record["value"]
 
     active_since = datetime.fromisoformat(recipient.active_since)
@@ -365,8 +366,9 @@ def deliver_new_video_if_due(
         ttl_seconds=push_ttl.new_video_ttl_seconds(discovered_at=discovered_at, now=now),
     )
     if result.subscription_expired:
-        print(f"Push subscription expired for client {client_id!r}; leaving cleanup to a future pass")
+        print(f"Push subscription expired for client {client_id!r}")
         notification_delivery_log_store.release_claim(client_id, video_id)
+        subscription_state.mark_inactive_after_expiry(client_id, subscription, result.status_code, now)
         return False
     if not result.sent:
         print(f"Warning: push send failed for client {client_id!r}, video {video_id!r}: {result.error}")
