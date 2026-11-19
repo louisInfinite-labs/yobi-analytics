@@ -69,6 +69,8 @@ _refresh_and_load_stream_schedule), so a transient outage degrades to
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -147,6 +149,8 @@ _RECOVERY_TOLERANCE = timedelta(seconds=15)  # an instant served later than this
 # Two runs a little more than a minute apart are ordinary scheduling jitter, not a missed run: the pre-recovery dispatcher had the same property (a
 # window as wide as its cadence), and treating a 61-second spacing as a gap would double the candidate reads of every second due minute.
 _RECOVERY_JITTER = timedelta(seconds=30)
+# The Scheduler's own scheduledTime is trusted only for an invocation at least this late (a Scheduler retry, a delayed start); see _scheduled_instant.
+_SCHEDULED_TIME_MIN_LAG = timedelta(seconds=30)
 _START_RECOVERY_GRACE = timedelta(minutes=5)
 # The last instant this warm container finished serving completely (epoch ms); None in a cold container.
 _last_served_ms: int | None = None
@@ -197,9 +201,11 @@ def _near_deadline(context: Any) -> bool:
 
 
 def _scheduled_instant(event: dict[str, Any] | None, now: datetime) -> datetime | None:
-    """The Scheduler's own scheduledTime for this invocation when it is sane (not in the future, not older than the recovery lookback), else None.
+    """The Scheduler's own scheduledTime for this invocation when it is sane (not in the future, not older than the recovery lookback) AND the
+    invocation is clearly late (at least _SCHEDULED_TIME_MIN_LAG after it), else None.
 
-    With it, a delayed or retried invocation serves the minute it was scheduled for instead of the minute it happened to run in.
+    With it, a delayed or retried invocation serves the minute it was scheduled for instead of the minute it happened to run in. An ordinary
+    invocation (a few seconds after its nominal time) serves the wall clock, exactly as before the Scheduler input existed.
     """
     raw = (event or {}).get("scheduledTime")
     if not isinstance(raw, str):
@@ -212,6 +218,12 @@ def _scheduled_instant(event: dict[str, Any] | None, now: datetime) -> datetime 
         return None
     lag = now - scheduled
     if lag < timedelta(0) or lag > max(_MAX_RECOVERY_LOOKBACK, timedelta(0)):
+        return None
+    if lag < _SCHEDULED_TIME_MIN_LAG:
+        # An ordinary invocation: the Scheduler's nominal time is a few seconds BEFORE the run actually starts (observed in production by the
+        # `Dispatch timing` log: nominal at :58 of the previous minute, run at :04.7, a 6.7 s lag). Serving that
+        # nominal time instead of `now` puts the evaluation instant just before the minute boundary, so a start or advance moment ON the boundary
+        # (almost every one) is not yet due and waits for the NEXT run -- every reminder a full minute late (+64.7 s in the delivery log).
         return None
     return scheduled
 
@@ -248,6 +260,56 @@ def _evaluation_instants(event: dict[str, Any] | None, now: datetime) -> list[da
     return instants
 
 
+def _log_dispatch_timing(
+    event: dict[str, Any] | None, now: datetime, instants: list[datetime], stream_schedule: dict[str, live_reminder.StreamScheduleEntry]
+) -> None:
+    """One diagnostic line per run: what the Scheduler passed (`scheduledTime`), when this run actually started, and which instants it will serve.
+
+    Records only clock facts and counts -- no client id, endpoint, video id or creator -- so the ~65 s reminder lateness can be explained from the logs
+    instead of inferred. Besides the Scheduler's time it records a COUNTERFACTUAL taken from the schedule already in memory (no I/O, no behaviour change):
+    how many streams have a start / advance moment due at the wall clock `now`, how many at the instants this run actually serves, and how many are due at
+    `now` but NOT at any served instant (`deferredByInstant`) -- the reminders this run postpones by one minute because its evaluation instant is earlier
+    than the clock. A non-zero `deferredByInstant` is the production symptom itself, observed directly. Roughly 1,440 short lines a day. Switched off with
+    the environment variable YOBI_DISPATCH_TIMING_LOG=0; never raises.
+    """
+    if os.environ.get("YOBI_DISPATCH_TIMING_LOG", "1") == "0":
+        return
+    try:
+        raw = (event or {}).get("scheduledTime")
+        scheduled = None
+        if isinstance(raw, str):
+            try:
+                scheduled = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError:
+                scheduled = None
+        record = {
+            "now": now.isoformat(timespec="milliseconds"),
+            # Echoed only when it parses as a timestamp (what the Scheduler sends); any other text is reported as "unparsable", never copied into the log.
+            "scheduledTime": raw[:40] if scheduled is not None else ("unparsable" if isinstance(raw, str) else None),
+            "scheduledLagMs": int((now - scheduled).total_seconds() * 1000) if scheduled is not None and scheduled.tzinfo is not None else None,
+            "usedScheduledTime": bool(instants) and _scheduled_instant(event, now) is not None,
+            "warmContainer": _last_served_ms is not None,
+            "instants": [{"at": i.isoformat(timespec="milliseconds"), "ageMs": int((now - i).total_seconds() * 1000)} for i in instants[-12:]],
+            "nowSecond": round(now.second + now.microsecond / 1e6, 1),
+            "scheduledSecond": scheduled.second if scheduled is not None else None,
+        }
+        window_ms = int(_REMINDER_WINDOW.total_seconds() * 1000)
+
+        def due_at(moment: datetime) -> set[str]:
+            """The streams with a start / advance moment due at `moment` (pure, in memory; the catch-up is not consulted)."""
+            due, _ = reminder_candidates.due_streams(stream_schedule, now_ms=int(moment.timestamp() * 1000), window_ms=window_ms, catch_up_enabled=lambda: False)
+            return set(due)
+
+        due_now = due_at(now)
+        due_served = set().union(*(due_at(instant) for instant in instants)) if instants else set()
+        record["dueAtNow"] = len(due_now)
+        record["dueAtInstants"] = len(due_served)
+        record["deferredByInstant"] = len(due_now - due_served)
+        print("Dispatch timing: " + json.dumps(record, separators=(",", ":")))
+    except Exception as exc:  # noqa: BLE001 -- a diagnostic line must never affect a run
+        print(f"Warning: could not log dispatch timing ({type(exc).__name__})")
+
+
 _UNSERVED = object()  # a recipient the run did not start because the Lambda's deadline was close
 
 
@@ -264,6 +326,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     stream_schedule, pending_notice_ids, premiere_schedule = _load_schedule(now=now)
     window_ms = int(_REMINDER_WINDOW.total_seconds() * 1000)
     instants = _evaluation_instants(event, now)
+    _log_dispatch_timing(event, now, instants, stream_schedule)
 
     # Creators and the VAPID key are loaded the first time something is actually sent: an idle minute (the common one) loads neither.
     lazy: dict[str, Any] = {}
