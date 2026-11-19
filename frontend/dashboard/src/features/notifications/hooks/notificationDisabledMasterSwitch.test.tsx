@@ -8,6 +8,7 @@ import { apiRequest } from "../../../shared/api/apiClient"
 import { getOrCreateClientSecret } from "../../../shared/api/clientCredential"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
+import { installFakePushBackend } from "../../../test/fakePushBackend"
 import { getSyncedNotificationLocale, isNotificationDisabledByUser, putNotificationPreference } from "../api/notificationPreferenceApi"
 import { getPushSubscriptionStatus, subscribeToPush } from "../push/pushNotifications"
 
@@ -128,6 +129,7 @@ describe("global OFF is the master switch for the notification-language sync", (
   })
 
   it("an explicit successful Enable Notifications clears the disabled state and restores the language sync", async () => {
+    installFakePushBackend(vi.mocked(apiRequest)) // enabling is only reported after the backend confirms the subscription it was given
     await putNotificationPreference("c1", "secret-1", false, new Set(), new Set())
     vi.mocked(getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
     vi.mocked(subscribeToPush).mockResolvedValue({ endpoint: "https://push.example/1", keys: { p256dh: "k", auth: "a" } })

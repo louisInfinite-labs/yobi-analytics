@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NotificationToggle } from "./NotificationToggle"
 import * as apiClient from "../../../shared/api/apiClient"
 import * as pushNotifications from "../push/pushNotifications"
+import { installFakePushBackend } from "../../../test/fakePushBackend"
 
 vi.mock("../push/pushNotifications", () => ({
   getPushSubscriptionStatus: vi.fn(),
@@ -16,7 +17,7 @@ vi.mock("../../../shared/api/apiClient", () => ({ apiRequest: vi.fn() }))
 describe("NotificationToggle when the service worker never activates", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(apiClient.apiRequest).mockResolvedValue(undefined)
+    installFakePushBackend(vi.mocked(apiClient.apiRequest)) // confirms the subscription it is given, like the real backend
     vi.mocked(pushNotifications.getPushSubscriptionStatus).mockResolvedValue("unsubscribed")
     vi.mocked(pushNotifications.unsubscribeFromPush).mockResolvedValue(false)
   })

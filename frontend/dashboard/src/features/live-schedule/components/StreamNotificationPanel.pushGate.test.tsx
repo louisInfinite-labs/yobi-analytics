@@ -9,6 +9,7 @@ import { getCreatorById, toLegacyRosterId } from "../../../entities/creator/data
 import { resetPushGateForTests } from "../../notifications/push/pushGate"
 import { resetPushStateForTests } from "../../notifications/push/pushState"
 import { installFakePushDevice } from "../../../test/fakePushDevice"
+import { installFakePushBackend, type FakePushBackend } from "../../../test/fakePushBackend"
 import type { ScheduledStream } from "../model/scheduledStream"
 
 // The REAL push gate (no mock of pushGate): the production path from a Schedule reminder's Save button to Web Push. Only the network
@@ -34,13 +35,14 @@ const stream: ScheduledStream = {
 }
 
 let fake: ReturnType<typeof installFakePushDevice> | undefined
+let backend: FakePushBackend // stores the subscription it is given and returns it on the confirming read
 
 beforeEach(() => {
   vi.stubEnv("VITE_API_BASE_URL", "") // never reach the real API (the test env loads .env.local)
   resetPushGateForTests()
   resetPushStateForTests()
   localStorage.setItem("yobi.locale", "en")
-  vi.mocked(apiClient.apiRequest).mockReset().mockResolvedValue(undefined)
+  backend = installFakePushBackend(vi.mocked(apiClient.apiRequest))
   vi.mocked(liveReminderApi.fetchReminderSettings).mockResolvedValue(liveReminderApi.emptyReminderSettings())
   vi.mocked(liveReminderApi.saveStreamNotificationOverride).mockReset().mockResolvedValue(undefined)
 })
@@ -123,6 +125,7 @@ describe("Schedule one-time reminder reaches Web Push through the gate", () => {
 
   it("permission granted and subscribed: Save goes straight through -- no explanation, no prompt", async () => {
     fake = installFakePushDevice({ permission: "granted", subscribed: true })
+    backend.stored = { endpoint: "https://fcm.example.com/device-1" } // the backend confirms this very subscription
     const user = userEvent.setup({ pointerEventsCheck: 0 })
     const onClose = vi.fn()
     render(

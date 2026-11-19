@@ -346,6 +346,7 @@ jobs:
           src/features/pwa/registerServiceWorker.test.ts
           src/features/pwa/components/InstallSetting.test.tsx
           src/features/notifications/push/pushGate.test.tsx
+          src/features/notifications/push/pushRecovery.test.tsx
           src/features/notifications/push/pushPermissionState.test.ts
           src/features/notifications/push/serviceWorker.notificationclick.test.ts
           src/features/video-deep-link/videoAvailability.test.ts

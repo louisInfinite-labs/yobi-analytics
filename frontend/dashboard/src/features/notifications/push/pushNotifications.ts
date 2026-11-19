@@ -113,6 +113,15 @@ export async function getPushSubscriptionStatus(): Promise<"unsupported" | "subs
   return subscription ? "subscribed" : "unsubscribed"
 }
 
+/** The endpoint of this browser's current push subscription, or null when it has none (or push is unsupported). Only the endpoint is read, to compare
+ * it with what the backend stored -- it is never logged, displayed or sent anywhere except as part of the subscription the app already registers. */
+export async function getPushSubscriptionEndpoint(): Promise<string | null> {
+  if (!isPushSupported()) return null
+  const registration = await navigator.serviceWorker.getRegistration("/sw.js")
+  const subscription = await registration?.pushManager.getSubscription()
+  return subscription?.toJSON().endpoint ?? null
+}
+
 /** Unsubscribe this browser from Web Push, if it currently has a subscription.
  *
  * Returns whether a subscription was actually removed — `false` both when

@@ -8,10 +8,13 @@ import { resetPushStateForTests } from "./pushState"
 import { installFakePushDevice } from "../../../test/fakePushDevice"
 import * as apiClient from "../../../shared/api/apiClient"
 import { resetAllSharedStateForTests } from "../../../shared/state/sharedState"
+import { installFakePushBackend, type FakePushBackend } from "../../../test/fakePushBackend"
 
 vi.mock("../../../shared/api/apiClient", () => ({ apiRequest: vi.fn() }))
 
 let fake: ReturnType<typeof installFakePushDevice> | undefined
+// The backend as the frontend sees it: stores the subscription it is given and returns it on the confirming read.
+let backend: FakePushBackend
 
 beforeEach(() => {
   // Defense in depth: the test env loads .env.local (the REAL API base URL), so a request that ever bypassed the apiClient mock below
@@ -21,7 +24,7 @@ beforeEach(() => {
   resetPushStateForTests()
   window.localStorage.setItem("yobi.locale", "zh-TW")
   resetAllSharedStateForTests()
-  vi.mocked(apiClient.apiRequest).mockReset().mockResolvedValue(undefined)
+  backend = installFakePushBackend(vi.mocked(apiClient.apiRequest))
 })
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -129,13 +132,15 @@ describe("ensurePushEnabled: permission is only requested after an explicit Cont
 describe("ensurePushEnabled: permission already decided", () => {
   it("granted + a valid subscription: resolves ready, reuses the subscription, and shows no dialog and no prompt", async () => {
     const push = device({ permission: "granted", subscribed: true })
+    backend.stored = { endpoint: "https://fcm.example.com/device-1" } // the backend holds this very subscription, active
     render(<PushPermissionHost />)
 
     await expect(ensurePushEnabled()).resolves.toBe("ready")
 
     expect(push.requestPermission).not.toHaveBeenCalled()
     expect(push.subscribe).not.toHaveBeenCalled()
-    expect(apiClient.apiRequest).not.toHaveBeenCalled()
+    // "ready" was CONFIRMED by reading the backend, and nothing was written for an already healthy device.
+    expect(backend.calls.filter((call) => call.startsWith("PUT") || call.startsWith("DELETE"))).toEqual([])
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
