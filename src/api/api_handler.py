@@ -114,6 +114,10 @@ class _ForbiddenError(Exception):
     """Raised when a client-scoped route's X-Client-Secret header is missing or doesn't match the target clientId."""
 
 
+class _ConflictError(Exception):
+    """Raised when a request is well formed but conflicts with the stored state (HTTP 409): here, re-registering the very subscription its push service reported gone."""
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Route one API Gateway HTTP API proxy event to its handler and return an HTTP API v2 response.
 
@@ -166,6 +170,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         return _json_response(503, {"error": "Live stream data is temporarily unavailable", "code": "HOLODEX_UNAVAILABLE"})
     except _ForbiddenError as exc:
         return _json_response(403, {"error": str(exc)})
+    except _ConflictError as exc:
+        return _json_response(409, {"error": str(exc), "code": "SUBSCRIPTION_INACTIVE"})
     except _CLIENT_ERROR_TYPES as exc:
         return _json_response(400, {"error": str(exc)})
     except Exception as exc:  # noqa: BLE001 - deliberate catch-all, see docstring
@@ -283,6 +289,11 @@ def _handle_put_push_subscription(event: dict[str, Any]) -> dict[str, Any]:
     client_id = heartbeat_api.parse_client_id(_merged_params(event).get("clientId"))
     _require_client_secret(event, client_id)
     subscription = push_sender.parse_subscription(_json_body(event))
+    # An inactive marker (its push service answered 404/410) may only be replaced by a DIFFERENT subscription: writing the same endpoint again would clear the marker and make a
+    # dead subscription look healthy. A new endpoint is a new registration (new keys) and is presumed usable until a push proves otherwise (the dispatcher marks it again).
+    existing = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
+    if remote_config_store.is_inactive(existing) and (existing.get("value") or {}).get("endpoint") == subscription["endpoint"]:
+        raise _ConflictError("This push subscription was reported expired by its push service; subscribe again to get a new one")
     record = remote_config_api.write_remote_config(
         {"clientId": client_id, "key": _PUSH_SUBSCRIPTION_KEY, "value": subscription}
     )

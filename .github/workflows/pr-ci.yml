@@ -165,6 +165,7 @@ jobs:
           tests/notifications/test_scheduler_phase_sweep.py
           tests/notifications/test_push_ttl.py
           tests/stores/test_remote_config_store.py
+          tests/api/test_push_subscription_inactive_guard.py
           tests/stores/test_premiere_archive_times_store.py
           tests/stores/test_premiere_announcements_store.py
           tests/collection/test_premiere_announcements.py
