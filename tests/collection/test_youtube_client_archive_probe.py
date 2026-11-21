@@ -57,6 +57,7 @@ def test_returns_title_channel_end_time_playability_and_views_per_exact_id():
     assert set(probes) == {"a", "b"}  # an id YouTube does not return is absent, not guessed
     assert probes["a"] == {
         "title": "title a", "channelId": "UC_x", "publishedAt": "2026-10-15T09:00:00Z", "actualStartTime": None, "actualEndTime": "2026-10-15T20:00:00Z",
+        "scheduledStartTime": None, "liveBroadcastContent": None,  # absent from the response -> None, never guessed
         "privacyStatus": "public", "uploadStatus": "processed", "embeddable": True, "viewCount": 42,
     }
     assert probes["b"]["actualEndTime"] is None  # still live or upcoming: no end time
@@ -131,3 +132,27 @@ def test_no_ids_means_no_request():
 
     assert get_archive_probe(youtube, []) == {}
     assert youtube.calls == []
+
+def test_a_waiting_room_carries_youtubes_explicit_upcoming_state_from_the_same_single_request():
+    """snippet.liveBroadcastContent ("upcoming") and liveStreamingDetails.scheduledStartTime ride in the SAME videos.list response as everything else: a
+    waiting room that never started is told apart from a broadcast whose live details are merely missing, with no extra request and no extra part."""
+    waiting_room = _item(
+        "w",
+        snippet={"title": "waiting room", "channelId": "UC_x", "publishedAt": "2026-10-18T09:00:00Z", "liveBroadcastContent": "upcoming"},
+        liveStreamingDetails={"scheduledStartTime": "2026-11-14T23:00:00Z"},
+    )
+    youtube = _FakeYouTube([{"items": [waiting_room]}])
+
+    probe = get_archive_probe(youtube, ["w"])["w"]
+
+    assert probe["liveBroadcastContent"] == "upcoming" and probe["scheduledStartTime"] == "2026-11-14T23:00:00Z"
+    assert probe["actualStartTime"] is None and probe["actualEndTime"] is None
+    assert youtube.calls == [{"part": "snippet,liveStreamingDetails,status,statistics", "id": "w"}]
+
+
+@pytest.mark.parametrize("state", ["live", "none"])
+def test_every_current_state_youtube_reports_is_carried_unchanged(state):
+    """"live" and "none" are carried as YouTube reported them: the lifecycle alone decides what each means."""
+    item = _item("s", snippet={"title": "t", "channelId": "UC_x", "publishedAt": "2026-10-15T09:00:00Z", "liveBroadcastContent": state})
+
+    assert get_archive_probe(_FakeYouTube([{"items": [item]}]), ["s"])["s"]["liveBroadcastContent"] == state
