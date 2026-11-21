@@ -119,6 +119,8 @@ jobs:
           tests/notifications/test_new_video_short_filter.py
           tests/notifications/test_retired_topic_scopes.py
           tests/stores/test_notification_events_store.py
+          tests/api/test_about_content_api.py
+          tests/scripts/test_publish_about_content.py
           tests/scripts/test_publish_about_content_line_endings.py
           tests/test_terraform_client_credentials_table.py
           tests/notifications/test_reminder_timing_matrix.py
