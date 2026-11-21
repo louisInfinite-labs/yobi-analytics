@@ -70,7 +70,8 @@ function localDayStart(ms: number): Date {
  *
  * Responsibilities, kept separate: this hook depends ONLY on observed live/end state. A stream is resolved when the backend lists it in `recentlyEnded`
  * -- its 5-minute lifecycle verified the end against YouTube -- and never because of anything archive-related (the archive lookup is the backend's
- * other, independent job; its success, failure or delay cannot move the Schedule). Dropping out of /live-streams is NOT an end: the list can lose a
+ * other, independent job; its success, failure or delay cannot move the Schedule). It is also resolved when a fresh response lists it as not live with no
+ * actualStart: the backend's own statement that the waiting room never started. Dropping out of /live-streams is NOT an end: the list can lose a
  * stream for a poll, so a dropped stream stays held until the backend confirms it ended.
  *
  * When the backend sends no `recentlyEnded` (undefined: an older deployment, or the field could not be read) there is no end signal to wait for, so
@@ -109,11 +110,17 @@ export function useOvernightHold({
     [streams, todayMs],
   )
 
-  // Ended per the backend -- unless the stream is live right now (a stale record must never override what is live).
+  // Ended per the backend -- unless the stream is live right now (a stale record must never override what is live). Also resolved: a stream a FRESH response now lists as
+  // not live and with no start of its own. The backend only serves a stream it once listed live as "upcoming" after YouTube explicitly showed its waiting room as not
+  // started in several separate checks, so there is nothing overnight to wait for -- without this, a browser that remembered it from an earlier "live" listing would stay
+  // pinned to its date until the 24 h memory ran out. A listing that carries an actualStart never counts (a stream that began is only ever resolved by its end), and if the
+  // stream really starts later it is live again and holds its date exactly as before.
   const resolvedIds = useMemo(() => {
     const liveIds = new Set(streams.map((dto) => dto.videoId))
-    return new Set((recentlyEnded ?? []).map((ended) => ended.videoId).filter((videoId) => !liveIds.has(videoId)))
-  }, [streams, recentlyEnded])
+    const resolved = new Set((recentlyEnded ?? []).map((ended) => ended.videoId).filter((videoId) => !liveIds.has(videoId)))
+    if (fetched) for (const dto of streams) if (dto.status !== "live" && !dto.actualStart) resolved.add(dto.videoId)
+    return resolved
+  }, [streams, recentlyEnded, fetched])
 
   // The remembered streams that still hold the date: not confirmed ended, a member channel, seen live within the last 24 h -- and VERIFIED, i.e. seen live in a
   // response fetched in this page session (or live in the current fresh one, which verifies it below). A stream listed live only by the previous session's
