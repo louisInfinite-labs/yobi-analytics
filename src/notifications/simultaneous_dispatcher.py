@@ -44,6 +44,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Mapping
 from zoneinfo import ZoneInfo
 
+from notifications import subscription_state
 from notifications import live_reminder
 from notifications import notification_dispatch
 from notifications import notification_payload
@@ -443,7 +444,7 @@ def _attempt(
     if not preference.enabled:
         return _Outcome("dropped", reason="notifications_off")
     subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
-    if subscription_record is None:
+    if subscription_record is None or remote_config_store.is_inactive(subscription_record):
         return _Outcome("dropped", reason="no_subscription")
 
     relevant = [(creator_id, video_id) for creator_id, video_id in collision.members if video_id in item.video_ids]
@@ -498,8 +499,9 @@ def _attempt(
         ttl_seconds=push_ttl.simultaneous_notice_ttl_seconds(scheduled_start_ms=collision.start_ms, now=now),
     )
     if result.subscription_expired:
-        print(f"Push subscription expired for client {client_id!r}; leaving cleanup to a future pass")
+        print(f"Push subscription expired for client {client_id!r}")
         _release(client_id, key)
+        subscription_state.mark_inactive_after_expiry(client_id, subscription_record["value"], result.status_code, now)
         return _Outcome("dropped", reason="subscription_expired")
     if not result.sent:
         print(f"Warning: simultaneous-livestream push failed for client {client_id!r} ({key}): {result.error}")

@@ -163,6 +163,9 @@ jobs:
           tests/notifications/test_dispatch_timing_log.py
           tests/notifications/test_scheduler_phase.py
           tests/notifications/test_scheduler_phase_sweep.py
+          tests/notifications/test_reminder_retry.py
+          tests/notifications/test_inactive_subscription.py
+          tests/notifications/test_missing_notification_pairs.py
           tests/notifications/test_push_ttl.py
           tests/stores/test_remote_config_store.py
           tests/api/test_push_subscription_inactive_guard.py

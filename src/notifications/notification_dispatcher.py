@@ -85,6 +85,8 @@ from notifications import parallel
 from notifications import push_sender
 from notifications import premiere_reminder
 from notifications import push_ttl
+from notifications import reminder_retry
+from notifications import subscription_state
 from notifications import reminder_candidates
 from notifications import simultaneous_dispatcher
 from stores import remote_config_store
@@ -310,6 +312,54 @@ def _log_dispatch_timing(
         print(f"Warning: could not log dispatch timing ({type(exc).__name__})")
 
 
+# New retry items a run could not store (the queue record was unreadable or unwritable on every attempt). They stay in THIS container and are offered again to the
+# next run's write, so a short store outage delays them instead of losing them. The durable record itself is read on EVERY run (never cached across runs):
+# a retry queued by another Lambda execution environment is then visible to whichever environment serves the next minute. See notifications/reminder_retry.py.
+_unsaved_retry_items: dict[str, reminder_retry.RetryItem] = {}
+
+# What every push attempt of the CURRENT recipient came to, per thread: the dispatcher serves recipients from a small thread pool, and the retry queue needs
+# to know -- without changing the delivery code's signatures -- which attempts failed for a reason that may pass.
+_attempts = threading.local()
+
+
+def _trace_begin(*, retrying: bool = False) -> None:
+    """Start recording this thread's push outcomes (events: (video_id, kind, scheduled_start_ms, outcome))."""
+    _attempts.events = []
+    _attempts.retrying = retrying
+    _attempts.suspended = False
+
+
+def _trace_take() -> list[tuple[str, str, int, str]]:
+    """The outcomes recorded since _trace_begin on this thread, and stop recording."""
+    events = getattr(_attempts, "events", None) or []
+    _attempts.events = None
+    _attempts.retrying = False
+    return events
+
+
+def _trace(video_id: str, kind: str, start_ms: int, outcome: str) -> None:
+    """Record one outcome (sent / duplicate / held / expired / transient / permanent) -- a no-op outside a trace, for a Premiere or a catch-up send."""
+    events = getattr(_attempts, "events", None)
+    if events is not None and not getattr(_attempts, "suspended", False) and kind in (notification_text.KIND_ADVANCE, notification_text.KIND_START):
+        events.append((video_id, kind, start_ms, outcome))
+
+
+def _retry_items_from_events(
+    client_id: str, events: list[tuple[str, str, int, str]], instant_ms: int, now_ms: int
+) -> dict[str, reminder_retry.RetryItem]:
+    """The first retry items for the transient failures among one recipient's outcomes (one per video, whatever the kinds that failed)."""
+    by_video: dict[str, tuple[int, set[str]]] = {}
+    for video_id, kind, start_ms, outcome in events:
+        if outcome == "transient":
+            by_video.setdefault(video_id, (start_ms, set()))[1].add("advance" if kind == notification_text.KIND_ADVANCE else "start")
+    items = {}
+    for video_id, (start_ms, kinds) in by_video.items():
+        item = reminder_retry.first_item(client_id, video_id, instant_ms, start_ms, kinds, now_ms, "push_transient")
+        if item is not None:
+            items[item.key] = item
+    return items
+
+
 _UNSERVED = object()  # a recipient the run did not start because the Lambda's deadline was close
 
 
@@ -349,6 +399,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     unserved = 0
     candidates_total = 0
     failures: list[Exception] = []
+    new_retry_items: dict[str, reminder_retry.RetryItem] = {}
     for instant in instants:
         instant_ms = int(instant.timestamp() * 1000)
         recovered = (now - instant) > _RECOVERY_TOLERANCE
@@ -372,16 +423,22 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             if _near_deadline(context):
                 return _UNSERVED
             client_id, reminders = item
-            return _serve_client(
-                client_id,
-                reminders,
-                now=now,
-                evaluate_at=instant,
-                recovered=recovered,
-                creators_by_id=creators,
-                vapid=vapid,
-                catch_up_switch=catch_up_switch,
-            )
+            _trace_begin()
+            try:
+                checked_n, delivered_n = _serve_client(
+                    client_id,
+                    reminders,
+                    now=now,
+                    evaluate_at=instant,
+                    recovered=recovered,
+                    creators_by_id=creators,
+                    vapid=vapid,
+                    catch_up_switch=catch_up_switch,
+                )
+            except BaseException:
+                _trace_take()
+                raise
+            return checked_n, delivered_n, _trace_take()
 
         items = list(candidates.items())
         candidates_total += len(items)
@@ -391,9 +448,15 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             elif isinstance(result, BaseException):
                 print(f"Warning: reminders for client {client_id!r} failed ({type(result).__name__}): {result}")
                 failures.append(result)  # type: ignore[arg-type]
+                # Nothing is known about what this recipient was sent: every stream it was a candidate for is retried (a retry that finds nothing due sends nothing).
+                for retry_video_id, retry_reminder in candidates[client_id].items():
+                    item_ = reminder_retry.first_item(client_id, retry_video_id, instant_ms, retry_reminder.scheduled_start_ms, set(), int(now.timestamp() * 1000), "store_error")
+                    if item_ is not None:
+                        new_retry_items[item_.key] = item_
             else:
                 checked += result[0]
                 delivered += result[1]
+                new_retry_items.update(_retry_items_from_events(client_id, result[2], instant_ms, int(now.timestamp() * 1000)))
     # The one-time Premiere reminders: an optional, separate step that must never turn a finished livestream-reminder run into a failed one.
     premiere: dict[str, int] | None = None
     premiere_unserved = 0
@@ -412,6 +475,15 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001 -- the Premiere reminders are separate from the livestream reminders; whatever goes wrong there stays there
         print(f"Warning: Premiere reminders failed ({type(exc).__name__}): {exc}")
         premiere_failed = True  # the minute was not served: leave the gap for the next run's recovery instead of moving the marker past it
+    retry_summary = _run_reminder_retries(
+        new_retry_items,
+        now=now,
+        stream_schedule=stream_schedule,
+        creators_by_id=creators_by_id,
+        vapid_credentials=vapid_credentials,
+        catch_up_switch=catch_up_switch,
+        context=context,
+    )
     if candidates_total and len(failures) + unserved == candidates_total and failures:
         raise failures[-1]  # nothing worked for anybody: a systemic fault must reach the Lambda's error metric, not hide in a 200
     if unserved or premiere_unserved:
@@ -432,6 +504,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         response["premiere"] = premiere
     if len(instants) > 1:
         response["recoveredInstants"] = len(instants) - 1
+    if retry_summary:
+        response["retries"] = retry_summary
     try:
         simultaneous = simultaneous_dispatcher.run(
             stream_schedule,
@@ -447,6 +521,111 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     if simultaneous and any(simultaneous.values()):
         response["simultaneous"] = simultaneous
     return response
+
+
+def _process_retry_item(
+    item: reminder_retry.RetryItem,
+    *,
+    now: datetime,
+    stream_schedule: dict[str, live_reminder.StreamScheduleEntry],
+    creators_by_id: dict[str, Any],
+    vapid: tuple[str, dict[str, str]],
+    catch_up_switch: _CatchUpSwitch,
+) -> tuple[reminder_retry.RetryItem | None, str]:
+    """One due retry: (the item to keep, or None to settle it, a short outcome label).
+
+    The retry re-resolves everything the original attempt used (the stream's CURRENT schedule entry, the client's CURRENT setting, preference and
+    subscription) and runs the unchanged delivery code at the original instant in recovered mode -- so mute / quiet hours, the saved-before rule, the
+    advance reminder's floor and the start reminder's grace all apply again, and the atomic delivery claim makes anything already delivered a no-op."""
+    now_ms = int(now.timestamp() * 1000)
+    entry = stream_schedule.get(item.video_id)
+    if entry is None or entry.scheduled_start_ms // 60_000 != item.start_ms // 60_000:
+        return None, "stream_gone_or_rescheduled"
+    reminders = _resolve_reminders_for_client(item.client_id, {item.video_id: entry})
+    if not reminders:
+        return None, "setting_removed"
+    instant = datetime.fromtimestamp(item.instant_ms / 1000, tz=timezone.utc)
+    _trace_begin(retrying=True)
+    try:
+        _serve_client(
+            item.client_id, reminders, now=now, evaluate_at=instant, recovered=True, creators_by_id=creators_by_id, vapid=vapid, catch_up_switch=catch_up_switch
+        )
+    except Exception as exc:  # noqa: BLE001 -- a store error is as transient as the one that created the item
+        _trace_take()
+        print(f"Warning: reminder retry for video {item.video_id!r} failed ({type(exc).__name__}): {exc}")
+        return reminder_retry.failed_again(item, now_ms, "store_error"), "store_error"
+    outcomes = {outcome for _video, _kind, _start, outcome in _trace_take()}
+    if "transient" in outcomes:
+        return reminder_retry.failed_again(item, now_ms, "push_transient"), "transient"
+    if "held" in outcomes:
+        return reminder_retry.held(item, now_ms), "held"
+    return None, "sent" if "sent" in outcomes else "settled"
+
+
+def _run_reminder_retries(
+    new_items: dict[str, reminder_retry.RetryItem],
+    *,
+    now: datetime,
+    stream_schedule: dict[str, live_reminder.StreamScheduleEntry],
+    creators_by_id: Any,
+    vapid_credentials: Any,
+    catch_up_switch: _CatchUpSwitch,
+    context: Any,
+) -> dict[str, int]:
+    """Retry whatever is due and store this run's new failures. The durable queue is read on EVERY run: one small GetItem per minute is cheaper than a retry another
+    Lambda execution environment queued and this one never saw (a retry has only minutes to live).
+
+    Never raises -- the retry queue is a safety net, and a failure in it must not fail a reminder minute. If the record cannot be read this run's due retries wait
+    for the next run (still inside their window thanks to DUE_SLACK and the 30 s .. 4 min back-off); if it cannot be written the new items are kept in this
+    container and offered to the next run's write."""
+    global _unsaved_retry_items
+    summary: dict[str, int] = {}
+    try:
+        now_ms = int(now.timestamp() * 1000)
+        carried = {key: item for key, item in _unsaved_retry_items.items() if item.expires_at_ms > now_ms and key not in new_items}
+        _unsaved_retry_items = dict(carried)  # an expired kept item is forgotten at once, whether or not this run writes
+        changes: dict[str, reminder_retry.RetryItem | None] = {**carried, **new_items}
+        try:
+            _version, open_items = reminder_retry.read_state()
+        except Exception as exc:  # noqa: BLE001 -- see the docstring
+            print(f"Warning: could not read the reminder retry queue ({type(exc).__name__}): {exc}")
+            open_items = {}
+            summary["read_failed"] = 1
+        for item in open_items.values():
+            if item.expires_at_ms <= now_ms:
+                changes[item.key] = None
+                summary["expired"] = summary.get("expired", 0) + 1
+        due = sorted(
+            (item for item in open_items.values() if item.next_at_ms <= now_ms + reminder_retry.DUE_SLACK_MS and now_ms < item.expires_at_ms and item.key not in changes),
+            key=lambda item: item.next_at_ms,
+        )
+        if due:
+            creators = creators_by_id()
+            vapid = vapid_credentials()
+        for item in due:
+            if _near_deadline(context):
+                break
+            kept, label = _process_retry_item(
+                item, now=now, stream_schedule=stream_schedule, creators_by_id=creators, vapid=vapid, catch_up_switch=catch_up_switch
+            )
+            changes[item.key] = kept
+            summary[label] = summary.get(label, 0) + 1
+            if kept is None and label in ("transient", "store_error"):
+                summary["given_up"] = summary.get("given_up", 0) + 1
+        if changes:
+            try:
+                reminder_retry.commit(changes, now)
+                _unsaved_retry_items = {}
+                if new_items:
+                    summary["queued"] = len(new_items)
+            except reminder_retry.QueueUnavailable as exc:
+                print(f"Warning: {exc}; its new items are kept for the next run")
+                _unsaved_retry_items = {key: item for key, item in {**carried, **new_items}.items() if item.expires_at_ms > now_ms}
+                summary["unsaved"] = len(_unsaved_retry_items)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring
+        print(f"Warning: reminder retry queue failed ({type(exc).__name__}): {exc}")
+        return {}
+    return summary
 
 
 def _serve_client(
@@ -476,7 +655,7 @@ def _serve_client(
         return 0, 0
 
     subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
-    if subscription_record is None:
+    if subscription_record is None or remote_config_store.is_inactive(subscription_record):
         return 0, 0  # nothing to send a reminder to (a client whose global switch is OFF has its subscription removed)
     subscription = subscription_record["value"]
     subscription_updated_at = live_reminder.parse_timestamp(subscription_record.get("updatedAt"))
@@ -924,7 +1103,7 @@ def _serve_premiere_client(
         print(f"Warning: skipping client {client_id!r} with an invalid stored notification preference: {exc}")
         return 0, 0
     subscription_record = remote_config_store.get_remote_config(client_id, _PUSH_SUBSCRIPTION_KEY)
-    if subscription_record is None:
+    if subscription_record is None or remote_config_store.is_inactive(subscription_record):
         return 0, 0
     vapid_private_key, vapid_claims = vapid
     checked = delivered = 0
@@ -1067,22 +1246,26 @@ def _deliver_catch_up_advance_if_due(
     if _earlier_advance_reminder_handled(video_id, override.first_seen, client_id=client_id, now=now):
         return False
     remaining_minutes = live_reminder.catch_up_remaining_minutes(start_ms, now_ms)
-    sent = _send_reminder(
-        video_id,
-        notification_text.KIND_ADVANCE,
-        scheduled_start_ms=start_ms,
-        advance=override.setting.advance_reminder,
-        stream_title=override.stream_title,
-        locale=preference.locale,
-        client_id=client_id,
-        creator_id=override.creator_id,
-        creators_by_id=creators_by_id,
-        subscription=subscription,
-        now=now,
-        vapid_private_key=vapid_private_key,
-        vapid_claims=vapid_claims,
-        remaining_minutes=remaining_minutes,
-    )
+    _attempts.suspended = True  # a catch-up is retried every minute by its own due condition; it never needs a retry item
+    try:
+        sent = _send_reminder(
+            video_id,
+            notification_text.KIND_ADVANCE,
+            scheduled_start_ms=start_ms,
+            advance=override.setting.advance_reminder,
+            stream_title=override.stream_title,
+            locale=preference.locale,
+            client_id=client_id,
+            creator_id=override.creator_id,
+            creators_by_id=creators_by_id,
+            subscription=subscription,
+            now=now,
+            vapid_private_key=vapid_private_key,
+            vapid_claims=vapid_claims,
+            remaining_minutes=remaining_minutes,
+        )
+    finally:
+        _attempts.suspended = False
     if sent:
         print(f"Late-discovery catch-up advance reminder sent for video {video_id!r} ({remaining_minutes} minutes before its start)")
     return sent
@@ -1136,6 +1319,17 @@ def _reminder_ttl_seconds(kind: str, scheduled_start_ms: int, now: datetime) -> 
     return push_ttl.advance_reminder_ttl_seconds(scheduled_start_ms=scheduled_start_ms, now=now)
 
 
+def _unclaimed_outcome(client_id: str, dedupe_id: str, now: datetime) -> str:
+    """Why a reminder could not be claimed: "duplicate" (already delivered or suppressed -- settled) or, for a RETRY only, "held" (another worker's live claim, which
+    may yet be released: wait for it without spending an attempt). Outside a retry no extra read is made."""
+    if not getattr(_attempts, "retrying", False):
+        return "duplicate"
+    try:
+        return "held" if notification_delivery_log_store.row_status(client_id, dedupe_id, now=now) == "claimed" else "duplicate"
+    except Exception:  # noqa: BLE001 -- unknown means "do not give up on it yet"
+        return "held"
+
+
 def _send_reminder(
     video_id: str,
     kind: str,
@@ -1171,10 +1365,13 @@ def _send_reminder(
     is_premiere = kind in (notification_text.KIND_PREMIERE_START, notification_text.KIND_PREMIERE_ADVANCE)
     # A legacy (start-less) row only exists for the livestream kinds an older version wrote; a Premiere reminder never had one, so it skips that read.
     if not is_premiere and notification_delivery_log_store.handled_within(client_id, legacy_id, _LEGACY_DEDUPE_WINDOW, now=now):
+        _trace(video_id, kind, scheduled_start_ms, "duplicate")
         return False
     if notification_delivery_log_store.already_delivered(client_id, dedupe_id):
+        _trace(video_id, kind, scheduled_start_ms, _unclaimed_outcome(client_id, dedupe_id, now))
         return False
     if not notification_delivery_log_store.mark_delivered(client_id, dedupe_id, now.isoformat()):
+        _trace(video_id, kind, scheduled_start_ms, _unclaimed_outcome(client_id, dedupe_id, now))
         return False
 
     creator = creators_by_id.get(creator_id)
@@ -1210,14 +1407,18 @@ def _send_reminder(
         ttl_seconds=_reminder_ttl_seconds(kind, scheduled_start_ms, now),
     )
     if result.subscription_expired:
-        print(f"Push subscription expired for client {client_id!r}; leaving cleanup to a future pass")
+        print(f"Push subscription expired for client {client_id!r}")
         notification_delivery_log_store.release_claim(client_id, dedupe_id)
+        subscription_state.mark_inactive_after_expiry(client_id, subscription, result.status_code, now)
+        _trace(video_id, kind, scheduled_start_ms, "expired")
         return False
     if not result.sent:
         print(f"Warning: reminder push send failed for client {client_id!r}, video {video_id!r} ({kind}): {result.error}")
         notification_delivery_log_store.release_claim(client_id, dedupe_id)
+        _trace(video_id, kind, scheduled_start_ms, "transient" if result.retryable else "permanent")
         return False
 
+    _trace(video_id, kind, scheduled_start_ms, "sent")
     try:
         notification_delivery_log_store.confirm_delivered(client_id, dedupe_id, now.isoformat())
     except notification_delivery_log_store.NotificationDeliveryLogStoreError as exc:
