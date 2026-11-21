@@ -1,11 +1,13 @@
 import { createSharedState } from "../state/sharedState"
 import { acquirePolling } from "./liveStreamsPollState"
-import { fetchLiveStreams, type LiveStreamDto, type RecentlyEndedStreamDto } from "./liveStreams"
+import { fetchLiveStreams, type LiveStreamDto, type NeverStartedStreamDto, type RecentlyEndedStreamDto } from "./liveStreams"
 
 export interface LiveStreamsState {
   streams: LiveStreamDto[]
   /** The backend-confirmed ended streams from the latest response; undefined = the backend did not supply the list (unknown, not "none"). */
   recentlyEnded?: RecentlyEndedStreamDto[]
+  /** The streams the backend no longer lists but has confirmed never started, from the latest response; undefined = none (or not supplied): nothing to release. */
+  neverStarted?: NeverStartedStreamDto[]
   isLoading: boolean
   error: string | null
   /** False until a /live-streams request has succeeded in THIS page session: `streams` is then empty or a previous session's cache, so no
@@ -47,8 +49,8 @@ export const liveStreamsStore = createSharedState<LiveStreamsState>(STORAGE_KEY,
 async function refresh(): Promise<void> {
   try {
     const result = await fetchLiveStreams()
-    const { recentlyEnded } = result
-    liveStreamsStore.set({ streams: [...result], ...(recentlyEnded ? { recentlyEnded } : {}), isLoading: false, error: null, fetchedThisSession: true })
+    const { recentlyEnded, neverStarted } = result
+    liveStreamsStore.set({ streams: [...result], ...(recentlyEnded ? { recentlyEnded } : {}), ...(neverStarted ? { neverStarted } : {}), isLoading: false, error: null, fetchedThisSession: true })
   } catch (err) {
     liveStreamsStore.set({ ...liveStreamsStore.get(), isLoading: false, error: err instanceof Error ? err.message : "Unknown error" })
   }
