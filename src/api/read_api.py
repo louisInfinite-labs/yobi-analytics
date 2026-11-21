@@ -1526,7 +1526,29 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     body: dict[str, Any] = {"streams": _with_unstarted_streams_as_upcoming(_without_known_non_livestreams(streams))}
     if recently_ended is not None:
         body["recentlyEnded"] = recently_ended
+    never_started = _read_never_started(body["streams"])
+    if never_started:
+        body["neverStarted"] = never_started
     return body
+
+
+def _read_never_started(served: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The streams Holodex no longer lists that the lifecycle has CONFIRMED against YouTube never started (tracking.livestream_lifecycle UNSTARTED WATCH,
+    "dropped" evidence), as [{videoId, confirmedAt}] -- so a browser that remembered one as "live overnight" can stop waiting for an end that never comes. A
+    stream that never started is not "ended": this is a separate list, it changes no stream's status and writes nothing. A stream the listing carries
+    as live WITH an actualStart is never included (Holodex's own start evidence always wins). Additive and best effort: the field is simply omitted when
+    there is no evidence, on a non-DynamoDB backend, or on a read failure -- every client reads an absent field as "nothing to release"."""
+    if os.environ.get("YOBI_STORAGE_BACKEND") != "dynamodb":
+        return []
+    try:
+        from tracking.livestream_lifecycle import read_never_started
+
+        confirmed = read_never_started()
+    except Exception as exc:  # noqa: BLE001 -- the live list must never fail because of this
+        print(f"Warning: could not read the never-started evidence ({type(exc).__name__}): {exc}")
+        return []
+    running = {stream.get("videoId") for stream in served if stream.get("status") == "live" and stream.get("actualStart")}
+    return [entry for entry in confirmed if entry["videoId"] not in running]
 
 
 def _with_unstarted_streams_as_upcoming(streams: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -334,7 +334,9 @@ def test_a_legitimate_multi_day_live_stream_stays_live(served):
 
 
 def test_a_confirmed_unstarted_stream_that_vanishes_is_never_recorded_as_ended(served):
-    """Holodex finally drops the stream: it was never observed live, so it is not an ended-candidate, nothing is recorded ended, and the evidence goes."""
+    """Holodex finally drops the stream: it was never observed live, so it is not an ended-candidate and nothing is recorded ended. Its evidence now
+    follows it as a "dropped" entry while YouTube keeps showing the waiting room (see test_livestream_never_started.py) instead of vanishing with it,
+    which is what left browsers that remembered it waiting for an end that could never come."""
     w = served
     w.items = [_false_live(ARYA, 33)]
     w.probes = {ARYA: _waiting_room()}
@@ -347,7 +349,8 @@ def test_a_confirmed_unstarted_stream_that_vanishes_is_never_recorded_as_ended(s
 
     assert w.ended() == {}
     assert lifecycle._read_snapshot_record()["pendingCandidates"] == {}
-    assert lifecycle._read_unstarted_record() == {}
+    assert lifecycle._read_unstarted_record()[ARYA]["dropped"] is True
+    assert not read_api.get_live_streams().get("recentlyEnded")
 
 
 def test_a_stream_youtube_reports_ended_is_still_confirmed_by_the_live_end_watch(served):
