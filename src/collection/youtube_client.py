@@ -246,9 +246,12 @@ def get_archive_probe(youtube: Resource, video_ids: list[str]) -> dict[str, dict
     recording can be played -- one videos.list call per MAX_IDS_PER_REQUEST ids (1 quota unit each), asking for snippet, liveStreamingDetails, status
     and statistics in that single request.
 
-    Returns videoId -> {"title", "channelId", "publishedAt", "actualStartTime", "actualEndTime", "privacyStatus", "uploadStatus", "embeddable",
-    "viewCount"}. `actualStartTime` is carried alongside `actualEndTime` so a caller can tell a completed Premiere (is_completed_premiere, below)
-    apart from an ordinary livestream archive without any further request -- liveStreamingDetails already has both fields on this same response. An id
+    Returns videoId -> {"title", "channelId", "publishedAt", "actualStartTime", "actualEndTime", "scheduledStartTime", "liveBroadcastContent",
+    "privacyStatus", "uploadStatus", "embeddable", "viewCount"}. `actualStartTime` is carried alongside `actualEndTime` so a caller can tell a completed
+    Premiere (is_completed_premiere, below) apart from an ordinary livestream archive without any further request -- liveStreamingDetails already has
+    both fields on this same response. `liveBroadcastContent` (snippet: "upcoming" / "live" / "none"; None when YouTube omits it) is YouTube's own
+    explicit statement of the CURRENT state: it lets a caller tell a waiting room that has not started from a broadcast whose live details are merely
+    missing, which a missing actualStartTime alone cannot (both new fields ride on the same single request: no extra quota). An id
     YouTube does not return (deleted, private or otherwise unavailable -- the API cannot tell these apart) is simply ABSENT from the result; the
     caller decides what that means. `viewCount` is None when the channel hides it, and nothing here depends on it: a missing count never makes an
     item unreadable. Deliberately separate from get_video_statistics/_parse_video_item, which the daily collection and the ranking rows depend on.
@@ -289,6 +292,8 @@ def get_archive_probe(youtube: Resource, video_ids: list[str]) -> dict[str, dict
                 "publishedAt": snippet.get("publishedAt"),
                 "actualStartTime": live_details.get("actualStartTime"),
                 "actualEndTime": live_details.get("actualEndTime"),
+                "scheduledStartTime": live_details.get("scheduledStartTime"),
+                "liveBroadcastContent": snippet.get("liveBroadcastContent"),
                 "privacyStatus": status.get("privacyStatus"),
                 "uploadStatus": status.get("uploadStatus"),
                 "embeddable": status.get("embeddable"),

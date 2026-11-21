@@ -1521,10 +1521,39 @@ def get_live_streams(_query: dict[str, Any] | None = None) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     streams = [stream for stream in streams if stream.get("status") != "upcoming" or _is_within_lookahead(stream.get("scheduledStart"), now=now)]
     streams = _without_confirmed_ended_live_streams(streams, recently_ended)
-    body: dict[str, Any] = {"streams": _without_known_non_livestreams(streams)}
+    # AFTER the known-non-livestream filter on purpose: a stream relabelled "upcoming" here must not feed the unclassified-upcoming classifier above
+    # (a YouTube lookup) -- its classification is exactly what it was when Holodex listed it "live".
+    body: dict[str, Any] = {"streams": _with_unstarted_streams_as_upcoming(_without_known_non_livestreams(streams))}
     if recently_ended is not None:
         body["recentlyEnded"] = recently_ended
     return body
+
+
+def _with_unstarted_streams_as_upcoming(streams: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Serve a stream Holodex lists "live" as "upcoming" when the lifecycle has CONFIRMED against YouTube that it never started (a waiting room
+    still shown as "upcoming" by YouTube across several separate checks, tracking.livestream_lifecycle UNSTARTED WATCH).
+
+    Only a "live" listing WITHOUT an actualStart is ever relabelled: Holodex's own start evidence always wins, so a stream that really starts --
+    even hours late -- is live again as soon as the snapshot carries its actualStart (or the next lifecycle cycle sees YouTube's actualStartTime and
+    drops the evidence). Nothing else about the stream changes, it is never dropped and never reported ended. Best effort by design: no evidence, a
+    non-DynamoDB backend or a read failure leaves the listing exactly as Holodex reported it."""
+    if not streams or os.environ.get("YOBI_STORAGE_BACKEND") != "dynamodb":
+        return streams
+    try:
+        from tracking.livestream_lifecycle import read_unstarted_video_ids
+
+        unstarted = read_unstarted_video_ids()
+    except Exception as exc:  # noqa: BLE001 -- the live list must never fail because of this
+        print(f"Warning: could not read the unstarted-stream evidence ({type(exc).__name__}): {exc}")
+        return streams
+    if not unstarted:
+        return streams
+    return [
+        {**stream, "status": "upcoming"}
+        if stream.get("status") == "live" and not stream.get("actualStart") and stream.get("videoId") in unstarted
+        else stream
+        for stream in streams
+    ]
 
 
 def _without_confirmed_ended_live_streams(streams: list[dict[str, Any]], recently_ended: list[dict[str, Any]] | None) -> list[dict[str, Any]]:

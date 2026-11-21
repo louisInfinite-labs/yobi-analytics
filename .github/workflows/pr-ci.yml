@@ -139,6 +139,7 @@ jobs:
           tests/stores/test_notification_slot_store.py
           tests/scripts/migration/test_backfill_notification_slots.py
           tests/tracking/test_livestream_lifecycle.py
+          tests/tracking/test_livestream_unstarted_watch.py
           tests/tracking/test_livestream_display_refresh.py
           tests/api/test_livestream_end_state_api.py
           tests/collection/test_youtube_client_archive_probe.py

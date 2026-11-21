@@ -52,6 +52,17 @@ COMPLETION details -- what is a candidate, what confirms an end:
     production: 14% of verified archives needed the third attempt, ~14-16 minutes after the end). The extra attempts cost no extra
     YouTube quota -- they ride in the batch the cycle already sends. A probe that got no answer spends no attempt
     (ARCHIVE_LOOKUP_MAX_AGE bounds that). A creator who does not archive simply ends up handed off.
+  - UNSTARTED WATCH (a listed "live" stream that never started): Holodex can keep a stream "live" although YouTube still shows its waiting
+    room ("upcoming", no actualStartTime) -- days after its scheduled start. The same batched probe that drives the live-end watch carries
+    snippet.liveBroadcastContent, YouTube's own explicit current state. A stream is CONFIRMED unstarted only when ALL hold: Holodex lists it
+    "live" with no actualStart, YouTube ANSWERED for it and says liveBroadcastContent == "upcoming" with neither actualStartTime nor
+    actualEndTime, and that was observed in at least UNSTARTED_MIN_OBSERVATIONS separate cycles spanning at least UNSTARTED_MIN_SPAN (one stale
+    reading is never enough). A missing actualStart alone proves nothing, and neither does a probe that was not answered, did not return the
+    video, or lacks the field: those are inconclusive and change nothing. The evidence lives in its own small record (`liveStreamUnstarted`)
+    and is honoured for UNSTARTED_EVIDENCE_MAX_AGE only, so if this job stops the listing reverts to Holodex's own. GET /live-streams (and
+    everything that derives from it) then serves such a stream as "upcoming" instead of "live" -- never as ended, never dropped. It is excluded
+    from the live baseline, so it can never later become an ended-candidate, and the moment YouTube reports a start (or Holodex supplies
+    actualStart) the evidence is gone and the stream is live again.
   - Home's 最新直播 (GET /creators/{id}/videos/recent) otherwise only reads the once-daily S3 ranking result. It overlays the
     records above (api.read_api): an exactly-matching ended video whose archive is verified available is shown as a
     completed livestream without waiting for the 18:00 JST run, never a different video, never an unverified one.
@@ -62,6 +73,7 @@ Persisted records (stores.remote_config_store, clientId "__system__"):
   liveStreamSnapshot         {refreshedAt, liveBaseline, pendingCandidates, archiveWatch[, streams]}   completion state;
                              `streams` is a backup serving copy written only when the cycle had to fetch Holodex itself
   liveStreamEnded            {ended: {videoId: entry}}                      written only when it changes
+  liveStreamUnstarted        {checkedAt, streams: {videoId: evidence}}      small; written each completion cycle while any evidence exists
 
 read_serving_snapshot is what GET /live-streams reads: it serves the display snapshot while fresh, else the freshest of
 the display and completion snapshots within MAX_SNAPSHOT_AGE_SECONDS, and raises LiveSnapshotStaleError (503) rather than
@@ -97,6 +109,17 @@ DISPLAY_HEARTBEAT_KEY = "liveStreamDisplayHeartbeat"
 
 # Confirmed-ended streams and their archive state; written only when its content changes.
 ENDED_STREAMS_KEY = "liveStreamEnded"
+
+# Streams Holodex lists "live" that YouTube explicitly shows as not started (UNSTARTED WATCH, module docstring): its own small record, so the API's
+# per-request read never touches the large completion state.
+UNSTARTED_STREAMS_KEY = "liveStreamUnstarted"
+# Confirmed only after this many separate completion cycles (5 minutes apart) agree, spanning at least UNSTARTED_MIN_SPAN: one stale YouTube
+# reading around a real start can never flip a stream.
+UNSTARTED_MIN_OBSERVATIONS = 2
+UNSTARTED_MIN_SPAN = timedelta(minutes=3)
+# The evidence is honoured this long after its last observation (four completion cycles): if the job stops, the listing reverts to Holodex's own
+# rather than keep serving an unrefreshed conclusion.
+UNSTARTED_EVIDENCE_MAX_AGE = timedelta(minutes=20)
 
 # How often the display job polls Holodex: the EventBridge schedule `livestream_display_refresh` (terraform/eventbridge.tf,
 # cron(0/10 * * * ? *)). A test pins the two together. Everything below that talks about freshness is derived from it.
@@ -611,6 +634,95 @@ def _resolve_candidates(
     return newly_ended, next_pending
 
 
+def _track_unstarted(
+    listed_live: dict[str, dict[str, Any]],
+    probes: dict[str, dict[str, Any]],
+    answered: set[str],
+    previous: dict[str, dict[str, Any]],
+    moment: datetime,
+) -> dict[str, dict[str, Any]]:
+    """The UNSTARTED WATCH state after this cycle: videoId -> {firstObservedAt, lastObservedAt, observations, scheduledStart}.
+
+    A stream is observed unstarted this cycle only when Holodex lists it "live" WITHOUT an actualStart and YouTube answered for it, returned the video
+    and says liveBroadcastContent == "upcoming" with neither actualStartTime nor actualEndTime. Any other answer -- a started or ended broadcast, a
+    missing field, a video YouTube did not return -- ends the chain at once (it can only mean "not confirmed"). A stream YouTube was not asked or did
+    not answer for this cycle keeps its previous entry untouched (nothing learned) until it is older than UNSTARTED_EVIDENCE_MAX_AGE. A chain whose
+    last observation is older than that restarts at one observation. A stream that left the live list, got an actualStart or is no longer "live"
+    is dropped."""
+    tracked: dict[str, dict[str, Any]] = {}
+    for video_id, stream in listed_live.items():
+        if stream.get("status") != "live" or stream.get("actualStart"):
+            continue
+        prior = previous.get(video_id) if isinstance(previous.get(video_id), dict) else None
+        prior_last = _parse_moment(prior.get("lastObservedAt")) if prior else None
+        prior_fresh = prior_last is not None and timedelta(0) <= moment - prior_last <= UNSTARTED_EVIDENCE_MAX_AGE
+        if video_id not in answered:
+            if prior is not None and prior_fresh:
+                tracked[video_id] = prior
+            continue
+        probe = probes.get(video_id)
+        if (
+            probe is None
+            or probe.get("actualStartTime")
+            or probe.get("actualEndTime")
+            or probe.get("liveBroadcastContent") != "upcoming"
+        ):
+            continue
+        if prior is not None and prior_fresh:
+            first_observed = prior.get("firstObservedAt") if _parse_moment(prior.get("firstObservedAt")) is not None else moment.isoformat()
+            observations = int(prior.get("observations", 0)) + 1 if isinstance(prior.get("observations"), int) else 1
+        else:
+            first_observed, observations = moment.isoformat(), 1
+        tracked[video_id] = {
+            "firstObservedAt": first_observed,
+            "lastObservedAt": moment.isoformat(),
+            "observations": observations,
+            "scheduledStart": stream.get("scheduledStart"),
+        }
+    return tracked
+
+
+def _confirmed_unstarted(entries: Any, moment: datetime) -> set[str]:
+    """The videoIds whose unstarted evidence is CONFIRMED and still fresh at `moment`: enough separate observations, spanning at least
+    UNSTARTED_MIN_SPAN, the last no older than UNSTARTED_EVIDENCE_MAX_AGE. Anything malformed is simply not confirmed."""
+    confirmed: set[str] = set()
+    if not isinstance(entries, dict):
+        return confirmed
+    for video_id, entry in entries.items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("observations"), int):
+            continue
+        first, last = _parse_moment(entry.get("firstObservedAt")), _parse_moment(entry.get("lastObservedAt"))
+        if first is None or last is None or entry["observations"] < UNSTARTED_MIN_OBSERVATIONS:
+            continue
+        if last - first >= UNSTARTED_MIN_SPAN and timedelta(0) <= moment - last <= UNSTARTED_EVIDENCE_MAX_AGE:
+            confirmed.add(video_id)
+    return confirmed
+
+
+def _read_unstarted_record() -> dict[str, dict[str, Any]]:
+    """The persisted unstarted evidence (videoId -> entry), or {} when there is none or it cannot be read: an unreadable record only means the
+    observation chains start over (a stream is then confirmed again after UNSTARTED_MIN_OBSERVATIONS cycles) -- never a wrong conclusion."""
+    try:
+        value = _read_record(UNSTARTED_STREAMS_KEY)
+    except Exception as exc:  # noqa: BLE001 -- the completion cycle must never depend on this
+        print(f"Warning: could not read the unstarted-stream evidence ({type(exc).__name__}): {exc}")
+        return {}
+    streams = value.get("streams") if isinstance(value, dict) else None
+    return dict(streams) if isinstance(streams, dict) else {}
+
+
+def _persist_unstarted(unstarted: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]], moment: datetime) -> None:
+    """Write the evidence record while any exists (every cycle refreshes lastObservedAt, which is what keeps it honoured) and once more when it
+    becomes empty; nothing at all while there is none and there was none. A failed write is logged and never fails the cycle: without it the
+    listing simply stays Holodex's own."""
+    if not unstarted and not previous:
+        return
+    try:
+        _put_record(UNSTARTED_STREAMS_KEY, {"checkedAt": moment.isoformat(), "streams": unstarted}, moment)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring
+        print(f"Warning: could not persist the unstarted-stream evidence ({type(exc).__name__}): {exc}")
+
+
 def _archive_window_open(entry: dict[str, Any], moment: datetime) -> bool:
     """Whether the stream's actual END is still younger than ARCHIVE_LOOKUP_MIN_WINDOW -- YouTube may simply not have finished processing the
     upload yet. Measured from YouTube's actualEnd (the confirmation time when there is none), so confirming an end sooner never shortens it."""
@@ -783,6 +895,9 @@ def refresh_snapshot(*, now: datetime | None = None) -> dict[str, Any]:
             continue  # recorded already, handled as a candidate already, not answered (nothing learned), gone, or genuinely still live
         pending[video_id] = {"firstSeenMissingAt": moment.isoformat(), "attempts": 0, "stream": _slim_stream(stream), "listedWhileEnded": True}
     candidates = sorted(pending)
+    previous_unstarted = _read_unstarted_record()
+    unstarted = _track_unstarted(listed_live, probes, answered, previous_unstarted, moment)
+    confirmed_unstarted = _confirmed_unstarted(unstarted, moment)
 
     # Two independent jobs from here. (1) The observed end state is decided from YouTube's answer for the candidates alone.
     # (2) The archive lookup runs on top of it with the same answers; whatever happens in (2) the ends from (1) are persisted below.
@@ -800,7 +915,8 @@ def refresh_snapshot(*, now: datetime | None = None) -> dict[str, Any]:
             _put_record(ENDED_STREAMS_KEY, {"ended": ended}, moment)
         value: dict[str, Any] = {
             "refreshedAt": moment.isoformat(),
-            "liveBaseline": [_slim_stream(stream) for stream in streams if stream.get("status") == "live"],
+            # A stream confirmed unstarted is not "observed live": were it to vanish from Holodex's list it must not become an ended-candidate.
+            "liveBaseline": [_slim_stream(stream) for stream in streams if stream.get("status") == "live" and stream["videoId"] not in confirmed_unstarted],
             "pendingCandidates": next_pending,
             "archiveWatch": next_watch,
         }
@@ -810,9 +926,17 @@ def refresh_snapshot(*, now: datetime | None = None) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001 -- not raised: a re-delivery would only repeat this work; the next cycle redoes it idempotently
         print(f"Warning: livestream completion state could not be persisted ({type(exc).__name__}): {exc}")
         return {"refreshed": False, "writeFailed": True, **summary_base}
+    _persist_unstarted(unstarted, previous_unstarted, moment)
     _persist_premiere_archive_times(ended, moment)
     reset_ended_cache()
-    return {"refreshed": True, "streamCount": len(streams), "completionCandidates": candidates, "confirmedCompleted": newly_ended}
+    reset_unstarted_cache()
+    return {
+        "refreshed": True,
+        "streamCount": len(streams),
+        "completionCandidates": candidates,
+        "confirmedCompleted": newly_ended,
+        "unstartedLive": sorted(confirmed_unstarted),
+    }
 
 
 # ============ reading the end state (API Lambda) ============
@@ -834,6 +958,26 @@ def read_ended_streams() -> dict[str, dict[str, Any]] | None:
 def reset_ended_cache() -> None:
     """Forget the in-memory ended map (tests, and callers that just wrote it)."""
     _ended_cache.update({"at": None, "value": None})
+
+
+_unstarted_cache: dict[str, Any] = {"at": None, "value": None}
+
+
+def reset_unstarted_cache() -> None:
+    """Forget the in-memory unstarted evidence (tests, and callers that just wrote it)."""
+    _unstarted_cache.update({"at": None, "value": None})
+
+
+def read_unstarted_video_ids(*, now: datetime | None = None) -> set[str]:
+    """The videoIds of listed-"live" streams whose never having started is CONFIRMED and fresh (UNSTARTED WATCH, module docstring), for
+    GET /live-streams to serve as "upcoming". The record is cached in memory for ENDED_CACHE_SECONDS like the ended map, the freshness bound is
+    evaluated at request time against the cached evidence, and the empty set means "no evidence" (nothing is changed). A store failure propagates:
+    the caller decides (api.read_api serves the listing unchanged)."""
+    fetched_at = _unstarted_cache["at"]
+    if fetched_at is None or time.monotonic() - fetched_at >= ENDED_CACHE_SECONDS:
+        value = _read_record(UNSTARTED_STREAMS_KEY)
+        _unstarted_cache.update({"at": time.monotonic(), "value": value.get("streams") if isinstance(value, dict) else None})
+    return _confirmed_unstarted(_unstarted_cache["value"], now or datetime.now(timezone.utc))
 
 
 def read_recently_ended(*, now: datetime | None = None) -> list[dict[str, Any]] | None:
