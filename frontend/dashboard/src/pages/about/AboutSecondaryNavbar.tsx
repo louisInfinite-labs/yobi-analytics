@@ -13,16 +13,21 @@ export function AboutSecondaryNavbar({
   pages,
   activeSection,
   onSelect,
+  titleIsPageHeading = false,
 }: {
   pages: AboutPage[]
   activeSection: string
   onSelect: (section: string) => void
+  /** Render the nav's existing "About" title as the page's <h1> (while no About content is on screen and so no content title is). Same
+   * text, class and look either way (about.css keeps the h1's size), only the element changes. */
+  titleIsPageHeading?: boolean
 }) {
   const [locale] = useLocale()
+  const Title = titleIsPageHeading ? "h1" : "div"
 
   return (
     <nav className="settings-secondary-navbar" aria-label={t(locale, "aboutSecondaryNavbar.navAriaLabel")}>
-      <div className="settings-secondary-navbar__title">{t(locale, "aboutSecondaryNavbar.title")}</div>
+      <Title className="settings-secondary-navbar__title">{t(locale, "aboutSecondaryNavbar.title")}</Title>
       {pages.map((page) => (
         <button
           key={page.id}

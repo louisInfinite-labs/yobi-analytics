@@ -28,7 +28,7 @@ describe("aboutContentStore", () => {
 
     await ensureAboutContentLoaded()
 
-    expect(aboutContentStore.get()).toEqual({ content: content("v1"), isLoading: false, error: null })
+    expect(aboutContentStore.get()).toEqual({ content: content("v1"), isLoading: false, error: null, failure: null })
   })
 
   it("ensureAboutContentLoaded only ever fetches once per session", async () => {
@@ -42,11 +42,26 @@ describe("aboutContentStore", () => {
   })
 
   it("a failed fetch with no prior cache leaves content null and records the error", async () => {
-    vi.mocked(aboutContentApi.fetchAboutContent).mockRejectedValue(new Error("network down"))
+    const failure = new Error("network down")
+    vi.mocked(aboutContentApi.fetchAboutContent).mockRejectedValue(failure)
 
     await ensureAboutContentLoaded()
 
-    expect(aboutContentStore.get()).toEqual({ content: null, isLoading: false, error: "network down" })
+    expect(aboutContentStore.get()).toEqual({ content: null, isLoading: false, error: "network down", failure })
+  })
+
+  it("a retry clears the recorded failure while it is in flight, and a successful retry leaves none", async () => {
+    vi.mocked(aboutContentApi.fetchAboutContent).mockRejectedValueOnce(new Error("network down"))
+    await ensureAboutContentLoaded()
+
+    let resolve!: (value: AboutContent) => void
+    vi.mocked(aboutContentApi.fetchAboutContent).mockReturnValueOnce(new Promise((r) => (resolve = r)))
+    const retry = retryAboutContentLoad()
+    expect(aboutContentStore.get()).toMatchObject({ isLoading: true, error: null, failure: null })
+
+    resolve(content("v1"))
+    await retry
+    expect(aboutContentStore.get()).toEqual({ content: content("v1"), isLoading: false, error: null, failure: null })
   })
 
   it("a later failed retry keeps the last-known-good cached content instead of clearing it", async () => {
@@ -70,6 +85,6 @@ describe("aboutContentStore", () => {
     vi.mocked(aboutContentApi.fetchAboutContent).mockResolvedValueOnce(content("v2"))
     await retryAboutContentLoad()
 
-    expect(aboutContentStore.get()).toEqual({ content: content("v2"), isLoading: false, error: null })
+    expect(aboutContentStore.get()).toEqual({ content: content("v2"), isLoading: false, error: null, failure: null })
   })
 })

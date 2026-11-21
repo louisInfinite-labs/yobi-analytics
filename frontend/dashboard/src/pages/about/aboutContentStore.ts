@@ -6,11 +6,14 @@ export interface AboutContentState {
   content: AboutContent | null
   isLoading: boolean
   error: string | null
+  /** The last fetch's failure itself (null while none), so the page can describe it the way every other API view does (describeApiFailure:
+   * network vs server vs rate limit) instead of showing a raw backend message. In memory only -- never persisted. */
+  failure: Error | null
 }
 
 const STORAGE_KEY = "yobi.aboutContent.cache"
 
-const INITIAL_STATE: AboutContentState = { content: null, isLoading: true, error: null }
+const INITIAL_STATE: AboutContentState = { content: null, isLoading: true, error: null, failure: null }
 
 /** Reads the last successfully validated response so a reload shows it
  * immediately while a fresh fetch is in flight -- same reasoning as
@@ -24,7 +27,7 @@ function readCached(): AboutContentState {
     if (!raw) return INITIAL_STATE
     const parsed = JSON.parse(raw) as { content: unknown }
     const content = validateAboutContent(parsed.content)
-    return content ? { content, isLoading: true, error: null } : INITIAL_STATE
+    return content ? { content, isLoading: true, error: null, failure: null } : INITIAL_STATE
   } catch {
     return INITIAL_STATE
   }
@@ -53,10 +56,11 @@ async function load(): Promise<void> {
   try {
     const content = await fetchAboutContent()
     if (startedAtGeneration !== getGeneration()) return
-    aboutContentStore.set({ content, isLoading: false, error: null })
+    aboutContentStore.set({ content, isLoading: false, error: null, failure: null })
   } catch (err) {
     if (startedAtGeneration !== getGeneration()) return
-    aboutContentStore.set({ ...aboutContentStore.get(), isLoading: false, error: err instanceof Error ? err.message : "Unknown error" })
+    const failure = err instanceof Error ? err : new Error("Unknown error")
+    aboutContentStore.set({ ...aboutContentStore.get(), isLoading: false, error: failure.message, failure })
   }
 }
 
@@ -70,6 +74,6 @@ export async function ensureAboutContentLoaded(): Promise<void> {
  * bypasses the fetch-once guard above, since "ensure loaded" and "the user
  * just asked to try again" are different intents. */
 export async function retryAboutContentLoad(): Promise<void> {
-  aboutContentStore.set({ ...aboutContentStore.get(), isLoading: true, error: null })
+  aboutContentStore.set({ ...aboutContentStore.get(), isLoading: true, error: null, failure: null })
   await load()
 }

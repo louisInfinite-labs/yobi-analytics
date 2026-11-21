@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { ApiError } from "../../shared/api/apiClient"
 import { AboutPage } from "./AboutPage"
 import * as aboutContentApi from "./api/aboutContentApi"
 import type { AboutContent, AboutPage as AboutPageDto } from "./api/aboutContentApi"
@@ -208,10 +209,94 @@ describe("AboutPage", () => {
   })
 
   it("a malformed/rejected response does not crash the app -- shows an error state instead", async () => {
-    vi.mocked(aboutContentApi.fetchAboutContent).mockRejectedValue(new Error("Received a malformed About content response"))
+    vi.mocked(aboutContentApi.fetchAboutContent).mockRejectedValue(
+      new aboutContentApi.AboutContentFormatError("Received a malformed About content response"),
+    )
     renderAboutPage()
-    expect(await screen.findByRole("alert")).toBeInTheDocument()
-    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument()
+    const alert = await screen.findByRole("alert")
+    // The server answered, so this is the generic load failure -- never the could-not-reach-the-server (NETWORK) wording.
+    expect(alert).toHaveTextContent("Something went wrong loading this data.")
+    expect(alert.textContent).not.toMatch(/connect|network/i)
+    expect(within(alert).getByRole("button", { name: "Retry" })).toBeInTheDocument()
+    // The route keeps its one heading: the secondary nav's existing "About" title, not a second visible title.
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual(["About"])
+  })
+
+  describe("page heading and load states", () => {
+    const h1Texts = () => screen.queryAllByRole("heading", { level: 1 }).map((h) => h.textContent)
+    const navTitle = () => document.querySelector(".settings-secondary-navbar__title")!
+
+    it("while loading: the skeleton shows and the nav's existing About title is the page's only h1", () => {
+      vi.mocked(aboutContentApi.fetchAboutContent).mockReturnValue(new Promise(() => {}))
+      renderAboutPage()
+      expect(screen.getByRole("status")).toBeInTheDocument()
+      expect(h1Texts()).toEqual(["About"])
+      expect(navTitle().tagName).toBe("H1")
+      expect(navTitle()).toHaveClass("settings-secondary-navbar__title")
+    })
+
+    it("on success: the content's own title is the only h1 and the nav title goes back to its plain element", async () => {
+      setLocale("ja")
+      renderAboutPage()
+      await screen.findByRole("heading", { level: 1, name: "OshiYobi について" })
+      expect(h1Texts()).toEqual(["OshiYobi について"])
+      expect(navTitle().tagName).toBe("DIV")
+      expect(navTitle()).toHaveTextContent("概要")
+    })
+
+    it("an HTTP 500 shows the shared server-error wording with its code, the About heading and Retry", async () => {
+      vi.mocked(aboutContentApi.fetchAboutContent).mockRejectedValue(new ApiError(500, "Internal Server Error"))
+      renderAboutPage()
+      const alert = await screen.findByRole("alert")
+      expect(alert).toHaveTextContent("The server returned an error (500)")
+      expect(alert).toHaveTextContent("(Code: 500)")
+      expect(h1Texts()).toEqual(["About"])
+      expect(within(alert).getByRole("button", { name: "Retry" })).toBeInTheDocument()
+    })
+
+    it("an HTTP 404 from the content API is a normal load failure, never 'not found' / 404 wording for the page", async () => {
+      vi.mocked(aboutContentApi.fetchAboutContent).mockRejectedValue(new ApiError(404, "Not Found"))
+      renderAboutPage()
+      const alert = await screen.findByRole("alert")
+      expect(alert).toHaveTextContent("Something went wrong loading this data.")
+      expect(alert.textContent).not.toMatch(/404|not found/i)
+      expect(h1Texts()).toEqual(["About"])
+    })
+
+    it("a network failure or a timeout shows the shared could-not-reach-the-server wording", async () => {
+      vi.mocked(aboutContentApi.fetchAboutContent).mockRejectedValue(new Error("The About content request timed out"))
+      renderAboutPage()
+      const alert = await screen.findByRole("alert")
+      expect(alert).toHaveTextContent("(Code: NETWORK)")
+      expect(alert.textContent).not.toContain("timed out") // the raw internal message is not shown
+    })
+
+    it("Retry after a failure shows the content once the backend answers", async () => {
+      const user = userEvent.setup()
+      vi.mocked(aboutContentApi.fetchAboutContent).mockRejectedValueOnce(new ApiError(503, "Service Unavailable"))
+      renderAboutPage()
+      await user.click(await screen.findByRole("button", { name: "Retry" }))
+      expect(await screen.findByRole("heading", { level: 1, name: "About OshiYobi" })).toBeInTheDocument()
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      expect(h1Texts()).toEqual(["About OshiYobi", "H1 Heading"]) // the en fixture's own Markdown "#" -- backend content, rendered as authored
+    })
+
+    it("a Retry that fails again returns to the error state, still with the About heading and Retry", async () => {
+      const user = userEvent.setup()
+      vi.mocked(aboutContentApi.fetchAboutContent).mockRejectedValue(new ApiError(500, "Internal Server Error"))
+      renderAboutPage()
+      const calls = () => vi.mocked(aboutContentApi.fetchAboutContent).mock.calls.length
+      const firstRetry = await screen.findByRole("button", { name: "Retry" })
+      const before = calls()
+      await user.click(firstRetry)
+      await waitFor(() => expect(calls()).toBe(before + 1))
+      const alert = await screen.findByRole("alert")
+      expect(alert).toHaveTextContent("(Code: 500)")
+      expect(h1Texts()).toEqual(["About"])
+      await user.click(within(alert).getByRole("button", { name: "Retry" }))
+      await waitFor(() => expect(calls()).toBe(before + 2))
+      expect(await screen.findByRole("alert")).toBeInTheDocument()
+    })
   })
 
   it("resolves the Google Privacy Policy link to the official Google domain", async () => {

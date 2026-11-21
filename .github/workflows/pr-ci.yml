@@ -335,6 +335,9 @@ jobs:
           src/features/notifications/components/NotificationMemberAvatars.test.tsx
           src/entities/creator/components/CreatorAvatarImage.test.tsx
           src/pages/about/markdown.articles.test.tsx
+          src/pages/about/AboutPage.test.tsx
+          src/pages/about/aboutContentStore.test.ts
+          src/pages/about/api/aboutContentApi.test.ts
           src/features/live-status/components/CreatorStatusList.test.tsx
           src/features/notifications/components/NotificationSettings.test.tsx
           src/features/notifications/api/simultaneousLiveNoticeApi.test.ts
