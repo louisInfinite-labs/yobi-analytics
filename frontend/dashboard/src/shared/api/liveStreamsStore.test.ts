@@ -55,6 +55,21 @@ describe("liveStreamsStore recentlyEnded", () => {
     release()
   })
 })
+describe("liveStreamsStore neverStarted", () => {
+  it("puts the backend's never-started list in the shared state, and drops it again when a later response has none", async () => {
+    const neverStarted = [{ videoId: "v9", confirmedAt: "2026-11-17T01:00:00Z" }]
+    vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue(Object.assign([STREAM], { neverStarted }))
+    const release = acquireLiveStreamsPolling()
+    await vi.waitFor(() => expect(liveStreamsStore.get().isLoading).toBe(false))
+    expect(liveStreamsStore.get()).toEqual({ streams: [STREAM], neverStarted, isLoading: false, error: null, fetchedThisSession: true })
+
+    vi.mocked(liveStreams.fetchLiveStreams).mockResolvedValue([STREAM])
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(liveStreamsStore.get()).toEqual({ streams: [STREAM], isLoading: false, error: null, fetchedThisSession: true }) // the signal is gone with the evidence
+
+    release()
+  })
+})
 describe("liveStreamsStore fetchedThisSession", () => {
   it("stays false when the session's first request fails", async () => {
     vi.mocked(liveStreams.fetchLiveStreams).mockRejectedValue(new Error("offline"))

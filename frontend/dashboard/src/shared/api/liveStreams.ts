@@ -41,18 +41,32 @@ export interface RecentlyEndedStreamDto {
   archive?: { status: string; attempts?: number }
 }
 
+/** A stream the backend no longer lists whose never having started it has CONFIRMED against YouTube (GET /live-streams `neverStarted`: an abandoned waiting room
+ * Holodex dropped without YouTube ever reporting a start or an end). It is NOT an ended stream -- it never started -- and exists only so a browser that remembered it
+ * as "live overnight" stops waiting for an end that can never come. */
+export interface NeverStartedStreamDto {
+  videoId: string
+  confirmedAt: string
+}
+
 interface LiveStreamsResponse {
   streams: LiveStreamDto[]
   /** Absent when the backend cannot supply an end signal (an older deployment, or a store problem): "unknown", NOT "nothing has ended". */
   recentlyEnded?: RecentlyEndedStreamDto[]
+  /** Absent when there is nothing to release (the usual case) or the backend cannot say: either way, nothing is released. */
+  neverStarted?: NeverStartedStreamDto[]
 }
 
 /** The live/upcoming streams, plus -- when the backend supplied it -- the confirmed-ended list riding on the same array (so every caller that only
  * wants the streams, and every test double that returns a plain array, keeps working unchanged). */
-export type LiveStreamsResult = LiveStreamDto[] & { recentlyEnded?: RecentlyEndedStreamDto[] }
+export type LiveStreamsResult = LiveStreamDto[] & { recentlyEnded?: RecentlyEndedStreamDto[]; neverStarted?: NeverStartedStreamDto[] }
 
 /** Call Yobi's own GET /live-streams and return its `streams` array. */
 export async function fetchLiveStreams(): Promise<LiveStreamsResult> {
   const response = await apiRequest<LiveStreamsResponse>("/live-streams")
-  return Array.isArray(response.recentlyEnded) ? Object.assign(response.streams, { recentlyEnded: response.recentlyEnded }) : response.streams
+  const extras = {
+    ...(Array.isArray(response.recentlyEnded) ? { recentlyEnded: response.recentlyEnded } : {}),
+    ...(Array.isArray(response.neverStarted) ? { neverStarted: response.neverStarted } : {}),
+  }
+  return Object.keys(extras).length > 0 ? Object.assign(response.streams, extras) : response.streams
 }

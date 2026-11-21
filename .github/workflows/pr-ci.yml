@@ -269,6 +269,7 @@ jobs:
           src/features/live-schedule/hooks/useWeeklySchedule.overnightMemberOnly.test.tsx
           src/features/live-schedule/hooks/useWeeklySchedule.overnightStale.test.tsx
           src/features/live-schedule/hooks/useWeeklySchedule.overnightNotStarted.test.tsx
+          src/features/live-schedule/hooks/useWeeklySchedule.overnightNeverStarted.test.tsx
           src/shared/i18n/translations.test.ts
           src/entities/creator/data/creatorRegistry.test.ts
           src/features/live-status/components/CreatorStatusList.completeRoster.test.tsx

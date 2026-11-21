@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react"
 import { getCreatorById } from "../../../entities/creator/data/creatorRegistry"
-import type { LiveStreamDto, RecentlyEndedStreamDto } from "../../../shared/api/liveStreams"
+import type { LiveStreamDto, NeverStartedStreamDto, RecentlyEndedStreamDto } from "../../../shared/api/liveStreams"
 import { createSharedState, useSharedState } from "../../../shared/state/sharedState"
 
 /** An overnight stream the Schedule is still waiting on: seen live after the viewer's local midnight had already passed its start. `startMs` is
@@ -72,19 +72,24 @@ function localDayStart(ms: number): Date {
  * -- its 5-minute lifecycle verified the end against YouTube -- and never because of anything archive-related (the archive lookup is the backend's
  * other, independent job; its success, failure or delay cannot move the Schedule). It is also resolved when a fresh response lists it as not live with no
  * actualStart: the backend's own statement that the waiting room never started. Dropping out of /live-streams is NOT an end: the list can lose a
- * stream for a poll, so a dropped stream stays held until the backend confirms it ended.
+ * stream for a poll, so a dropped stream stays held until the backend confirms it ended -- or, for a stream that never started and so can never end, lists it in
+ * `neverStarted` (explicit YouTube evidence from the lifecycle over several separate checks; an abandoned waiting room Holodex dropped before it was ever seen
+ * unstarted). A stream that is merely missing from both lists keeps holding exactly as before.
  *
  * When the backend sends no `recentlyEnded` (undefined: an older deployment, or the field could not be read) there is no end signal to wait for, so
  * nothing is held at all -- the Schedule simply starts today, as it did before this existed -- rather than waiting on a signal that cannot arrive. */
 export function useOvernightHold({
   streams,
   recentlyEnded,
+  neverStarted,
   today,
   now,
   fetched = true,
 }: {
   streams: LiveStreamDto[]
   recentlyEnded: RecentlyEndedStreamDto[] | undefined
+  /** The backend's confirmed-never-started list from the latest response (absent = nothing to release). Only honoured from a FRESH response. */
+  neverStarted?: NeverStartedStreamDto[] | undefined
   today: Date
   now: Date
   /** Whether `streams` come from a /live-streams request made in this page session. liveStreamsStore starts every page load from the PREVIOUS session's cached
@@ -119,8 +124,14 @@ export function useOvernightHold({
     const liveIds = new Set(streams.map((dto) => dto.videoId))
     const resolved = new Set((recentlyEnded ?? []).map((ended) => ended.videoId).filter((videoId) => !liveIds.has(videoId)))
     if (fetched) for (const dto of streams) if (dto.status !== "live" && !dto.actualStart) resolved.add(dto.videoId)
+    // The backend has confirmed this stream NEVER STARTED (it is no longer listed, so nothing else could ever resolve it). Honoured only from a fresh response, and never
+    // for a stream the response lists live WITH a start of its own (Holodex's start evidence wins); if it really starts later it is live again and holds its date as before.
+    if (fetched) {
+      const runningIds = new Set(streams.filter((dto) => dto.status === "live" && dto.actualStart).map((dto) => dto.videoId))
+      for (const entry of neverStarted ?? []) if (!runningIds.has(entry.videoId)) resolved.add(entry.videoId)
+    }
     return resolved
-  }, [streams, recentlyEnded, fetched])
+  }, [streams, recentlyEnded, neverStarted, fetched])
 
   // The remembered streams that still hold the date: not confirmed ended, a member channel, seen live within the last 24 h -- and VERIFIED, i.e. seen live in a
   // response fetched in this page session (or live in the current fresh one, which verifies it below). A stream listed live only by the previous session's
