@@ -27,6 +27,13 @@
   overflow-wrap: break-word;
 }
 
+/* While About content is loading or failed, the secondary nav's existing title is the page's <h1> (AboutSecondaryNavbar's
+   titleIsPageHeading). It must look exactly like the <div> it otherwise is: only the browser's default h1 size differs from
+   .settings-secondary-navbar__title, which sets weight and margin itself. */
+h1.settings-secondary-navbar__title {
+  font-size: inherit;
+}
+
 /* The page title (the h1 in the settings-page-header shell) is centered; everything under it stays left-aligned. */
 .about-content > .settings-page-header,
 .about-content > .settings-page-header .settings-page-title {

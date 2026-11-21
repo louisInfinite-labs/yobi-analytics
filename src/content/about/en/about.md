@@ -2,7 +2,7 @@
 
 **推しが呼んでる。**
 
-OshiYobi is a tracking platform built for VTuber fans.
+OshiYobi (推し呼び) is a website for checking livestream information from Hololive and VSPO! VTubers.
 
 Livestreams, new videos, and upcoming-stream schedules are gathered in one place, so every time you open OshiYobi, you can quickly see what's new from the Oshi you follow.
 

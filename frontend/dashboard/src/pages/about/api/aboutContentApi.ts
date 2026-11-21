@@ -60,13 +60,34 @@ export function validateAboutContent(raw: unknown): AboutContent | null {
   return { schemaVersion: raw.schemaVersion, contentVersion: raw.contentVersion, locales }
 }
 
+/** How long GET /about-content may take before it counts as failed: About then shows its error state and Retry instead of a loading skeleton
+ * that never ends. Generous on purpose -- this is a small, near-static payload that normally answers in well under a second. */
+export const ABOUT_CONTENT_TIMEOUT_MS = 10_000
+
+/** The backend DID answer GET /about-content (2xx), but with a payload this build cannot render (validateAboutContent returned null) -- a
+ * content problem, never a connection problem, so the page must not describe it as one. */
+export class AboutContentFormatError extends Error {}
+
 /** Calls the backend's own GET /about-content (src/api/about_content_api.py)
- * and validates the response -- throws if the payload is fundamentally
- * unusable, so the caller (aboutContentStore.ts) can fall back to its
- * last-known-good cached content instead of rendering something broken. */
+ * and validates the response -- throws AboutContentFormatError if the
+ * payload is fundamentally unusable, so the caller (aboutContentStore.ts)
+ * can fall back to its last-known-good cached content instead of rendering
+ * something broken. A request still unanswered after ABOUT_CONTENT_TIMEOUT_MS
+ * is aborted and rejects with a plain Error (a "never got a response"
+ * failure, like a network error), never an ApiError. */
 export async function fetchAboutContent(): Promise<AboutContent> {
-  const raw = await apiRequest<unknown>("/about-content")
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ABOUT_CONTENT_TIMEOUT_MS)
+  let raw: unknown
+  try {
+    raw = await apiRequest<unknown>("/about-content", { signal: controller.signal })
+  } catch (err) {
+    if (controller.signal.aborted) throw new Error("The About content request timed out")
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
   const validated = validateAboutContent(raw)
-  if (!validated) throw new Error("Received a malformed About content response")
+  if (!validated) throw new AboutContentFormatError("Received a malformed About content response")
   return validated
 }
