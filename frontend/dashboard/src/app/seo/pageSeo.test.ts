@@ -223,6 +223,32 @@ describe("escaping", () => {
   })
 })
 
+describe("About page: raw HTML and rendered content say the same facts", () => {
+  /** The first line of an About content file: the opening sentence the running page renders. */
+  const aboutOpening = (locale: string) => {
+    const lines = readFileSync(resolve(process.cwd(), `../../src/content/about/${locale}/about.md`), "utf8").split(/\r?\n/)
+    return lines[4]
+  }
+  const html = render("/about")
+
+  it("the static HTML names Hololive and VSPO! as the supported groups, in the body and the meta description, and implies no others", () => {
+    const sentence = "OshiYobi (推し呼び) is a website for checking livestream information from Hololive and VSPO! VTubers."
+    expect(body(html)).toContain(`<p>${sentence}</p>`)
+    expect(head(html)).toContain(`<meta name="description" content="${sentence}" />`)
+    expect(sentence).not.toMatch(/such as|and more|など|等|etc/i)
+  })
+
+  it("is exactly the opening sentence of the English About content the running page renders", () => {
+    expect(body(html)).toContain(`<p>${aboutOpening("en")}</p>`)
+  })
+
+  it("the Japanese and Traditional Chinese About content open by naming the same two groups", () => {
+    expect(aboutOpening("ja")).toContain("ホロライブとぶいすぽっ！")
+    expect(aboutOpening("zh-TW")).toContain("Hololive 與ぶいすぽっ！（VSPO!）")
+    for (const locale of ["ja", "zh-TW", "en"]) expect(aboutOpening(locale), locale).not.toMatch(/such as|and more|など|等/)
+  })
+})
+
 describe("PWA identity (unchanged by the SEO pages)", () => {
   const manifest = JSON.parse(readFileSync(resolve(process.cwd(), "public/manifest.webmanifest"), "utf8"))
   it("keeps the manifest id, start_url, scope and display that installed apps were created with", () => {
