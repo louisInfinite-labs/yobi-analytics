@@ -46,7 +46,10 @@ export const CREATOR_PATH_PREFIX = "/creator/"
 const HOME_DESCRIPTION =
   "OshiYobi is a tracking platform for VTuber fans: livestreams, new videos and upcoming-stream schedules from Hololive and VSPO creators in one place, with live and new-video notifications."
 const SCHEDULE_DESCRIPTION = "Upcoming and ongoing livestreams from the Hololive and VSPO creators OshiYobi tracks, laid out by day on one schedule."
-const ABOUT_DESCRIPTION = "What OshiYobi is: a tracking platform for VTuber fans that gathers livestreams, new videos and upcoming-stream schedules in one place."
+/** The About page's one line, in its meta description and its static body. It is the same sentence as the first line of the English About content
+ * (src/content/about/en/about.md), which the running page renders, so the raw HTML and the rendered page state the same facts: the two supported
+ * groups, Hololive and VSPO!. pageSeo.test.ts keeps the two in step. */
+const ABOUT_DESCRIPTION = "OshiYobi (推し呼び) is a website for checking livestream information from Hololive and VSPO! VTubers."
 
 /** The placeholder groupKey the registry uses for "no generation/unit"; it is data, not a name to show. */
 const NO_GROUP = "NO"

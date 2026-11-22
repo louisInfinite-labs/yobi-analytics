@@ -370,6 +370,7 @@ jobs:
           src/features/live-schedule/components/StreamNotificationPanel.pushGate.test.tsx
           src/app/seo/sitemap.test.ts
           src/app/seo/hosting.test.ts
+          src/app/seo/pageSeo.test.ts
 
   # The stable required check. Always runs (even when a test group failed or was skipped) and decides from the results:
   # a group whose scope was detected MUST have succeeded; a group whose scope was not detected must have been skipped.
