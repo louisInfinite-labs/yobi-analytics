@@ -1,0 +1,481 @@
+{
+ "//": "Frozen: the 119 /creator/<slug> pages that were live until the per-creator pages were retired (the sitemap of release 21aeeeb7ffe44156, 2026-11-06). Each slug maps to the creatorId of the creator that page showed. firebase.json redirects exactly these (scripts/writeLegacyCreatorRedirects.mjs); any other /creator path stays a 404. Never add a creator here: new creators never had a /creator page.",
+ "routes": [
+  {
+   "slug": "achichi-mela",
+   "creatorId": "achichi_mela"
+  },
+  {
+   "slug": "achrora",
+   "creatorId": "achrora"
+  },
+  {
+   "slug": "airani-iofifteen",
+   "creatorId": "airani_iofifteen"
+  },
+  {
+   "slug": "aizawa-ema",
+   "creatorId": "aizawa_ema"
+  },
+  {
+   "slug": "akai-haato",
+   "creatorId": "akai_haato"
+  },
+  {
+   "slug": "aki-rosenthal",
+   "creatorId": "aki_rosenthal"
+  },
+  {
+   "slug": "amane-kanata",
+   "creatorId": "amane_kanata"
+  },
+  {
+   "slug": "amayui-moka",
+   "creatorId": "amayui_moka"
+  },
+  {
+   "slug": "anya-melfissa",
+   "creatorId": "anya_melfissa"
+  },
+  {
+   "slug": "arya-kuroha",
+   "creatorId": "arya_kuroha"
+  },
+  {
+   "slug": "ayunda-risu",
+   "creatorId": "ayunda_risu"
+  },
+  {
+   "slug": "azki",
+   "creatorId": "azki"
+  },
+  {
+   "slug": "cecilia-immergreen",
+   "creatorId": "cecilia_immergreen"
+  },
+  {
+   "slug": "ceres-fauna",
+   "creatorId": "ceres_fauna"
+  },
+  {
+   "slug": "choya-hanabi",
+   "creatorId": "choya_hanabi"
+  },
+  {
+   "slug": "elizabeth-rose-bloodflame",
+   "creatorId": "elizabeth_rose_bloodflame"
+  },
+  {
+   "slug": "eris-suzukami",
+   "creatorId": "eris_suzukami"
+  },
+  {
+   "slug": "fuwamoco",
+   "creatorId": "fuwamoco"
+  },
+  {
+   "slug": "gawr-gura",
+   "creatorId": "gawr_gura"
+  },
+  {
+   "slug": "gigi-murin",
+   "creatorId": "gigi_murin"
+  },
+  {
+   "slug": "ginjo-saine",
+   "creatorId": "ginjo_saine"
+  },
+  {
+   "slug": "hakos-baelz",
+   "creatorId": "hakos_baelz"
+  },
+  {
+   "slug": "hakui-koyori",
+   "creatorId": "hakui_koyori"
+  },
+  {
+   "slug": "hanabusa-risa",
+   "creatorId": "hanabusa_risa"
+  },
+  {
+   "slug": "himemori-luna",
+   "creatorId": "himemori_luna"
+  },
+  {
+   "slug": "hiodoshi-ao",
+   "creatorId": "hiodoshi_ao"
+  },
+  {
+   "slug": "holoan-room",
+   "creatorId": "holoan_room"
+  },
+  {
+   "slug": "hololive-asobimawaritai",
+   "creatorId": "hololive_asobimawaritai"
+  },
+  {
+   "slug": "hololive-dev-is-flow-glow",
+   "creatorId": "hololive_dev_is_flow_glow"
+  },
+  {
+   "slug": "hololive-dev-is-regloss",
+   "creatorId": "hololive_dev_is_regloss"
+  },
+  {
+   "slug": "hololive-official",
+   "creatorId": "hololive_official"
+  },
+  {
+   "slug": "hoshimachi-suisei",
+   "creatorId": "hoshimachi_suisei"
+  },
+  {
+   "slug": "houshou-marine",
+   "creatorId": "houshou_marine"
+  },
+  {
+   "slug": "hyakuto-kyoko",
+   "creatorId": "hyakuto_kyoko"
+  },
+  {
+   "slug": "ichijou-ririka",
+   "creatorId": "ichijou_ririka"
+  },
+  {
+   "slug": "ichinose-uruha",
+   "creatorId": "ichinose_uruha"
+  },
+  {
+   "slug": "inugami-korone",
+   "creatorId": "inugami_korone"
+  },
+  {
+   "slug": "irys",
+   "creatorId": "irys"
+  },
+  {
+   "slug": "isaki-riona",
+   "creatorId": "isaki_riona"
+  },
+  {
+   "slug": "jira-jisaki",
+   "creatorId": "jira_jisaki"
+  },
+  {
+   "slug": "juno-umezono",
+   "creatorId": "juno_umezono"
+  },
+  {
+   "slug": "juufuutei-raden",
+   "creatorId": "juufuutei_raden"
+  },
+  {
+   "slug": "kaela-kovalskia",
+   "creatorId": "kaela_kovalskia"
+  },
+  {
+   "slug": "kaga-nazuna",
+   "creatorId": "kaga_nazuna"
+  },
+  {
+   "slug": "kaga-sumire",
+   "creatorId": "kaga_sumire"
+  },
+  {
+   "slug": "kanari-kyupi",
+   "creatorId": "kanari_kyupi"
+  },
+  {
+   "slug": "kazama-iroha",
+   "creatorId": "kazama_iroha"
+  },
+  {
+   "slug": "kikirara-vivi",
+   "creatorId": "kikirara_vivi"
+  },
+  {
+   "slug": "kiryu-coco",
+   "creatorId": "kiryu_coco"
+  },
+  {
+   "slug": "kisaragi-ren",
+   "creatorId": "kisaragi_ren"
+  },
+  {
+   "slug": "kobo-kanaeru",
+   "creatorId": "kobo_kanaeru"
+  },
+  {
+   "slug": "koganei-niko",
+   "creatorId": "koganei_niko"
+  },
+  {
+   "slug": "komori-meto",
+   "creatorId": "komori_meto"
+  },
+  {
+   "slug": "koseki-bijou",
+   "creatorId": "koseki_bijou"
+  },
+  {
+   "slug": "kosuzume-toto",
+   "creatorId": "kosuzume_toto"
+  },
+  {
+   "slug": "kureiji-ollie",
+   "creatorId": "kureiji_ollie"
+  },
+  {
+   "slug": "kurumi-noa",
+   "creatorId": "kurumi_noa"
+  },
+  {
+   "slug": "laplus-darkness",
+   "creatorId": "laplus_darkness"
+  },
+  {
+   "slug": "mano-aloe",
+   "creatorId": "mano_aloe"
+  },
+  {
+   "slug": "minato-aqua",
+   "creatorId": "minato_aqua"
+  },
+  {
+   "slug": "mizumiya-su",
+   "creatorId": "mizumiya_su"
+  },
+  {
+   "slug": "momosuzu-nene",
+   "creatorId": "momosuzu_nene"
+  },
+  {
+   "slug": "moona-hoshinova",
+   "creatorId": "moona_hoshinova"
+  },
+  {
+   "slug": "mori-calliope",
+   "creatorId": "mori_calliope"
+  },
+  {
+   "slug": "murasaki-shion",
+   "creatorId": "murasaki_shion"
+  },
+  {
+   "slug": "nakiri-ayame",
+   "creatorId": "nakiri_ayame"
+  },
+  {
+   "slug": "nanashi-mumei",
+   "creatorId": "nanashi_mumei"
+  },
+  {
+   "slug": "narin-mikure",
+   "creatorId": "narin_mikure"
+  },
+  {
+   "slug": "natsuiro-matsuri",
+   "creatorId": "natsuiro_matsuri"
+  },
+  {
+   "slug": "nekomata-okayu",
+   "creatorId": "nekomata_okayu"
+  },
+  {
+   "slug": "nekota-tsuna",
+   "creatorId": "nekota_tsuna"
+  },
+  {
+   "slug": "nerissa-ravencroft",
+   "creatorId": "nerissa_ravencroft"
+  },
+  {
+   "slug": "ninomae-inanis",
+   "creatorId": "ninomae_inanis"
+  },
+  {
+   "slug": "omaru-polka",
+   "creatorId": "omaru_polka"
+  },
+  {
+   "slug": "ookami-mio",
+   "creatorId": "ookami_mio"
+  },
+  {
+   "slug": "oozora-subaru",
+   "creatorId": "oozora_subaru"
+  },
+  {
+   "slug": "otonose-kanade",
+   "creatorId": "otonose_kanade"
+  },
+  {
+   "slug": "ouro-kronii",
+   "creatorId": "ouro_kronii"
+  },
+  {
+   "slug": "pavolia-reine",
+   "creatorId": "pavolia_reine"
+  },
+  {
+   "slug": "raora-panthera",
+   "creatorId": "raora_panthera"
+  },
+  {
+   "slug": "remia-aotsuki",
+   "creatorId": "remia_aotsuki"
+  },
+  {
+   "slug": "riko-solari",
+   "creatorId": "riko_solari"
+  },
+  {
+   "slug": "rindo-chihaya",
+   "creatorId": "rindo_chihaya"
+  },
+  {
+   "slug": "robocosan",
+   "creatorId": "robocosan"
+  },
+  {
+   "slug": "sakamata-chloe",
+   "creatorId": "sakamata_chloe"
+  },
+  {
+   "slug": "sakura-miko",
+   "creatorId": "sakura_miko"
+  },
+  {
+   "slug": "sendo-yuuhi",
+   "creatorId": "sendo_yuuhi"
+  },
+  {
+   "slug": "shinomiya-runa",
+   "creatorId": "shinomiya_runa"
+  },
+  {
+   "slug": "shiori-novella",
+   "creatorId": "shiori_novella"
+  },
+  {
+   "slug": "shirakami-fubuki",
+   "creatorId": "shirakami_fubuki"
+  },
+  {
+   "slug": "shiranami-ramune",
+   "creatorId": "shiranami_ramune"
+  },
+  {
+   "slug": "shiranui-flare",
+   "creatorId": "shiranui_flare"
+  },
+  {
+   "slug": "shirogane-noel",
+   "creatorId": "shirogane_noel"
+  },
+  {
+   "slug": "shishiro-botan",
+   "creatorId": "shishiro_botan"
+  },
+  {
+   "slug": "sorashina-sopia",
+   "creatorId": "sorashina_sopia"
+  },
+  {
+   "slug": "sorasumi-sena",
+   "creatorId": "sorasumi_sena"
+  },
+  {
+   "slug": "suzuna-tsuzuri",
+   "creatorId": "suzuna_tsuzuri"
+  },
+  {
+   "slug": "tachibana-hinano",
+   "creatorId": "tachibana_hinano"
+  },
+  {
+   "slug": "takanashi-kiara",
+   "creatorId": "takanashi_kiara"
+  },
+  {
+   "slug": "takane-lui",
+   "creatorId": "takane_lui"
+  },
+  {
+   "slug": "tatsumaki-chise",
+   "creatorId": "tatsumaki_chise"
+  },
+  {
+   "slug": "todoroki-hajime",
+   "creatorId": "todoroki_hajime"
+  },
+  {
+   "slug": "tokino-sora",
+   "creatorId": "tokino_sora"
+  },
+  {
+   "slug": "tokoyami-towa",
+   "creatorId": "tokoyami_towa"
+  },
+  {
+   "slug": "tsumugi-kokage",
+   "creatorId": "tsumugi_kokage"
+  },
+  {
+   "slug": "tsunomaki-watame",
+   "creatorId": "tsunomaki_watame"
+  },
+  {
+   "slug": "unit-b-pre-debut",
+   "creatorId": "unit_b_pre_debut"
+  },
+  {
+   "slug": "uruha-rushia",
+   "creatorId": "uruha_rushia"
+  },
+  {
+   "slug": "usada-pekora",
+   "creatorId": "usada_pekora"
+  },
+  {
+   "slug": "usaki-mimi",
+   "creatorId": "usaki_mimi"
+  },
+  {
+   "slug": "vestia-zeta",
+   "creatorId": "vestia_zeta"
+  },
+  {
+   "slug": "vspo-official",
+   "creatorId": "vspo_official"
+  },
+  {
+   "slug": "watson-amelia",
+   "creatorId": "watson_amelia"
+  },
+  {
+   "slug": "yakumo-beni",
+   "creatorId": "yakumo_beni"
+  },
+  {
+   "slug": "yano-kuromu",
+   "creatorId": "yano_kuromu"
+  },
+  {
+   "slug": "yozora-mel",
+   "creatorId": "yozora_mel"
+  },
+  {
+   "slug": "yukihana-lamy",
+   "creatorId": "yukihana_lamy"
+  },
+  {
+   "slug": "yumeno-akari",
+   "creatorId": "yumeno_akari"
+  },
+  {
+   "slug": "yuzuki-choco",
+   "creatorId": "yuzuki_choco"
+  }
+ ]
+}

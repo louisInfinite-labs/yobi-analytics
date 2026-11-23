@@ -84,7 +84,7 @@ async function showWithOptionalImage(title, options, image) {
 }
 
 // The in-app route a notification asks to open: an optional same-origin path in the payload's data (`url` or `path`).
-// Creator-level notifications (live start / advance / catch-up reminders and new videos) carry the creator's Home route,
+// Creator-level notifications (live start / advance / catch-up reminders and new videos) carry a creator route,
 // e.g. "/creator/aizawa-ema" (built by the dispatcher, src/notifications/creator_route.py); a payload without one gives
 // null and a tap simply opens/focuses the app. Anything that is not a same-origin http(s) URL is ignored -- a push
 // payload must never be able to send the user to another site.
@@ -100,19 +100,24 @@ function payloadRoute(data) {
   }
 }
 
-// A video-specific notification (new upload, live start/advance/catch-up reminder) carries the exact YouTube video id in `data.videoId`. When the
-// payload's route is a creator Home (`/creator/<slug>`, nothing else) and the id is a well-formed 11-character YouTube id, the route asks the app
-// for that exact video: `/creator/<slug>?video=<id>`. The app (src/features/video-deep-link) validates it again, checks the video's current
-// availability and either plays it or explains why it cannot. Any other id (malformed, or a payload without a creator route) leaves the plain route,
-// so a payload can never put anything but a bare video id into the URL.
-const CREATOR_ROUTE = /^\/creator\/[a-z0-9]+(?:-[a-z0-9]+)*$/
+// The site has no per-creator pages (a /creator/... URL answers 404): which creator Home shows is in-app state. So a payload's creator route
+// (`/creator/<slug>`, nothing else) is opened as the root Home naming that creator: `/?creator=<creatorId>` (the slug with "-" written back as "_",
+// the canonical creatorId). A video-specific notification (new upload, live start/advance/catch-up reminder) also carries the exact YouTube video
+// id in `data.videoId`; when it is a well-formed 11-character id the route asks the app for that exact video: `/?creator=<creatorId>&video=<id>`.
+// The app (src/app/navigation/useCurrentPage.ts, src/features/video-deep-link) validates both again, switches to the creator, checks the video's
+// current availability and either plays it or explains why it cannot. Any other id is dropped, so a payload can never put anything but a bare
+// creator id and video id into the URL; any other same-origin route is opened as it is.
+const CREATOR_ROUTE = /^\/creator\/([a-z0-9]+(?:-[a-z0-9]+)*)$/
 const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
 
 function notificationRoute(data) {
   const route = payloadRoute(data)
+  const creatorMatch = route ? CREATOR_ROUTE.exec(route) : null
+  if (!creatorMatch) return route
   const videoId = data && data.videoId
-  if (route && CREATOR_ROUTE.test(route) && typeof videoId === "string" && YOUTUBE_VIDEO_ID.test(videoId)) return `${route}?video=${videoId}`
-  return route
+  const creatorId = creatorMatch[1].replace(/-/g, "_")
+  if (typeof videoId === "string" && YOUTUBE_VIDEO_ID.test(videoId)) return `/?creator=${creatorId}&video=${videoId}`
+  return `/?creator=${creatorId}`
 }
 
 // Tapping a notification focuses an already-open OshiYobi window rather than always opening a new one, so repeated
