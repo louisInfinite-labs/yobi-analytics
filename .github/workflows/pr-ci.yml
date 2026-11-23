@@ -241,7 +241,7 @@ jobs:
           src/features/notifications/components/NotificationSettings.memberDrawer.ui.test.tsx
           src/app/navigation/MobileHeaderSearch.test.tsx
           src/app/navigation/homeCreatorPreservation.test.tsx
-          src/app/navigation/creatorRouting.test.ts
+          src/app/navigation/siteArchitecture.test.ts
           src/app/navigation/MainNavbar.test.tsx
           src/pages/settings/SettingsPage.test.tsx
           src/features/oshi-status/data/oshiStatus.test.ts
@@ -374,6 +374,10 @@ jobs:
           src/app/seo/sitemap.test.ts
           src/app/seo/hosting.test.ts
           src/app/seo/pageSeo.test.ts
+          src/app/seo/useDocumentSeo.test.tsx
+          src/app/navigation/usePageViewTracking.test.tsx
+          src/features/oshi/hooks/useSelectedCreator.test.ts
+          src/shared/analytics/analytics.test.ts
 
   # The stable required check. Always runs (even when a test group failed or was skipped) and decides from the results:
   # a group whose scope was detected MUST have succeeded; a group whose scope was not detected must have been skipped.
