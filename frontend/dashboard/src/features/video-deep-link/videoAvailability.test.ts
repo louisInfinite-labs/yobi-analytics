@@ -71,11 +71,11 @@ describe("the ?video= parameter", () => {
     expect(readVideoParam("")).toBeNull()
   })
 
-  it("stripVideoParam removes only that parameter, in place: same history length, state, path and other parameters kept", () => {
-    window.history.replaceState({ keep: 1 }, "", `/creator/aizawa-ema?video=${ID}&x=1#h`)
+  it("stripVideoParam removes only the deep-link parameters (video and creator), in place: same history length, state, path and other parameters kept", () => {
+    window.history.replaceState({ keep: 1 }, "", `/?creator=aizawa_ema&video=${ID}&x=1#h`)
     const length = window.history.length
     stripVideoParam()
-    expect(window.location.pathname + window.location.search + window.location.hash).toBe("/creator/aizawa-ema?x=1#h")
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe("/?x=1#h")
     expect(window.history.state).toEqual({ keep: 1 })
     expect(window.history.length).toBe(length)
   })

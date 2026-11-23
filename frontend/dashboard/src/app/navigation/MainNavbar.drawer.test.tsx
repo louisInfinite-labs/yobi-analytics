@@ -47,7 +47,7 @@ describe("phone top bar + main navigation drawer", () => {
     render(<MainNavbar />)
 
     for (const label of ["Home", "Schedule", "Settings"]) {
-      expect(within(drawer()).getByRole("button", { name: label })).toBeInTheDocument()
+      expect(within(drawer()).getByRole("link", { name: label })).toBeInTheDocument()
       expect(within(drawer()).getByText(label)).toHaveClass("main-navbar__label")
     }
     expect(drawer().querySelectorAll(".main-navbar__link svg").length).toBeGreaterThanOrEqual(3)
@@ -102,7 +102,7 @@ describe("phone top bar + main navigation drawer", () => {
     render(<MainNavbar />)
     await user.click(screen.getByRole("button", { name: "Open navigation" }))
 
-    await user.click(within(drawer()).getByRole("button", { name: "Schedule" }))
+    await user.click(within(drawer()).getByRole("link", { name: "Schedule" }))
 
     expect(window.location.pathname).toBe("/schedule")
     expect(isOpen()).toBe(false)
@@ -140,7 +140,7 @@ describe("phone top bar + main navigation drawer", () => {
     const user = userEvent.setup()
     render(<MainNavbar />)
     await user.click(screen.getByRole("button", { name: "Open navigation" }))
-    const controls = Array.from(drawer().querySelectorAll<HTMLElement>("button"))
+    const controls = Array.from(drawer().querySelectorAll<HTMLElement>("a[href], button"))
 
     controls[controls.length - 1].focus()
     await user.tab()

@@ -1,9 +1,9 @@
 import { CalendarClock, Gauge, Home, Info, Menu, Settings, X } from "lucide-react"
-import { useRef, useState, type ComponentType, type RefObject } from "react"
+import { useRef, useState, type ComponentType, type MouseEvent, type RefObject } from "react"
 import brandIcon from "../../assets/brand-icon.png"
 import { MobileHeaderSearch } from "./MobileHeaderSearch"
 import type { Page } from "./useCurrentPage"
-import { useCurrentPage } from "./useCurrentPage"
+import { pageHref, useCurrentPage } from "./useCurrentPage"
 import { useModalFocus } from "../../shared/hooks/useModalFocus"
 import { useLocale } from "../../shared/i18n/hooks/useLocale"
 import { t, type TranslationKey } from "../../shared/i18n/translations"
@@ -21,6 +21,11 @@ const NAV_ITEMS: { page: Page; labelKey: TranslationKey; Icon: ComponentType<{ s
  * entry is not rendered, rather than hidden with CSS. */
 function visibleNavItems() {
   return NAV_ITEMS.filter((item) => item.page !== "dashboard" || import.meta.env.DEV)
+}
+
+/** Whether a click on a nav link is a plain primary-button click (the app navigates in place) rather than one the browser handles itself. */
+function isPlainPrimaryClick(event: MouseEvent<HTMLAnchorElement>): boolean {
+  return !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
 }
 
 /** How far left (px) a touch must travel inside the open drawer to count as a close swipe. */
@@ -99,11 +104,15 @@ export function MainNavbar() {
         {visibleNavItems().map((item) => {
           const label = t(locale, item.labelKey)
           return (
-            <button
+            <a
               key={item.page}
-              type="button"
+              href={pageHref(item.page)}
               className={`main-navbar__link${page === item.page ? " main-navbar__link--active" : ""}`}
-              onClick={() => {
+              aria-current={page === item.page ? "page" : undefined}
+              onClick={(event) => {
+                // A modified or non-primary click (new tab / window, download) is left to the browser; a plain click stays an in-app navigation.
+                if (!isPlainPrimaryClick(event)) return
+                event.preventDefault()
                 setPage(item.page)
                 closeDrawer()
               }}
@@ -111,7 +120,7 @@ export function MainNavbar() {
             >
               <item.Icon size={22} strokeWidth={1.5} />
               <span className="main-navbar__label">{label}</span>
-            </button>
+            </a>
           )
         })}
       </nav>

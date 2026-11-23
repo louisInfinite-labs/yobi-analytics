@@ -45,7 +45,7 @@ describe("影片數據 in development", () => {
 
     render(<App />)
 
-    expect(screen.getByRole("button", { name: VIDEO_DATA_LABEL })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: VIDEO_DATA_LABEL })).toBeInTheDocument()
     await waitFor(() => expect(screen.getByTestId("dashboard-page")).toBeInTheDocument())
     expect(screen.queryByTestId("home-page")).not.toBeInTheDocument()
   })
@@ -68,7 +68,7 @@ describe("影片數據 in production", () => {
 
     render(<App />)
 
-    expect(screen.queryByRole("button", { name: VIDEO_DATA_LABEL })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: VIDEO_DATA_LABEL })).not.toBeInTheDocument()
     expect(document.body.textContent).not.toContain(VIDEO_DATA_LABEL)
     // The navigation entries only (the phone hamburger and the drawer's close button are buttons too, but not entries).
     expect(Array.from(document.querySelectorAll(".main-navbar__link")).map((button) => button.getAttribute("aria-label"))).toEqual(["Home", "Schedule", "Settings", "About"])
@@ -84,7 +84,7 @@ describe("影片數據 in production", () => {
     expect(screen.getByTestId("home-page")).toBeInTheDocument()
     expect(screen.queryByTestId("dashboard-page")).not.toBeInTheDocument()
     expect(document.querySelector(".dashboard-page")).toBeNull()
-    expect(screen.queryByRole("button", { name: VIDEO_DATA_LABEL })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: VIDEO_DATA_LABEL })).not.toBeInTheDocument()
   })
 
   it("useCurrentPage never returns the dashboard page for /dashboard", async () => {

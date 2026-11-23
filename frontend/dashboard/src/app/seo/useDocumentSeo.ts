@@ -1,5 +1,4 @@
 import { useEffect } from "react"
-import { getCreators } from "../../entities/creator/data/creatorRegistry"
 import { resolvePageSeo, type PageSeo } from "./pageSeo"
 
 /** The head element matching the selector, created and appended when the shell does not have it yet. */
@@ -48,7 +47,7 @@ export function applyDocumentSeo(document: Document, seo: PageSeo): void {
  * HTTP 404 and a noindex page) is left alone, so a 404 page never loses its noindex. */
 export function useDocumentSeo(pathname: string): void {
   useEffect(() => {
-    const seo = resolvePageSeo(pathname, getCreators())
+    const seo = resolvePageSeo(pathname)
     if (seo) applyDocumentSeo(document, seo)
   }, [pathname])
 }

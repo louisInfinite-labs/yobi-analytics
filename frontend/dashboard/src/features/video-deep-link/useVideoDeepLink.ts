@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveCreatorKey } from "../../entities/creator/data/creatorRegistry"
-import { parseCreatorRoute } from "../../app/navigation/creatorRoutes"
 import { checkVideoAvailability, type VideoAvailability } from "./videoAvailability"
-import { isYouTubeVideoId, readVideoParam, stripVideoParam } from "./videoDeepLinkParam"
+import { isYouTubeVideoId, readCreatorParam, readVideoParam, stripVideoParam } from "./videoDeepLinkParam"
 
 export type VideoDeepLinkDialogKind = "members_only" | "private_or_deleted" | "unavailable" | "unknown"
 
 interface Target {
   videoId: string
-  /** The canonical creatorId the URL named (`/creator/<slug>`). */
+  /** The canonical creatorId the URL named (`?creator=<creatorId>`). */
   creatorId: string
 }
 
@@ -25,14 +24,14 @@ interface DeepLinkOptions {
   check?: (videoId: string) => Promise<VideoAvailability>
 }
 
-/** Consumes a `?video=<id>` deep link on a creator Home (the service worker's video notification route). It reads the id on mount and on every
+/** Consumes a `/?creator=<creatorId>&video=<id>` deep link on Home (the service worker's video notification route). It reads the id on mount and on every
  * popstate, checks the video's CURRENT availability, and then either opens that exact video or raises a dialog:
  *  - available (public, unlisted, live, archive; whether or not it is in Recent Videos) -> openVideo.
  *  - unavailable -> the creator Home stays as it is and a dialog explains why.
  *  - unknown (the check failed) -> a dialog with Retry; never reported as private.
  * The parameter stays in the address bar, so refreshing or re-opening the URL selects the same video again. It is released (replaceState) when the viewer
- * dismisses a dialog or deliberately selects another video. A malformed id, or a `video` parameter on anything but a valid creator route, is ignored and
- * removed. Nothing here writes the default Oshi or any stored preference. */
+ * dismisses a dialog or deliberately selects another video. A malformed id, or a `video` parameter without a known creator on the root Home, is ignored
+ * and removed. Nothing here writes the default Oshi or any stored preference. */
 export function useVideoDeepLink({ currentCreatorId, openVideo, selectedVideoId = null, check = checkVideoAvailability }: DeepLinkOptions) {
   const [dialog, setDialog] = useState<{ kind: VideoDeepLinkDialogKind; target: Target } | null>(null)
   const latest = useRef({ currentCreatorId, openVideo, check })
@@ -61,12 +60,12 @@ export function useVideoDeepLink({ currentCreatorId, openVideo, selectedVideoId 
     const consume = () => {
       const raw = readVideoParam(window.location.search)
       if (raw === null) return
-      const route = parseCreatorRoute(window.location.pathname)
-      if (!isYouTubeVideoId(raw) || route?.kind !== "creator") {
+      const creator = window.location.pathname === "/" ? resolveCreatorKey(readCreatorParam(window.location.search) ?? "") : undefined
+      if (!isYouTubeVideoId(raw) || !creator?.active) {
         stripVideoParam()
         return
       }
-      void run({ videoId: raw, creatorId: route.creator.creatorId })
+      void run({ videoId: raw, creatorId: creator.creatorId })
     }
     consume()
     window.addEventListener("popstate", consume)

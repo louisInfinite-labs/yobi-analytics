@@ -118,13 +118,11 @@ describe("on the production site", () => {
     trackRoute("/schedule", "Schedule")
     trackRoute("/schedule", "Schedule") // the same path again: never twice
     await initAnalytics(PRODUCTION_HOST)
-    trackRoute("/creator/aizawa-ema", "Ema")
     trackRoute("/", "Home")
     await initAnalytics(PRODUCTION_HOST)
 
     expect(firebase.logEvent.mock.calls.map(([, name, params]) => [name, params.page_path, params.page_title])).toEqual([
       ["page_view", "/schedule", "Schedule"],
-      ["page_view", "/creator/aizawa-ema", "Ema"],
       ["page_view", "/", "Home"],
     ])
     expect(firebase.logEvent.mock.calls[0][2]).toEqual({ page_path: "/schedule", page_title: "Schedule", page_location: `${window.location.origin}/schedule` })
@@ -154,7 +152,7 @@ describe("on the production site", () => {
   })
 
   it("leaving a measured route for an unmeasured one pauses collection, and coming back resumes it before logging the page_view", async () => {
-    trackRoute("/creator/aizawa-ema", "Ema")
+    trackRoute("/", "Home")
     await initAnalytics(PRODUCTION_HOST)
     trackRoute("/about", "About")
     await initAnalytics(PRODUCTION_HOST)
@@ -179,15 +177,16 @@ describe("on the production site", () => {
   })
 })
 
-describe("which routes are measured: only /, /creator, /creator/* and /schedule", () => {
+describe("which routes are measured: only / and /schedule", () => {
   it("measures them", () => {
-    for (const path of ["/", "/schedule", "/schedule/", "/creator", "/creator/", "/creator/tachibana-hinano", "/creator/aizawa-ema"]) {
+    for (const path of ["/", "/schedule", "/schedule/"]) {
       expect(isAnalyticsRoute(path), path).toBe(true)
     }
   })
 
   it("never measures any other route", () => {
-    for (const path of ["/setting", "/about", "/dashboard", "/creators", "/creatorx", "/schedule/extra", "/some/unknown/page", "/admin"]) {
+    // Including every retired creator URL: those now answer 404, and a 404 page is never measured.
+    for (const path of ["/setting", "/about", "/dashboard", "/creator", "/creator/", "/creator/aizawa-ema", "/creators", "/schedule/extra", "/some/unknown/page", "/admin"]) {
       expect(isAnalyticsRoute(path), path).toBe(false)
     }
   })

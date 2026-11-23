@@ -65,25 +65,25 @@ describe("service worker notificationclick", () => {
     expect(openWindow).toHaveBeenCalledWith("/")
   })
 
-  it("opens the creator Home route from the payload when no window is open", async () => {
+  it("opens the root Home naming the payload's creator when no window is open", async () => {
     const { openWindow } = await tapNotification({ videoId: "v1", url: "/creator/aizawa-ema" }, [])
 
-    expect(openWindow).toHaveBeenCalledWith("/creator/aizawa-ema")
+    expect(openWindow).toHaveBeenCalledWith("/?creator=aizawa_ema")
   })
 
-  it("moves an already-open window to the payload's creator route and focuses it", async () => {
+  it("moves an already-open window to the root Home naming the payload's creator and focuses it", async () => {
     const open = fakeClient("/")
 
     const { openWindow } = await tapNotification({ path: "/creator/aizawa-ema" }, [open])
 
-    expect(open.navigate).toHaveBeenCalledWith("/creator/aizawa-ema")
+    expect(open.navigate).toHaveBeenCalledWith("/?creator=aizawa_ema")
     expect(open.focus).toHaveBeenCalled()
     expect(openWindow).not.toHaveBeenCalled()
   })
 
   it("prefers a window that is already on the payload's route, without navigating anything", async () => {
     const other = fakeClient("/schedule")
-    const onRoute = fakeClient("/creator/aizawa-ema")
+    const onRoute = fakeClient("/?creator=aizawa_ema")
 
     await tapNotification({ url: "/creator/aizawa-ema" }, [other, onRoute])
 
@@ -121,7 +121,7 @@ describe.each(Object.entries(CREATOR_PAYLOADS))("creator deep link: %s", (_kind,
 
     expect(close).toHaveBeenCalled()
     expect(openWindow).toHaveBeenCalledTimes(1)
-    expect(openWindow).toHaveBeenCalledWith("/creator/aizawa-ema")
+    expect(openWindow).toHaveBeenCalledWith("/?creator=aizawa_ema")
   })
 
   it("app open on another page or creator: navigates that window to the creator Home and focuses it, opening nothing", async () => {
@@ -130,14 +130,14 @@ describe.each(Object.entries(CREATOR_PAYLOADS))("creator deep link: %s", (_kind,
 
       const { openWindow } = await tapNotification(payload, [open])
 
-      expect(open.navigate, current).toHaveBeenCalledWith("/creator/aizawa-ema")
+      expect(open.navigate, current).toHaveBeenCalledWith("/?creator=aizawa_ema")
       expect(open.focus, current).toHaveBeenCalledTimes(1)
       expect(openWindow, current).not.toHaveBeenCalled()
     }
   })
 
   it("app already on that creator Home: only focuses it (no navigation, no new window)", async () => {
-    const open = fakeClient("/creator/aizawa-ema")
+    const open = fakeClient("/?creator=aizawa_ema")
 
     const { openWindow } = await tapNotification(payload, [open])
 
@@ -156,7 +156,7 @@ describe("creator deep link: a window that cannot be navigated", () => {
     const { openWindow } = await tapNotification(payload, [open])
 
     expect(openWindow).toHaveBeenCalledTimes(1)
-    expect(openWindow).toHaveBeenCalledWith("/creator/aizawa-ema")
+    expect(openWindow).toHaveBeenCalledWith("/?creator=aizawa_ema")
     expect(open.focus).not.toHaveBeenCalled() // the opened window is the one the user sees; the old one is not pulled in front of it
   })
 
@@ -168,7 +168,7 @@ describe("creator deep link: a window that cannot be navigated", () => {
 
     const { openWindow } = await tapNotification(payload, [open])
 
-    expect(openWindow).toHaveBeenCalledWith("/creator/aizawa-ema")
+    expect(openWindow).toHaveBeenCalledWith("/?creator=aizawa_ema")
   })
 
   it("navigation resolves with no window (refused): opens the creator Home directly", async () => {
@@ -177,7 +177,7 @@ describe("creator deep link: a window that cannot be navigated", () => {
 
     const { openWindow } = await tapNotification(payload, [open])
 
-    expect(openWindow).toHaveBeenCalledWith("/creator/aizawa-ema")
+    expect(openWindow).toHaveBeenCalledWith("/?creator=aizawa_ema")
     expect(open.focus).not.toHaveBeenCalled()
   })
 
@@ -225,10 +225,10 @@ describe("creator deep link: missing or unusable creator information", () => {
     expect(open.navigate).not.toHaveBeenCalled()
   })
 
-  it("an invalid creator slug is still delivered to the app as a same-origin path: the app itself falls back to / (see creatorRouting.test.ts)", async () => {
+  it("an unknown creator is still delivered to the root Home as a creator id: the app itself ignores an id it does not know (see siteArchitecture.test.ts)", async () => {
     const { openWindow } = await tapNotification({ videoId: "v1", url: "/creator/not-a-creator" }, [])
 
-    expect(openWindow).toHaveBeenCalledWith("/creator/not-a-creator") // same-origin, so allowed; Creator routing refuses an unknown slug and shows /
+    expect(openWindow).toHaveBeenCalledWith("/?creator=not_a_creator") // never the retired /creator/... page, which answers 404
   })
 
   it("with several open windows only one is used: one navigation, one focus", async () => {
@@ -277,10 +277,11 @@ describe("service worker lifecycle", () => {
   })
 })
 
-describe("video deep link: a video notification asks the app for that exact video (/creator/<slug>?video=<id>)", () => {
+describe("video deep link: a video notification asks the app for that exact video (/?creator=<creatorId>&video=<id>)", () => {
   const VIDEO = "dQw4w9WgXcQ"
   const CREATOR = "/creator/aizawa-ema"
-  const WITH_VIDEO = `${CREATOR}?video=${VIDEO}`
+  const HOME_ROUTE = "/?creator=aizawa_ema"
+  const WITH_VIDEO = `${HOME_ROUTE}&video=${VIDEO}`
 
   it("cold start (app closed): opens one window directly on the creator route carrying the exact video id", async () => {
     const { openWindow } = await tapNotification({ videoId: VIDEO, url: CREATOR }, [])
@@ -300,7 +301,7 @@ describe("video deep link: a video notification asks the app for that exact vide
   })
 
   it("existing tab already on that creator Home (parameter already consumed): it is still navigated, because the video itself is what the tap asks for", async () => {
-    const open = fakeClient(CREATOR)
+    const open = fakeClient(HOME_ROUTE)
 
     await tapNotification({ videoId: VIDEO, url: CREATOR }, [open])
 
@@ -344,26 +345,26 @@ describe("video deep link: a video notification asks the app for that exact vide
     expect(second.openWindow).not.toHaveBeenCalled()
   })
 
-  it("a creator-only notification (no videoId) keeps the plain creator route", async () => {
+  it("a creator-only notification (no videoId) opens the root Home naming the creator, with no video", async () => {
     const { openWindow } = await tapNotification({ url: CREATOR }, [])
-    expect(openWindow).toHaveBeenCalledWith(CREATOR)
+    expect(openWindow).toHaveBeenCalledWith(HOME_ROUTE)
   })
 
-  it("an invalid videoId is never put in the URL: the plain creator route is used", async () => {
+  it("an invalid videoId is never put in the URL: the root Home naming the creator is used", async () => {
     for (const videoId of ["v1", "", "short", "twelve_chars!", `${VIDEO}x`, "dQw4w9WgXc/", "a&b=c#d.e/f", "../..//etc", 12345678901, null, undefined, { id: VIDEO }]) {
       const { openWindow } = await tapNotification({ videoId, url: CREATOR }, [])
-      expect(openWindow, String(videoId)).toHaveBeenCalledWith(CREATOR)
+      expect(openWindow, String(videoId)).toHaveBeenCalledWith(HOME_ROUTE)
     }
   })
 
-  it("a videoId only ever rides on a creator Home route: other routes, no route and cross-origin routes are unchanged", async () => {
+  it("a videoId only ever rides on a creator route: other routes, no route and cross-origin routes are unchanged", async () => {
     expect((await tapNotification({ videoId: VIDEO, url: "/schedule" }, [])).openWindow).toHaveBeenCalledWith("/schedule")
     expect((await tapNotification({ videoId: VIDEO, url: `${CREATOR}?x=1` }, [])).openWindow).toHaveBeenCalledWith(`${CREATOR}?x=1`)
     expect((await tapNotification({ videoId: VIDEO }, [])).openWindow).toHaveBeenCalledWith("/")
     expect((await tapNotification({ videoId: VIDEO, url: `https://evil.example${CREATOR}` }, [])).openWindow).toHaveBeenCalledWith("/")
   })
 
-  it("an invalid creator slug is still only a same-origin path with the id attached to nothing: it falls back as before", async () => {
+  it("a malformed creator route is not translated: it stays a same-origin path (answered 404) with the id attached to nothing", async () => {
     expect((await tapNotification({ videoId: VIDEO, url: "/creator/Not_A_Slug" }, [])).openWindow).toHaveBeenCalledWith("/creator/Not_A_Slug")
     expect((await tapNotification({ videoId: VIDEO, url: "/creator/" }, [])).openWindow).toHaveBeenCalledWith("/creator/")
   })

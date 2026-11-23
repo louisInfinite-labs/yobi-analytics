@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
+import { getCreatorById } from "../../entities/creator/data/creatorRegistry"
+import legacy from "./legacyCreatorRoutes.json"
+import { SITEMAP_PATHS } from "./sitemap"
 
 interface HostingHeader {
   source: string
@@ -31,11 +34,11 @@ describe("hosting config", () => {
     expect(config.hosting.trailingSlash).toBe(false)
   })
 
-  it("redirects the duplicate /index.html and the bare /creator to the home page, and nothing else (no redirect may touch a route installed apps or push links open)", () => {
-    expect(config.hosting.redirects).toEqual([
-      { source: "/index.html", destination: "/", type: 301 },
-      { source: "/creator", destination: "/", type: 301 },
-    ])
+  it("redirects the duplicate /index.html to the home page, then exactly the legacy creator routes -- nothing else", () => {
+    const redirects = config.hosting.redirects ?? []
+    expect(redirects[0]).toEqual({ source: "/index.html", destination: "/", type: 301 })
+    expect(redirects.slice(1)).toEqual(legacy.routes.map(({ slug, creatorId }) => ({ source: `/creator/${slug}`, destination: `/?creator=${creatorId}`, type: 301 })))
+    expect(JSON.stringify(config.hosting.headers)).not.toContain("/creator")
   })
 
   it("serves /sitemap.xml as XML", () => {
@@ -46,7 +49,7 @@ describe("hosting config", () => {
   it("revalidates every HTML route and the service worker, and keeps hashed assets immutable", () => {
     const value = (source: string, key: string) =>
       config.hosting.headers.find((header) => header.source === source)?.headers.find((h) => h.key === key)?.value
-    for (const route of ["/", "/index.html", "/schedule", "/about", "/setting", "/creator/**", "/404.html", "/sw.js"]) {
+    for (const route of ["/", "/index.html", "/schedule", "/about", "/setting", "/404.html", "/sw.js"]) {
       expect(value(route, "Cache-Control"), route).toBe("no-cache, max-age=0, must-revalidate")
     }
     expect(value("/sw.js", "Service-Worker-Allowed")).toBe("/")
@@ -81,5 +84,41 @@ describe("public crawler files", () => {
 
   it("keeps the Google Search Console verification file", () => {
     expect(read("public/google1a6dffaa4352c009.html").trim()).toBe("google-site-verification: google1a6dffaa4352c009.html")
+  })
+})
+
+describe("legacy creator redirects (retired /creator/<slug> pages)", () => {
+  const redirects = (config.hosting.redirects ?? []).filter((rule) => rule.source.startsWith("/creator"))
+
+  it("covers exactly the 119 creator pages that were live, each once", () => {
+    expect(legacy.routes).toHaveLength(119)
+    expect(new Set(legacy.routes.map((route) => route.slug)).size).toBe(119)
+    expect(redirects).toHaveLength(119)
+  })
+
+  it("every slug names the registry creator it redirects to: an active creator whose canonical id is that slug with '-' written as '_'", () => {
+    for (const { slug, creatorId } of legacy.routes) {
+      const creator = getCreatorById(creatorId)
+      expect(creator, slug).toBeDefined()
+      expect(creator?.active, slug).toBe(true)
+      expect(creatorId.replace(/_/g, "-"), slug).toBe(slug)
+    }
+  })
+
+  it("only exact paths: no glob, named segment or regex, so an unknown /creator path (and bare /creator) matches nothing and stays a real 404", () => {
+    for (const rule of redirects) {
+      expect(rule.source, rule.source).toMatch(/^\/creator\/[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      expect(Object.keys(rule).sort(), rule.source).toEqual(["destination", "source", "type"])
+    }
+    const sources = new Set(redirects.map((rule) => rule.source))
+    for (const unknown of ["/creator", "/creator/", "/creator/not-a-creator", "/creator/aizawa_ema", "/creator/Aizawa-Ema"]) expect(sources.has(unknown), unknown).toBe(false)
+  })
+
+  it("redirects to the root Home with the creator id as the only parameter (Hosting appends the request's own query, e.g. ?video=<id>, with &)", () => {
+    for (const rule of redirects) expect(rule.destination, rule.source).toMatch(/^\/\?creator=[a-z0-9]+(?:_[a-z0-9]+)*$/)
+  })
+
+  it("never brings a creator page back into the sitemap", () => {
+    expect(SITEMAP_PATHS).toEqual(["/", "/schedule", "/about"])
   })
 })

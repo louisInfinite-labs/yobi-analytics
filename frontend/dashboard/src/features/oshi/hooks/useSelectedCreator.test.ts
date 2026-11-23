@@ -59,19 +59,18 @@ describe("useSelectedCreator", () => {
   })
 })
 
-describe("useSelectedCreator is seeded from the session's Home route, never from a permanent preference", () => {
-  it("an explicit creator Home recorded for this session is restored on a reload of the same session", () => {
+describe("useSelectedCreator is seeded from the creator this session switched to, never from a permanent preference", () => {
+  it("the creator recorded for this session is restored on a reload of the same session", () => {
     window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_kurumi_noa")
-    window.sessionStorage.setItem("yobi.session.homePath", "/creator/usada-pekora")
+    window.sessionStorage.setItem("yobi.session.homeCreator", "ch_usada_pekora")
     resetAllSharedStateForTests()
 
     const { result } = renderHook(() => useSelectedCreator())
     expect(result.current[0]).toBe("ch_usada_pekora")
   })
 
-  it("a root Home ('/') session means the Oshi, whatever was viewed before", () => {
+  it("a session that has not switched means the Oshi", () => {
     window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_kurumi_noa")
-    window.sessionStorage.setItem("yobi.session.homePath", "/")
     resetAllSharedStateForTests()
 
     expect(renderHook(() => useSelectedCreator()).result.current[0]).toBe("ch_kurumi_noa")
@@ -79,22 +78,22 @@ describe("useSelectedCreator is seeded from the session's Home route, never from
 
   it("a new session (empty sessionStorage) starts from the Oshi", () => {
     window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_kurumi_noa")
-    window.sessionStorage.setItem("yobi.session.homePath", "/creator/usada-pekora")
+    window.sessionStorage.setItem("yobi.session.homeCreator", "ch_usada_pekora")
     window.sessionStorage.clear()
     resetAllSharedStateForTests()
 
     expect(renderHook(() => useSelectedCreator()).result.current[0]).toBe("ch_kurumi_noa")
   })
 
-  it("an unknown or stale session route is ignored (the Oshi is used)", () => {
+  it("an unknown or stale session creator is ignored (the Oshi is used)", () => {
     window.localStorage.setItem("yobi.defaultOshiCreatorId", "ch_kurumi_noa")
-    window.sessionStorage.setItem("yobi.session.homePath", "/creator/not-a-real-creator")
+    window.sessionStorage.setItem("yobi.session.homeCreator", "ch_not_a_real_creator")
     resetAllSharedStateForTests()
 
     expect(renderHook(() => useSelectedCreator()).result.current[0]).toBe("ch_kurumi_noa")
   })
 
-  it("setting the creator writes nothing to storage by itself (the router records the session Home route)", () => {
+  it("setting the creator writes nothing to storage by itself (the router records the session creator)", () => {
     const { result } = renderHook(() => useSelectedCreator())
     act(() => result.current[1]("ch_usada_pekora"))
 

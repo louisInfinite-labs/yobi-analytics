@@ -98,8 +98,9 @@ async function main() {
     const response = await fetch(url, { headers: { "user-agent": "oshiyobi-retain-assets/1" } })
     return { status: response.status, type: response.headers.get("content-type"), body: Buffer.from(await response.arrayBuffer()) }
   }
-  // The live shell: "/" plus a few routes that the live SPA rewrite answers with the same HTML. They must agree, or one of them needs its own handling.
-  const routes = ["/", "/index.html", "/schedule", "/about", "/creator/aizawa-ema"]
+  // The live shell: "/" plus the site's other page routes. They must agree, or one of them needs its own handling. (No /creator/... route: those
+  // pages are retired and answer 404.)
+  const routes = ["/", "/index.html", "/schedule", "/about", "/setting"]
   const pages = await Promise.all(routes.map(async (route) => ({ route, ...(await get(options.site + route)) })))
   for (const page of pages) if (page.status !== 200) throw new Error(`live ${page.route} answered ${page.status}`)
   const distinct = new Set(pages.map((page) => sha(page.body)))

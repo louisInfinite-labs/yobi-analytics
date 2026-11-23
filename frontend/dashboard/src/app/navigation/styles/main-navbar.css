@@ -92,6 +92,9 @@
   padding-inline: 16px;
   box-sizing: border-box;
   cursor: pointer;
+  /* Each item is a real <a href> (crawlable, open-in-new-tab); these two keep its box identical to the <button> it replaced. */
+  text-decoration: none;
+  line-height: normal;
 }
 
 .main-navbar__link svg {

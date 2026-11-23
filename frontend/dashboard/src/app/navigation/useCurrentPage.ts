@@ -2,13 +2,14 @@ import { useCallback, useSyncExternalStore } from "react"
 import { resolveCreatorKey, toLegacyRosterId } from "../../entities/creator/data/creatorRegistry"
 import { readDefaultOshiCreatorId } from "../../features/oshi/hooks/useDefaultOshiCreator"
 import { selectedCreatorStore } from "../../features/oshi/hooks/useSelectedCreator"
-import { creatorPath, parseCreatorRoute } from "./creatorRoutes"
-import { readSessionHomePath, writeSessionHomePath } from "./sessionHomePath"
+import { CREATOR_PARAM, VIDEO_PARAM } from "../../features/video-deep-link/videoDeepLinkParam"
+import { writeSessionCreatorId } from "./sessionCreator"
 
 export type Page = "home" | "dashboard" | "settings" | "schedule" | "about"
 
-/** The fixed (non-creator) pages. Home is either the root "/" or an explicit /creator/:creatorSlug (see creatorRoutes.ts). */
-const PAGE_PATHS: Record<Exclude<Page, "home">, string> = {
+/** Every page's one URL. Home is always the root "/": which creator Home shows is in-app state (selectedCreatorStore), never part of the URL. */
+const PAGE_PATHS: Record<Page, string> = {
+  home: "/",
   dashboard: "/dashboard",
   settings: "/setting",
   schedule: "/schedule",
@@ -27,14 +28,10 @@ function readPage(): Page {
     case "/about":
       return "about"
     default:
-      // "/", "/creator/:slug" and any unknown path: Home.
+      // "/" and any unknown path (which the host answers with HTTP 404 and a noindex page): Home.
       return "home"
   }
 }
-
-/** The page the app was on before the navigation being handled. Used only so a back/forward navigation INTO Home from another page keeps the
- * creator the session was showing (see syncRouteWithCreator); a move between two Home routes still follows the URL. */
-let lastPage: Page = readPage()
 
 const listeners = new Set<() => void>()
 
@@ -42,46 +39,26 @@ function notify() {
   listeners.forEach((listener) => listener())
 }
 
-/** Home's two kinds of route:
- *  - the root "/" is the entry Home: it ALWAYS shows the Oshi (else the default first creator) and keeps the URL "/" -- a visit is never
- *    rewritten into a creator path;
- *  - "/creator/:slug" is an explicit creator Home: that creator is shown, the URL is the source of truth, and a direct link beats the Oshi.
- * Either way the Home route is remembered for this browser session (sessionHomePath.ts), so coming back to Home returns to exactly it.
- *
- * "Shows the Oshi" is what a FRESH visit does. Within a running session the active creator must not be re-derived from Settings: editing 我推設定
- * (adding, changing or reordering Oshi) and coming back to Home leaves the creator Home was showing, as long as that creator is still a valid
- * member of the roster (`keepValidSelection`, passed when the navigation arrives from another page). Only a genuinely invalid selection falls
- * back to the Oshi. */
-function syncRouteWithCreator({ keepValidSelection = false }: { keepValidSelection?: boolean } = {}): void {
+/** Applies a notification's `?creator=<creatorId>` on the root Home (public/sw.js turns the creator route a push payload carries into it, and
+ * firebase.json redirects a retired /creator/<slug> URL -- e.g. opened by a not-yet-updated service worker -- to it): that
+ * creator is shown and becomes the session's creator. The parameter is removed from the address bar once used -- unless a `?video=` deep link
+ * still needs it to know which creator the video belongs to (useVideoDeepLink then removes both). An unknown or inactive creator is ignored. */
+function applyCreatorParam(): void {
   const url = new URL(window.location.href)
-  if (url.searchParams.has("admin")) return
-  const route = parseCreatorRoute(url.pathname)
-  if (route?.kind === "creator") {
-    selectedCreatorStore.set(toLegacyRosterId(route.creator))
-    writeSessionHomePath(creatorPath(route.creator))
-    return
+  if (url.pathname !== "/" || !url.searchParams.has(CREATOR_PARAM)) return
+  const creator = resolveCreatorKey(url.searchParams.get(CREATOR_PARAM) ?? "")
+  if (creator?.active) {
+    selectedCreatorStore.set(toLegacyRosterId(creator))
+    writeSessionCreatorId(toLegacyRosterId(creator))
+    if (url.searchParams.has(VIDEO_PARAM)) return
   }
-  if (route?.kind === "invalid") {
-    // An unknown/malformed creator slug is never shown under its own URL (and never as a different creator): fall back to the root Home.
-    url.pathname = "/"
-    window.history.replaceState(window.history.state, "", url)
-  }
-  if (url.pathname === "/") {
-    if (!(keepValidSelection && isValidCreatorSelection())) selectedCreatorStore.set(readDefaultOshiCreatorId())
-    writeSessionHomePath("/")
-  }
+  url.searchParams.delete(CREATOR_PARAM)
+  window.history.replaceState(window.history.state, "", url)
 }
 
-/** Whether the creator Home is currently showing still exists in the roster. Favorites / Oshi membership is deliberately NOT consulted: being
- * removed from the favorites list does not make a creator invalid. */
-function isValidCreatorSelection(): boolean {
-  return resolveCreatorKey(selectedCreatorStore.get()) !== undefined
-}
-
-syncRouteWithCreator() // a fresh page load: the entry Home shows the Oshi
+applyCreatorParam() // a page load opened from a notification
 window.addEventListener("popstate", () => {
-  syncRouteWithCreator({ keepValidSelection: lastPage !== "home" })
-  lastPage = readPage()
+  applyCreatorParam()
   notify()
 })
 
@@ -91,41 +68,45 @@ function navigate(pathname: string, { keepSearch = false }: { keepSearch?: boole
   if (!keepSearch) url.search = ""
   if (url.href === window.location.href) return
   window.history.pushState({}, "", url)
-  lastPage = readPage()
   notify()
 }
 
-/** Goes to a page. Home means the Home route last shown in this session: an explicit creator's /creator/:slug, or the root "/" (the Oshi) if
- * the user has not switched creator. */
-export function goToPage(next: Page): void {
-  if (next !== "home") return navigate(PAGE_PATHS[next])
-  const home = readSessionHomePath()
-  // The entry Home ("/") returns to the creator already being shown; only an invalid one falls back to the Oshi (see syncRouteWithCreator).
-  if (home === "/" && !isValidCreatorSelection()) selectedCreatorStore.set(readDefaultOshiCreatorId())
-  navigate(home)
+/** Whether the creator Home is currently showing still exists in the roster. Favorites / Oshi membership is deliberately NOT consulted: being
+ * removed from the favorites list does not make a creator invalid. */
+function isValidCreatorSelection(): boolean {
+  return resolveCreatorKey(selectedCreatorStore.get()) !== undefined
 }
 
-/** Explicitly picks a creator from ANY page (Live Status): that creator becomes the session's Home route and the app moves to
- * /creator/:slug at once -- on Schedule/Settings/About it leaves the page for that creator's Home, on Home it just switches creator and URL.
- * A key that is not a known creator does nothing. */
+/** Goes to a page. Home keeps the creator it was showing (a creator switched to earlier in the session); only an invalid one falls back to the Oshi. */
+export function goToPage(next: Page): void {
+  if (next === "home" && !isValidCreatorSelection()) selectedCreatorStore.set(readDefaultOshiCreatorId())
+  navigate(PAGE_PATHS[next])
+}
+
+/** The URL goToPage(page) lands on, for a navigation link's href. */
+export function pageHref(page: Page): string {
+  return PAGE_PATHS[page]
+}
+
+/** Explicitly picks a creator from ANY page (Live Status): Home shows that creator from now on in this session, and the app moves to Home at
+ * once -- on Schedule/Settings/About it leaves the page for Home, on Home it just switches creator (the URL stays "/"). A key that is not a known
+ * creator does nothing. */
 export function selectCreator(creatorKey: string): void {
   const creator = resolveCreatorKey(creatorKey)
   if (!creator) return
-  const path = creatorPath(creator)
   selectedCreatorStore.set(toLegacyRosterId(creator))
-  writeSessionHomePath(path)
-  navigate(path)
+  writeSessionCreatorId(toLegacyRosterId(creator))
+  navigate(PAGE_PATHS.home)
 }
 
-/** The creator switch that goes with picking another creator's STREAM in Live Status. On Home it is selectCreator (the URL follows the creator
- * shown); off Home it only switches the creator and the session's Home route, WITHOUT navigating, so the stream still opens where it always has
- * (the player modal) and Home later shows that creator. Stream picks are not changed by creator routing. */
+/** The creator switch that goes with picking another creator's STREAM in Live Status. On Home it is selectCreator; off Home it only switches the
+ * creator WITHOUT navigating, so the stream still opens where it always has (the player modal) and Home later shows that creator. */
 export function switchCreatorForVideo(creatorKey: string): void {
   if (readPage() === "home") return selectCreator(creatorKey)
   const creator = resolveCreatorKey(creatorKey)
   if (!creator) return
   selectedCreatorStore.set(toLegacyRosterId(creator))
-  writeSessionHomePath(creatorPath(creator))
+  writeSessionCreatorId(toLegacyRosterId(creator))
 }
 
 function subscribe(listener: () => void): () => void {
@@ -140,8 +121,7 @@ export function useCurrentPath(): string {
 
 /** MainNavbar's page switch (Home/Schedule/Settings/About, plus the dev-only Video Data), reflected in the URL's own path and made reactive
  * via useSyncExternalStore + a popstate listener, so clicking a MainNavbar link updates the rendered page immediately instead of needing a
- * reload. Serving index.html for these paths is the dev server's job (Vite's default SPA fallback) and, in production, Firebase Hosting's SPA
- * rewrite. */
+ * reload. Each page's HTML is a real file in the build (Firebase Hosting serves it); in development Vite's SPA fallback serves index.html. */
 export function useCurrentPage(): [Page, (next: Page) => void] {
   const page = useSyncExternalStore(subscribe, readPage)
   const set = useCallback((next: Page) => goToPage(next), [])

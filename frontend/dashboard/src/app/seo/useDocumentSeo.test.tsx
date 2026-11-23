@@ -1,6 +1,5 @@
 import { render } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { getCreators } from "../../entities/creator/data/creatorRegistry"
 import { NOT_FOUND_SEO, resolvePageSeo } from "./pageSeo"
 import { applyDocumentSeo, useDocumentSeo } from "./useDocumentSeo"
 
@@ -20,27 +19,27 @@ afterEach(() => {
 
 describe("applyDocumentSeo", () => {
   it("creates the title, description, canonical and Open Graph tags on a bare shell", () => {
-    applyDocumentSeo(document, resolvePageSeo("/creator/kurumi-noa", getCreators())!)
-    expect(document.title).toBe("胡桃のあ – Live status, schedule & videos | OshiYobi")
-    expect(meta('meta[name="description"]')?.getAttribute("content")).toContain("胡桃のあ")
-    expect(meta('link[rel="canonical"]')?.getAttribute("href")).toBe("https://oshiyobi.web.app/creator/kurumi-noa")
-    expect(meta('meta[property="og:url"]')?.getAttribute("content")).toBe("https://oshiyobi.web.app/creator/kurumi-noa")
+    applyDocumentSeo(document, resolvePageSeo("/")!)
+    expect(document.title).toBe("OshiYobi – VTuber live status, schedule & new videos")
+    expect(meta('meta[name="description"]')?.getAttribute("content")).toContain("OshiYobi")
+    expect(meta('link[rel="canonical"]')?.getAttribute("href")).toBe("https://oshiyobi.web.app/")
+    expect(meta('meta[property="og:url"]')?.getAttribute("content")).toBe("https://oshiyobi.web.app/")
     expect(meta('meta[name="robots"]')).toBeNull()
   })
 
   it("updates the tags in place, never duplicating them, as the visitor moves between pages", () => {
-    applyDocumentSeo(document, resolvePageSeo("/creator/kurumi-noa", getCreators())!)
-    applyDocumentSeo(document, resolvePageSeo("/creator/usada-pekora", getCreators())!)
+    applyDocumentSeo(document, resolvePageSeo("/")!)
+    applyDocumentSeo(document, resolvePageSeo("/schedule")!)
     expect(document.head.querySelectorAll('link[rel="canonical"]')).toHaveLength(1)
     expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1)
-    expect(meta('link[rel="canonical"]')?.getAttribute("href")).toBe("https://oshiyobi.web.app/creator/usada-pekora")
-    expect(document.title).toContain("兎田ぺこら")
+    expect(meta('link[rel="canonical"]')?.getAttribute("href")).toBe("https://oshiyobi.web.app/schedule")
+    expect(document.title).toBe("Live schedule | OshiYobi")
   })
 
   it("adds noindex on settings and removes it again on an indexable page", () => {
-    applyDocumentSeo(document, resolvePageSeo("/setting", getCreators())!)
+    applyDocumentSeo(document, resolvePageSeo("/setting")!)
     expect(meta('meta[name="robots"]')?.getAttribute("content")).toBe("noindex, nofollow")
-    applyDocumentSeo(document, resolvePageSeo("/schedule", getCreators())!)
+    applyDocumentSeo(document, resolvePageSeo("/schedule")!)
     expect(meta('meta[name="robots"]')).toBeNull()
   })
 
@@ -60,9 +59,9 @@ describe("useDocumentSeo", () => {
     expect(meta('link[rel="canonical"]')?.getAttribute("href")).toBe("https://oshiyobi.web.app/about")
   })
 
-  it("leaves the document untouched on a path that is not a page, so a 404 page keeps its noindex", () => {
+  it.each(["/nonexistent-page", "/creator/aizawa-ema"])("leaves the document untouched on %s (not a page), so the 404 page keeps its noindex", (path) => {
     document.head.innerHTML = '<title>Page not found | OshiYobi</title><meta name="robots" content="noindex, nofollow">'
-    render(<Probe path="/nonexistent-page" />)
+    render(<Probe path={path} />)
     expect(document.title).toBe("Page not found | OshiYobi")
     expect(meta('meta[name="robots"]')?.getAttribute("content")).toBe("noindex, nofollow")
     expect(meta('link[rel="canonical"]')).toBeNull()

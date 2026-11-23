@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it } from "vitest"
 import { MainNavbar } from "./MainNavbar"
+import { selectCreator } from "./useCurrentPage"
 import { resetAllSharedStateForTests } from "../../shared/state/sharedState"
 
 function setLocale(locale: string) {
@@ -11,6 +12,7 @@ function setLocale(locale: string) {
 
 beforeEach(() => {
   window.history.pushState({}, "", "/")
+  window.sessionStorage.clear()
 })
 
 describe("MainNavbar", () => {
@@ -42,13 +44,54 @@ describe("MainNavbar", () => {
     const user = userEvent.setup()
     render(<MainNavbar />)
 
-    const home = screen.getByRole("button", { name: "Home" })
-    const dashboard = screen.getByRole("button", { name: "Video Data" })
+    const home = screen.getByRole("link", { name: "Home" })
+    const dashboard = screen.getByRole("link", { name: "Video Data" })
     expect(home).toHaveClass("main-navbar__link--active")
+    expect(home).toHaveAttribute("aria-current", "page")
     expect(dashboard).not.toHaveClass("main-navbar__link--active")
 
     await user.click(dashboard)
     expect(dashboard).toHaveClass("main-navbar__link--active")
+    expect(dashboard).toHaveAttribute("aria-current", "page")
     expect(home).not.toHaveClass("main-navbar__link--active")
+    expect(home).not.toHaveAttribute("aria-current")
+  })
+
+  it("renders every item as a crawlable <a href> to the page it opens", () => {
+    setLocale("en")
+    render(<MainNavbar />)
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/")
+    expect(screen.getByRole("link", { name: "Schedule" })).toHaveAttribute("href", "/schedule")
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/setting")
+    expect(screen.getByRole("link", { name: "About" })).toHaveAttribute("href", "/about")
+  })
+
+  it("points Home at the root \"/\" always: a creator switch never changes the link (there are no per-creator URLs)", () => {
+    setLocale("en")
+    window.sessionStorage.setItem("yobi.session.homeCreator", "ch_amayui_moka")
+    render(<MainNavbar />)
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/")
+
+    act(() => selectCreator("tachibana_hinano"))
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/")
+    expect(document.querySelectorAll('a[href^="/creator"]')).toHaveLength(0)
+  })
+
+  it("navigates in place on a plain click but leaves a modified click (new tab/window) to the browser", () => {
+    setLocale("en")
+    render(<MainNavbar />)
+    const schedule = screen.getByRole("link", { name: "Schedule" })
+
+    const modified = new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true })
+    schedule.dispatchEvent(modified)
+    expect(modified.defaultPrevented).toBe(false)
+    expect(window.location.pathname).toBe("/")
+
+    const plain = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })
+    act(() => {
+      schedule.dispatchEvent(plain)
+    })
+    expect(plain.defaultPrevented).toBe(true)
+    expect(window.location.pathname).toBe("/schedule")
   })
 })

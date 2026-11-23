@@ -11,11 +11,11 @@ export function isAnalyticsEnvironment(hostname: string = window.location.hostna
   return import.meta.env.PROD && ANALYTICS_HOSTNAMES.has(hostname)
 }
 
-/** The only routes that are measured: the root Home, the creator pages and Schedule. Every other route (Settings, About, anything unknown or
+/** The only routes that are measured: the root Home and Schedule. Every other route (Settings, About, anything unknown or
  * development-only) is never measured. */
 export function isAnalyticsRoute(pathname: string): boolean {
   const path = pathname.replace(/\/+$/, "") || "/"
-  return path === "/" || path === "/schedule" || path === "/creator" || path.startsWith("/creator/")
+  return path === "/" || path === "/schedule"
 }
 
 type SdkAnalytics = typeof import("firebase/analytics")
