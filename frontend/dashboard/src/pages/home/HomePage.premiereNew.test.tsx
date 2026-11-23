@@ -9,7 +9,6 @@ import { act, render, renderHook, screen, waitFor } from "@testing-library/react
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { HomePage } from "./HomePage"
-import { creatorPath } from "../../app/navigation/creatorRoutes"
 import { getCreators, toLegacyRosterId } from "../../entities/creator/data/creatorRegistry"
 import { useSelectedCreator } from "../../features/oshi/hooks/useSelectedCreator"
 import { loadYouTubeIframeApi } from "../../features/media-player/utils/youtubeIframeApi"
@@ -25,7 +24,6 @@ vi.mock("../../features/media-player/utils/youtubeIframeApi", () => ({ loadYouTu
 
 const [CREATOR_A] = getCreators().filter((creator) => creator.active)
 const LEGACY_A = toLegacyRosterId(CREATOR_A)
-const ROUTE_A = creatorPath(CREATOR_A)
 const BASELINE_KEY = "yobi.newContent.trackingBaselineAt"
 const SEEN_KEY = "yobi.newContent.seenVideoIds"
 
@@ -143,7 +141,7 @@ beforeEach(() => {
   const { result } = renderHook(() => useSelectedCreator())
   act(() => result.current[1](LEGACY_A))
   vi.spyOn(window, "scrollTo").mockImplementation(() => {})
-  window.history.replaceState({}, "", ROUTE_A)
+  window.history.replaceState({}, "", "/")
 })
 
 afterEach(() => {
@@ -153,7 +151,7 @@ afterEach(() => {
   window.history.replaceState({}, "", "/")
 })
 
-/** A shared-state reset also forgets the selected creator (what loading /creator/<slug> does): select creator A again. */
+/** A shared-state reset also forgets the selected creator (what a creator switch does): select creator A again. */
 function selectCreatorA() {
   const { result } = renderHook(() => useSelectedCreator())
   act(() => result.current[1](LEGACY_A))

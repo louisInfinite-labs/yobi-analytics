@@ -1,11 +1,10 @@
-/** A video notification's deep link (/creator/<slug>?video=<id>, built by the service worker) on the REAL HomePage: the exact video is checked (YouTube
+/** A video notification's deep link (/?creator=<creatorId>&video=<id>, built by the service worker) on the REAL HomePage: the exact video is checked (YouTube
  * oEmbed, stubbed here) and opened in the central player like a deliberate pick -- also when it is in none of the Home lists -- or, when it cannot be shown,
  * the creator Home stays and a dialog explains why. Only `fetch` and the YouTube IFrame API are faked. */
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { HomePage } from "./HomePage"
-import { creatorPath } from "../../app/navigation/creatorRoutes"
 import { getCreators, toLegacyRosterId } from "../../entities/creator/data/creatorRegistry"
 import { useSelectedCreator } from "../../features/oshi/hooks/useSelectedCreator"
 import { loadYouTubeIframeApi } from "../../features/media-player/utils/youtubeIframeApi"
@@ -21,7 +20,8 @@ vi.mock("../../features/media-player/utils/youtubeIframeApi", () => ({ loadYouTu
 const [CREATOR_A, CREATOR_B] = getCreators().filter((creator) => creator.active)
 const LEGACY_A = toLegacyRosterId(CREATOR_A)
 const LEGACY_B = toLegacyRosterId(CREATOR_B)
-const ROUTE_A = creatorPath(CREATOR_A)
+/** The deep link a notification for creator A opens: the root Home naming A. */
+const LINK_A = `/?creator=${CREATOR_A.creatorId}`
 const BASELINE_KEY = "yobi.newContent.trackingBaselineAt"
 const SEEN_KEY = "yobi.newContent.seenVideoIds"
 const DEFAULT_OSHI_KEY = "yobi.defaultOshiCreatorId"
@@ -91,7 +91,7 @@ beforeEach(() => {
   resetAllSharedStateForTests()
   resetHomeSelectedVideoForTests()
   const { result } = renderHook(() => useSelectedCreator())
-  act(() => result.current[1](LEGACY_A)) // what loading /creator/<slug> does: the creator shown is A, the persistent default Oshi stays B
+  act(() => result.current[1](LEGACY_A)) // what opening the link does (the router applies ?creator): the creator shown is A, the persistent default Oshi stays B
   vi.spyOn(window, "scrollTo").mockImplementation(() => {})
 })
 
@@ -106,7 +106,7 @@ const playerSrc = () => document.querySelector<HTMLIFrameElement>(".oshi-player-
 const seen = () => JSON.parse(window.localStorage.getItem(SEEN_KEY) ?? "[]") as string[]
 
 async function openDeepLink(search: string) {
-  window.history.replaceState({}, "", `${ROUTE_A}${search}`)
+  window.history.replaceState({}, "", `${LINK_A}${search.replace(/^\?/, "&")}`)
   const view = render(<HomePage />)
   await screen.findByRole("button", { name: "Recent One" })
   return view
@@ -118,7 +118,7 @@ describe("an available video opens in the player", () => {
 
     await waitFor(() => expect(playerSrc()).toContain(`/embed/${NOT_IN_LISTS}?`))
     expect(window.scrollTo).toHaveBeenCalledTimes(1)
-    expect(window.location.pathname + window.location.search).toBe(`${ROUTE_A}?video=${NOT_IN_LISTS}`)
+    expect(window.location.pathname + window.location.search).toBe(`${LINK_A}&video=${NOT_IN_LISTS}`)
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
@@ -135,7 +135,7 @@ describe("an available video opens in the player", () => {
   })
 
   it("a video link that is checked before the Home data has loaded still wins once that data arrives", async () => {
-    window.history.replaceState({}, "", `${ROUTE_A}?video=${NOT_IN_LISTS}`)
+    window.history.replaceState({}, "", `${LINK_A}&video=${NOT_IN_LISTS}`)
     render(<HomePage />) // no waiting for the lists: the check and /live-streams race
     await waitFor(() => expect(playerSrc()).toContain(`/embed/${NOT_IN_LISTS}?`))
     await screen.findByRole("button", { name: "Recent One" })
@@ -145,7 +145,7 @@ describe("an available video opens in the player", () => {
   it("a pick made while the linked video is still waiting for the Home data wins: the queued link never replaces it", async () => {
     let openGate: () => void = () => undefined
     liveStreamsGate = new Promise<void>((resolve) => (openGate = resolve))
-    window.history.replaceState({}, "", `${ROUTE_A}?video=${NOT_IN_LISTS}`)
+    window.history.replaceState({}, "", `${LINK_A}&video=${NOT_IN_LISTS}`)
     render(<HomePage />)
     const recent = await screen.findByRole("button", { name: "Recent One" }) // the shelf is up while /live-streams is still held back
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("oembed"))).toBe(true))
@@ -166,7 +166,7 @@ describe("an available video opens in the player", () => {
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Recent One" }))
     await waitFor(() => expect(playerSrc()).toContain("R1R1R1R1R1R"))
-    expect(window.location.pathname + window.location.search).toBe(ROUTE_A)
+    expect(window.location.pathname + window.location.search).toBe("/")
 
     view.unmount()
     resetHomeSelectedVideoForTests()
@@ -178,7 +178,7 @@ describe("an available video opens in the player", () => {
 
   it("an ongoing livestream, an upcoming livestream and a completed archive are each located by their own id", async () => {
     for (const id of [LIVE_NOW, UPCOMING, ARCHIVE]) {
-      window.history.replaceState({}, "", `${ROUTE_A}?video=${id}`)
+      window.history.replaceState({}, "", `${LINK_A}&video=${id}`)
       const view = render(<HomePage />)
       await waitFor(() => expect(playerSrc()).toContain(`/embed/${id}?`))
       view.unmount()
@@ -213,11 +213,11 @@ describe("a video that cannot be shown keeps the creator Home and explains", () 
     const dialog = await screen.findByRole("dialog")
     expect(dialog).toHaveTextContent("This video is private or has been deleted and can't be shown.")
     expect(playerSrc()).not.toContain(PRIVATE)
-    expect(window.location.pathname + window.location.search).toBe(`${ROUTE_A}?video=${PRIVATE}`)
+    expect(window.location.pathname + window.location.search).toBe(`${LINK_A}&video=${PRIVATE}`)
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Close" }))
     expect(screen.queryByRole("dialog")).toBeNull()
-    expect(window.location.pathname + window.location.search).toBe(ROUTE_A) // a closed explanation does not come back on refresh
+    expect(window.location.pathname + window.location.search).toBe("/") // a closed explanation does not come back on refresh
     await userEvent.setup().click(screen.getByRole("button", { name: "Recent One" })) // the creator Home still works
     await waitFor(() => expect(playerSrc()).toContain("R1R1R1R1R1R"))
     expect(screen.queryByRole("dialog")).toBeNull() // not shown again after normal use

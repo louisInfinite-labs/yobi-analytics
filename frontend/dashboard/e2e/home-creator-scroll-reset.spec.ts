@@ -51,7 +51,7 @@ async function closeLiveStatus(page: Page) {
 test.beforeAll(async ({ browser }, testInfo) => {
   const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL })
   const page = await context.newPage()
-  await page.goto("/creator/aizawa-ema")
+  await page.goto("/?creator=aizawa_ema")
   await page.waitForLoadState("networkidle")
   await context.close()
 })
@@ -68,7 +68,7 @@ for (const [label, viewport] of [
     test.use({ viewport })
 
     test("A scrolled down -> B (Live Status) is at the top; B scrolled down -> back to A is at the top", async ({ page }) => {
-      await page.goto("/creator/aizawa-ema")
+      await page.goto("/?creator=aizawa_ema")
       await expect(page.locator(".oshi-status__creator-name")).toHaveText("藍沢エマ")
 
       await scrollDown(page)
@@ -76,51 +76,38 @@ for (const [label, viewport] of [
       await expect.poll(() => scrollY(page)).toBe(0) // immediately, even while the drawer is still open
       await closeLiveStatus(page)
       expect(await scrollY(page)).toBe(0)
-      expect(new URL(page.url()).pathname).toBe("/creator/usada-pekora")
+      expect(new URL(page.url()).pathname).toBe("/") // a creator switch never changes the URL
 
       await scrollDown(page, 700)
       await switchCreatorFromLiveStatus(page, "藍沢エマ")
       await expect.poll(() => scrollY(page)).toBe(0)
       await closeLiveStatus(page)
       expect(await scrollY(page)).toBe(0)
-      expect(new URL(page.url()).pathname).toBe("/creator/aizawa-ema")
+      expect(new URL(page.url()).pathname).toBe("/")
     })
 
-    test("browser Back and Forward between two creator routes both land at the top, never at the history entry's old position", async ({ page }) => {
-      await page.goto("/creator/aizawa-ema")
+    test("a creator switch adds no history entry: Back leaves Home instead of stepping back through creators", async ({ page }) => {
+      await page.goto("/schedule")
+      await page.goto("/?creator=aizawa_ema")
       await expect(page.locator(".oshi-status__creator-name")).toHaveText("藍沢エマ")
-      await scrollDown(page, 900) // A's history entry is left scrolled down
-
       await switchCreatorFromLiveStatus(page, "兎田ぺこら")
       await closeLiveStatus(page)
-      await expect.poll(() => scrollY(page)).toBe(0)
-      await scrollDown(page, 700) // B's history entry is left scrolled down too
-
       await page.goBack()
-      await expect(page.locator(".oshi-status__creator-name")).toHaveText("藍沢エマ")
-      expect(new URL(page.url()).pathname).toBe("/creator/aizawa-ema")
-      await page.waitForTimeout(400) // past the browser's own post-popstate scroll restoration
-      expect(await scrollY(page)).toBe(0)
-
-      await scrollDown(page, 500)
-      await page.goForward()
-      await expect(page.locator(".oshi-status__creator-name")).toHaveText("兎田ぺこら")
-      await page.waitForTimeout(400)
-      expect(await scrollY(page)).toBe(0)
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/schedule")
     })
 
     test("a deep link to another creator (a notification tap navigating the open window) opens at the top", async ({ page }) => {
-      await page.goto("/creator/aizawa-ema")
+      await page.goto("/?creator=aizawa_ema")
       await scrollDown(page)
 
-      await page.goto("/creator/usada-pekora") // what sw.js's client.navigate / openWindow do: a new document for the creator route
+      await page.goto("/?creator=usada_pekora") // what sw.js's client.navigate / openWindow do: a new document naming the creator
       await expect(page.locator(".oshi-status__creator-name")).toHaveText("兎田ぺこら")
       await page.waitForTimeout(300)
       expect(await scrollY(page)).toBe(0)
     })
 
     test("the same creator's own updates (focus / visibility refresh) never move the scroll position", async ({ page }) => {
-      await page.goto("/creator/aizawa-ema")
+      await page.goto("/?creator=aizawa_ema")
       await expect(page.locator(".oshi-status__creator-name")).toHaveText("藍沢エマ")
       await scrollDown(page, 900)
 
@@ -138,7 +125,7 @@ test.describe("desktop: Home scrolling behavior is unchanged", () => {
   test.use({ viewport: DESKTOP })
 
   test("a creator change does not touch the page scroll position (no reset on desktop)", async ({ page }) => {
-    await page.goto("/creator/aizawa-ema")
+    await page.goto("/?creator=aizawa_ema")
     await expect(page.locator(".oshi-status__creator-name")).toHaveText("藍沢エマ")
     await scrollDown(page, 500) // the spacer makes the document scrollable here only to observe that nothing resets it
 

@@ -107,7 +107,7 @@ describe("explicit selection still works", () => {
 
     nav.selectCreator(B)
     expect(selected.selectedCreatorStore.get()).toBe(B)
-    expect(window.location.pathname).toBe("/creator/kurumi-noa")
+    expect(window.location.pathname).toBe("/") // the creator is in-app state; Home's URL never changes
 
     nav.goToPage("settings")
     changeOshiTo(oshi, A)
@@ -150,21 +150,25 @@ describe("the existing behavior that must stay", () => {
     expect(window.location.pathname).toBe("/")
   })
 
-  it("going back from an explicit creator page to the root Home still shows the Oshi (a Home-to-Home move follows the URL)", async () => {
+  it("a creator switch on Home adds no history entry: Back leaves Home rather than stepping through creators", async () => {
     const { nav, selected } = await loadRouter()
-    nav.selectCreator(B) // /creator/kurumi-noa
+    nav.goToPage("schedule")
+    nav.goToPage("home")
+    const before = window.history.length
+    nav.selectCreator(B)
+    expect(window.history.length).toBe(before)
 
     window.history.back()
-    await waitFor(() => expect(window.location.pathname).toBe("/"))
-
-    expect(selected.selectedCreatorStore.get()).toBe(A)
+    await waitFor(() => expect(window.location.pathname).toBe("/schedule"))
+    expect(selected.selectedCreatorStore.get()).toBe(B)
   })
 
-  it("a direct /creator/:slug link beats the Oshi", async () => {
-    window.history.pushState({}, "", "/creator/kurumi-noa")
+  it("a notification's /?creator=<creatorId> beats the Oshi, and the parameter is removed once applied", async () => {
+    window.history.pushState({}, "", "/?creator=kurumi_noa")
 
     const { selected } = await loadRouter()
 
     expect(selected.selectedCreatorStore.get()).toBe(B)
+    expect(window.location.pathname + window.location.search).toBe("/")
   })
 })
