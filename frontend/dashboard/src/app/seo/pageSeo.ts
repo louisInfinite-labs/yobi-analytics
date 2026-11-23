@@ -1,34 +1,15 @@
-import { BRANCH_LABELS, ORGANIZATION_LABELS } from "../../entities/creator/model/domain.ts"
-import type { BranchKey, ChannelType, GroupKey, LifecycleStage, OrganizationKey } from "../../entities/creator/model/domain.ts"
-import { creatorIdToSlug } from "../navigation/creatorSlugRule.ts"
 import { SITEMAP_ORIGIN } from "./sitemap.ts"
 
 /** Per-page SEO metadata and the static (pre-JavaScript) page body, shared by the build-time page generator (vite.config.ts's seo plugin) and the
- * running app (useDocumentSeo.ts keeps the tab title/canonical right after in-app navigation). Pure and dependency-light on purpose: the Vite
- * config loads it in a Node context, so it imports only types, label tables and the slug rule -- never the app's registry module. Every Creator fact
- * comes from the generated Creator Registry; nothing about a Creator is written by hand here. */
+ * running app (useDocumentSeo.ts keeps the tab title/canonical right after in-app navigation). Pure and dependency-free on purpose: the Vite
+ * config loads it in a Node context. The site's pages are fixed: "/", "/schedule", "/about" (indexable) and "/setting" (noindex). Which creator
+ * Home shows is in-app state, so there is no per-creator page, metadata or URL. */
 
-export type SeoPageKind = "home" | "schedule" | "about" | "settings" | "creator" | "notFound"
-
-/** The registry fields the SEO pages use (a structural subset of the app's CanonicalCreator, declared here from domain.ts's types so the Vite config's
- * Node-context type check never has to load creatorMaster.ts). */
-export interface SeoCreator {
-  creatorId: string
-  displayName: string
-  avatarUrl: string | null
-  organization: OrganizationKey
-  branch: BranchKey
-  groupKey: GroupKey[]
-  channelType: ChannelType
-  lifecycleStage: LifecycleStage
-  displayOrder: number
-  active: boolean
-  youtubeChannelId: string
-}
+export type SeoPageKind = "home" | "schedule" | "about" | "settings" | "notFound"
 
 export interface PageSeo {
   kind: SeoPageKind
-  /** The page's own path ("/", "/creator/aizawa-ema", ...); empty for the not-found page, which has no URL of its own. */
+  /** The page's own path ("/", "/schedule", ...); empty for the not-found page, which has no URL of its own. */
   path: string
   title: string
   description: string
@@ -41,7 +22,6 @@ export interface PageSeo {
 export const SITE_NAME = "OshiYobi"
 export const SITE_TAGLINE = "推しが呼んでる。"
 export const DEFAULT_OG_IMAGE = `${SITEMAP_ORIGIN}/icons/icon-512.png`
-export const CREATOR_PATH_PREFIX = "/creator/"
 
 const HOME_DESCRIPTION =
   "OshiYobi is a tracking platform for VTuber fans: livestreams, new videos and upcoming-stream schedules from Hololive and VSPO creators in one place, with live and new-video notifications."
@@ -51,58 +31,13 @@ const SCHEDULE_DESCRIPTION = "Upcoming and ongoing livestreams from the Hololive
  * groups, Hololive and VSPO!. pageSeo.test.ts keeps the two in step. */
 const ABOUT_DESCRIPTION = "OshiYobi (推し呼び) is a website for checking livestream information from Hololive and VSPO! VTubers."
 
-/** The placeholder groupKey the registry uses for "no generation/unit"; it is data, not a name to show. */
-const NO_GROUP = "NO"
-
 export function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
-}
-
-const CJK = /[぀-ヿ㐀-鿿ｦ-ﾟ]/
-
-/** A creator name as HTML: escaped, and marked lang="ja" when it contains Japanese characters so a screen reader / the page's `lang="en"` does not
- * mispronounce it. */
-function nameHtml(name: string): string {
-  const escaped = escapeHtml(name)
-  return CJK.test(name) ? `<span lang="ja">${escaped}</span>` : escaped
-}
-
-export function creatorSeoPath(creator: Pick<SeoCreator, "creatorId">): string {
-  return `${CREATOR_PATH_PREFIX}${creatorIdToSlug(creator.creatorId)}`
 }
 
 /** The absolute canonical URL of a path on the official host. */
 function canonicalFor(path: string): string {
   return `${SITEMAP_ORIGIN}${path}`
-}
-
-/** "Hololive JP member" / "VSPO group channel" / ...: how the registry classifies the channel, in words. Only the registry's own fields. */
-function profileLabel(creator: SeoCreator): string {
-  if (creator.channelType === "member") return `${BRANCH_LABELS[creator.branch]} member`
-  return `${ORGANIZATION_LABELS[creator.organization]} ${creator.channelType === "group" ? "group" : "staff"} channel`
-}
-
-function groupLabel(creator: SeoCreator): string | null {
-  const groups = creator.groupKey.filter((group) => group !== NO_GROUP)
-  return groups.length > 0 ? groups.join(" / ") : null
-}
-
-/** The SEO metadata of one registry creator, worded from its lifecycle stage and channel type. */
-function creatorSeo(creator: SeoCreator): PageSeo {
-  const path = creatorSeoPath(creator)
-  const name = creator.displayName
-  const profile = profileLabel(creator)
-  let title: string
-  let description: string
-  if (creator.lifecycleStage === "graduated") {
-    title = `${name} (graduated) – Past videos & streams | ${SITE_NAME}`
-    description = `Past videos and streams of ${name} (${profile}, graduated) on ${SITE_NAME}, a VTuber live status, schedule and new-video tracker.`
-  } else {
-    const stage = creator.lifecycleStage === "pre_debut" ? `${profile}, pre-debut` : profile
-    title = `${name} – Live status, schedule & videos | ${SITE_NAME}`
-    description = `${name} (${stage}) on ${SITE_NAME}: live status, upcoming streams and recent videos in one place, with live and new-video notifications.`
-  }
-  return { kind: "creator", path, title, description, canonicalUrl: canonicalFor(path), indexable: true, ogImage: creator.avatarUrl ?? DEFAULT_OG_IMAGE }
 }
 
 const FIXED_PAGES: Record<"/" | "/schedule" | "/about" | "/setting", PageSeo> = {
@@ -155,16 +90,16 @@ export const NOT_FOUND_SEO: PageSeo = {
   ogImage: DEFAULT_OG_IMAGE,
 }
 
-/** The SEO metadata of a path the site serves as a page, or null for any other path (an unknown route, an inactive/unknown creator slug). A trailing
- * slash is ignored, matching the router. */
-export function resolvePageSeo(pathname: string, creators: readonly SeoCreator[]): PageSeo | null {
+/** The SEO metadata of a path the site serves as a page, or null for any other path (an unknown route -- including any /creator/... URL, which
+ * the host either redirects to the root Home (a retired creator page, firebase.json) or answers with HTTP 404 and the noindex not-found page).
+ * A trailing slash is ignored. */
+export function resolvePageSeo(pathname: string): PageSeo | null {
   const path = pathname === "/" ? "/" : pathname.replace(/\/+$/, "")
-  if (path in FIXED_PAGES) return FIXED_PAGES[path as keyof typeof FIXED_PAGES]
-  if (!path.startsWith(CREATOR_PATH_PREFIX)) return null
-  const slug = path.slice(CREATOR_PATH_PREFIX.length)
-  const creator = creators.find((candidate) => candidate.active && creatorIdToSlug(candidate.creatorId) === slug)
-  return creator ? creatorSeo(creator) : null
+  return path in FIXED_PAGES ? FIXED_PAGES[path as keyof typeof FIXED_PAGES] : null
 }
+
+/** Every page the build writes, in order: the sitemap's indexable pages, then the noindex settings page. */
+export const SEO_PAGE_PATHS: readonly string[] = ["/", "/schedule", "/about", "/setting"]
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------
 // Static body: the indexable text and crawlable links a page carries in its raw HTML (what a non-rendering crawler, a link extractor and Google's
@@ -174,62 +109,23 @@ export function resolvePageSeo(pathname: string, creators: readonly SeoCreator[]
 
 const SITE_NAV = `<nav aria-label="${SITE_NAME}"><a href="/">${SITE_NAME} home</a> · <a href="/schedule">Live schedule</a> · <a href="/about">About</a></nav>`
 
-/** The active creators in the registry's canonical display order. */
-function byDisplayOrder(creators: readonly SeoCreator[]): SeoCreator[] {
-  return [...creators].filter((creator) => creator.active).sort((a, b) => a.displayOrder - b.displayOrder || a.creatorId.localeCompare(b.creatorId))
-}
-
-/** A list of crawlable links to the given creators' pages. */
-function creatorLinks(creators: readonly SeoCreator[]): string {
-  const items = creators.map((creator) => `<li><a href="${creatorSeoPath(creator)}">${nameHtml(creator.displayName)}</a></li>`)
-  return `<ul>${items.join("")}</ul>`
-}
-
 /** The static body's container, the marker the build and the tests look for. */
 function wrap(inner: string): string {
   return `<main data-seo-static>${inner}</main>`
 }
 
-/** The home page's static body: the site intro and a link to every creator, grouped by branch. */
-function homeBody(creators: readonly SeoCreator[]): string {
-  const active = byDisplayOrder(creators)
-  const sections = (["hololive", "vspo"] as const)
-    .map((organization) => {
-      const inOrg = active.filter((creator) => creator.organization === organization)
-      const branches = (Object.keys(BRANCH_LABELS) as (keyof typeof BRANCH_LABELS)[]).filter((branch) => inOrg.some((creator) => creator.branch === branch))
-      return branches
-        .map((branch) => `<h3>${escapeHtml(BRANCH_LABELS[branch])}</h3>${creatorLinks(inOrg.filter((creator) => creator.branch === branch))}`)
-        .join("")
-    })
-    .join("")
-  return wrap(
-    `<h1>${SITE_NAME} – ${SITE_TAGLINE}</h1><p>${escapeHtml(HOME_DESCRIPTION)}</p>${SITE_NAV}` +
-      `<h2>Creators on ${SITE_NAME}</h2>${sections}`,
-  )
-}
+/** What the home page offers, in its static body: the same features the app's own "About OshiYobi" section describes. Plain text, no data. */
+const HOME_FEATURES = [
+  "Live Status: see who is live or about to go live, and switch the home screen to any creator.",
+  "Live schedule: upcoming and ongoing streams, laid out by day.",
+  "Video list: recent videos and streams by topic, with a count of the new ones you have not watched yet.",
+  "Settings: choose your Oshi and turn on live and new-video notifications.",
+]
 
-/** A creator page's static body: the name, registry facts, a YouTube channel link and links to the other pages and branch peers. */
-function creatorBody(creator: SeoCreator, creators: readonly SeoCreator[]): string {
-  const name = nameHtml(creator.displayName)
-  const profile = escapeHtml(profileLabel(creator))
-  const facts = [
-    `<li>Organization: ${escapeHtml(ORGANIZATION_LABELS[creator.organization])}</li>`,
-    `<li>Branch: ${escapeHtml(BRANCH_LABELS[creator.branch])}</li>`,
-  ]
-  const group = groupLabel(creator)
-  if (group) facts.push(`<li>Generation / unit: ${nameHtml(group)}</li>`)
-  if (creator.lifecycleStage === "pre_debut") facts.push("<li>Status: pre-debut</li>")
-  if (creator.lifecycleStage === "graduated") facts.push("<li>Status: graduated</li>")
-  const channel = `<a href="https://www.youtube.com/channel/${encodeURIComponent(creator.youtubeChannelId)}" rel="noopener noreferrer">YouTube channel</a>`
-
-  const intro =
-    creator.lifecycleStage === "graduated"
-      ? `${name} (${profile}) has graduated. ${SITE_NAME} keeps this page for the past videos and streams it already tracked, but no longer collects new content.`
-      : `${name} is a ${profile}${creator.lifecycleStage === "pre_debut" ? " (pre-debut)" : ""}. On ${SITE_NAME} you can see ${name}’s live status, upcoming streams and recent videos in one place, and turn on live and new-video notifications.`
-
-  const peers = byDisplayOrder(creators).filter((other) => other.branch === creator.branch && other.creatorId !== creator.creatorId)
-  const peersSection = peers.length > 0 ? `<h2>More ${escapeHtml(BRANCH_LABELS[creator.branch])} on ${SITE_NAME}</h2>${creatorLinks(peers)}` : ""
-  return wrap(`<h1>${name}</h1><p>${intro}</p><ul>${facts.join("")}</ul><p>${channel}</p>${SITE_NAV}${peersSection}`)
+/** The home page's static body: the site name, what it is, what it offers and the site links. */
+function homeBody(): string {
+  const features = HOME_FEATURES.map((feature) => `<li>${escapeHtml(feature)}</li>`).join("")
+  return wrap(`<h1>${SITE_NAME} – ${SITE_TAGLINE}</h1><p>${escapeHtml(HOME_DESCRIPTION)}</p><ul>${features}</ul>${SITE_NAV}`)
 }
 
 /** The static body of a page that is only a heading, one paragraph and the site links. */
@@ -238,15 +134,10 @@ function simpleBody(heading: string, paragraph: string): string {
 }
 
 /** The static body for a page resolved by resolvePageSeo (or the not-found page). */
-export function buildStaticBody(seo: PageSeo, creators: readonly SeoCreator[]): string {
+export function buildStaticBody(seo: PageSeo): string {
   switch (seo.kind) {
     case "home":
-      return homeBody(creators)
-    case "creator": {
-      const creator = creators.find((candidate) => creatorSeoPath(candidate) === seo.path)
-      if (!creator) throw new Error(`seo: no registry creator for ${seo.path}`)
-      return creatorBody(creator, creators)
-    }
+      return homeBody()
     case "schedule":
       return simpleBody("Live schedule", SCHEDULE_DESCRIPTION)
     case "about":
@@ -254,7 +145,7 @@ export function buildStaticBody(seo: PageSeo, creators: readonly SeoCreator[]): 
     case "settings":
       return simpleBody("Settings", seo.description)
     case "notFound":
-      return simpleBody("Page not found", "This page does not exist. Use the links below to find a creator, the live schedule or the home page.")
+      return simpleBody("Page not found", "This page does not exist. Use the links below to go to the home page, the live schedule or About.")
   }
 }
 
@@ -293,14 +184,14 @@ const ROOT_TAG = '<div id="root"></div>'
 /** Turns the built dist/index.html shell into one page's HTML: its own <title>, description, canonical, robots and Open Graph tags in <head>, and its
  * static body inside #root. Throws (failing the build) if the shell no longer has the <title> or empty #root this relies on, rather
  * than emitting a page without its SEO. */
-export function renderSeoPage(shell: string, seo: PageSeo, creators: readonly SeoCreator[]): string {
+export function renderSeoPage(shell: string, seo: PageSeo): string {
   if (!TITLE_TAG.test(shell) || !shell.includes(ROOT_TAG) || !shell.includes("</head>")) {
     throw new Error("seo: the built index.html lacks <title>, </head> or an empty <div id=\"root\"></div>")
   }
   return shell
     .replace(TITLE_TAG, () => `<title>${escapeHtml(seo.title)}</title>`)
     .replace("</head>", () => `  ${headTags(seo)}\n  </head>`)
-    .replace(ROOT_TAG, () => `<div id="root">${buildStaticBody(seo, creators)}</div>`)
+    .replace(ROOT_TAG, () => `<div id="root">${buildStaticBody(seo)}</div>`)
 }
 
 /** The shell paths a built page is written to: "/" is index.html itself; every other path is "<path>/index.html" (the directory index Firebase
