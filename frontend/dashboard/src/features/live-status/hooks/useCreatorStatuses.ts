@@ -37,10 +37,10 @@ export function statusesFromStreams(streams: LiveStreamDto[], now: Date): Record
  * Dock, and Dashboard"). Sourced from Yobi's own GET /live-streams via the
  * shared useLiveStreams poll -- never holodex.net directly, never a Holodex
  * API key in the browser. */
-export function useCreatorStatuses(): { statuses: Record<string, CreatorStatus>; now: Date } {
+export function useCreatorStatuses(): { statuses: Record<string, CreatorStatus>; now: Date; statusKnown: boolean } {
   // The one shared minute clock (also used by the Schedule page): every countdown changes at the same wall-clock instant.
   const now = useMinuteClock()
-  const { streams } = useLiveStreams()
+  const { streams, fetchedThisSession } = useLiveStreams()
 
   const statuses = useMemo(() => {
     // One `now` for the whole selection: the 24h Live Status window (see
@@ -53,5 +53,7 @@ export function useCreatorStatuses(): { statuses: Record<string, CreatorStatus>;
     return reclassified
   }, [streams, now])
 
-  return { statuses, now }
+  // `statuses` always has an entry for every creator (offline by default), so it cannot itself tell "verified offline" from "not known yet":
+  // until this session's first /live-streams response, a consumer that shows a status must show it as unknown, never as OFFLINE.
+  return { statuses, now, statusKnown: fetchedThisSession !== false }
 }

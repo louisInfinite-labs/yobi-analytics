@@ -226,6 +226,9 @@ jobs:
           src/features/live-schedule/components/ScheduleGrid.swipe.test.tsx
           src/features/live-status/components/LiveScheduleDock.creatorSelection.test.tsx
           src/features/live-status/components/LiveScheduleDock.fullSheet.test.tsx
+          src/features/live-status/components/LiveScheduleDock.viewSegmented.test.tsx
+          src/features/live-status/components/LiveScheduleDock.unknownStatus.test.tsx
+          src/features/live-status/components/CreatorStatusList.controls.test.tsx
           src/features/media-player/utils/fullscreenPlayback.test.ts
           src/features/media-player/components/VideoPlayerModal.fullscreen.test.tsx
           src/features/media-player/components/VideoPlayerModal.test.tsx

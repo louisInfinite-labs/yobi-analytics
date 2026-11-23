@@ -32,7 +32,7 @@ function setViewport(width: number) {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(useCurrentPageModule.useCurrentPage).mockReturnValue(["home", vi.fn()])
-  vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: {}, now })
+  vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: {}, now, statusKnown: true })
   document.documentElement.style.overflow = ""
   document.body.style.overflow = ""
 })

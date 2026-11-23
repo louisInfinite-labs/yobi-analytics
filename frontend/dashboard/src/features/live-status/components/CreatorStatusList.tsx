@@ -16,6 +16,7 @@ import { t, type Locale } from "../../../shared/i18n/translations"
 import { OshiSwitchConfirmDialog } from "../../oshi/components/OshiSwitchConfirmDialog"
 import { useTodayMilestoneIndicators } from "../hooks/useTodayMilestoneIndicators"
 import { milestoneIndicatorText, type MilestoneIndicatorKind } from "../model/milestoneToday"
+import "../styles/creatorStatusUnknown.css"
 
 /** Avatar + favorite indicator. antd's own Avatar already falls back to its
  * `children` whenever `src` is unset or fails to load (see antd's Avatar.js
@@ -61,6 +62,9 @@ function CreatorAvatar({ creator, isFavorite }: { creator: CanonicalCreator; isF
   )
 }
 
+/** The status cell while no live data has arrived in this session: a neutral dash, not clickable. */
+const UNKNOWN_STATUS_DISPLAY = { label: "—", dotColor: "grey", clickable: false } as const
+
 interface CreatorRowProps {
   creator: CanonicalCreator
   status: CreatorStatus
@@ -76,6 +80,8 @@ interface CreatorRowProps {
   /** Set only when this creator has a birthday and/or debut anniversary on the current JST day; the row then shows it right after the name. */
   milestone?: MilestoneIndicatorKind
   locale: Locale
+  /** False until this session has live data: the status then reads as unknown, never as OFFLINE. */
+  statusKnown: boolean
   onCreatorButtonClick: (creator: CanonicalCreator) => void
   onSelectVideo: (video: { videoId: string; title: string }) => void
   onToggleFavorite: (channelId: string) => void
@@ -101,15 +107,16 @@ function CreatorRow({
   isCurrentOshi,
   milestone,
   locale,
+  statusKnown,
   onCreatorButtonClick,
   onSelectVideo,
   onToggleFavorite,
 }: CreatorRowProps) {
   const [timeFormat] = useTimeFormat()
-  const display = formatCreatorStatus(status, displayMode, now, locale, timeFormat)
+  const display = statusKnown ? formatCreatorStatus(status, displayMode, now, locale, timeFormat) : UNKNOWN_STATUS_DISPLAY
   const legacyId = toLegacyRosterId(creator)
   const swipe = useSwipeToFavorite(isFavorite, () => onToggleFavorite(legacyId))
-  const topic = status.kind === "offline" ? null : status.title
+  const topic = !statusKnown || status.kind === "offline" ? null : status.title
   const creatorContent = (
     <>
       <CreatorAvatar creator={creator} isFavorite={isFavorite} />
@@ -151,6 +158,7 @@ function CreatorRow({
         {/* Every displayed channel -- individual, official, group, staff -- keeps this click. Whether a
             channel can be saved as an Oshi in My Oshi Settings (isMyOshiEligible) is a separate rule and
             must never decide whether its Live Status row responds. */}
+        {/* An in-app control, not a link: switching creator changes what Home shows, never the URL (there are no per-creator pages). */}
         <button
           type="button"
           className="live-status-member__creator-button"
@@ -167,10 +175,10 @@ function CreatorRow({
         <button
           type="button"
           className="live-status-member__status"
-          data-status={status.kind}
+          data-status={statusKnown ? status.kind : "unknown"}
           disabled={!display.clickable}
           onClick={swipe.guardClick(() => {
-            if (status.kind === "live" || status.kind === "upcoming") {
+            if (statusKnown && (status.kind === "live" || status.kind === "upcoming")) {
               onSelectVideo({ videoId: status.videoId, title: status.title })
             }
           })}
@@ -218,6 +226,9 @@ export interface CreatorStatusListProps {
    * useConfirmOshiSwitchPreference) — not tied to any one creator. */
   confirmOshiSwitch: boolean
   onConfirmOshiSwitchChange: (next: boolean) => void
+  /** False until this session's first live-status response (useCreatorStatuses' statusKnown): every row then shows a neutral dash, never
+   * OFFLINE. Defaults to true. */
+  statusKnown?: boolean
 }
 
 /** An unset `favoriteOnlyIds` means the "all" view -- every creator matches. */
@@ -243,6 +254,7 @@ export function CreatorStatusList({
   locale,
   confirmOshiSwitch,
   onConfirmOshiSwitchChange,
+  statusKnown = true,
 }: CreatorStatusListProps) {
   const groups = groupEligibleCreatorsForLiveStatus(query, (creator) => matchesFavoriteFilter(toLegacyRosterId(creator), favoriteOnlyIds))
   // `video` is only set when the switch was triggered by a video click (not
@@ -306,7 +318,7 @@ export function CreatorStatusList({
         const liveChannelIds = new Set(
           group.subgroups.flatMap((subgroup) => subgroup.creators.map((creator) => toLegacyRosterId(creator))),
         )
-        const liveCount = [...liveChannelIds].filter((channelId) => statuses[channelId]?.kind === "live").length
+        const liveCount = statusKnown ? [...liveChannelIds].filter((channelId) => statuses[channelId]?.kind === "live").length : 0
         return (
           <div key={group.branch} className="live-status-group">
             <div className="live-status-group__heading">
@@ -342,6 +354,7 @@ export function CreatorStatusList({
                       isCurrentOshi={legacyId === currentOshiId}
                       milestone={milestoneIndicators[creator.creatorId]}
                       locale={locale}
+                      statusKnown={statusKnown}
                       onCreatorButtonClick={handleCreatorClick}
                       onSelectVideo={(video) => handleVideoSelect(creator, video)}
                       onToggleFavorite={onToggleFavorite}

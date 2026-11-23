@@ -82,7 +82,7 @@ export function LiveScheduleDock() {
   const [embed, setEmbed] = useState<{ videoId: string; title: string } | null>(null)
   const [page] = useCurrentPage()
   const [displayMode] = useUpcomingDisplayMode()
-  const { statuses, now } = useCreatorStatuses()
+  const { statuses, now, statusKnown } = useCreatorStatuses()
   const { favorites, toggleFavorite } = useFavoriteCreators()
   const [selectedCreatorId] = useSelectedCreator()
   // The one lookup into the canonical Creator Registry needed to bind this
@@ -115,7 +115,8 @@ export function LiveScheduleDock() {
   const summaryStatuses = favoriteOnlyIds
     ? Object.fromEntries(Object.entries(statuses).filter(([id]) => favoriteOnlyIds.has(id)))
     : statuses
-  const summary = summarize(summaryStatuses, now, locale)
+  // Before this session's first live-status response there is nothing to summarize: a neutral dash, never an assumed OFFLINE.
+  const summary = statusKnown ? summarize(summaryStatuses, now, locale) : ({ text: "—", dotColor: "grey" } as const)
 
   // Mirrors this component's own `expanded` state out to the module-level
   // useLiveDockExpanded store so Home can expose it to CSS as
@@ -254,6 +255,7 @@ export function LiveScheduleDock() {
           <div className="live-status-drawer__body">
             {hasOpened && (
               <CreatorStatusList
+                statusKnown={statusKnown}
                 statuses={statuses}
                 now={now}
                 displayMode={displayMode}
