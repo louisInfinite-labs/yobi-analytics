@@ -28,6 +28,8 @@ import { RecentActivityRow, StatusThumbnail } from "./RecentActivityRow"
 import { LatestActivityView } from "./LatestActivityView"
 import { MilestoneDialog } from "./MilestoneDialog"
 import type { CreatorStatus } from "../../live-status/model/creatorStatus"
+import { HomeSiteIntro } from "../../site-identity/HomeSiteIntro"
+import { HomeSiteHeading } from "../../site-identity/HomeSiteHeading"
 
 /** Shown for any number the backend has not provided (still loading, the request failed, or no
  * value exists for it) -- never a fabricated 0. */
@@ -205,6 +207,8 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
 
   return (
     <aside className="oshi-status" ref={panelRef}>
+      {/* The page's <h1> is the site's own name (Home is the site's home page, "/"); the creator being shown is a heading one level below. */}
+      <HomeSiteHeading />
       <div className="oshi-status__header">
         <div className="oshi-status__header-top">
           <div className="oshi-status__creator">
@@ -222,8 +226,8 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
               {creator?.channelName.charAt(0)}
             </Avatar>
             <div className="oshi-status__creator-text">
-              {/* The page's one heading: the creator Home is about this creator. Same look as before (the class sets size, weight and line; h1's margin is reset globally). */}
-              <h1 className="oshi-status__creator-name">{creator?.channelName ?? creatorId}</h1>
+              {/* The creator Home is showing, one level below the page's site heading. Same look as before (the class sets size, weight and line; h2's margin is reset globally). */}
+              <h2 className="oshi-status__creator-name">{creator?.channelName ?? creatorId}</h2>
               <div className="oshi-status__subscriber-row">
                 {/* Branch and generation from the Creator Registry: stable text that needs no API data, so the header says who this is from the first render. */}
                 {registryCreator && <div className="oshi-status__creator-meta">{creatorCaption(registryCreator)}</div>}
@@ -356,6 +360,9 @@ export function OshiStatusPanel({ creatorId, status, feed, now, onSelectVideo, n
             </div>
           )}
         </section>
+        {/* How to get around the site, closing the column on phone/tablet. Not on desktop: there Latest Activity scrolls on through the whole
+            feed inside this column, so nothing after it could be reached (the heading above already describes the site and links the pages). */}
+        {!isDesktop && <HomeSiteIntro />}
       </div>
       {milestoneDialog.open && (
         <MilestoneDialog
