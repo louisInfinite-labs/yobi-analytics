@@ -1,0 +1,92 @@
+/* Home's page heading (HomeSiteHeading.tsx): the first block of the status column, above the creator header. Same padding and divider as the
+   creator header (.oshi-status__header) and the panel's existing text tokens, so it reads as part of the column. flex: none keeps it from
+   shrinking inside the desktop column (a fixed-height flex box whose body scrolls). */
+.home-site-heading {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--oshi-border);
+}
+
+.home-site-heading__title {
+  margin: 0;
+  color: var(--oshi-text-1);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.home-site-heading__lead,
+.home-site-heading__live,
+.home-site-heading__links {
+  margin: 4px 0 0;
+  color: var(--oshi-text-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.home-site-heading__live {
+  color: var(--oshi-text-1);
+}
+
+/* Home's "About OshiYobi" section (HomeSiteIntro.tsx): the last section of the status column on phone/tablet. It reuses the column's own
+   .oshi-status__section box (padding, divider) and the panel's existing text tokens, so it reads as one more section of that column. */
+.home-site-intro__title {
+  /* Same look as the column's other section titles (.oshi-status__section-title), as a real heading element. */
+  margin: 0 0 6px;
+  color: var(--oshi-text-3);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.home-site-intro__lead,
+.home-site-intro__list,
+.home-site-intro__more {
+  margin: 0;
+  color: var(--oshi-text-2);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.home-site-intro__list {
+  margin-top: 6px;
+  padding-left: 14px;
+  list-style: disc;
+}
+
+.home-site-intro__list li + li {
+  margin-top: 3px;
+}
+
+.home-site-intro__more {
+  margin-top: 6px;
+}
+
+/* The heading's links: one wrapping row, separated by a middle dot drawn in CSS (not part of the link text). */
+.home-site-intro__links {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0;
+  row-gap: 2px;
+}
+
+.home-site-intro__links .home-site-intro__link + .home-site-intro__link::before {
+  content: "·";
+  display: inline-block;
+  padding: 0 6px;
+  color: var(--oshi-text-3);
+  text-decoration: none;
+}
+
+.home-site-intro__link {
+  color: var(--oshi-text-1);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.home-site-intro__link:hover,
+.home-site-intro__link:focus-visible {
+  color: var(--creator-main, var(--oshi-text-1));
+}
