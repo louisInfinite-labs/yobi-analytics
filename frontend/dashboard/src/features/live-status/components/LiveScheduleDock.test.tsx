@@ -35,6 +35,7 @@ function mockLiveStatuses() {
   vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({
     statuses: { ch_aizawa_ema: { kind: "live", videoId: "v1", title: "t1" } },
     now,
+    statusKnown: true,
   })
 }
 
@@ -106,6 +107,7 @@ describe("LiveScheduleDock video selection", () => {
     vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({
       statuses: { [officialId]: { kind: "live", videoId: "vo", title: "official live" } },
       now,
+      statusKnown: true,
     })
     mockPage("home")
     render(<LiveScheduleDock />)
@@ -176,6 +178,7 @@ describe("I. picking a STREAM keeps its existing behaviour (creator routing does
     vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({
       statuses: { [noa]: { kind: "live", videoId: "vn", title: "noa live" } },
       now,
+      statusKnown: true,
     })
     mockPage("schedule")
     render(<LiveScheduleDock />)
@@ -203,7 +206,7 @@ describe("LiveScheduleDock trigger live count", () => {
     [15, "15 LIVE"],
   ])("%i live creators read %s (the plain integer, never zero-padded)", (count, expected) => {
     mockPage("home")
-    vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: liveStatuses(count), now })
+    vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: liveStatuses(count), now, statusKnown: true })
 
     render(<LiveScheduleDock />)
 
@@ -212,7 +215,7 @@ describe("LiveScheduleDock trigger live count", () => {
 
   it("with nothing live the trigger does not show a count at all", () => {
     mockPage("home")
-    vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: {}, now })
+    vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: {}, now, statusKnown: true })
 
     render(<LiveScheduleDock />)
 

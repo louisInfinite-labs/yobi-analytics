@@ -1,0 +1,4 @@
+/* Status not known yet (no /live-streams response in this session): a neutral dash in the offline row's colour -- never "OFFLINE". */
+.live-status-member__status[data-status="unknown"] {
+  color: var(--oshi-text-3);
+}

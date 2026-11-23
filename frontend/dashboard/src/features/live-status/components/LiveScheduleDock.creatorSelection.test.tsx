@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(resolveCreatorKey).mockImplementation(realResolveCreatorKey) // the failed-selection test overrides it
   vi.mocked(useCurrentPageModule.useCurrentPage).mockReturnValue(["home", vi.fn()])
-  vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: {}, now })
+  vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: {}, now, statusKnown: true })
 })
 
 const trigger = () => document.querySelector<HTMLButtonElement>(".live-status-trigger")!

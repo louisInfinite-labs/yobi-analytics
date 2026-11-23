@@ -15,7 +15,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.setItem("yobi.locale", "en")
   vi.mocked(useCurrentPageModule.useCurrentPage).mockReturnValue(["home", vi.fn()])
-  vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: {}, now: new Date("2026-09-10T12:00:00+09:00") })
+  vi.mocked(useCreatorStatusesModule.useCreatorStatuses).mockReturnValue({ statuses: {}, now: new Date("2026-09-10T12:00:00+09:00"), statusKnown: true })
 })
 
 async function openDock() {
