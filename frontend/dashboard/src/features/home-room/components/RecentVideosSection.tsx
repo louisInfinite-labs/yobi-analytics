@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import { ConfigProvider, Segmented } from "antd"
-import { ChevronRight } from "lucide-react"
+import { ChevronRight, History } from "lucide-react"
 import { VideoSearchBox } from "./VideoSearchBox"
 import { OshiErrorState } from "./OshiErrorState"
+import { MemoryDateControls, OnThisDayContent } from "./OnThisDayView"
 import type { RecentVideo } from "../../../shared/media/model/recentVideo"
 import { useLocale } from "../../../shared/i18n/hooks/useLocale"
 import { t, type Locale } from "../../../shared/i18n/translations"
@@ -26,6 +27,9 @@ import {
   type VideoViewWindow,
 } from "../model/oshiVideosQuery"
 import { useOshiVideos } from "../hooks/useOshiVideos"
+import { useOnThisDay } from "../hooks/useOnThisDay"
+import { buildOnThisDayFilters, todayMonthDay, type MonthDay } from "../model/onThisDay"
+import { topicLabel } from "../model/videoTopicCatalog"
 import type { HomeAllFeed } from "../hooks/useHomeAllFeed"
 import { useVideoTopicCatalog } from "../hooks/useVideoTopicCatalog"
 import { fetchVideoTopics } from "../data/videoTopics"
@@ -77,14 +81,15 @@ function formatCardMeta(video: RecentVideo): string {
 /** The card's own thumbnail sits above its title, using YouTube's own
  * thumbnail JPG endpoint -- no separate fetch, keyed only by the real
  * videoId the API returned (never a substituted placeholder video). */
-function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video: RecentVideo) => void }) {
+function VideoThumbCard({ video, onOpen, meta: metaOverride }: { video: RecentVideo; onOpen: (video: RecentVideo) => void; meta?: string }) {
   const [thumbFailed, setThumbFailed] = useState(false)
   const [locale] = useLocale()
   const isLiveNow = video.contentFormat === "live_now"
   // A Premiere is not a livestream, but like one it has not happened yet: opening its waiting page is not watching it. A pending-archive
   // placeholder (ended, archive not yet verified) is not confirmed watchable either -- opening it must not mark the eventual real archive seen.
   const isNotYetWatchable = isNotYetWatchableFormat(video.contentFormat)
-  const meta = formatCardMeta(video)
+  // On-this-day cards pass their own meta line (the memory's Tokyo date and what that date means); the shelf's cards derive it from publishedAt.
+  const meta = metaOverride ?? formatCardMeta(video)
 
   return (
     <button
@@ -116,6 +121,15 @@ function VideoThumbCard({ video, onOpen }: { video: RecentVideo; onOpen: (video:
       </span>
     </button>
   )
+}
+
+/** The drag-aware open of the track a card sits in: a pointerup that ends a real drag must not also open the card under it (see VideoTrack). */
+const TrackOpenContext = createContext<(video: RecentVideo) => void>(() => {})
+
+/** An On-this-day card: the shelf's own card, opened through the enclosing track's drag-aware open. */
+function MemoryCard({ video, meta }: { video: RecentVideo; meta: string }) {
+  const open = useContext(TrackOpenContext)
+  return <VideoThumbCard video={video} meta={meta} onOpen={open} />
 }
 
 /** Phone search results: ONE video per row, stacked vertically (never a carousel or a grid), each the same card as the shelf's, so the
@@ -176,6 +190,7 @@ function VideoTrack({
   error,
   onOpen,
   onNearEnd,
+  children,
 }: {
   videos: RecentVideo[]
   emptyLabel: string
@@ -183,6 +198,8 @@ function VideoTrack({
   error: Error | null
   onOpen: (video: RecentVideo) => void
   onNearEnd: () => void
+  /** Replaces the card list (On this day's year groups) while keeping this track's scrolling and drag handling; its cards open through TrackOpenContext. */
+  children?: ReactNode
 }) {
   const viewportRef = useRef<HTMLDivElement>(null)
   // Mouse-only grab-to-scroll state. `didDragRef` is what actually
@@ -294,7 +311,9 @@ function VideoTrack({
         onPointerCancel={endDrag}
       >
         <div className="oshi-videos__list">
-          {videos.length === 0 ? (
+          {children ? (
+            <TrackOpenContext.Provider value={handleOpen}>{children}</TrackOpenContext.Provider>
+          ) : videos.length === 0 ? (
             error ? (
               <OshiErrorState error={error} />
             ) : (
@@ -532,6 +551,10 @@ export function RecentVideosSection({ creatorId, onSelectVideo, allFeed }: Recen
   const [sortOption, setSortOption] = useState<VideoSortOption>("newest")
   const [viewWindow, setViewWindow] = useState<VideoViewWindow>("total")
   const [contentType, setContentType] = useState<VideoContentType>("all")
+  // F37 On this day: a view of the SAME track (not a page): the creator's videos from this month/day in earlier years, filtered by the Topic Tags and the
+  // content-type dropdown already on this header. The date starts at today in Tokyo and is explored with the previous / next / month / day controls.
+  const [memoriesOpen, setMemoriesOpen] = useState(false)
+  const [memoryDate, setMemoryDate] = useState<MonthDay>(() => todayMonthDay())
   const topicCatalog = useVideoTopicCatalog(fetchVideoTopics)
   // Desktop search: no separate open/close gesture and no submit step -- every keystroke's onChange IS the query. While Search is
   // active (the normalized query meets useVideoSearch's activation threshold) the shelf shows the creator's multilingual search
@@ -574,7 +597,8 @@ export function RecentVideosSection({ creatorId, onSelectVideo, allFeed }: Recen
     [selectedTag, canonicalCreatorId, contentType, sortOption, viewWindow],
   )
   const usesSharedAll = allFeed !== undefined && isHomeAllDefault(selectedTag, { contentType, sort: sortOption, viewWindow })
-  const ownShelf = useOshiVideos(usesSharedAll ? null : shelfQuery)
+  // While On this day is open the shelf is not shown, so its own pages are not fetched (the shared ALL feed is Home's anyway).
+  const ownShelf = useOshiVideos(usesSharedAll || memoriesOpen ? null : shelfQuery)
   const shelf = usesSharedAll ? allFeed.page : ownShelf
   // Existing content type / sort / period stay active during a Search, but there is deliberately no topic / tag field here: Search is
   // creator-scoped over the creator's indexed catalog and can never be narrowed by the selected Topic Tag (the endpoint has none).
@@ -586,6 +610,13 @@ export function RecentVideosSection({ creatorId, onSelectVideo, allFeed }: Recen
   const searchTopics = topicCatalog.state.status === "success" ? topicCatalog.state.topics : []
   const search = useVideoSearch(searchQuery, searchBase, { isComposing, topics: searchTopics })
   const isSearchActive = search.active
+  const showMemories = memoriesOpen && !isSearchActive
+  const memoryFilters = useMemo(() => buildOnThisDayFilters(selectedTag, contentType), [selectedTag, contentType])
+  const memories = useOnThisDay(canonicalCreatorId, memoryDate, memoryFilters, showMemories)
+  const memoryTopicLabels = useMemo(
+    () => new Map((topicCatalog.state.status === "success" ? topicCatalog.state.topics : []).map((topic) => [topic.id, topicLabel(topic, locale)])),
+    [topicCatalog.state, locale],
+  )
   // Emptying the search ends it at once (focus, a pending request or loaded results change nothing): the normal Topic list returns, and its
   // data is REFRESHED -- fetched again from the first page through the normal loader -- rather than trusting whatever was mounted before the
   // search. The late response of a search that was still pending can never land (useVideoSearch invalidates and aborts it when it ends).
@@ -693,8 +724,25 @@ export function RecentVideosSection({ creatorId, onSelectVideo, allFeed }: Recen
                 locale={locale}
                 hidden={!showShelfFilters || (!isSearchActive && selectedTag === SHORT_VIDEO_FILTER)}
               />
-              <VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showShelfFilters} />
-              {showViewWindow && <ViewWindowDropdown value={viewWindow} onChange={setViewWindow} locale={locale} />}
+              <button
+                type="button"
+                className="oshi-videos__sort oshi-videos__memories-toggle"
+                aria-pressed={memoriesOpen}
+                aria-label={t(locale, "memories.toggleAria")}
+                title={t(locale, "memories.toggleAria")}
+                onClick={() => setMemoriesOpen((open) => !open)}
+              >
+                <History size={12} aria-hidden="true" />
+                <span className="oshi-videos__memories-label">{t(locale, "memories.toggle")}</span>
+              </button>
+              {showMemories ? (
+                <MemoryDateControls monthDay={memoryDate} onChange={setMemoryDate} locale={locale} />
+              ) : (
+                <>
+                  <VideoSortDropdown value={sortOption} onChange={setSortOption} locale={locale} hidden={!showShelfFilters} />
+                  {showViewWindow && <ViewWindowDropdown value={viewWindow} onChange={setViewWindow} locale={locale} />}
+                </>
+              )}
             </>
           }
         />
@@ -710,14 +758,25 @@ export function RecentVideosSection({ creatorId, onSelectVideo, allFeed }: Recen
           onto the new creator's videos. An active Search gets its own key component (the query itself) so switching between browsing and
           searching -- or between two queries -- never carries scroll state across. */}
       <VideoTrack
-        key={`${creatorId}:${isSearchActive ? `search:${searchQuery}` : shelfQuery ? oshiVideosQueryKey(shelfQuery) : selectedTag}`}
+        key={`${creatorId}:${isSearchActive ? `search:${searchQuery}` : showMemories ? `memories:${memoryDate.month}-${memoryDate.day}:${JSON.stringify(memoryFilters)}` : shelfQuery ? oshiVideosQueryKey(shelfQuery) : selectedTag}`}
         videos={shelfVideos}
         emptyLabel={emptyLabel}
         error={isSearchActive ? search.error : shelf.error}
         onOpen={(video) => onSelectVideo({ videoId: video.videoId, title: video.title })}
         // A Search response is already the query's complete result set -- only the browsing shelf pages.
-        onNearEnd={isSearchActive ? () => {} : shelf.loadMore}
-      />
+        onNearEnd={isSearchActive || showMemories ? () => {} : shelf.loadMore}
+      >
+        {showMemories ? (
+          <OnThisDayContent
+            loading={memories.loading}
+            error={memories.error}
+            result={memories.result}
+            locale={locale}
+            topicLabels={memoryTopicLabels}
+            renderCard={(video, meta) => <MemoryCard video={video} meta={meta} />}
+          />
+        ) : undefined}
+      </VideoTrack>
     </section>
   )
 }

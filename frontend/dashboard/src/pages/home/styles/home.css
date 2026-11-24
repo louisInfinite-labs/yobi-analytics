@@ -1431,6 +1431,107 @@
   color: var(--creator-main);
 }
 
+/* ============ Oshi Videos: On this day (F37) ============
+   A view of the same track: the date controls reuse .oshi-videos__sort, the cards are the shelf's own .oshi-video-card. A year is a small label
+   followed by that year's cards; a note at the end says what the catalog covers. */
+.oshi-videos__memories-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.oshi-videos__memories-toggle[aria-pressed="true"] {
+  border-color: var(--creator-main);
+
+  color: var(--oshi-text-1);
+}
+
+/* Month and day are short numbers (language-neutral and narrow), so the controls fit beside the tags. */
+.oshi-videos__memories-select {
+  min-width: 0;
+}
+
+.oshi-videos__memories-step {
+  width: 22px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0;
+}
+
+.oshi-memories__year {
+  flex: 0 0 auto;
+
+  display: flex;
+  align-items: stretch;
+
+  gap: 8px;
+
+  height: 100%;
+}
+
+.oshi-memories__year + .oshi-memories__year {
+  padding-left: 10px;
+
+  border-left: 1px solid var(--oshi-border);
+}
+
+.oshi-memories__year-label {
+  flex: 0 0 auto;
+
+  margin: 0;
+
+  color: var(--oshi-text-2);
+
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.oshi-memories__cards {
+  display: flex;
+  align-items: stretch;
+
+  gap: 10px;
+
+  height: 100%;
+}
+
+.oshi-memories__card {
+  display: flex;
+
+  height: 100%;
+}
+
+.oshi-memories__note {
+  flex: 0 0 200px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+
+  gap: 4px;
+
+  padding: 0 8px;
+
+  color: var(--oshi-text-3);
+
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.oshi-memories__note-line {
+  display: block;
+}
+
+.oshi-memories__empty {
+  flex-direction: column;
+
+  gap: 4px;
+}
+
 /* ============ Oshi Videos: phone (below 768px) ============
    Two rows inside the header: the tag strip on its own row (scrolls sideways when the tags do not fit; text keeps its size), then the
    dropdowns on a row of their own that shares the full width. Nothing wraps over the video cards and nothing can overflow the page. The
@@ -2814,5 +2915,49 @@
 @media (max-width: 767px) {
   .oshi-videos {
     height: calc(var(--oshi-videos-height) + 38px);
+  }
+}
+
+/* On this day on a phone: the toggle and the previous/next steps are icon-only 32px squares so month and day (and the content-type
+   dropdown) keep their width inside the one controls row. */
+@media (max-width: 767px) {
+  .oshi-videos__controls .oshi-videos__memories-toggle,
+  .oshi-videos__controls .oshi-videos__memories-step {
+    flex: 0 0 32px;
+    width: 32px;
+
+    justify-content: center;
+
+    padding: 0;
+  }
+
+  .oshi-videos__memories-label {
+    display: none;
+  }
+
+  /* With the date controls open the row holds six controls: tighter gaps, 24px steps and a 28px toggle, and the content-type dropdown (the
+     one dropdown that carries a word) gets the larger share so "All" / "Videos" and the two-digit month/day are never clipped at 320px. */
+  .oshi-videos__controls:has(.oshi-videos__memories-step) {
+    gap: 4px;
+  }
+
+  .oshi-videos__controls:has(.oshi-videos__memories-step) > select:first-child {
+    flex-grow: 2;
+  }
+
+  .oshi-videos__controls:has(.oshi-videos__memories-step) .oshi-videos__memories-toggle {
+    flex-basis: 28px;
+    width: 28px;
+  }
+
+  .oshi-videos__controls .oshi-videos__memories-step {
+    flex-basis: 24px;
+    width: 24px;
+  }
+
+  .oshi-videos__controls .oshi-videos__memories-select {
+    flex-grow: 1.3;
+
+    padding-inline: 4px;
   }
 }

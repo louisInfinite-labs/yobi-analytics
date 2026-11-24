@@ -223,6 +223,9 @@ jobs:
           src/features/home-room/components/RecentVideosSection.shelf.test.tsx
           src/features/home-room/components/RecentVideosSection.dynamicTopics.test.tsx
           src/features/home-room/components/RecentVideosSection.desktopSearchBackend.test.tsx
+          src/features/home-room/components/RecentVideosSection.onThisDay.test.tsx
+          src/features/home-room/data/onThisDay.test.ts
+          src/features/home-room/model/onThisDay.test.ts
           src/features/video-search/data/videoSearch.test.ts
           src/features/video-search/hooks/useVideoSearch.test.ts
           src/features/video-search/model/queryNormalization.test.ts
