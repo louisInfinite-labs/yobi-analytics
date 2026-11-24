@@ -1,4 +1,4 @@
-/** Home's creator header is the page's heading and says who the creator is from the Creator Registry alone (no API data), and "offline" before the live
+/** Home's creator header is a heading under the site's own <h1> and says who the creator is from the Creator Registry alone (no API data), and "offline" before the live
  * status has answered never reads as "nothing scheduled". The UI strings asserted are the product's own zh-TW texts. */
 import { render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -39,12 +39,13 @@ beforeEach(() => {
 })
 
 describe("creator header semantics", () => {
-  it("makes the creator's name the page's one h1, keeping the name's own class (and so its look)", () => {
+  it("the page's one h1 is the site's name; the creator's name is an h2 that keeps its own class (and so its look)", () => {
     renderPanel("ch_aizawa_ema")
     const headings = screen.getAllByRole("heading", { level: 1 })
     expect(headings).toHaveLength(1)
-    expect(headings[0]).toHaveTextContent("藍沢エマ")
-    expect(headings[0]).toHaveClass("oshi-status__creator-name")
+    expect(headings[0]).toHaveTextContent("OshiYobi – 推しが呼んでる。")
+    const name = screen.getByRole("heading", { level: 2, name: "藍沢エマ" })
+    expect(name).toHaveClass("oshi-status__creator-name")
   })
 
   it("shows the branch from the Creator Registry before any API data has arrived", () => {

@@ -250,6 +250,10 @@ jobs:
           src/features/oshi-status/components/OshiStatusPanel.test.tsx
           src/features/oshi-status/components/OshiStatusPanel.milestones.test.tsx
           src/features/oshi-status/components/OshiStatusPanel.markAllWatched.test.tsx
+          src/features/oshi-status/components/OshiStatusPanel.seoSemantics.test.tsx
+          src/features/oshi-status/components/OshiStatusPanel.siteIntro.test.tsx
+          src/features/site-identity/HomeSiteHeading.test.tsx
+          src/features/site-identity/HomeSiteIntro.test.tsx
           src/features/notifications/components/NotificationSettings.install.test.tsx
           src/features/oshi-status/utils/oshiActivity.countUnwatched.test.ts
           src/features/oshi-status/data/creatorMilestones.test.ts
