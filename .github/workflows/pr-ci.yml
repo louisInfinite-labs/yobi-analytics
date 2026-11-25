@@ -186,6 +186,13 @@ jobs:
           tests/stores/test_dynamodb_video_actual_start.py
           tests/tracking/test_actual_start_persistence.py
           tests/tracking/test_livestream_lifecycle_actual_start.py
+          tests/analytics/test_video_ranking_reducer_wiring.py
+          tests/analytics/test_video_ranking_result.py
+          tests/tracking/test_tracking_manifest.py
+          tests/tracking/test_tracking_manifest_patch.py
+          tests/stores/test_dynamodb_store.py
+          tests/collection/test_history_worker_manifest_patch.py
+          tests/api/test_provisional_new_video_visibility.py
 
   frontend-focused-tests:
     needs: detect-scope
