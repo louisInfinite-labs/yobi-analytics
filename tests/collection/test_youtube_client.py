@@ -244,9 +244,49 @@ def test_completed_livestream_is_classified_as_live_and_completed():
             "viewCount": 5000,
             "contentType": "live",
             "liveStatus": "completed",
+            "actualStartTime": "2026-08-25T12:00:00Z",
         }
     ]
     assert skip_reasons == {}
+
+
+def _live_item_with_details(video_id, published_at, details):
+    """A minimal videos.list item carrying the given liveStreamingDetails."""
+    return {
+        "id": video_id,
+        "snippet": {"title": video_id, "publishedAt": published_at},
+        "statistics": {"viewCount": "1"},
+        "liveStreamingDetails": details,
+    }
+
+
+def test_actual_start_is_captured_only_for_a_started_livestream():
+    """F37: a live/completed stream carries actualStartTime; an upcoming one, a Premiere and a plain upload never do."""
+    items = [
+        _live_item_with_details("done", "2026-08-25T14:13:00Z", {"actualStartTime": "2026-08-25T12:00:00Z", "actualEndTime": "2026-08-25T14:00:00Z"}),
+        _live_item_with_details("now", "2026-08-25T12:00:00Z", {"actualStartTime": "2026-08-25T12:00:00Z"}),
+        _live_item_with_details("soon", "2026-08-25T12:00:00Z", {"scheduledStartTime": "2026-08-26T12:00:00Z"}),
+        # A completed Premiere is published at its start, so it is an upload and keeps publishedAt.
+        _live_item_with_details("premiere", "2026-08-25T12:00:03Z", {"actualStartTime": "2026-08-25T12:00:00Z", "actualEndTime": "2026-08-25T12:04:00Z"}),
+        {"id": "plain", "snippet": {"title": "plain", "publishedAt": "2026-08-25T12:00:00Z"}, "statistics": {"viewCount": "1"}},
+    ]
+    result, _ = get_video_statistics(_make_youtube_client({"items": items}), [item["id"] for item in items])
+    by_id = {video["videoId"]: video for video in result}
+
+    assert by_id["done"]["actualStartTime"] == "2026-08-25T12:00:00Z"
+    assert by_id["now"]["actualStartTime"] == "2026-08-25T12:00:00Z"
+    for video_id in ("soon", "premiere", "plain"):
+        assert "actualStartTime" not in by_id[video_id]
+    assert by_id["premiere"]["contentType"] == "upload"
+
+
+def test_malformed_actual_start_is_dropped_not_repaired():
+    """A malformed actualStartTime on a live item is omitted (the video is still classified)."""
+    item = _live_item_with_details("odd", "2026-08-25T14:13:00Z", {"actualStartTime": "not-a-time", "actualEndTime": "2026-08-25T14:00:00Z"})
+    [video] = get_video_statistics(_make_youtube_client({"items": [item]}), ["odd"])[0]
+
+    assert video["contentType"] == "live" and video["liveStatus"] == "completed"
+    assert "actualStartTime" not in video
 
 
 def test_currently_live_stream_has_actual_start_but_no_actual_end():

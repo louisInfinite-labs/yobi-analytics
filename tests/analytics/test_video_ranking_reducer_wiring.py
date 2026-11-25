@@ -34,6 +34,7 @@ def _video(
     thumbnail_url: str | None = None,
     content_type: str | None = None,
     live_status: str | None = None,
+    actual_start_at: str | None = None,
 ):
     return SimpleNamespace(
         video_id=video_id,
@@ -46,6 +47,7 @@ def _video(
         thumbnail_url=thumbnail_url,
         content_type=content_type,
         live_status=live_status,
+        actual_start_at=actual_start_at,
     )
 
 
@@ -218,3 +220,33 @@ def test_missing_bucket_configuration_is_a_silent_no_op(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "Traceback" not in captured.out
     assert "Traceback" not in captured.err
+
+
+def test_actual_start_flows_from_the_manifest_into_the_persisted_catalog(wired_bucket):
+    """F37: the reducer must hand the manifest's actualStartAt to the catalog; a row without a known start carries no actualStartAt key."""
+    started = "2026-09-20T12:30:00+00:00"
+    videos = [
+        _video("v1", "creator_a", "valorant", content_type="live", live_status="completed", actual_start_at=started),
+        _video("v2", "creator_a", "sf6", content_type="upload"),
+        _video("v3", "creator_b", "apex", content_type="live", live_status="upcoming"),
+    ]
+    publish_tracking_manifest(videos, S3TrackingManifestStore(BUCKET, s3_client=wired_bucket))
+
+    ranking_reducer._build_and_persist_video_rankings(report_date=REPORT_DATE, generated_at="2026-09-29T18:05:00+09:00")
+
+    store = S3VideoRankingStore(BUCKET, s3_client=wired_bucket)
+    creator_a_rows = {row["videoId"]: row for row in store.read_result(REPORT_DATE, "creator_a")["videos"]}
+    creator_b_rows = {row["videoId"]: row for row in store.read_result(REPORT_DATE, "creator_b")["videos"]}
+    assert creator_a_rows["v1"]["actualStartAt"] == started
+    # Never substituted from publishedAt/discoveredAt, and no null key for rows that have no start.
+    assert "actualStartAt" not in creator_a_rows["v2"]
+    assert "actualStartAt" not in creator_b_rows["v3"]
+
+
+def test_a_manifest_written_without_any_start_yields_a_catalog_without_the_key(wired_bucket):
+    """F37: the unchanged fixture manifest (no actual starts anywhere) must not make the reducer add actualStartAt to any persisted row."""
+    ranking_reducer._build_and_persist_video_rankings(report_date=REPORT_DATE, generated_at="2026-09-29T18:05:00+09:00")
+
+    store = S3VideoRankingStore(BUCKET, s3_client=wired_bucket)
+    for creator_id in ("creator_a", "creator_b"):
+        assert all("actualStartAt" not in row for row in store.read_result(REPORT_DATE, creator_id)["videos"])

@@ -97,6 +97,9 @@ class ManifestEntry:
     # optional/nullable precedent -- None means "not applicable (an upload)
     # or not yet known", never a guessed lifecycle stage.
     live_status: str | None = None
+    # F37: mirrors Video.actual_start_at (a started livestream's real start). Same optional/nullable precedent: a manifest object written
+    # before this field existed reads None, meaning "not known yet", never a guess from published_at.
+    actual_start_at: str | None = None
 
 
 class TrackingManifestStore(Protocol):
@@ -155,6 +158,7 @@ def serialize_manifest(entries: list[ManifestEntry]) -> bytes:
             "thumbnailUrl": pa.array([entry.thumbnail_url for entry in entries], type=pa.string()),
             "contentType": pa.array([entry.content_type for entry in entries], type=pa.string()),
             "liveStatus": pa.array([entry.live_status for entry in entries], type=pa.string()),
+            "actualStartAt": pa.array([entry.actual_start_at for entry in entries], type=pa.string()),
         }
     )
     output = io.BytesIO()
@@ -199,6 +203,7 @@ def deserialize_manifest(payload: bytes) -> list[ManifestEntry]:
                 thumbnail_url=entry.get("thumbnailUrl"),
                 content_type=entry.get("contentType"),
                 live_status=entry.get("liveStatus"),
+                actual_start_at=entry.get("actualStartAt"),
             )
             for entry in raw_entries
         ]
@@ -419,6 +424,7 @@ def publish_tracking_manifest(videos, store: TrackingManifestStore) -> list[str]
             thumbnail_url=video.thumbnail_url,
             content_type=video.content_type,
             live_status=video.live_status,
+            actual_start_at=getattr(video, "actual_start_at", None),
         )
         for video in videos
     ]
@@ -447,6 +453,11 @@ def _validate_entry(entry: ManifestEntry) -> None:
         raise TrackingManifestError(f"Manifest entry has invalid 'contentType': {entry!r}")
     if entry.live_status is not None and entry.live_status not in VALID_LIVE_STATUSES:
         raise TrackingManifestError(f"Manifest entry has invalid 'liveStatus': {entry!r}")
+    if entry.actual_start_at is not None:
+        try:
+            datetime.fromisoformat(entry.actual_start_at.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            raise TrackingManifestError(f"Manifest entry has invalid 'actualStartAt': {entry!r}") from None
     if entry.title is not None and not entry.title:
         raise TrackingManifestError(f"Manifest entry has invalid 'title': {entry!r}")
 

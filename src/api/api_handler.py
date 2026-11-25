@@ -213,6 +213,10 @@ def _handle_get_creator_video_search(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_creator_video_search(_merged_params(event))
 
 
+def _handle_get_creator_videos_on_this_day(event: dict[str, Any]) -> dict[str, Any]:
+    return read_api.get_creator_videos_on_this_day(_merged_params(event))
+
+
 def _handle_get_oshi_status(event: dict[str, Any]) -> dict[str, Any]:
     return read_api.get_oshi_status(_merged_params(event))
 
@@ -547,6 +551,7 @@ _ROUTES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "GET /creators/{creatorId}/videos/ranking": _handle_get_video_ranking,
     "GET /creators/{creatorId}/videos/recent": _handle_get_recent_creator_videos,
     "GET /creators/{creatorId}/videos/search": _handle_get_creator_video_search,
+    "GET /creators/{creatorId}/videos/on-this-day": _handle_get_creator_videos_on_this_day,
     "GET /creators/{creatorId}/oshi-status": _handle_get_oshi_status,
     "GET /creators/{creatorId}/milestones": _handle_get_creator_milestones,
     "GET /milestones": _handle_list_creator_milestones,

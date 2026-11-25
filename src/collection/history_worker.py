@@ -14,6 +14,7 @@ from tracking.video_master import (
     Video,
     VideoMasterStore,
     is_classification_incomplete,
+    normalize_actual_start,
 )
 from tracking.video_topics import OTHER_TOPIC, TOPIC_IDS
 from collection.youtube_client import get_video_statistics
@@ -146,6 +147,7 @@ def collect_history_shard(
         # shard_exists retry.
         fresh_rows = [row for row in rows if not row.carried_forward]
         requested_count = len(fresh_rows)
+        actual_start_by_video: dict[str, str] = {}
     else:
         due_ids = set(
             select_due_video_ids(
@@ -177,12 +179,15 @@ def collect_history_shard(
             )
             for video in videos
         ]
+        actual_start_by_video = _actual_starts_from_observations(videos)
         rows = sorted(fresh_rows + carried_rows, key=lambda row: row.video_id)
         history_key = history_store.write_daily_shard(collection_date, shard, rows)
         requested_count = len(ids_to_fetch)
 
     if video_master_store is not None:
-        scheduler_updates = _build_scheduler_updates(fresh_rows, video_master_store=video_master_store)
+        scheduler_updates = _build_scheduler_updates(
+            fresh_rows, video_master_store=video_master_store, actual_start_by_video=actual_start_by_video
+        )
         if scheduler_updates:
             video_master_store.upsert_videos(scheduler_updates)
             _patch_manifest_activity_states(manifest_store, shard=shard, updates=scheduler_updates)
@@ -379,7 +384,22 @@ def _carry_forward_non_due_rows(
     return carried_rows, forced_due_ids
 
 
-def _build_scheduler_updates(rows: list[HistoryRow], *, video_master_store: VideoMasterStore) -> list[Video]:
+def _actual_starts_from_observations(videos: list[dict]) -> dict[str, str]:
+    """videoId -> normalized actualStartTime for the observed videos that carried one (F37); a missing or malformed value is simply absent."""
+    starts: dict[str, str] = {}
+    for video in videos:
+        normalized = normalize_actual_start(video.get("actualStartTime"))
+        if normalized is not None:
+            starts[video["videoId"]] = normalized
+    return starts
+
+
+def _build_scheduler_updates(
+    rows: list[HistoryRow],
+    *,
+    video_master_store: VideoMasterStore,
+    actual_start_by_video: dict[str, str] | None = None,
+) -> list[Video]:
     """Classify each successfully-observed row's statistics (Roadmap 1.5) and merge the
     result onto its authoritative existing Video Master row — idempotently, so calling
     this twice for the exact same persisted `rows` (a shard_exists retry recovering from
@@ -475,9 +495,17 @@ def _build_scheduler_updates(rows: list[HistoryRow], *, video_master_store: Vide
             # FORMAT decided before the start is sticky: broadcast status changes, the format does not. Only a running observation is held;
             # an upcoming or ended one is a fresh, definitive reading and still replaces the stored value.
             observed_content_type, observed_live_status = "upload", None
+        resolved_content_type = observed_content_type if observed_content_type is not None else existing.content_type
+        # F37: an observation that is already being written (this scheduler update) also carries the stream's real start. First write wins: a
+        # stream starts once, so a stored value is kept as it is -- re-fetching the same time never changes the record, and no write exists
+        # for this field alone.
+        actual_start_at = existing.actual_start_at
+        if actual_start_at is None and resolved_content_type == "live":
+            actual_start_at = (actual_start_by_video or {}).get(row.video_id)
         updates.append(
             replace(
                 existing,
+                actual_start_at=actual_start_at,
                 activity_state=result.activity_state,
                 last_checked_at=row.observed_at,
                 last_view_count=row.view_count,
@@ -555,6 +583,7 @@ def _patch_manifest_activity_states(
                 activity_state=updates_by_video[entry.video_id].activity_state,
                 content_type=updates_by_video[entry.video_id].content_type,
                 live_status=updates_by_video[entry.video_id].live_status,
+                actual_start_at=updates_by_video[entry.video_id].actual_start_at,
             )
             if entry.video_id in updates_by_video
             else entry

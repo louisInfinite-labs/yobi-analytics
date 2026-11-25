@@ -46,6 +46,19 @@ export type TranslationKey =
   | "recentVideos.empty.latestVideos"
   | "recentVideos.empty.latestLive"
   | "recentVideos.empty.other"
+  | "memories.toggle"
+  | "memories.toggleAria"
+  | "memories.prevDayAria"
+  | "memories.nextDayAria"
+  | "memories.monthAria"
+  | "memories.dayAria"
+  | "memories.empty"
+  | "memories.unavailable"
+  | "memories.coverage"
+  | "memories.undated"
+  | "memories.truncated"
+  | "memories.kind.actualStart"
+  | "memories.kind.published"
   | "recentVideos.viewAll"
   | "videoSearch.placeholder"
   | "videoSearch.empty"
@@ -358,6 +371,19 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "尚無最新影片",
     "recentVideos.empty.latestLive": "尚無最新直播",
     "recentVideos.empty.other": "沒有影片",
+    "memories.toggle": "歷年今日",
+    "memories.toggleAria": "顯示往年同一天的影片",
+    "memories.prevDayAria": "前一天",
+    "memories.nextDayAria": "後一天",
+    "memories.monthAria": "月份",
+    "memories.dayAria": "日期",
+    "memories.empty": "往年的這一天沒有符合的影片",
+    "memories.unavailable": "此創作者尚無可用的歷史資料",
+    "memories.coverage": "資料庫收錄自 {{date}}",
+    "memories.undated": "另有 {{count}} 場直播尚無開播日期紀錄,無法顯示於此",
+    "memories.truncated": "僅顯示前 {{count}} 筆",
+    "memories.kind.actualStart": "開播",
+    "memories.kind.published": "發布",
     "recentVideos.viewAll": "查看全部",
     "videoSearch.placeholder": "搜尋影片",
     "videoSearch.empty": "沒有符合的影片",
@@ -670,6 +696,19 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "No recent videos",
     "recentVideos.empty.latestLive": "No recent streams",
     "recentVideos.empty.other": "No videos",
+    "memories.toggle": "On this day",
+    "memories.toggleAria": "Show videos from this date in earlier years",
+    "memories.prevDayAria": "Previous day",
+    "memories.nextDayAria": "Next day",
+    "memories.monthAria": "Month",
+    "memories.dayAria": "Day",
+    "memories.empty": "No matching videos on this date in earlier years",
+    "memories.unavailable": "Historical data is not available for this creator yet",
+    "memories.coverage": "Catalog covers from {{date}}",
+    "memories.undated": "{{count}} livestreams have no recorded start date yet and cannot appear here",
+    "memories.truncated": "Showing the first {{count}} results",
+    "memories.kind.actualStart": "Streamed",
+    "memories.kind.published": "Published",
     "recentVideos.viewAll": "View All",
     "videoSearch.placeholder": "Search videos",
     "videoSearch.empty": "No matching videos",
@@ -981,6 +1020,19 @@ const TRANSLATIONS: Record<Locale, Record<TranslationKey, string>> = {
     "recentVideos.empty.latestVideos": "最新動画はありません",
     "recentVideos.empty.latestLive": "最新配信はありません",
     "recentVideos.empty.other": "動画がありません",
+    "memories.toggle": "過去の今日",
+    "memories.toggleAria": "過去の同じ日の動画を表示",
+    "memories.prevDayAria": "前の日",
+    "memories.nextDayAria": "次の日",
+    "memories.monthAria": "月",
+    "memories.dayAria": "日",
+    "memories.empty": "過去の同じ日に該当する動画はありません",
+    "memories.unavailable": "このクリエイターの過去データはまだ利用できません",
+    "memories.coverage": "データは{{date}}以降を収録",
+    "memories.undated": "配信開始日が未記録の配信が{{count}}件あり、ここには表示できません",
+    "memories.truncated": "最初の{{count}}件を表示中",
+    "memories.kind.actualStart": "配信開始",
+    "memories.kind.published": "公開",
     "recentVideos.viewAll": "すべて見る",
     "videoSearch.placeholder": "動画を検索",
     "videoSearch.empty": "該当する動画がありません",

@@ -129,6 +129,9 @@ def _build_and_persist_video_rankings(*, report_date: date, generated_at: str) -
         discovered_at_by_video = {
             entry.video_id: entry.discovered_at for entry in active_entries if entry.discovered_at is not None
         }
+        actual_start_at_by_video = {
+            entry.video_id: entry.actual_start_at for entry in active_entries if entry.actual_start_at is not None
+        }
         discovered_date_by_video = discovered_dates_by_video(active_entries)
 
         rows_by_creator: dict[str, list[HistoryRow]] = {}
@@ -149,6 +152,7 @@ def _build_and_persist_video_rankings(*, report_date: date, generated_at: str) -
                 thumbnail_by_video=thumbnail_by_video,
                 published_at_by_video=published_at_by_video,
                 discovered_at_by_video=discovered_at_by_video,
+                actual_start_at_by_video=actual_start_at_by_video,
             )
             result = build_video_ranking_result(
                 report_date=report_date, creator_id=creator_id, generated_at=generated_at, rows=catalog_rows

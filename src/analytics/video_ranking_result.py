@@ -54,6 +54,9 @@ def _serialize_row(row: VideoRankingRow) -> dict[str, Any]:
         "publishedAt": row.published_at,
         "discoveredAt": row.discovered_at,
     }
+    # F37: present only for a livestream whose real start is known, so the persisted catalog does not grow for rows without one.
+    if row.actual_start_at is not None:
+        serialized["actualStartAt"] = row.actual_start_at
     for period in GROWTH_METRICS:
         serialized[f"anchor{period}ViewCount"] = row.anchor_view_counts.get(period)
     return serialized
